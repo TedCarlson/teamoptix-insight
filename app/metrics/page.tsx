@@ -42,47 +42,35 @@ function Card({ title, value, subtitle }: { title: string; value: string; subtit
 }
 
 /**
- * ✅ EDIT THIS ONLY:
- * These are the metric_name values in kpi_master_v1 that correspond to the 3 KPIs you want.
- *
- * From your earlier list, you definitely have:
- * - "Total Jobs"
- * - "TUResult" (very likely Tool Usage)
- *
- * You did NOT show an explicit "tNPS" or "FTR" metric_name yet, so you must map them
- * to the correct metric_name(s) you actually store.
+ * Metric mapping.
+ * NOTE: tNPS aggregate is computed from components (Promoters/Detractors/Surveys)
+ * using ratio-of-summed-components.
  */
-const METRIC_MAP: Record<"tnps" | "ftr" | "tool_usage" | "total_jobs", string[]> = {
-  tnps: [
-    // put your actual tnps metric_name(s) here when you confirm them
-    "tNPS",
-    "tNPS Rate",
-    "tnps rate",
-    "TNPS",
-    "tnps",
-  ],
-  ftr: [
-    // put your actual ftr metric_name(s) here when you confirm them
-    "FTR",
-    "FTR%",
-    "ftr",
-    "ftr%",
-  ],
-  tool_usage: [
-    // based on your data
-    "TUResult",
-    "Tool Usage",
-    "ToolUsage",
-  ],
-  total_jobs: [
-    "Total Jobs",
-    "TotalJobs",
-  ],
+type MetricCode =
+  | "tnps"
+  | "ftr"
+  | "tool_usage"
+  | "total_jobs"
+  | "tnps_promoters"
+  | "tnps_detractors"
+  | "tnps_surveys";
+
+const METRIC_MAP: Record<MetricCode, string[]> = {
+  // per-tech values (used in Rankings table)
+  tnps: ["tNPS", "tNPS Rate", "tnps rate", "TNPS", "tnps"],
+  ftr: ["FTR", "FTR%", "ftr", "ftr%"],
+  tool_usage: ["TUResult", "Tool Usage", "ToolUsage"],
+  total_jobs: ["Total Jobs", "TotalJobs"],
+
+  // ✅ tNPS components for correct region aggregates
+  tnps_promoters: ["Promoters"],
+  tnps_detractors: ["Detractors"],
+  tnps_surveys: ["tNPS Surveys", "TNPS Surveys", "tNPS Survey", "TNPS Survey"],
 };
 
-function pickMetricCode(metricName: string): "tnps" | "ftr" | "tool_usage" | "total_jobs" | null {
+function pickMetricCode(metricName: string): MetricCode | null {
   for (const [code, names] of Object.entries(METRIC_MAP) as any) {
-    if ((names as string[]).includes(metricName)) return code;
+    if ((names as string[]).includes(metricName)) return code as MetricCode;
   }
   return null;
 }
@@ -113,18 +101,37 @@ function weightedAvg(rows: PivotRow[], key: keyof PivotRow, weightKey: keyof Piv
   return den > 0 ? num / den : null;
 }
 
+type RegionAgg = {
+  region: string;
+  fiscal_month_anchor: string | null;
+  headcount: number; // distinct tech count (from pivot)
+  total_jobs: number;
+
+  // tNPS components
+  promoters: number;
+  detractors: number;
+  surveys: number;
+
+  tnps_region: number | null;
+};
+
+function computeTNPSFromComponents(promoters: number, detractors: number, surveys: number): number | null {
+  if (!surveys || surveys <= 0) return null;
+  const vP = promoters * 100;
+  const vD = detractors * -100;
+  return (vP + vD) / surveys;
+}
+
 export default async function MetricsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const sp = await searchParams;
   const sb = getSupabase();
 
-  // only fetch the metric_name values we care about (keeps it fast)
+  // Only fetch metric_name values we care about
   const neededMetricNames = Array.from(new Set(Object.values(METRIC_MAP).flat()));
 
   let q = sb
     .from("kpi_master_v1")
-    .select(
-      "tech_id, tech_name, supervisor, company, region, fiscal_month_anchor, metric_name, metric_value_num"
-    )
+    .select("tech_id, tech_name, supervisor, company, region, fiscal_month_anchor, metric_name, metric_value_num")
     .in("metric_name", neededMetricNames);
 
   if (sp.region) q = q.eq("region", sp.region);
@@ -151,18 +158,20 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
 
   const rows = data ?? [];
 
-  // Pivot tall rows into one row per tech_id
-  const map = new Map<string, PivotRow>();
+  // ----------------------------
+  // 1) Pivot tall rows into per-tech rows (Rankings table)
+  // ----------------------------
+  const techMap = new Map<string, PivotRow>();
 
   for (const r of rows as any[]) {
     const tech_id = String(r.tech_id ?? "").trim();
     if (!tech_id) continue;
 
-    const key = pickMetricCode(String(r.metric_name ?? ""));
-    if (!key) continue;
+    const code = pickMetricCode(String(r.metric_name ?? ""));
+    if (!code) continue;
 
     const existing =
-      map.get(tech_id) ??
+      techMap.get(tech_id) ??
       ({
         tech_id,
         tech_name: r.tech_name ?? null,
@@ -176,7 +185,6 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
         tool_usage: null,
       } as PivotRow);
 
-    // prefer latest non-null identity fields if duplicates come in
     existing.tech_name = existing.tech_name ?? r.tech_name ?? null;
     existing.supervisor = existing.supervisor ?? r.supervisor ?? null;
     existing.company = existing.company ?? r.company ?? null;
@@ -185,27 +193,104 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
 
     const v = n(r.metric_value_num);
 
-    // only set if we don’t already have a value (avoid accidental overwrites)
-    if (key === "total_jobs" && existing.total_jobs === null) existing.total_jobs = v;
-    if (key === "tnps" && existing.tnps === null) existing.tnps = v;
-    if (key === "ftr" && existing.ftr === null) existing.ftr = v;
-    if (key === "tool_usage" && existing.tool_usage === null) existing.tool_usage = v;
+    // only set if empty to avoid accidental overwrites
+    if (code === "total_jobs" && existing.total_jobs === null) existing.total_jobs = v;
+    if (code === "tnps" && existing.tnps === null) existing.tnps = v;
+    if (code === "ftr" && existing.ftr === null) existing.ftr = v;
+    if (code === "tool_usage" && existing.tool_usage === null) existing.tool_usage = v;
 
-    map.set(tech_id, existing);
+    techMap.set(tech_id, existing);
   }
 
-  const pivot = Array.from(map.values());
+  const pivot = Array.from(techMap.values());
 
-  const totalJobs = pivot.reduce((acc, r) => acc + (n(r.total_jobs) ?? 0), 0);
-  const tnps = weightedAvg(pivot, "tnps", "total_jobs");
-  const ftr = weightedAvg(pivot, "ftr", "total_jobs");
-  const tool = weightedAvg(pivot, "tool_usage", "total_jobs");
-
-  // sort by total jobs desc for MVP
+  // sort by job volume desc for MVP
   pivot.sort((a, b) => (n(b.total_jobs) ?? 0) - (n(a.total_jobs) ?? 0));
 
-  const region = sp.region ?? pivot[0]?.region ?? "—";
-  const fiscalMonth = sp.fiscal_month_anchor ?? pivot[0]?.fiscal_month_anchor ?? "—";
+  // ----------------------------
+  // 2) Region aggregation (tNPS ratio-of-summed-components)
+  // ----------------------------
+  const regionMap = new Map<string, RegionAgg>();
+
+  for (const r of rows as any[]) {
+    const region = String(r.region ?? "").trim();
+    if (!region) continue;
+
+    const metricName = String(r.metric_name ?? "");
+    const code = pickMetricCode(metricName);
+    if (!code) continue;
+
+    const value = n(r.metric_value_num) ?? 0;
+
+    const agg =
+      regionMap.get(region) ??
+      ({
+        region,
+        fiscal_month_anchor: r.fiscal_month_anchor ?? null,
+        headcount: 0,
+        total_jobs: 0,
+        promoters: 0,
+        detractors: 0,
+        surveys: 0,
+        tnps_region: null,
+      } as RegionAgg);
+
+    // store a representative month (they should be consistent when filtered)
+    agg.fiscal_month_anchor = agg.fiscal_month_anchor ?? (r.fiscal_month_anchor ?? null);
+
+    if (code === "total_jobs") agg.total_jobs += value;
+    if (code === "tnps_promoters") agg.promoters += value;
+    if (code === "tnps_detractors") agg.detractors += value;
+    if (code === "tnps_surveys") agg.surveys += value;
+
+    regionMap.set(region, agg);
+  }
+
+  // headcount from pivot (distinct techs)
+  for (const t of pivot) {
+    const region = String(t.region ?? "").trim();
+    if (!region) continue;
+    const agg = regionMap.get(region);
+    if (!agg) continue;
+    agg.headcount += 1;
+  }
+
+  const regionAggs = Array.from(regionMap.values()).map((a) => ({
+    ...a,
+    tnps_region: computeTNPSFromComponents(a.promoters, a.detractors, a.surveys),
+  }));
+
+  // sort regions by job volume desc
+  regionAggs.sort((a, b) => b.total_jobs - a.total_jobs);
+
+  // ----------------------------
+  // 3) Top tiles: use correct regional tNPS when possible
+  // ----------------------------
+  const totalJobsAll = pivot.reduce((acc, r) => acc + (n(r.total_jobs) ?? 0), 0);
+
+  // If a specific region is selected, use that region’s tnps_region
+  const selectedRegionAgg = sp.region ? regionAggs.find((x) => x.region === sp.region) : null;
+  const tnpsTile =
+    selectedRegionAgg?.tnps_region ??
+    // If no region filter, compute overall tnps across all regions by summing components
+    (() => {
+      const promoters = regionAggs.reduce((acc, x) => acc + (x.promoters ?? 0), 0);
+      const detractors = regionAggs.reduce((acc, x) => acc + (x.detractors ?? 0), 0);
+      const surveys = regionAggs.reduce((acc, x) => acc + (x.surveys ?? 0), 0);
+      return computeTNPSFromComponents(promoters, detractors, surveys);
+    })() ??
+    // Fallback (only if components missing): weighted avg of per-tech tnps
+    weightedAvg(pivot, "tnps", "total_jobs");
+
+  // FTR + Tool Usage still using weightedAvg for now (we’ll convert later to ratio-of-components)
+  const ftrTile = weightedAvg(pivot, "ftr", "total_jobs");
+  const toolTile = weightedAvg(pivot, "tool_usage", "total_jobs");
+
+  const regionLabel = sp.region ?? (pivot[0]?.region ?? "—");
+  const fiscalMonthLabel = sp.fiscal_month_anchor ?? (pivot[0]?.fiscal_month_anchor ?? regionAggs[0]?.fiscal_month_anchor ?? "—");
+
+  // Show region grid when user is NOT locked into a region filter
+  const showRegionGrid = !sp.region;
 
   return (
     <main style={{ padding: 40, maxWidth: 1200, margin: "0 auto" }}>
@@ -247,20 +332,82 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
       </div>
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 14, opacity: 0.92 }}>
-        <div style={{ fontWeight: 900 }}>Region: {String(region)}</div>
+        <div style={{ fontWeight: 900 }}>Region: {String(regionLabel)}</div>
         <div style={{ fontWeight: 900 }}>Headcount: {pivot.length}</div>
-        <div style={{ fontWeight: 900 }}>Job Count: {totalJobs.toLocaleString()}</div>
-        <div style={{ fontWeight: 900 }}>Fiscal Month: {String(fiscalMonth)}</div>
+        <div style={{ fontWeight: 900 }}>Job Count: {totalJobsAll.toLocaleString()}</div>
+        <div style={{ fontWeight: 900 }}>Fiscal Month: {String(fiscalMonthLabel)}</div>
+        {sp.region ? (
+          <a href="/metrics" style={{ marginLeft: "auto", fontWeight: 900, textDecoration: "none" }}>
+            View all regions →
+          </a>
+        ) : null}
       </div>
 
+      {/* ✅ Top tiles (tNPS uses ratio-of-components) */}
       <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
-        <Card title="tNPS" value={fmtNum(tnps, 2)} subtitle="Weighted by Total Jobs (if present)" />
-        <Card title="FTR" value={fmtPct(ftr, 1)} subtitle="Weighted by Total Jobs (if present)" />
-        <Card title="Tool Usage" value={fmtPct(tool, 2)} subtitle="Weighted by Total Jobs (if present)" />
+        <Card
+          title="tNPS"
+          value={fmtNum(tnpsTile, 2)}
+          subtitle="Regional: (ΣPromoters*100 + ΣDetractors*-100) / ΣSurveys"
+        />
+        <Card title="FTR" value={fmtPct(ftrTile, 1)} subtitle="Weighted by Total Jobs (for now)" />
+        <Card title="Tool Usage" value={fmtPct(toolTile, 2)} subtitle="Weighted by Total Jobs (for now)" />
       </div>
 
+      {/* ✅ Region grid */}
+      {showRegionGrid ? (
+        <div style={{ marginTop: 16, border: "1px solid #ddd", borderRadius: 14, overflow: "hidden" }}>
+          <div style={{ padding: 12, fontWeight: 950, borderBottom: "1px solid #ddd" }}>Regions</div>
+
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={th}>Region</th>
+                  <th style={th}>Headcount</th>
+                  <th style={th}>Job Count</th>
+                  <th style={th}>tNPS</th>
+                  <th style={th}>Promoters</th>
+                  <th style={th}>Detractors</th>
+                  <th style={th}>Surveys</th>
+                </tr>
+              </thead>
+              <tbody>
+                {regionAggs.map((rg) => (
+                  <tr key={rg.region}>
+                    <td style={td}>
+                      <a
+                        href={`/metrics?region=${encodeURIComponent(rg.region)}${
+                          sp.fiscal_month_anchor ? `&fiscal_month_anchor=${encodeURIComponent(sp.fiscal_month_anchor)}` : ""
+                        }`}
+                        style={{ textDecoration: "none", fontWeight: 900 }}
+                      >
+                        {rg.region}
+                      </a>
+                    </td>
+                    <td style={tdRight}>{rg.headcount.toLocaleString()}</td>
+                    <td style={tdRight}>{rg.total_jobs.toLocaleString()}</td>
+                    <td style={tdRight}>{fmtNum(rg.tnps_region, 2)}</td>
+                    <td style={tdRight}>{rg.promoters.toLocaleString()}</td>
+                    <td style={tdRight}>{rg.detractors.toLocaleString()}</td>
+                    <td style={tdRight}>{rg.surveys.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ padding: 12, borderTop: "1px solid #ddd", fontSize: 12, opacity: 0.85 }}>
+            tNPS is computed from components (ratio of summed components), matching your Sheets logic.
+          </div>
+        </div>
+      ) : null}
+
+      {/* Rankings */}
       <div style={{ marginTop: 16, border: "1px solid #ddd", borderRadius: 14, overflow: "hidden" }}>
-        <div style={{ padding: 12, fontWeight: 950, borderBottom: "1px solid #ddd" }}>Rankings</div>
+        <div style={{ padding: 12, fontWeight: 950, borderBottom: "1px solid #ddd" }}>
+          Rankings{sp.region ? ` — ${sp.region}` : ""}
+        </div>
 
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
