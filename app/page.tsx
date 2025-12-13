@@ -8,7 +8,7 @@ export default function HomePage() {
       </h1>
 
       <p style={{ fontSize: 18, opacity: 0.85, marginBottom: 24 }}>
-        Precision KPI visibility + Roster management
+        Precision KPI visibility + Roster & Route-Lock management
       </p>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 320 }}>
@@ -27,7 +27,7 @@ export default function HomePage() {
         </Link>
 
         <Link
-          href="/kpi"
+          href="/metrics"
           style={{
             padding: "14px 18px",
             borderRadius: 12,
