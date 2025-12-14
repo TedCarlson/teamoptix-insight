@@ -357,6 +357,20 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
           >
             Uploads →
           </a>
+          <a
+          href="/metrics/settings"
+          style={{
+          display: "inline-block",
+          padding: "10px 14px",
+          borderRadius: 12,
+          border: "1px solid #ddd",
+          textDecoration: "none",
+          fontWeight: 900,
+        }}
+        >
+        Settings
+        </a>
+
         </div>
       </div>
 

@@ -1,0 +1,47 @@
+import Link from "next/link";
+import SettingsClient from "./settingsClient";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+async function loadSettings() {
+  const res = await fetch("/api/metrics/settings?scope=global", { cache: "no-store" });
+  return res.json() as Promise<{ ok: boolean; rows?: any[]; error?: string }>;
+}
+
+export default async function MetricsSettingsPage() {
+  const json = await loadSettings();
+
+  return (
+    <main style={{ padding: 40, maxWidth: 1100, margin: "0 auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 18 }}>
+        <div>
+          <h1 style={{ fontSize: 34, fontWeight: 900, margin: 0 }}>Metrics Settings</h1>
+          <p style={{ marginTop: 6, opacity: 0.85 }}>Enable KPIs and set weights (scope: global).</p>
+        </div>
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <Link href="/metrics" style={btnStyle}>Back to Metrics</Link>
+        </div>
+      </div>
+
+      {!json.ok ? (
+        <div style={{ padding: 16, border: "1px solid #f2c2c2", borderRadius: 14 }}>
+          <div style={{ fontWeight: 900, marginBottom: 6 }}>Could not load settings</div>
+          <div style={{ opacity: 0.9 }}>{json.error ?? "Unknown error"}</div>
+        </div>
+      ) : (
+        <SettingsClient scope="global" initialRows={json.rows ?? []} />
+      )}
+    </main>
+  );
+}
+
+const btnStyle: React.CSSProperties = {
+  display: "inline-block",
+  padding: "10px 14px",
+  borderRadius: 12,
+  border: "1px solid #ddd",
+  textDecoration: "none",
+  fontWeight: 900,
+};
