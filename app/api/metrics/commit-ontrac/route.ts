@@ -186,6 +186,22 @@ export async function POST(req: Request) {
       );
     }
 
+    // 5.5) Housekeeping: keep ONLY the latest committed batch for this region+month
+{
+  const regionKey = (batch.region ?? null) as string | null;
+  const anchorKey = (batch.fiscal_month_anchor ?? null) as string | null;
+
+  const { error: delErr } = await sb
+    .from("kpi_master_v1")
+    .delete()
+    .eq("region", regionKey)
+    .eq("fiscal_month_anchor", anchorKey)
+    .neq("batch_id", batch_id);
+
+  if (delErr) throw new Error(delErr.message);
+}
+
+
     // 6) Upsert
     const CHUNK = 500;
     let inserted = 0;
