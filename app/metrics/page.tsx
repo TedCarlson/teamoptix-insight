@@ -4,6 +4,11 @@ import { createClient } from "@supabase/supabase-js";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function exportUrl(params: Record<string, string>) {
+  const qs = new URLSearchParams(params).toString();
+  return `/api/metrics/export?${qs}`;
+}
+
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -156,8 +161,13 @@ export default async function MetricsPage() {
 
       <Section
         title="Division"
-        subtitle="Division | VP | Director | Rank | Headcount | KPIs | Total Jobs"
-        rows={divRows}
+  subtitle="Division | VP | Director | Rank | Headcount | KPIs | Total Jobs"
+  rows={divRows}
+  actions={
+    <a href={exportUrl({ month, level: "division", rank_scope: "all_in" })} style={btnStyle}>
+      Export CSV
+    </a>
+  }
         columns={[
           { key: "display_name", label: "Division", sticky: true },
           {
@@ -217,8 +227,13 @@ export default async function MetricsPage() {
 
       <Section
         title="Region"
-        subtitle="Region | Director | Regional/PC Manager | Rank | Headcount | KPIs | Total Jobs"
-        rows={regionRows}
+  subtitle="Region | Director | Regional/PC Manager | Rank | Headcount | KPIs | Total Jobs"
+  rows={regionRows}
+  actions={
+    <a href={exportUrl({ month, level: "region", rank_scope: "all_in" })} style={btnStyle}>
+      Export CSV
+    </a>
+  }
         columns={[
           { key: "display_name", label: "Region", sticky: true },
           {
@@ -242,8 +257,13 @@ export default async function MetricsPage() {
 
       <Section
         title="ITG Supervisor"
-        subtitle="ITG Supervisor | Region | Headcount | Rank | KPIs | Total Jobs"
-        rows={itgRows}
+  subtitle="ITG Supervisor | Region | Headcount | Rank | KPIs | Total Jobs"
+  rows={itgRows}
+  actions={
+    <a href={exportUrl({ month, level: "itg_supervisor", rank_scope: "region" })} style={btnStyle}>
+      Export CSV
+    </a>
+  }
         columns={[
           { key: "display_name", label: "ITG Supervisor", sticky: true },
           { key: "region", label: "Region" },
@@ -258,8 +278,13 @@ export default async function MetricsPage() {
 
       <Section
         title="Company"
-        subtitle="Company Name | Headcount | Rank | KPIs | Total Jobs"
-        rows={companyRows}
+  subtitle="Company Name | Headcount | Rank | KPIs | Total Jobs"
+  rows={companyRows}
+  actions={
+    <a href={exportUrl({ month, level: "company", rank_scope: "all_in" })} style={btnStyle}>
+      Export CSV
+    </a>
+  }
         columns={[
           { key: "display_name", label: "Company Name", sticky: true },
           { key: "headcount", label: "Headcount", right: true },
@@ -273,8 +298,13 @@ export default async function MetricsPage() {
 
       <Section
         title="Tech"
-        subtitle="Tech ID | Company Code | ITG Supervisor | Supervisor | Region | Rank | KPIs | Total Jobs"
-        rows={techRows}
+  subtitle="Tech ID | Company Code | ITG Supervisor | Supervisor | Region | Rank | KPIs | Total Jobs"
+  rows={techRows}
+  actions={
+    <a href={exportUrl({ month, level: "tech", rank_scope: "region" })} style={btnStyle}>
+      Export CSV
+    </a>
+  }
         columns={[
           { key: "tech_id", label: "Tech ID", sticky: true, render: (r) => r.tech_id ?? "—" },
           { key: "company", label: "Company Code", render: (r) => r.company ?? "—" },
@@ -300,13 +330,31 @@ type Col = {
   render?: (row: RankRow) => React.ReactNode;
 };
 
-function Section({ title, subtitle, rows, columns }: { title: string; subtitle: string; rows: RankRow[]; columns: Col[] }) {
+function Section({
+  title,
+  subtitle,
+  rows,
+  columns,
+  actions,
+}: {
+  title: string;
+  subtitle: string;
+  rows: RankRow[];
+  columns: Col[];
+  actions?: React.ReactNode;
+}) {
+
   return (
     <section style={{ marginTop: 16, border: "1px solid #ddd", borderRadius: 14, overflow: "hidden" }}>
-      <div style={{ padding: 12, borderBottom: "1px solid #ddd" }}>
-        <div style={{ fontWeight: 950 }}>{title}</div>
-        <div style={{ marginTop: 4, opacity: 0.8, fontSize: 12 }}>{subtitle}</div>
-      </div>
+      <div style={{ padding: 12, borderBottom: "1px solid #ddd", display: "flex", justifyContent: "space-between", gap: 12 }}>
+  <div>
+    <div style={{ fontWeight: 950 }}>{title}</div>
+    <div style={{ marginTop: 4, opacity: 0.8, fontSize: 12 }}>{subtitle}</div>
+  </div>
+
+  {actions ? <div style={{ display: "flex", gap: 8, alignItems: "center" }}>{actions}</div> : null}
+</div>
+
 
       <div style={{ overflowX: "auto" }}>
         <table style={table}>

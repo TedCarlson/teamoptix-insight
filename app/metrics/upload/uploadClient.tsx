@@ -14,8 +14,10 @@ type SimpleResp = { ok: boolean; error?: string; inserted?: number; batch_id?: s
 const KNOWN_REGIONS: Array<{ name: string; codes: string[] }> = [
   { name: "Keystone", codes: ["KSR"] },
   { name: "Beltway", codes: ["BWR"] },
-  { name: "New England", codes: ["NER"] },
+  { name: "Big South", codes: ["BSR"] },
+  { name: "Florida", codes: ["FLR"] },
   { name: "Freedom", codes: ["FDR"] },
+  { name: "New England", codes: ["NER"] },
 ];
 
 function normalizeForMatch(s: string) {
