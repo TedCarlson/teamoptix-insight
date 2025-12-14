@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { headers } from "next/headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +17,14 @@ function getSupabase() {
     throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY");
   }
   return createClient(url, anon, { auth: { persistSession: false } });
+}
+
+function getBaseUrl() {
+  const h = headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const proto = h.get("x-forwarded-proto") ?? "http";
+  if (!host) return "";
+  return `${proto}://${host}`;
 }
 
 function n(v: any): number | null {
@@ -81,26 +90,37 @@ type MetricCode =
 
 const METRIC_MAP: Record<MetricCode, string[]> = {
   // per-tech values
-  tnps: ["tNPS Rate", "tNPS", "TNPS", "tnps", "tnps rate"],
-  ftr: ["FTR%", "FTR", "ftr%", "ftr"],
-  tool_usage: ["ToolUsage", "Tool Usage"],
-  total_jobs: ["Total Jobs", "TotalJobs"],
+  tnps: ["tNPS Rate", "tNPS", "TNPS", "tnps", "tnps rate", "tnpsrate"],
+  ftr: ["FTR%", "FTR", "ftr%", "ftr", "ftrpercent"],
+  tool_usage: ["ToolUsage", "Tool Usage", "ToolUsage%", "toolusagepercent"],
+  total_jobs: ["Total Jobs", "TotalJobs", "totaljobs"],
 
   // components
   tnps_promoters: ["Promoters"],
   tnps_detractors: ["Detractors"],
-  tnps_surveys: ["tNPS Surveys"],
+  tnps_surveys: ["tNPS Surveys", "TNPS Surveys", "tnpssurveys"],
 
-  ftr_fail_jobs: ["FTRFailJobs"],
-  ftr_total_jobs: ["Total FTR/Contact Jobs"],
+  ftr_fail_jobs: ["FTRFailJobs", "FTR Fail Jobs"],
+  ftr_total_jobs: ["Total FTR/Contact Jobs", "FTR Total Jobs"],
 
-  tu_result: ["TUResult"],
-  tu_eligible: ["TUEligibleJobs"],
+  tu_result: ["TUResult", "TU Result"],
+  tu_eligible: ["TUEligibleJobs", "TU Eligible Jobs"],
 };
 
+function normalizeMetricName(s: string) {
+  return String(s ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[%\s_-]+/g, ""); // ignore spaces, %, underscores, dashes
+}
+
 function pickMetricCode(metricName: string): MetricCode | null {
+  const norm = normalizeMetricName(metricName);
+
   for (const [code, names] of Object.entries(METRIC_MAP) as any) {
-    if ((names as string[]).includes(metricName)) return code as MetricCode;
+    for (const n of names as string[]) {
+      if (normalizeMetricName(n) === norm) return code as MetricCode;
+    }
   }
   return null;
 }
@@ -143,17 +163,6 @@ type RegionAgg = {
   tool_usage_region: number | null;
 };
 
-function computeTNPS(promoters: number, detractors: number, surveys: number): number | null {
-  if (!surveys || surveys <= 0) return null;
-  // (ΣPromoters*100 + ΣDetractors*-100) / ΣSurveys
-  return promoters * 100 + detractors * -100 / surveys;
-}
-
-/**
- * NOTE:
- * Keep the formula exactly matching the Sheets logic:
- * tnps = ((promoters*100) + (detractors*-100)) / surveys
- */
 function computeTNPS_Sheets(promoters: number, detractors: number, surveys: number): number | null {
   if (!surveys || surveys <= 0) return null;
   return (promoters * 100 + detractors * -100) / surveys;
@@ -169,14 +178,69 @@ function computeToolUsagePct(result: number, eligible: number): number | null {
   return (result / eligible) * 100;
 }
 
+type SettingRow = {
+  metric_name: string;
+  kpi_name: string | null;
+  label: string | null;
+  enabled: boolean;
+  hidden: boolean;
+  sort_order: number | null;
+  format: "number" | "percent" | null;
+};
+
+async function loadMetricSettings(scope = "global"): Promise<SettingRow[]> {
+  try {
+    const base = getBaseUrl();
+    const res = await fetch(`${base}/api/metrics/settings?scope=${encodeURIComponent(scope)}`, { cache: "no-store" });
+    const json: any = await res.json().catch(() => null);
+    if (!json?.ok) return [];
+    const rows = Array.isArray(json?.rows) ? json.rows : [];
+    return rows as SettingRow[];
+  } catch {
+    return [];
+  }
+}
+
+function buildNeededMetricNamesFromSettings(settings: SettingRow[]) {
+  // Always include these for region rollups + rankings
+  const required = new Set<string>([
+    ...METRIC_MAP.tnps,
+    ...METRIC_MAP.ftr,
+    ...METRIC_MAP.tool_usage,
+    ...METRIC_MAP.total_jobs,
+
+    ...METRIC_MAP.tnps_promoters,
+    ...METRIC_MAP.tnps_detractors,
+    ...METRIC_MAP.tnps_surveys,
+
+    ...METRIC_MAP.ftr_fail_jobs,
+    ...METRIC_MAP.ftr_total_jobs,
+
+    ...METRIC_MAP.tu_result,
+    ...METRIC_MAP.tu_eligible,
+  ]);
+
+  // If settings exist, add enabled raw metric_names (these are exact raw headers)
+  for (const r of settings ?? []) {
+    if (!r) continue;
+    if (r.hidden) continue;
+    if (!r.enabled) continue;
+    const name = String(r.metric_name ?? "").trim();
+    if (name) required.add(name);
+  }
+
+  return Array.from(required);
+}
+
 export default async function MetricsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const sp = await searchParams;
   const sb = getSupabase();
 
   const showComponents = sp.show_components === "1";
 
-  // only fetch the metric_name values we care about
-  const neededMetricNames = Array.from(new Set(Object.values(METRIC_MAP).flat()));
+  // Settings control which extra raw metrics we pull (enabled/hidden), but we always include required components.
+  const settings = await loadMetricSettings("global");
+  const neededMetricNames = buildNeededMetricNamesFromSettings(settings);
 
   let q = sb
     .from("kpi_master_v1")
@@ -235,7 +299,6 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
         tool_usage: null,
       } as PivotRow);
 
-    // prefer first non-null identity values
     existing.tech_name = existing.tech_name ?? r.tech_name ?? null;
     existing.supervisor = existing.supervisor ?? r.supervisor ?? null;
     existing.company = existing.company ?? r.company ?? null;
@@ -244,7 +307,6 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
 
     const v = n(r.metric_value_num);
 
-    // only set if empty to avoid accidental overwrites
     if (code === "total_jobs" && existing.total_jobs === null) existing.total_jobs = v;
     if (code === "tnps" && existing.tnps === null) existing.tnps = v;
     if (code === "ftr" && existing.ftr === null) existing.ftr = v;
@@ -331,16 +393,12 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
   // ----------------------------
   // 2.5) Roster lookup (Regional Manager + ITG Supervisor) for Regions grid
   // ----------------------------
-  const techIdsForRoster = Array.from(
-    new Set(pivot.map((p) => String(p.tech_id ?? "").trim()).filter(Boolean))
-  );
+  const techIdsForRoster = Array.from(new Set(pivot.map((p) => String(p.tech_id ?? "").trim()).filter(Boolean)));
 
   const rosterByTech = new Map<
-  string,
-  { rm_effective: string | null; director: string | null; itg_supervisor: string | null }
->();
-
-
+    string,
+    { rm_effective: string | null; director: string | null; itg_supervisor: string | null }
+  >();
 
   if (techIdsForRoster.length > 0) {
     const { data: rosterRows, error: rosterErr } = await sb
@@ -349,7 +407,6 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
       .eq("status", "Active")
       .in("tech_id", techIdsForRoster);
 
-    // If RLS blocks this or any error occurs, we just won’t populate these labels.
     if (!rosterErr) {
       for (const rr of rosterRows ?? []) {
         const tid = String((rr as any).tech_id ?? "").trim();
@@ -359,12 +416,10 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
         const director = String((rr as any).director ?? "").trim() || null;
 
         rosterByTech.set(tid, {
-        rm_effective: regional ?? pc,
-        director,
-        itg_supervisor: (rr as any).itg_supervisor ?? null,
-      });
-
-
+          rm_effective: regional ?? pc,
+          director,
+          itg_supervisor: (rr as any).itg_supervisor ?? null,
+        });
       }
     }
   }
@@ -401,12 +456,9 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
   const totalJobsAll = pivot.reduce((acc, r) => acc + (n(r.total_jobs) ?? 0), 0);
   const regionLabel = sp.region ?? (pivot[0]?.region ?? "—");
   const fiscalMonthLabel =
-    sp.fiscal_month_anchor ??
-    (pivot[0]?.fiscal_month_anchor ?? regionAggs[0]?.fiscal_month_anchor ?? "—");
+    sp.fiscal_month_anchor ?? (pivot[0]?.fiscal_month_anchor ?? regionAggs[0]?.fiscal_month_anchor ?? "—");
 
-  const baseQuery = sp.fiscal_month_anchor
-    ? `?fiscal_month_anchor=${encodeURIComponent(sp.fiscal_month_anchor)}`
-    : "";
+  const baseQuery = sp.fiscal_month_anchor ? `?fiscal_month_anchor=${encodeURIComponent(sp.fiscal_month_anchor)}` : "";
 
   const componentsToggleHref = sp.region
     ? `/metrics?region=${encodeURIComponent(sp.region)}${
@@ -419,8 +471,7 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
       }`;
 
   return (
-    <main style={{ padding: 40, maxWidth: 1200, margin
-: "0 auto" }}>
+    <main style={{ padding: 40, maxWidth: 1200, margin: "0 auto" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 18 }}>
         <div>
           <h1 style={{ fontSize: 34, fontWeight: 900, margin: 0 }}>Metrics</h1>
@@ -428,9 +479,15 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
         </div>
 
         <div style={{ display: "flex", gap: 10 }}>
-          <a href="/" style={btnStyle}>Back</a>
-          <a href="/metrics/upload" style={btnStyle}>Uploads →</a>
-          <a href="/metrics/settings" style={btnStyle}>Settings</a>
+          <a href="/" style={btnStyle}>
+            Back
+          </a>
+          <a href="/metrics/upload" style={btnStyle}>
+            Uploads →
+          </a>
+          <a href="/metrics/settings" style={btnStyle}>
+            Settings
+          </a>
         </div>
       </div>
 
@@ -451,20 +508,19 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
         ) : null}
       </div>
 
-      {/* ✅ Regions grid aligned with Rankings metrics */}
+      {/* Regions */}
       <div style={{ marginTop: 16, border: "1px solid #ddd", borderRadius: 14, overflow: "hidden" }}>
         <div style={{ padding: 12, fontWeight: 950, borderBottom: "1px solid #ddd" }}>Regions</div>
 
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <div style={gridWrap}>
+          <table style={table}>
             <thead>
               <tr>
-                <th style={th}>Region</th>
+                <th style={thSticky}>Region</th>
                 <th style={th}>Director</th>
                 <th style={th}>Regional Manager</th>
                 <th style={th}>Headcount</th>
 
-                {/* SAME KPI columns as Rankings */}
                 <th style={th}>tNPS</th>
                 <th style={th}>FTR%</th>
                 <th style={th}>ToolUsage%</th>
@@ -488,7 +544,7 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
             <tbody>
               {regionAggs.map((rg) => (
                 <tr key={rg.region}>
-                  <td style={td}>
+                  <td style={tdSticky}>
                     <a
                       href={`/metrics?region=${encodeURIComponent(rg.region)}${
                         sp.fiscal_month_anchor ? `&fiscal_month_anchor=${encodeURIComponent(sp.fiscal_month_anchor)}` : ""
@@ -504,7 +560,6 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
 
                   <td style={tdRight}>{rg.headcount.toLocaleString()}</td>
 
-                  {/* SAME KPI columns as Rankings */}
                   <td style={tdRight}>{fmtNum(rg.tnps_region, 2)}</td>
                   <td style={tdRight}>{fmtPct(rg.ftr_region, 1)}</td>
                   <td style={tdRight}>{fmtPct(rg.tool_usage_region, 2)}</td>
@@ -530,7 +585,7 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
         </div>
 
         <div style={{ padding: 12, borderTop: "1px solid #ddd", fontSize: 12, opacity: 0.85 }}>
-          Regions show the same KPI columns as Rankings. Metrics are computed from components (ratio of summed components), matching your Sheets logic.
+          Regions shows rolled-up KPIs using component formulas.
         </div>
       </div>
 
@@ -540,16 +595,15 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
           Rankings{sp.region ? ` — ${sp.region}` : ""}
         </div>
 
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <div style={gridWrap}>
+          <table style={table}>
             <thead>
               <tr>
-                <th style={th}>Tech ID</th>
+                <th style={thSticky}>Tech ID</th>
                 <th style={th}>Company</th>
                 <th style={th}>Tech Name</th>
                 <th style={th}>ITG Supervisor</th>
 
-                {/* SAME KPI columns as Regions */}
                 <th style={th}>tNPS</th>
                 <th style={th}>FTR%</th>
                 <th style={th}>ToolUsage%</th>
@@ -559,12 +613,11 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
             <tbody>
               {pivot.map((r) => (
                 <tr key={r.tech_id}>
-                  <td style={td}>{r.tech_id}</td>
+                  <td style={tdSticky}>{r.tech_id}</td>
                   <td style={td}>{r.company ?? "—"}</td>
                   <td style={td}>{r.tech_name ?? "—"}</td>
                   <td style={td}>{r.supervisor ?? "—"}</td>
 
-                  {/* SAME KPI columns as Regions */}
                   <td style={tdRight}>{fmtNum(r.tnps, 2)}</td>
                   <td style={tdRight}>{fmtPct(r.ftr, 1)}</td>
                   <td style={tdRight}>{fmtPct(r.tool_usage, 2)}</td>
@@ -576,12 +629,14 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
         </div>
 
         <div style={{ padding: 12, borderTop: "1px solid #ddd", fontSize: 12, opacity: 0.85 }}>
-          Rankings shows per-tech KPIs. Regions shows rolled-up KPIs using component formulas.
+          Rankings shows per-tech KPIs.
         </div>
       </div>
     </main>
   );
 }
+
+// ----- styles -----
 
 const btnStyle: React.CSSProperties = {
   display: "inline-block",
@@ -592,24 +647,60 @@ const btnStyle: React.CSSProperties = {
   fontWeight: 900,
 };
 
-const th: React.CSSProperties = {
+const gridWrap: React.CSSProperties = {
+  overflowX: "auto",
+};
+
+const table: React.CSSProperties = {
+  width: "100%",
+  borderCollapse: "separate", // required for sticky borders to behave
+  borderSpacing: 0,
+};
+
+const thBase: React.CSSProperties = {
   textAlign: "left",
   padding: "10px 10px",
   borderBottom: "1px solid #ddd",
   fontSize: 12,
   opacity: 0.9,
   whiteSpace: "nowrap",
+  position: "sticky",
+  top: 0,
+  background: "white",
+  zIndex: 3,
 };
 
-const td: React.CSSProperties = {
+const th: React.CSSProperties = {
+  ...thBase,
+};
+
+const thSticky: React.CSSProperties = {
+  ...thBase,
+  left: 0,
+  zIndex: 4, // above other headers
+};
+
+const tdBase: React.CSSProperties = {
   padding: "10px 10px",
   borderBottom: "1px solid #eee",
   fontSize: 13,
   whiteSpace: "nowrap",
+  background: "white",
+};
+
+const td: React.CSSProperties = {
+  ...tdBase,
+};
+
+const tdSticky: React.CSSProperties = {
+  ...tdBase,
+  position: "sticky",
+  left: 0,
+  zIndex: 2,
 };
 
 const tdRight: React.CSSProperties = {
-  ...td,
+  ...tdBase,
   textAlign: "right",
   fontVariantNumeric: "tabular-nums",
 };
