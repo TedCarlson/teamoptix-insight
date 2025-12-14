@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import UploadDropzone from "./UploadDropzone";
 
 type UploadResp =
   | { ok: true; batch_id: string; storage_path: string; original_filename: string }
@@ -8,55 +9,148 @@ type UploadResp =
 
 type SimpleResp = { ok: boolean; error?: string; inserted?: number; batch_id?: string };
 
+// MVP list — expand as needed.
+// Codes are region codes that might appear in filenames or header strings.
+const KNOWN_REGIONS: Array<{ name: string; codes: string[] }> = [
+  { name: "Keystone", codes: ["KSR"] },
+  { name: "Beltway", codes: ["BWR"] },
+  { name: "New England", codes: ["NER"] },
+  { name: "Freedom", codes: ["FDR"] },
+];
+
+function normalizeForMatch(s: string) {
+  return String(s ?? "")
+    .toUpperCase()
+    .replace(/\.[A-Z0-9]+$/i, "") // remove extension
+    .replace(/[^A-Z0-9]+/g, " ") // punctuation -> spaces
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function detectRegionFromString(s: string): { region: string | null; why: string } {
+  const hay = normalizeForMatch(s);
+
+  // Prefer codes first (more precise)
+  for (const r of KNOWN_REGIONS) {
+    for (const code of r.codes) {
+      const t = normalizeForMatch(code);
+      if (t && hay.includes(t)) return { region: r.name, why: `matched code "${code}" in "${hay}"` };
+    }
+  }
+
+  // Then match by region name
+  for (const r of KNOWN_REGIONS) {
+    const t = normalizeForMatch(r.name);
+    if (t && hay.includes(t)) return { region: r.name, why: `matched name "${r.name}" in "${hay}"` };
+  }
+
+  return { region: null, why: `no match in "${hay}"` };
+}
+
+function makeBatchLabel(region: string, sourceSystem: string) {
+  const r = (region ?? "").trim();
+  const s = (sourceSystem ?? "").trim();
+  if (!r && !s) return "";
+  if (!r) return s;
+  if (!s) return r;
+  return `${r} ${s}`;
+}
+
 export default function MetricsUploadClient() {
   const [file, setFile] = useState<File | null>(null);
 
   const [sourceSystem, setSourceSystem] = useState("Ontrac");
-  const [region, setRegion] = useState("Keystone");
+  const [region, setRegion] = useState<string>(""); // ✅ default NULL-ish
   const [batchLabel, setBatchLabel] = useState("");
   const [fiscalRefDate, setFiscalRefDate] = useState<string>(""); // YYYY-MM-DD
   const [notes, setNotes] = useState("");
 
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-
   const [batchId, setBatchId] = useState<string | null>(null);
+  const [batchDisplay, setBatchDisplay] = useState<string | null>(null);
+
+  // show what the detector did (helps you debug why "not detected")
+  const [stagingHint, setStagingHint] = useState<string>("");
+
+  // Track whether the user has manually edited the batch label.
+  // If they haven't, we keep it auto-synced to (Region + Source System).
+  const labelTouchedRef = useRef(false);
+
   const canUpload = useMemo(() => !!file && !busy, [file, busy]);
 
   // remember last batch locally (helps “undo last” after refresh)
+useEffect(() => {
+  const savedId = localStorage.getItem("last_kpi_batch_id");
+  if (savedId && !batchId) setBatchId(savedId);
+
+  const savedDisp = localStorage.getItem("last_kpi_batch_display");
+  if (savedDisp && !batchDisplay) setBatchDisplay(savedDisp);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+
+useEffect(() => {
+  if (batchId) localStorage.setItem("last_kpi_batch_id", batchId);
+}, [batchId]);
+
+useEffect(() => {
+  if (batchDisplay) localStorage.setItem("last_kpi_batch_display", batchDisplay);
+}, [batchDisplay]);
+
+
+  // Keep label auto-generated unless user edits it.
   useEffect(() => {
-    const saved = localStorage.getItem("last_kpi_batch_id");
-    if (saved && !batchId) setBatchId(saved);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  useEffect(() => {
-    if (batchId) localStorage.setItem("last_kpi_batch_id", batchId);
-  }, [batchId]);
+    if (labelTouchedRef.current) return;
+    setBatchLabel(makeBatchLabel(region, sourceSystem));
+  }, [region, sourceSystem]);
 
   function pickFile(f: File | null) {
-  setErr(null); // or setError(null) depending on your state name
-  setFile(null);
+    setErr(null);
+    setStagingHint("");
+    setFile(null);
 
-  if (!f) return;
+    // ✅ force region to be re-staged every time a new file is selected
+    setRegion("");
 
-  const lower = f.name.toLowerCase();
-  const ok = lower.endsWith(".csv") || lower.endsWith(".xlsx");
+    if (!f) return;
 
-  if (!ok) {
-    setErr("Please upload a .csv or .xlsx file.");
-    return;
+    const lower = f.name.toLowerCase();
+    const ok = lower.endsWith(".csv") || lower.endsWith(".xlsx");
+    if (!ok) {
+      setErr("Please upload a .csv or .xlsx file.");
+      return;
+    }
+
+    // Staging auto-fill: try detect region from filename string
+    const det = detectRegionFromString(f.name);
+    setStagingHint(`Region detect: ${det.region ?? "NONE"} — ${det.why}`);
+
+    if (det.region) {
+      setRegion(det.region);
+      if (!labelTouchedRef.current) setBatchLabel(makeBatchLabel(det.region, sourceSystem));
+    } else {
+      setErr("Region not detected from filename. Please select the correct Region before Upload.");
+      if (!labelTouchedRef.current) setBatchLabel(makeBatchLabel("", sourceSystem));
+    }
+
+    setFile(f);
   }
 
-  setFile(f);
-}
-
-
-  async function doUpload() {
+  async function doUploadAll() {
     if (!file) return;
+
+    // Hard guard: prevent accidental wrong-region commits.
+    if (!region.trim()) {
+      setErr("Region is required. Please select a Region before Upload.");
+      return;
+    }
+
     setErr(null);
-    setBusy("Uploading…");
 
     try {
+      // 1) Upload
+      setBusy("Uploading…");
       const fd = new FormData();
       fd.append("file", file);
       fd.append("source_system", sourceSystem);
@@ -65,52 +159,42 @@ export default function MetricsUploadClient() {
       if (notes.trim()) fd.append("notes", notes.trim());
       if (fiscalRefDate.trim()) fd.append("fiscal_ref_date", fiscalRefDate.trim());
 
-      const res = await fetch("/api/metrics/upload", { method: "POST", body: fd });
-      const json = (await res.json()) as UploadResp;
+      const res1 = await fetch("/api/metrics/upload", { method: "POST", body: fd });
+      const json1 = (await res1.json()) as UploadResp;
+      if (!res1.ok || !json1.ok) throw new Error((json1 as any).error || "Upload failed");
 
-      if (!res.ok || !json.ok) throw new Error((json as any).error || "Upload failed");
+      setBatchId(json1.batch_id);
 
-      setBatchId(json.batch_id);
+      // 2) Parse
+      setBusy("Parsing…");
+      const res2 = await fetch("/api/metrics/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batch_id: json1.batch_id }),
+      });
+      const json2 = (await res2.json()) as SimpleResp;
+      if (!res2.ok || !json2.ok) throw new Error(json2.error || "Parse failed");
+
+      // 3) Commit
+      setBusy("Committing…");
+      const res3 = await fetch("/api/metrics/commit-ontrac", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batch_id: json1.batch_id }),
+      });
+      const json3 = (await res3.json()) as SimpleResp;
+      if (!res3.ok || !json3.ok) throw new Error(json3.error || "Commit failed");
+
+      // ✅ reset staging after success (prevents collisions)
+      setFile(null);
+      setRegion("");
+      setFiscalRefDate("");
+      setNotes("");
+      setStagingHint("");
+      labelTouchedRef.current = false;
+      setBatchLabel(makeBatchLabel("", sourceSystem));
     } catch (e: any) {
       setErr(e?.message ?? "Upload failed");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function doParse() {
-    if (!batchId) return;
-    setErr(null);
-    setBusy("Parsing…");
-    try {
-      const res = await fetch("/api/metrics/parse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ batch_id: batchId }),
-      });
-      const json = (await res.json()) as SimpleResp;
-      if (!res.ok || !json.ok) throw new Error(json.error || "Parse failed");
-    } catch (e: any) {
-      setErr(e?.message ?? "Parse failed");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function doCommit() {
-    if (!batchId) return;
-    setErr(null);
-    setBusy("Committing…");
-    try {
-      const res = await fetch("/api/metrics/commit-ontrac", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ batch_id: batchId }),
-      });
-      const json = (await res.json()) as SimpleResp;
-      if (!res.ok || !json.ok) throw new Error(json.error || "Commit failed");
-    } catch (e: any) {
-      setErr(e?.message ?? "Commit failed");
     } finally {
       setBusy(null);
     }
@@ -149,20 +233,40 @@ export default function MetricsUploadClient() {
       )}
 
       <div style={{ border: "1px solid #ddd", borderRadius: 16, padding: 16, display: "grid", gap: 12 }}>
-        <div style={{ fontWeight: 900 }}>Upload settings</div>
+        <div style={{ fontWeight: 900 }}>Upload staging</div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <label style={{ display: "grid", gap: 6 }}>
             Source System
-            <select value={sourceSystem} onChange={(e) => setSourceSystem(e.target.value)}>
+            <select
+              value={sourceSystem}
+              onChange={(e) => {
+                setSourceSystem(e.target.value);
+              }}
+            >
               <option value="Ontrac">Ontrac</option>
             </select>
           </label>
 
           <label style={{ display: "grid", gap: 6 }}>
-            Region
-            <input value={region} onChange={(e) => setRegion(e.target.value)} placeholder="Keystone" />
-          </label>
+  Region
+  <select
+    value={region}
+    onChange={(e) => setRegion(e.target.value)}
+  >
+    <option value="">Select a region…</option>
+    {KNOWN_REGIONS.map((r) => (
+      <option key={r.name} value={r.name}>
+        {r.name}{r.codes?.length ? ` (${r.codes.join("/")})` : ""}
+      </option>
+    ))}
+  </select>
+
+  <div style={{ fontSize: 12, opacity: 0.75 }}>
+    Tip: auto-detect can select a region when the filename contains a region name or code.
+  </div>
+</label>
+
 
           <label style={{ display: "grid", gap: 6 }}>
             Fiscal Ref Date (optional)
@@ -170,8 +274,18 @@ export default function MetricsUploadClient() {
           </label>
 
           <label style={{ display: "grid", gap: 6 }}>
-            Batch Label (optional)
-            <input value={batchLabel} onChange={(e) => setBatchLabel(e.target.value)} placeholder="Keystone Ontrac" />
+            Batch Label
+            <input
+              value={batchLabel}
+              onChange={(e) => {
+                labelTouchedRef.current = true;
+                setBatchLabel(e.target.value);
+              }}
+              placeholder="Auto-generated"
+            />
+            <div style={{ fontSize: 12, opacity: 0.75 }}>
+              Auto-generated from Region + Source System until you edit it.
+            </div>
           </label>
         </div>
 
@@ -184,11 +298,7 @@ export default function MetricsUploadClient() {
       <div style={{ border: "1px solid #ddd", borderRadius: 16, padding: 16, display: "grid", gap: 12 }}>
         <div style={{ fontWeight: 900 }}>Raw file</div>
 
-        <input
-          type="file"
-          accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
-        />
+        <UploadDropzone onFileSelected={(f) => pickFile(f)} />
 
         <div style={{ fontSize: 13, opacity: 0.85 }}>
           {file ? (
@@ -200,29 +310,17 @@ export default function MetricsUploadClient() {
           )}
         </div>
 
+        {stagingHint ? (
+          <div style={{ fontSize: 12, opacity: 0.75 }}>{stagingHint}</div>
+        ) : null}
+
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <button
-            onClick={doUpload}
+            onClick={doUploadAll}
             disabled={!canUpload}
             style={{ padding: "10px 14px", borderRadius: 12, border: "1px solid #ddd", fontWeight: 900 }}
           >
-            {busy === "Uploading…" ? "Uploading…" : "Upload"}
-          </button>
-
-          <button
-            onClick={doParse}
-            disabled={!batchId || !!busy}
-            style={{ padding: "10px 14px", borderRadius: 12, border: "1px solid #ddd", fontWeight: 900 }}
-          >
-            {busy === "Parsing…" ? "Parsing…" : "Parse"}
-          </button>
-
-          <button
-            onClick={doCommit}
-            disabled={!batchId || !!busy}
-            style={{ padding: "10px 14px", borderRadius: 12, border: "1px solid #ddd", fontWeight: 900 }}
-          >
-            {busy === "Committing…" ? "Committing…" : "Commit to Master"}
+            {busy ?? "Upload"}
           </button>
 
           <button

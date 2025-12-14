@@ -15,7 +15,7 @@ export default function MetricsUploadPage() {
         <div>
           <h1 style={{ fontSize: 34, fontWeight: 900, margin: 0 }}>KPI Upload</h1>
           <p style={{ marginTop: 6, opacity: 0.85 }}>
-            Drop a CSV here. Next we’ll identify source, sanitize, map columns, and tag batch dates.
+            Drop KPI Files here for upload.
           </p>
         </div>
 
