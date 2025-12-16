@@ -271,7 +271,7 @@ export default async function MetricsPage({
 
   const rows = (rowsData ?? []) as RankRow[];
 
-  const monthFromUrl = firstParam(searchParams?.month).trim();
+  const monthFromUrl = firstParam(sp?.month).trim();
 
   const month = (monthFromUrl || latestMonth(rows)).trim();
 
