@@ -1,5 +1,31 @@
-import { supabase } from "@/lib/supabaseClient";
+// app/roster/page.tsx
+import React from "react";
+import { createClient } from "@supabase/supabase-js";
 import Filters from "./Filters";
+import { UI, pillBase } from "../../lib/ui";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+/** =========================================================
+ *  PAGE-SPECIFIC UI (layout + colors live here)
+ *  Shared UI primitives come from /lib/ui.ts
+ *  ========================================================= */
+const PAGE = {
+  maxWidth: 900,
+  padding: 40,
+  card: {
+    radius: 12,
+    border: "1px solid #ddd",
+    padding: 10,
+  },
+  statusText: {
+    active: "#3f6fd7ff", // blue
+    inactive: "#6B7280", // gray
+  },
+};
+
+const COLLATOR = new Intl.Collator("en-US", { sensitivity: "base", numeric: true });
 
 type RosterRow = {
   roster_id: string;
@@ -16,10 +42,22 @@ type RosterRow = {
   status: string | null;
 };
 
+function getSupabaseServer() {
+  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url) throw new Error("Missing SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL fallback)");
+  if (!key) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
+
+  return createClient(url, key, { auth: { persistSession: false } });
+}
+
+function s(v: any) {
+  return String(v ?? "").trim();
+}
+
 function uniqSorted(values: Array<string | null | undefined>) {
-  return Array.from(new Set(values.map((v) => (v ?? "").trim()).filter(Boolean))).sort((a, b) =>
-    a.localeCompare(b)
-  );
+  return Array.from(new Set(values.map((v) => s(v)).filter(Boolean))).sort((a, b) => COLLATOR.compare(a, b));
 }
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -29,222 +67,231 @@ export default async function RosterPage({
 }: {
   searchParams: SearchParams | Promise<SearchParams>;
 }) {
+  const sb = getSupabaseServer();
   const sp = await Promise.resolve(searchParams);
 
   const get = (k: string) => {
     const v = sp[k];
-    return Array.isArray(v) ? v[0] : v;
+    return s(Array.isArray(v) ? v[0] : v);
   };
 
-  const division = get("division");
-  const region = get("region");
-  const company = get("company");
-  const itg_supervisor = get("itg_supervisor");
-  const status = get("status");
+  const selectedDivision = get("division");
+  const selectedRegion = get("region");
+  const selectedCompany = get("company");
+  const selectedItg = get("itg_supervisor");
+  const selectedStatusRaw = get("status"); // "" | "active" | "inactive"
 
-  // Build current query string to preserve filters
+  // Default status = active
+  const statusOk = !selectedStatusRaw || selectedStatusRaw === "active" || selectedStatusRaw === "inactive";
+  const effectiveStatus = statusOk ? (selectedStatusRaw || "active") : "active";
+
+  // Load columns needed to build filter options
+  const optsRes = await sb.from("roster_v2").select("division, region, company, itg_supervisor");
+  const optionsErrorMsg = optsRes.error ? optsRes.error.message : null;
+  const all = optsRes.data ?? [];
+
+  // Division options
+  const divisions = uniqSorted(all.map((r: any) => r.division));
+  const divisionOk = !selectedDivision || divisions.includes(selectedDivision);
+  const effectiveDivision = divisionOk ? selectedDivision : "";
+
+  // Region options depend on division
+  const regionPool = effectiveDivision ? all.filter((r: any) => s(r.division) === effectiveDivision) : all;
+  const regions = uniqSorted(regionPool.map((r: any) => r.region));
+  const regionOk = !selectedRegion || regions.includes(selectedRegion);
+  const effectiveRegion = regionOk ? selectedRegion : "";
+
+  // Company options depend on division + region
+  const companyPool = all.filter((r: any) => {
+    const dOk = !effectiveDivision || s(r.division) === effectiveDivision;
+    const rOk = !effectiveRegion || s(r.region) === effectiveRegion;
+    return dOk && rOk;
+  });
+  const companies = uniqSorted(companyPool.map((r: any) => r.company));
+  const companyOk = !selectedCompany || companies.includes(selectedCompany);
+  const effectiveCompany = companyOk ? selectedCompany : "";
+
+  // ITG options depend on division + region + company
+  const itgSupPool = all.filter((r: any) => {
+    const dOk = !effectiveDivision || s(r.division) === effectiveDivision;
+    const rOk = !effectiveRegion || s(r.region) === effectiveRegion;
+    const cOk = !effectiveCompany || s(r.company) === effectiveCompany;
+    return dOk && rOk && cOk;
+  });
+  const itgSupervisors = uniqSorted(itgSupPool.map((r: any) => r.itg_supervisor));
+  const itgOk = !selectedItg || itgSupervisors.includes(selectedItg);
+  const effectiveItg = itgOk ? selectedItg : "";
+
+  // Preserve filters for returnTo
   const qs = new URLSearchParams();
-  if (division) qs.set("division", division);
-  if (region) qs.set("region", region);
-  if (company) qs.set("company", company);
-  if (itg_supervisor) qs.set("itg_supervisor", itg_supervisor);
-  if (status) qs.set("status", status);
+  if (effectiveDivision) qs.set("division", effectiveDivision);
+  if (effectiveRegion) qs.set("region", effectiveRegion);
+  if (effectiveCompany) qs.set("company", effectiveCompany);
+  if (effectiveItg) qs.set("itg_supervisor", effectiveItg);
+  if (effectiveStatus) qs.set("status", effectiveStatus);
 
   const returnTo = `/roster${qs.toString() ? `?${qs.toString()}` : ""}`;
 
-
-
-// Load only the columns needed to build filter options
-
-const opts = await supabase
-  .from("roster_v2")
-  .select("division, region, company, itg_supervisor");
-
-const all = opts.data ?? [];
-
-// Division options never depend on anything above them
-const divisions = uniqSorted(all.map((r: any) => r.division));
-
-// Regions depend on division
-const regionPool = division
-  ? all.filter((r: any) => (r.division ?? "").trim() === division)
-  : all;
-const regions = uniqSorted(regionPool.map((r: any) => r.region));
-
-// Companies depend on division + region
-const companyPool = all.filter((r: any) => {
-  const dOk = !division || (r.division ?? "").trim() === division;
-  const rOk = !region || (r.region ?? "").trim() === region;
-  return dOk && rOk;
-});
-const companies = uniqSorted(companyPool.map((r: any) => r.company));
-
-// ITG supervisors depend on division + region + company
-const itgSupPool = all.filter((r: any) => {
-  const dOk = !division || (r.division ?? "").trim() === division;
-  const rOk = !region || (r.region ?? "").trim() === region;
-  const cOk = !company || (r.company ?? "").trim() === company;
-  return dOk && rOk && cOk;
-});
-const itgSupervisors = uniqSorted(itgSupPool.map((r: any) => r.itg_supervisor));
-
-
-
-  // Pause until at least one filter is selected
-  const hasAnyFilter =
-  !!division ||
-  !!region ||
-  !!company ||
-  !!itg_supervisor ||
-  status === "active" ||
-  status === "inactive";
-
-
+  // Load roster rows (default status active)
   let rows: RosterRow[] = [];
   let errorMsg: string | null = null;
 
-  if (hasAnyFilter) {
-    let q = supabase
+  {
+    let q = sb
       .from("roster_v2")
       .select(
-      "roster_id, insight_person_id, full_name, tech_id, division, region, pc, start_date, end_date, status, itg_supervisor, company"
+        "roster_id, insight_person_id, full_name, tech_id, division, region, pc, start_date, end_date, status, itg_supervisor, company"
       )
-      .order("full_name", { ascending: true }); // no limit
+      .order("full_name", { ascending: true });
 
-   if (division) q = q.eq("division", division);
-   if (region) q = q.eq("region", region);
-   if (company) q = q.eq("company", company);
-   if (itg_supervisor) q = q.eq("itg_supervisor", itg_supervisor);
-   if (status === "active") q = q.eq("status", "Active");
-   if (status === "inactive") q = q.eq("status", "Inactive");
+    if (effectiveDivision) q = q.eq("division", effectiveDivision);
+    if (effectiveRegion) q = q.eq("region", effectiveRegion);
+    if (effectiveCompany) q = q.eq("company", effectiveCompany);
+    if (effectiveItg) q = q.eq("itg_supervisor", effectiveItg);
 
+    // Status uses end_date logic
+    if (effectiveStatus === "active") q = q.is("end_date", null);
+    if (effectiveStatus === "inactive") q = q.not("end_date", "is", null);
 
     const { data, error } = await q;
-
     if (error) errorMsg = error.message;
     rows = (data ?? []) as RosterRow[];
   }
 
+  const navBtn = (extra?: React.CSSProperties) =>
+    pillBase({
+      padding: "10px 14px",
+      borderRadius: 12,
+      fontWeight: UI.fontWeight.strong,
+      ...extra,
+    });
+
   return (
-    <main style={{ padding: 40, maxWidth: 900, margin: "0 auto" }}>
+    <main style={{ padding: PAGE.padding, maxWidth: PAGE.maxWidth, margin: "0 auto" }}>
       <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16 }}>
-        <a
-          href="/"
-          style={{
-            display: "inline-block",
-            padding: "10px 14px",
-            borderRadius: 12,
-            border: "1px solid #ddd",
-            textDecoration: "none",
-            fontWeight: 800,
-          }}
-        >
+        <a href="/" style={navBtn({ textDecoration: "none" })}>
           ← Back
         </a>
 
-        <a
-          href={`/roster/edit?returnTo=${encodeURIComponent(returnTo)}`}
-          style={{
-            display: "inline-block",
-            padding: "10px 14px",
-            borderRadius: 12,
-            border: "1px solid #ddd",
-            textDecoration: "none",
-            fontWeight: 800,
-          }}
-        >
+        <a href={`/roster/edit?returnTo=${encodeURIComponent(returnTo)}`} style={navBtn({ textDecoration: "none" })}>
           + Add / Update
         </a>
       </div>
 
-      <h1 style={{ fontSize: 34, fontWeight: 800, marginBottom: 8 }}>Roster Management</h1>
+      <h1 style={{ fontSize: 34, fontWeight: UI.fontWeight.strong, marginBottom: 8 }}>Roster Management</h1>
 
-      <p style={{ fontSize: 16, opacity: 0.85 }}>
-        Select a filter to load desired roster.
-      </p>
+      {optionsErrorMsg ? (
+        <div style={{ padding: 14, border: "1px solid #ff6b6b", borderRadius: PAGE.card.radius, marginTop: 12 }}>
+          <strong>Supabase error (loading filter options):</strong> {optionsErrorMsg}
+        </div>
+      ) : null}
 
-     <Filters
-  divisions={divisions}
-  regions={regions}
-  companies={companies}
-  itgSupervisors={itgSupervisors}
-/>
-
-
+      <Filters divisions={divisions} regions={regions} companies={companies} itgSupervisors={itgSupervisors} />
 
       <div style={{ marginTop: 18 }}>
-        {!hasAnyFilter ? (
-          <div style={{ padding: 14, border: "1px solid #ddd", borderRadius: 12, opacity: 0.9 }}>
-            No filters selected yet.
-          </div>
-        ) : errorMsg ? (
-          <div style={{ padding: 14, border: "1px solid #ff6b6b", borderRadius: 12 }}>
-            <strong>Supabase error:</strong> {errorMsg}
+        {errorMsg ? (
+          <div style={{ padding: 14, border: "1px solid #ff6b6b", borderRadius: PAGE.card.radius }}>
+            <strong>Supabase error (loading roster rows):</strong> {errorMsg}
           </div>
         ) : (
           <>
-            <div style={{ marginBottom: 10, opacity: 0.85, fontWeight: 700 }}>
+            <div
+              style={{
+                marginBottom: 10,
+                opacity: 0.85,
+                fontWeight: UI.fontWeight.strong,
+                fontSize: UI.fontSize.body,
+              }}
+            >
               Showing {rows.length} rows
             </div>
 
             <div style={{ display: "grid", gap: 10 }}>
               {rows.map((r) => (
-                <div key={r.roster_id} style={{ padding: 14, border: "1px solid #ddd", borderRadius: 12 }}>
-                  <div style={{ fontWeight: 800, fontSize: 16 }}>
-                    {r.full_name ?? "(no name)"}{" "}
-                    <span style={{ opacity: 0.7, fontWeight: 600 }}>
-                      {r.tech_id ? `• Tech ${r.tech_id}` : ""}
-                    </span>
+                <div
+                  key={r.roster_id}
+                  style={{
+                    padding: PAGE.card.padding,
+                    border: PAGE.card.border,
+                    borderRadius: PAGE.card.radius,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+                    {/* Left: Name/Tech + Details pill inline */}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
+                        <div style={{ fontWeight: UI.fontWeight.bold, fontSize: UI.fontSize.primary, lineHeight: 1.2 }}>
+                          {r.full_name ?? "(no name)"}{" "}
+                          <span style={{ opacity: 0.7, fontWeight: UI.fontWeight.strong }}>
+                            {r.tech_id ? `• Tech ${r.tech_id}` : ""}
+                          </span>
+                        </div>
+
+                        <details>
+                          <summary style={pillBase({ cursor: "pointer", userSelect: "none" })}>Details</summary>
+
+                          <div style={{ marginTop: 10, display: "grid", gap: 6, fontSize: UI.fontSize.body, opacity: 0.9 }}>
+                            <div>
+                              <strong>Window:</strong> {r.start_date ?? "—"} → {r.end_date ?? "open"}
+                            </div>
+                            <div>
+                              <strong>Insight Person ID:</strong> {r.insight_person_id ?? "—"}
+                            </div>
+                            <div>
+                              <strong>Company:</strong> {r.company ?? "—"}
+                            </div>
+                            <div>
+                              <strong>ITG Supervisor:</strong> {r.itg_supervisor ?? "—"}
+                            </div>
+                            <div>
+                              <strong>Org:</strong> {r.division ?? "—"} / {r.region ?? "—"} / {r.pc ?? "—"}
+                            </div>
+                          </div>
+                        </details>
+                      </div>
+                    </div>
+
+                    {/* Right: View/Edit pill + Status pill */}
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        justifyContent: "flex-end",
+                      }}
+                    >
+                      <a
+                        href={`/roster/edit?roster_id=${encodeURIComponent(r.roster_id)}&returnTo=${encodeURIComponent(
+                          returnTo
+                        )}`}
+                        style={pillBase({ textDecoration: "none", color: "inherit" })}
+                      >
+                        View / Edit
+                      </a>
+
+                      {(() => {
+                        const isActive = !r.end_date;
+                        return (
+                          <span
+                            style={pillBase({
+                              color: isActive ? PAGE.statusText.active : PAGE.statusText.inactive,
+                            })}
+                          >
+                            Status: {isActive ? "Active" : "Inactive"}
+                          </span>
+                        );
+                      })()}
+                    </div>
                   </div>
-                  <div style={{ opacity: 0.85, marginTop: 4 }}>
-                    {r.division ?? "—"} / {r.region ?? "—"} / {r.pc ?? "—"}
-                  </div>
-                  <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-  <a
-    href={`/roster/edit?roster_id=${encodeURIComponent(r.roster_id)}&returnTo=${encodeURIComponent(returnTo)}`}
-    style={{
-      display: "inline-block",
-      padding: "8px 12px",
-      borderRadius: 10,
-      border: "1px solid #ddd",
-      textDecoration: "none",
-      fontWeight: 900,
-    }}
-  >
-    View / Edit
-  </a>
-
-  <span style={{ fontSize: 13, opacity: 0.85 }}>
-    Status: <strong>{r.status ?? "—"}</strong>
-  </span>
-</div>
-
-<details style={{ marginTop: 10 }}>
-  <summary style={{ cursor: "pointer", fontWeight: 800, opacity: 0.9 }}>
-    Details
-  </summary>
-
-  <div style={{ marginTop: 10, display: "grid", gap: 6, fontSize: 13, opacity: 0.9 }}>
-    <div>
-      <strong>Window:</strong> {r.start_date ?? "—"} → {r.end_date ?? "open"}
-    </div>
-    <div>
-      <strong>Insight Person ID:</strong> {r.insight_person_id ?? "—"}
-    </div>
-    <div>
-      <strong>Company:</strong> {r.company ?? "—"}
-    </div>
-    <div>
-      <strong>ITG Supervisor:</strong> {r.itg_supervisor ?? "—"}
-    </div>
-    <div>
-      <strong>Org:</strong> {r.division ?? "—"} / {r.region ?? "—"} / {r.pc ?? "—"}
-    </div>
-  </div>
-</details>
-
                 </div>
               ))}
+
+              {rows.length === 0 ? (
+                <div style={{ padding: 14, border: PAGE.card.border, borderRadius: PAGE.card.radius, opacity: 0.9 }}>
+                  No rows found for the current filters.
+                </div>
+              ) : null}
             </div>
           </>
         )}
