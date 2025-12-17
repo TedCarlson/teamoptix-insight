@@ -1,99 +1,107 @@
 // app/api/pdf/kpi/route.ts
 
-export const runtime = 'nodejs'
-export const dynamic = 'force-dynamic'
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { Resend } from 'resend'
-import puppeteer from 'puppeteer'
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import { Resend } from "resend";
+import puppeteer from "puppeteer";
 
-const supabase = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+export async function GET(req: NextRequest) {
+  // ---- Hard-fail early (no silent weirdness) ----
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const RESEND_API_KEY = process.env.RESEND_API_KEY;
+  const TARGET_EMAIL = process.env.TARGET_EMAIL;
 
-export async function GET() {
-    // ---- Hard-fail early (no silent weirdness) ----
-    if (!process.env.SUPABASE_URL) throw new Error('Missing SUPABASE_URL')
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY')
-    if (!process.env.RESEND_API_KEY) throw new Error('Missing RESEND_API_KEY')
-    if (!process.env.TARGET_EMAIL) throw new Error('Missing TARGET_EMAIL')
+  if (!SUPABASE_URL) throw new Error("Missing SUPABASE_URL");
+  if (!SUPABASE_SERVICE_ROLE_KEY) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
+  if (!RESEND_API_KEY) throw new Error("Missing RESEND_API_KEY");
+  if (!TARGET_EMAIL) throw new Error("Missing TARGET_EMAIL");
 
-    // ---- v1 hardcoded scope (we’ll parameterize later) ----
-    const region = 'Keystone'
-    const fiscalMonth = '2025-12-21' // matches fiscal_month_anchor
+  // ✅ Email is now an explicit, opt-in trigger
+  const sendEmail = req.nextUrl.searchParams.get("email") === "1";
 
-    // ---- Fetch tech rows from PDF contract view (rank + region totals included) ----
-    const { data: techRows, error: techErr } = await supabase
-        .from('kpi_tech_kpis_pdf_v2')
-        .select('*')
-        .eq('region', region)
-        .eq('fiscal_month_anchor', fiscalMonth)
-        .order('tech_rank_in_region', { ascending: true })
-        .order('tech_name', { ascending: true })
+  // ---- v1 hardcoded scope (we’ll parameterize later) ----
+  const region = "Keystone";
+  const fiscalMonth = "2025-12-21"; // matches fiscal_month_anchor
 
-    if (techErr) {
-        console.error('Tech KPI PDF view query error:', techErr)
-        return NextResponse.json(
-            { error: 'Failed to load tech KPIs (PDF view)', details: techErr.message },
-            { status: 500 }
-        )
-    }
+  // ✅ Create supabase client only AFTER env checks
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false },
+  });
 
-    // ---- Fetch authoritative region KPIs (weighted) for meta row ----
-    const { data: regionPdfKpis, error: regionPdfErr } = await supabase
-        .from('kpi_region_kpis_pdf_v2')
-        .select('*')
-        .eq('region', region)
-        .eq('fiscal_month_anchor', fiscalMonth)
-        .single()
+  // ---- Fetch tech rows from PDF contract view (rank + region totals included) ----
+  const { data: techRows, error: techErr } = await supabase
+    .from("kpi_tech_kpis_pdf_v2")
+    .select("*")
+    .eq("region", region)
+    .eq("fiscal_month_anchor", fiscalMonth)
+    .order("tech_rank_in_region", { ascending: true })
+    .order("tech_name", { ascending: true });
 
-    if (regionPdfErr) {
-        console.error('Region PDF KPI view error:', regionPdfErr)
-        return NextResponse.json(
-            { error: 'Failed to load region PDF KPIs', details: regionPdfErr.message },
-            { status: 500 }
-        )
-    }
+  if (techErr) {
+    console.error("Tech KPI PDF view query error:", techErr);
+    return NextResponse.json(
+      { error: "Failed to load tech KPIs (PDF view)", details: techErr.message },
+      { status: 500 }
+    );
+  }
 
-    const safeTechRows = Array.isArray(techRows) ? techRows : []
+  // ---- Fetch authoritative region KPIs (weighted) for meta row ----
+  const { data: regionPdfKpis, error: regionPdfErr } = await supabase
+    .from("kpi_region_kpis_pdf_v2")
+    .select("*")
+    .eq("region", region)
+    .eq("fiscal_month_anchor", fiscalMonth)
+    .single();
 
-    // ---- Formatting helpers ----
-    const fmt1 = (v: any) => {
-        const n = Number(v)
-        if (!Number.isFinite(n)) return ''
-        return n.toFixed(1).replace(/\.0$/, '')
-    }
-    const fmtInt = (v: any) => {
-        const n = Number(v)
-        if (!Number.isFinite(n)) return ''
-        return String(Math.round(n))
-    }
+  if (regionPdfErr) {
+    console.error("Region PDF KPI view error:", regionPdfErr);
+    return NextResponse.json(
+      { error: "Failed to load region PDF KPIs", details: regionPdfErr.message },
+      { status: 500 }
+    );
+  }
 
-    // ---- Rows: Tech | Rank | tNPS | FTR | Tool Usage | Total Jobs ----
-    const rowsHtml =
-        safeTechRows.length === 0
-            ? `<tr><td colspan="6" class="empty">No tech KPI rows found for this scope.</td></tr>`
-            : safeTechRows
-                .map((t: any) => {
-                    const techId = String(t.tech_id ?? '').trim()
-                    const techNameRaw = String(t.tech_name ?? '').trim()
-                    const companyCode = String(t.c_code ?? '').trim()
+  const safeTechRows = Array.isArray(techRows) ? techRows : [];
 
-                    const techDisplay = [techId || null, techNameRaw || null, companyCode ? `(${companyCode})` : null]
-                        .filter(Boolean)
-                        .join(' ')
+  // ---- Formatting helpers ----
+  const fmt1 = (v: any) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return "";
+    return n.toFixed(1).replace(/\.0$/, "");
+  };
+  const fmtInt = (v: any) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return "";
+    return String(Math.round(n));
+  };
 
-                    const techName = escapeHtml(techDisplay)
+  // ---- Rows: Tech | Rank | tNPS | FTR | Tool Usage | Total Jobs ----
+  const rowsHtml =
+    safeTechRows.length === 0
+      ? `<tr><td colspan="6" class="empty">No tech KPI rows found for this scope.</td></tr>`
+      : safeTechRows
+          .map((t: any) => {
+            const techId = String(t.tech_id ?? "").trim();
+            const techNameRaw = String(t.tech_name ?? "").trim();
+            const companyCode = String(t.c_code ?? "").trim();
 
-                    const rank = escapeHtml(fmtInt(t.tech_rank_in_region))
-                    const tnps = escapeHtml(fmt1(t.tnps_rate))
-                    const ftr = escapeHtml(fmt1(t.ftr_pct))
-                    const tool = escapeHtml(fmt1(t.tool_usage_pct))
-                    const totalJobs = escapeHtml(fmtInt(t.total_jobs))
+            const techDisplay = [techId || null, techNameRaw || null, companyCode ? `(${companyCode})` : null]
+              .filter(Boolean)
+              .join(" ");
 
-                    return `
+            const techName = escapeHtml(techDisplay);
+
+            const rank = escapeHtml(fmtInt(t.tech_rank_in_region));
+            const tnps = escapeHtml(fmt1(t.tnps_rate));
+            const ftr = escapeHtml(fmt1(t.ftr_pct));
+            const tool = escapeHtml(fmt1(t.tool_usage_pct));
+            const totalJobs = escapeHtml(fmtInt(t.total_jobs));
+
+            return `
               <tr>
                 <td class="col-tech">${techName}</td>
                 <td class="col-rank">${rank}</td>
@@ -102,38 +110,38 @@ export async function GET() {
                 <td class="col-num">${tool}</td>
                 <td class="col-num">${totalJobs}</td>
               </tr>
-            `
-                })
-                .join('')
+            `;
+          })
+          .join("");
 
-    // ---- 4-block header placeholders (A/B/C/D) ----
-    const headerA = `
+  // ---- 4-block header placeholders (A/B/C/D) ----
+  const headerA = `
     <div class="hdr-title">Regional Report</div>
     <div class="hdr-value">${escapeHtml(region)}</div>
     <div class="hdr-sub">${escapeHtml(fiscalLabel(fiscalMonth))}</div>
-  `
+  `;
 
-    const headerB = `
+  const headerB = `
     <div class="hdr-title">Header B</div>
     <div class="hdr-value">—</div>
     <div class="hdr-sub">placeholder</div>
-  `
+  `;
 
-    const headerC = `
+  const headerC = `
     <div class="hdr-title">Header C</div>
     <div class="hdr-value">—</div>
     <div class="hdr-sub">placeholder</div>
-  `
+  `;
 
-    const headerD = `
+  const headerD = `
     <div class="hdr-title">Header D</div>
     <div class="hdr-value">—</div>
     <div class="hdr-sub">placeholder</div>
-  `
+  `;
 
-    const generatedAt = escapeHtml(new Date().toISOString())
+  const generatedAt = escapeHtml(new Date().toISOString());
 
-    const html = `
+  const html = `
     <html>
       <head>
         <meta charset="utf-8" />
@@ -181,7 +189,6 @@ export async function GET() {
             color: #444;
           }
 
-          /* 4-pill meta row */
           .meta-row {
             display: grid;
             grid-template-columns: 1fr 1fr 1fr 1fr;
@@ -279,66 +286,71 @@ export async function GET() {
         </div>
       </body>
     </html>
-  `
+  `;
 
-    // ---- Render PDF ----
-    const browser = await puppeteer.launch()
-    try {
-        const page = await browser.newPage()
-        await page.setContent(html, { waitUntil: 'networkidle0' })
+  // ---- Render PDF ----
+  const browser = await puppeteer.launch();
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle0" });
 
-        const pdfUint8 = await page.pdf({
-            format: 'letter',
-            landscape: true,
-            printBackground: true,
-        })
+    const pdfUint8 = await page.pdf({
+      format: "letter",
+      landscape: true,
+      printBackground: true,
+    });
 
-        // ✅ Convert to Buffer so NextResponse + attachments are type-safe
-        const pdfBuffer = Buffer.from(pdfUint8)
+    const pdfBuffer = Buffer.from(pdfUint8);
 
-        // ---- Send email (log result) ----
-        const resend = new Resend(process.env.RESEND_API_KEY)
-        const sendResult = await resend.emails.send({
-            from: 'ITG Insight <noreply@teamoptix.io>',
-            to: process.env.TARGET_EMAIL!,
-            subject: `KPI Report – ${region} – ${fiscalLabel(fiscalMonth)}`,
-            text: `Attached is the KPI report for ${region}, ${fiscalLabel(fiscalMonth)}.\n\nInsight by Team Optix.`,
-            attachments: [
-                {
-                    filename: 'kpi-report.pdf',
-                    content: pdfBuffer.toString('base64'),
-                },
-            ],
-        })
-        console.log('RESEND sendResult:', sendResult)
-
-        // ---- Return PDF to browser ----
-        return new NextResponse(pdfBuffer, {
-            headers: {
-                'Content-Type': 'application/pdf',
-                'Content-Disposition': 'inline; filename="kpi-report.pdf"',
-                'Cache-Control': 'no-store, max-age=0',
-            },
-        })
-    } finally {
-        await browser.close()
+    // ---- Send email only when explicitly requested ----
+    if (sendEmail) {
+      const resend = new Resend(RESEND_API_KEY);
+      const sendResult = await resend.emails.send({
+        from: "ITG Insight <noreply@teamoptix.io>",
+        to: TARGET_EMAIL,
+        subject: `KPI Report – ${region} – ${fiscalLabel(fiscalMonth)}`,
+        text: `Attached is the KPI report for ${region}, ${fiscalLabel(
+          fiscalMonth
+        )}.\n\nInsight by Team Optix.`,
+        attachments: [
+          {
+            filename: "kpi-report.pdf",
+            content: pdfBuffer.toString("base64"),
+          },
+        ],
+      });
+      console.log("RESEND sendResult:", sendResult);
+    } else {
+      console.log("RESEND skipped (no ?email=1)");
     }
+
+    // ---- Return PDF to browser ----
+    return new NextResponse(pdfBuffer, {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": 'inline; filename="kpi-report.pdf"',
+        "Cache-Control": "no-store, max-age=0",
+      },
+    });
+  } finally {
+    await browser.close();
+  }
 }
 
 // "Fiscal Dec 2025"
 function fiscalLabel(isoDate: string) {
-    const d = new Date(`${isoDate}T00:00:00Z`)
-    const month = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })
-    const year = d.getUTCFullYear()
-    return `Fiscal ${month} ${year}`
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  const month = d.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
+  const year = d.getUTCFullYear();
+  return `Fiscal ${month} ${year}`;
 }
 
 // Minimal HTML escape so names don’t break markup
 function escapeHtml(input: string) {
-    return input
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#039;')
+  return String(input ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
