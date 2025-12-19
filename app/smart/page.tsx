@@ -1,8 +1,8 @@
 // app/smart/page.tsx
 import React from "react";
 import { createClient } from "@supabase/supabase-js";
-import { UI, pillBase } from "../../lib/ui";
-import UpstreamFiltersClient from "../../lib/filters/UpstreamFiltersClient";
+import { UI, pillBase } from "@/lib/ui";
+import UpstreamFiltersClient from "@/lib/filters/UpstreamFiltersClient";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -136,12 +136,12 @@ type RankRow = {
   headcount: number | null;
   total_jobs: number | null;
 
-  tnps: number | null;
-  ftr: number | null;
-  tool_usage: number | null;
+  tnps: number | null; // number (0..100)
+  ftr: number | null; // ratio (0..1) in this UI
+  tool_usage: number | null; // ratio (0..1) in this UI
 
-  rank_overall: number | null;
-  weighted_score: number | null;
+  rank_overall: number | null; // ✅ used for tech rank in region (rank_region)
+  weighted_score: number | null; // ✅ “factor” (best = lowest)
 
   // optional extra passthroughs
   roster_company?: string | null;
@@ -354,7 +354,7 @@ function Section({
             {rows.map((r, idx) => {
               const primaryId =
                 s((r as any).batch_id) ||
-                (s(r.level) === "tech" ? s(r.tech_id) : "") ||
+                (s(r.level) === "tech" ? s(r.tech_key || r.tech_id) : "") ||
                 s(r.level_key) ||
                 s(r.display_name);
 
@@ -551,7 +551,8 @@ export default async function SmartPage({
       .from("kpi_metric_settings_v1")
       .select("scope,metric_name,label,kpi_name,enabled,weight,sort_order,format,hidden")
       .eq("scope", "global"),
-    sb.from("tech_scorecard_feed_v1").select("*"),
+    // ✅ IMPORTANT: ranked tech view includes rank_region + factor
+    sb.from("tech_scorecard_ranked_v1").select("*"),
   ]);
 
   const fatalError = rankingsError ?? regionPeopleError ?? divisionPeopleError ?? settingsError ?? techError;
@@ -599,12 +600,20 @@ export default async function SmartPage({
   }
 
   // Base rows by level
-  const divRows = rows.filter((r) => r.level === "division" && r.rank_scope === "all_in" && s(r.fiscal_month_anchor) === month);
-  const regionRows = rows.filter((r) => r.level === "region" && r.rank_scope === "all_in" && s(r.fiscal_month_anchor) === month);
-  const itgRows = rows.filter((r) => r.level === "itg_supervisor" && r.rank_scope === "region" && s(r.fiscal_month_anchor) === month);
+  const divRows = rows.filter(
+    (r) => r.level === "division" && r.rank_scope === "all_in" && s(r.fiscal_month_anchor) === month
+  );
+  const regionRows = rows.filter(
+    (r) => r.level === "region" && r.rank_scope === "all_in" && s(r.fiscal_month_anchor) === month
+  );
+  const itgRows = rows.filter(
+    (r) => r.level === "itg_supervisor" && r.rank_scope === "region" && s(r.fiscal_month_anchor) === month
+  );
 
-  // Company rows are "all_in" but MUST be filtered by upstream selection using tech truth
-  const companyRowsAll = rows.filter((r) => r.level === "company" && r.rank_scope === "all_in" && s(r.fiscal_month_anchor) === month);
+  // Company rows (master feed)
+  const companyRowsAll = rows.filter(
+    (r) => r.level === "company" && r.rank_scope === "all_in" && s(r.fiscal_month_anchor) === month
+  );
 
   const byRank = (a: RankRow, b: RankRow) =>
     (n(a.rank_overall) ?? 9e15) - (n(b.rank_overall) ?? 9e15) ||
@@ -655,16 +664,21 @@ export default async function SmartPage({
     effectiveRegionId ? regionOptions.find((o) => o.value === effectiveRegionId)?.label ?? "" : "";
 
   // -----------------------------
-  // TECH GRID: tech_scorecard_feed_v1 → normalize into RankRow
+  // TECH GRID: tech_scorecard_ranked_v1 → normalize into RankRow
   // -----------------------------
   const techRowsAsRank: RankRow[] = (techData ?? []).map((t: any) => {
     const fiscal = s(t.fiscal_month_anchor);
     const techId = s(t.tech_id);
     const techName = s(t.tech_name) || s(t.roster_full_name);
-    const techKey = s(t.tech_key) || techId || techName;
 
-    // NOTE: division_id/region_id are not in this feed, only text fields.
-    // We keep region_name and division_name text when present.
+    const regionText = s(t.region) || s(t.roster_region) || null;
+    const divisionText = s(t.roster_division) || null;
+
+    const companyCode = s(t.c_code) || s(t.roster_c_code) || null;
+    const companyName = s(t.roster_company) || null;
+
+    const techKey = s(t.tech_key) || `${fiscal}:${regionText || ""}:${techId || techName}`;
+
     return {
       fiscal_month_anchor: fiscal,
       level: "tech",
@@ -674,13 +688,13 @@ export default async function SmartPage({
       level_key: techKey,
 
       division_id: null,
-      division_name: s(t.roster_division) || null,
+      division_name: divisionText,
 
       region_id: null,
-      region_name: s(t.region) || s(t.roster_region) || null,
+      region_name: regionText,
 
-      company_code: s(t.c_code) || s(t.roster_c_code) || null,
-      roster_company: s(t.roster_company) || null,
+      company_code: companyCode,
+      roster_company: companyName,
 
       itg_supervisor: s(t.itg_supervisor) || s(t.roster_itg_supervisor) || null,
       supervisor: s(t.supervisor) || s(t.roster_supervisor) || null,
@@ -691,12 +705,13 @@ export default async function SmartPage({
       headcount: null,
       total_jobs: n(t.total_jobs),
 
-      tnps: n(t.tnps_rate),
-      ftr: n(t.ftr_pct),
-      tool_usage: n(t.tool_usage_pct),
+      tnps: n(t.tnps_rate), // number (0..100)
+      ftr: n(t.ftr_pct), // ratio (0..1)
+      tool_usage: n(t.tool_usage_pct), // ratio (0..1)
 
-      rank_overall: null,
-      weighted_score: null,
+      // ✅ from ranked view
+      rank_overall: n(t.rank_region),
+      weighted_score: n(t.factor),
 
       batch_id: t.batch_id ? String(t.batch_id) : null,
     };
@@ -712,15 +727,23 @@ export default async function SmartPage({
   // Company dropdown options:
   // Populate-all if no division/region chosen.
   // But when division/region chosen, restrict to companies present in the tech slice.
-  // Labels come from companyRowsAll (display_name), fallback to code.
+  // Labels come from companyRowsAll (display_name), fallback to roster_company, fallback to code.
   // -----------------------------
   const techCompanyCodesInSlice = new Set(filteredTechRowsBase.map((r) => s(r.company_code)).filter(Boolean));
 
+  // master-feed company name by code
   const companyNameByCode = new Map<string, string>();
   for (const c of companyRowsAll) {
     const code = s(c.company_code);
     const name = s(c.display_name);
     if (code && name && !companyNameByCode.has(code)) companyNameByCode.set(code, name);
+  }
+  // roster company name by code (fallback)
+  const rosterCompanyNameByCode = new Map<string, string>();
+  for (const t of techRowsAsRank) {
+    const code = s(t.company_code);
+    const nm = s(t.roster_company);
+    if (code && nm && !rosterCompanyNameByCode.has(code)) rosterCompanyNameByCode.set(code, nm);
   }
 
   const companyOptions: FilterOpt[] = uniqBy(
@@ -730,7 +753,7 @@ export default async function SmartPage({
         return companyRowsAll
           .map((r) => {
             const code = s(r.company_code);
-            const label = s(r.display_name) || code;
+            const label = s(r.display_name) || rosterCompanyNameByCode.get(code) || code;
             return { value: code, label };
           })
           .filter((x) => x.value && x.label);
@@ -739,7 +762,7 @@ export default async function SmartPage({
       // if division/region selected → show only those present in the filtered tech slice
       return Array.from(techCompanyCodesInSlice).map((code) => ({
         value: code,
-        label: companyNameByCode.get(code) || code,
+        label: companyNameByCode.get(code) || rosterCompanyNameByCode.get(code) || code,
       }));
     })(),
     (x) => x.value
@@ -749,8 +772,7 @@ export default async function SmartPage({
   const effectiveCompanyCode = companyOk ? selectedCompanyCode : "";
 
   // -----------------------------
-  // Now apply upstream filters to master feed grids (Division/Region/ITG)
-  // (these use UUID ids and are consistent in master feed)
+  // Apply upstream filters to master feed grids (Division/Region/ITG)
   // -----------------------------
   const filteredDivRows = divRows.filter((r) => (effectiveDivisionId ? s(r.division_id) === effectiveDivisionId : true));
 
@@ -763,10 +785,7 @@ export default async function SmartPage({
     .filter((r) => (effectiveRegionId ? s(r.region_id) === effectiveRegionId : true));
 
   // -----------------------------
-  // Company grid must respect cascade:
-  // If NO div/region/company chosen → show all companyRowsAll.
-  // If div/region chosen → restrict to companies present in filtered tech slice.
-  // If company chosen → restrict to that code.
+  // Company grid respects cascade via tech truth-set when div/region selected
   // -----------------------------
   const filteredCompanyRows = (() => {
     let base = companyRowsAll;
@@ -783,12 +802,15 @@ export default async function SmartPage({
   })();
 
   // -----------------------------
-  // Tech rows final: apply company filter (validated)
+  // Tech rows final: apply company filter (validated) + sort by rank (then name)
   // -----------------------------
   const filteredTechRows = filteredTechRowsBase
     .filter((r) => (effectiveCompanyCode ? s(r.company_code) === effectiveCompanyCode : true))
     .sort((a, b) => {
-      // stable: region, then name, then tech_id
+      const ra = n(a.rank_overall) ?? 9e15;
+      const rb = n(b.rank_overall) ?? 9e15;
+      if (ra !== rb) return ra - rb;
+
       return (
         COLLATOR.compare(s(a.region_name), s(b.region_name)) ||
         COLLATOR.compare(s(a.display_name), s(b.display_name)) ||
@@ -804,6 +826,7 @@ export default async function SmartPage({
     label: settings.labelFor("headcount", "Headcount"),
     right: true,
     hidden: !settings.isOn("headcount", true),
+    render: (r) => fmtInt(n(r.headcount) ?? 0),
   };
 
   const col_tnps: Col = {
@@ -1045,7 +1068,10 @@ export default async function SmartPage({
             key: "rank_overall",
             label: "Rank (Region)",
             right: true,
-            render: () => "—", // rank not in tech_scorecard_feed_v1
+            render: (r) => {
+              const v = n(r.rank_overall);
+              return v === null ? "—" : fmtInt(v);
+            },
           },
 
           col_tnps,

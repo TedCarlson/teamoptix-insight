@@ -1,4 +1,7 @@
+// app/page.tsx
+import React from "react";
 import Link from "next/link";
+import PdfSendDemoButton from "./PdfSendDemoButton";
 
 const cardStyle: React.CSSProperties = {
   padding: "14px 18px",
@@ -8,6 +11,13 @@ const cardStyle: React.CSSProperties = {
   fontWeight: 700,
   display: "block",
   opacity: 0.92,
+};
+
+const subCardStyle: React.CSSProperties = {
+  ...cardStyle,
+  padding: "12px 18px",
+  fontWeight: 650,
+  opacity: 0.88,
 };
 
 const sectionTitle: React.CSSProperties = {
@@ -22,9 +32,7 @@ const sectionTitle: React.CSSProperties = {
 export default function HomePage() {
   return (
     <main style={{ padding: 40, maxWidth: 980, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 44, fontWeight: 850, marginBottom: 8 }}>
-        Insight
-      </h1>
+      <h1 style={{ fontSize: 44, fontWeight: 850, marginBottom: 8 }}>Insight</h1>
 
       <p style={{ fontSize: 16, opacity: 0.85, marginBottom: 18 }}>
         Precision KPI visibility + roster, uploads, and reporting.
@@ -48,10 +56,19 @@ export default function HomePage() {
 
         <div>
           <div style={sectionTitle}>Core tools</div>
+
           <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12 }}>
             <Link href="/metrics" style={cardStyle}>
               Metrics (Current) →
             </Link>
+
+            <a href="/api/pdf/kpi" target="_blank" rel="noreferrer" style={subCardStyle}>
+              Preview KPI PDF (browser) →
+            </a>
+
+            {/* ✅ Send in background (no new tab PDF) */}
+            <PdfSendDemoButton />
+
             <Link href="/roster" style={cardStyle}>
               Roster →
             </Link>
@@ -59,10 +76,16 @@ export default function HomePage() {
               Route Lock →
             </Link>
           </div>
+
+          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75, lineHeight: 1.45 }}>
+            Preview opens a new tab. Email send triggers server-side and returns a status message.
+          </div>
         </div>
 
         <div style={{ marginTop: 10, fontSize: 13, opacity: 0.8, lineHeight: 1.5 }}>
-          <div><b>Note:</b> Role-based routing and permissions will be driven by <code>roster_v2</code>.</div>
+          <div>
+            <b>Note:</b> Role-based routing and permissions will be driven by <code>roster_v2</code>.
+          </div>
           <div>For now, these links establish the page map and navigation skeleton.</div>
         </div>
       </div>
