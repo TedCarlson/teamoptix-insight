@@ -1,13 +1,27 @@
-import ComingSoon from '../_components/ComingSoon'
+import { PageShell, SectionBox } from "@/lib/ui";
 
 export default function Page() {
   return (
-    <ComingSoon
-      title="SMART Report (Business Partner)"
-      bullets={[
-        'Partner-tailored SMART view (limited scope).',
-        'Driven by roster_v2 permissions (later).',
-      ]}
-    />
-  )
+    <PageShell>
+      <h1 style={{ margin: 0, fontSize: 28 }}>SMART Report (Business Partner)</h1>
+      <p style={{ marginTop: 10, opacity: 0.75 }}>
+        Landing page placeholder. Content will appear in sections below.
+      </p>
+
+      <SectionBox
+        title="Executive Summary"
+        hint="Top-level snapshot for leadership"
+      />
+
+      <SectionBox
+        title="P4P Performance (Track A)"
+        hint="Weighted performance view"
+      />
+
+      <SectionBox
+        title="Legacy / Tie-break Context (Track B)"
+        hint="Appended context alongside P4P"
+      />
+    </PageShell>
+  );
 }
