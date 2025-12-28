@@ -96,13 +96,19 @@ export default async function AdminRubricPage() {
 
   return (
     <div className="mx-auto max-w-6xl p-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Admin: Rubric</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Draft rubric thresholds for enabled metrics (P4P and Other). Commit is intentionally disabled until the
-            versioned table is introduced.
-          </p>
+      <div className="mb-6">
+        <div className="mb-4">
+          <a href="/admin" className="inline-block text-sm underline">
+            ← Back to Admin
+          </a>
+        </div>
+
+        <h1 className="text-2xl font-semibold">Admin: Rubric</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Define scoring bands for enabled metrics. Rubrics are versioned by fiscal month and applied consistently across the app.
+        </p>
+        <div className="mt-3 text-xs text-muted-foreground">
+          Enabled metrics (from Settings): <span className="font-medium text-foreground">{enabled.length}</span>
         </div>
       </div>
 

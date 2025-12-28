@@ -10,7 +10,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
 
-  // Always read as text first so we can gracefully handle HTML error pages/redirects/404s.
   const text = await res.text();
   const contentType = (res.headers.get("content-type") || "").toLowerCase();
 
@@ -25,7 +24,9 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
       json = text ? JSON.parse(text) : null;
     } catch (e: any) {
       const snippet = text.slice(0, 240).replace(/\s+/g, " ").trim();
-      throw new Error(`Invalid JSON from ${url}: HTTP ${res.status} ${res.statusText} • ${snippet}`);
+      throw new Error(
+        `Invalid JSON from ${url}: HTTP ${res.status} ${res.statusText} • ${snippet}`
+      );
     }
 
     if (!res.ok || (json && json.ok === false)) {
@@ -35,9 +36,10 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
     return json as T;
   }
 
-  // Not JSON (often HTML). Give a small snippet to show what it is.
   const snippet = text.slice(0, 240).replace(/\s+/g, " ").trim();
-  throw new Error(`Non-JSON response from ${url}: HTTP ${res.status} ${res.statusText} • ${snippet}`);
+  throw new Error(
+    `Non-JSON response from ${url}: HTTP ${res.status} ${res.statusText} • ${snippet}`
+  );
 }
 
 function fmtBytes(n: number) {
@@ -99,30 +101,28 @@ function normalizeForMatch(s: string) {
 }
 
 /**
- * Strict region detection for CSV preview:
- * - ONLY read from row 1 text
- * - ONLY match allowed region names (no filename guessing)
+ * DB-truth region matching:
+ * - Only matches region names returned by /api/ref/regions
+ * - No hard-coded list
+ * - No guessing: if regions not loaded, we do NOT match
  */
-const ALLOWED_REGIONS = ["Keystone", "Beltway", "Big South", "Florida", "Freedom", "New England"] as const;
+type RegionIndex = {
+  set: Set<string>; // normalized region names
+  map: Map<string, string>; // normalized -> display/original
+};
 
-function detectRegionFromRow1Strict(row1Text: string): string | null {
-  const hay = normalizeForMatch(row1Text);
-  for (const r of ALLOWED_REGIONS) {
-    const token = normalizeForMatch(r);
-    if (token && hay.includes(token)) return r;
+function matchRegionFromText(text: string, idx: RegionIndex | null): string | null {
+  if (!idx) return null;
+  const hay = normalizeForMatch(text);
+  for (const token of idx.set) {
+    if (hay.includes(token)) return idx.map.get(token) ?? token;
   }
   return null;
 }
 
-// Filename region extraction for validation/dashboard
-// e.g. "Big South Metrics 12132025 215722.xlsx" -> "Big South"
-function extractRegionFromFilename(name: string): string | null {
-  const hay = normalizeForMatch(name);
-  for (const r of ALLOWED_REGIONS) {
-    const token = normalizeForMatch(r);
-    if (token && hay.includes(token)) return r;
-  }
-  return null;
+function extractRegionFromFilename(name: string, idx: RegionIndex | null): string | null {
+  if (!idx) return null;
+  return matchRegionFromText(name, idx);
 }
 
 /**
@@ -158,7 +158,14 @@ function looksLikeFooterLine(line: string) {
 
 type FilePreview =
   | { kind: "csv"; status: "loading" }
-  | { kind: "csv"; status: "ready"; region: string | null; dataRowsEstimate: number; row1: string }
+  | {
+      kind: "csv";
+      status: "ready";
+      region: string | null;
+      dataRowsEstimate: number;
+      row1: string;
+      note?: string;
+    }
   | { kind: "xlsx"; status: "na"; note: string }
   | { kind: "other"; status: "na"; note: string }
   | { kind: "csv"; status: "error"; error: string };
@@ -234,11 +241,7 @@ type UndoResp = {
   error?: string;
 };
 
-type RegionsResp =
-  | { ok: true; regions: Array<any> }
-  | { ok: true; data: Array<any> }
-  | { ok: true; items: Array<any> }
-  | { ok: false; error: string };
+type RegionsResp = { ok: true; regions: Array<string> } | { ok: false; error: string };
 
 type StepState = "idle" | "running" | "ok" | "warn" | "fail";
 
@@ -287,6 +290,59 @@ export default function AdminUploadsOntracPage() {
 
   const clearAll = useCallback(() => setFiles([]), []);
 
+  // ---- Regions (DB truth) ----
+  const [regionIndex, setRegionIndex] = useState<RegionIndex | null>(null);
+  const [regionsErr, setRegionsErr] = useState<string | null>(null);
+
+  async function fetchRegionsIndex(): Promise<RegionIndex> {
+    const json = await fetchJson<RegionsResp>(REGIONS_URL, { method: "GET" });
+    if (!("ok" in json) || (json as any).ok !== true) {
+      throw new Error((json as any)?.error || "Regions response not ok");
+    }
+
+    const regions = Array.isArray((json as any).regions) ? (json as any).regions : [];
+    const set = new Set<string>();
+    const map = new Map<string, string>();
+
+    for (const displayRaw of regions) {
+      const display = String(displayRaw ?? "").trim();
+      if (!display) continue;
+      const norm = normalizeForMatch(display);
+      if (!norm) continue;
+      set.add(norm);
+      if (!map.has(norm)) map.set(norm, display);
+    }
+
+    if (set.size === 0) {
+      throw new Error("Regions list empty from /api/ref/regions");
+    }
+
+    return { set, map };
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRegions() {
+      try {
+        setRegionsErr(null);
+        const idx = await fetchRegionsIndex();
+        if (cancelled) return;
+        setRegionIndex(idx);
+      } catch (e: any) {
+        if (cancelled) return;
+        setRegionsErr(e?.message ?? "Failed to load regions");
+        setRegionIndex(null);
+      }
+    }
+
+    loadRegions();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ---- Preview stats (CSV-only) ----
   const [previews, setPreviews] = useState<Record<string, FilePreview>>({});
 
@@ -295,7 +351,6 @@ export default function AdminUploadsOntracPage() {
 
     async function buildPreviews() {
       const next: Record<string, FilePreview> = {};
-      const existing = previews;
 
       for (const f of files) {
         const key = fileKey(f);
@@ -311,12 +366,6 @@ export default function AdminUploadsOntracPage() {
           continue;
         }
 
-        const prev = existing[key];
-        if (prev && prev.kind === "csv" && prev.status === "ready") {
-          next[key] = prev;
-          continue;
-        }
-
         next[key] = { kind: "csv", status: "loading" };
 
         try {
@@ -329,13 +378,23 @@ export default function AdminUploadsOntracPage() {
             .filter((l) => l.length > 0);
 
           const row1 = lines[0] ?? "";
-          const region = row1 ? detectRegionFromRow1Strict(row1) : null;
+
+          // NO GUESSING:
+          // - Region detection only runs when DB region list is loaded.
+          const region = regionIndex ? matchRegionFromText(row1, regionIndex) : null;
 
           const dataLines = lines.slice(2);
           const filteredDataLines = dataLines.filter((ln) => !looksLikeFooterLine(ln));
           const dataRowsEstimate = Math.max(0, filteredDataLines.length);
 
-          next[key] = { kind: "csv", status: "ready", region, dataRowsEstimate, row1 };
+          next[key] = {
+            kind: "csv",
+            status: "ready",
+            region,
+            dataRowsEstimate,
+            row1,
+            note: regionIndex ? undefined : "Regions not loaded yet; region detection deferred.",
+          };
         } catch (e: any) {
           next[key] = { kind: "csv", status: "error", error: e?.message ?? "Preview failed" };
         }
@@ -345,12 +404,10 @@ export default function AdminUploadsOntracPage() {
     }
 
     buildPreviews();
-
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [files]);
+  }, [files, regionIndex]);
 
   // ---- One-button pipeline state ----
   const [busy, setBusy] = useState<string | null>(null);
@@ -367,12 +424,18 @@ export default function AdminUploadsOntracPage() {
   const [parseResp, setParseResp] = useState<ParseOntracResp | null>(null);
   const [commitResp, setCommitResp] = useState<CommitResp | null>(null);
 
-  // stores *normalized* DB region names
-  const [regionDbSet, setRegionDbSet] = useState<Set<string> | null>(null);
-
+  // STRICT GATE:
+  // - Must have regions loaded (regionIndex) AND no regionsErr
+  // - Prevents any run if /api/ref/regions is failing
   const canProcess = useMemo(() => {
-    return !!files.length && !busy && !!anchor;
-  }, [files.length, busy, anchor]);
+    return (
+      !!files.length &&
+      !busy &&
+      !!anchor &&
+      !!regionIndex &&
+      !regionsErr
+    );
+  }, [files.length, busy, anchor, regionIndex, regionsErr]);
 
   function resetRun() {
     setErr(null);
@@ -380,39 +443,6 @@ export default function AdminUploadsOntracPage() {
     setParseResp(null);
     setCommitResp(null);
     setPipeline({ upload: "idle", parse: "idle", validate: "idle", commit: "idle" });
-  }
-
-  function regionNameFromAny(x: any): string {
-    if (typeof x === "string") return x.trim();
-    if (!x || typeof x !== "object") return "";
-    const candidates = [x.name, x.region, x.region_name, x.label, x.title, x.value];
-    for (const c of candidates) {
-      const s = String(c ?? "").trim();
-      if (s) return s;
-    }
-    return "";
-  }
-
-  async function fetchRegionsSet(): Promise<Set<string>> {
-    const json = await fetchJson<RegionsResp>(REGIONS_URL, { method: "GET" });
-
-    const arr: any[] = (json as any).regions ?? (json as any).data ?? (json as any).items ?? [];
-    const s = new Set<string>();
-
-    for (const item of arr) {
-      const name = regionNameFromAny(item);
-      if (!name) continue;
-      s.add(normalizeForMatch(name));
-    }
-
-    if (s.size === 0) {
-      const sample = Array.isArray(arr) ? arr.slice(0, 3) : [];
-      throw new Error(
-        `Region ref list is empty/unreadable. Check ${REGIONS_URL} response shape. Sample items: ${JSON.stringify(sample)}`
-      );
-    }
-
-    return s;
   }
 
   function stepIcon(s: StepState) {
@@ -430,14 +460,12 @@ export default function AdminUploadsOntracPage() {
       return;
     }
 
-    // Prefer saved anchor from upload response; fallback to computed anchor.
     const fiscal_month_anchor = String(uploadResp?.fiscal_month_anchor ?? anchor ?? "").trim();
 
     setBusy("Undoing…");
     setErr(null);
 
     try {
-      // reflect activity in the UI (commit stage)
       setPipeline((p) => ({ ...p, commit: "running" }));
 
       const undoJson = await fetchJson<UndoResp>(UNDO_URL, {
@@ -446,16 +474,13 @@ export default function AdminUploadsOntracPage() {
         body: JSON.stringify({
           upload_set_id,
           fiscal_month_anchor,
-          scope: "commit", // full undo
+          scope: "commit",
         }),
       });
 
       if (!undoJson.ok) throw new Error(undoJson.error || "Undo failed");
 
-      // Clear commit result (it no longer applies)
       setCommitResp(null);
-
-      // After undo, commit is no longer "ok" — show idle.
       setPipeline((p) => ({ ...p, commit: "idle" }));
 
       setBusy(null);
@@ -474,10 +499,13 @@ export default function AdminUploadsOntracPage() {
     setErr(null);
 
     try {
-      // 0) effective date: empty -> today
       const effectiveRef = (fiscalRefDate ?? "").trim() || isoTodayUTC();
       const effectiveAnchor = fiscalMonthAnchor(effectiveRef);
       if (!effectiveAnchor) throw new Error("Invalid fiscal reference date.");
+
+      // regionIndex MUST exist due to canProcess gate, but keep local for clarity
+      const idx = regionIndex;
+      if (!idx) throw new Error("Regions not loaded. Cannot process.");
 
       // 1) Upload
       setPipeline((p) => ({ ...p, upload: "running" }));
@@ -511,12 +539,9 @@ export default function AdminUploadsOntracPage() {
       // 3) Validate (green gating)
       setPipeline((p) => ({ ...p, validate: "running" }));
 
-      const dbRegions = await fetchRegionsSet();
-      setRegionDbSet(dbRegions);
-
       const perFile = (parseJson.files ?? []).map((f) => {
-        const region = extractRegionFromFilename(f.file);
-        const regionOk = region ? dbRegions.has(normalizeForMatch(region)) : false;
+        const region = extractRegionFromFilename(f.file, idx);
+        const regionOk = !!region; // matched against DB list
         const headerOk = !!f.headerMatch;
         return { file: f.file, region, regionOk, headerOk, ok: regionOk && headerOk };
       });
@@ -588,14 +613,25 @@ export default function AdminUploadsOntracPage() {
   }, [parseResp]);
 
   const canUndo = useMemo(() => {
-    // Only enable after a successful commit, and we must have upload_set_id.
     return !busy && !!uploadResp?.upload_set_id && pipeline.commit === "ok";
   }, [busy, uploadResp?.upload_set_id, pipeline.commit]);
+
+  const processDisabledReason = useMemo(() => {
+    if (busy) return "Busy.";
+    if (!files.length) return "Add files to process.";
+    if (!anchor) return "Invalid fiscal reference date.";
+    if (!regionIndex && !regionsErr) return "Loading regions…";
+    if (regionsErr) return `Regions failed to load: ${regionsErr}`;
+    if (!regionIndex) return "Regions not loaded.";
+    return null;
+  }, [busy, files.length, anchor, regionIndex, regionsErr]);
 
   return (
     <main style={{ padding: 24, maxWidth: 980, margin: "0 auto" }}>
       <h1 style={{ margin: 0, fontSize: 28, fontWeight: 900 }}>Uploads: Ontrac</h1>
-      <p style={{ marginTop: 10, opacity: 0.75 }}>One-button flow: Upload → Parse → Validate (green-gated) → Auto-Commit.</p>
+      <p style={{ marginTop: 10, opacity: 0.75 }}>
+        One-button flow: Upload → Parse → Validate (green-gated) → Auto-Commit.
+      </p>
 
       {/* Batch inputs */}
       <section style={{ marginTop: 12, padding: 16, borderRadius: 12, border: "1px solid rgba(0,0,0,0.18)" }}>
@@ -605,7 +641,8 @@ export default function AdminUploadsOntracPage() {
 
         <div style={{ marginTop: 10, display: "grid", gap: 10, maxWidth: 560 }}>
           <label style={{ display: "grid", gap: 6 }}>
-            Fiscal reference date (YYYY-MM-DD) <span style={{ fontSize: 12, opacity: 0.7 }}>(blank defaults to today)</span>
+            Fiscal reference date (YYYY-MM-DD){" "}
+            <span style={{ fontSize: 12, opacity: 0.7 }}>(blank defaults to today)</span>
             <input
               type="date"
               value={fiscalRefDate}
@@ -616,12 +653,35 @@ export default function AdminUploadsOntracPage() {
 
           <div style={{ fontSize: 12, opacity: 0.75, lineHeight: 1.45 }}>
             Fiscal month anchor: <b>{anchor ?? "—"}</b>
-            <div style={{ marginTop: 4 }}>Rule: day ≤ 21 → same month; day ≥ 22 → next month; anchor day = 21.</div>
+            <div style={{ marginTop: 4 }}>
+              Rule: day ≤ 21 → same month; day ≥ 22 → next month; anchor day = 21.
+            </div>
           </div>
 
           <div style={{ fontSize: 12, opacity: 0.75, lineHeight: 1.45 }}>
-            CSV preview stats: region is detected <b>only</b> from row 1 text and must match allowed region names.
+            CSV preview stats: region is detected <b>only</b> from row 1 text and must match <b>DB regions</b>.
           </div>
+
+          <div style={{ fontSize: 12, opacity: 0.75, lineHeight: 1.45 }}>
+            Regions source: <code>{REGIONS_URL}</code>{" "}
+            {regionIndex ? (
+              <span>
+                — loaded <b>{regionIndex.set.size}</b>
+              </span>
+            ) : regionsErr ? (
+              <span>
+                — <b style={{ opacity: 0.9 }}>error</b>: {regionsErr}
+              </span>
+            ) : (
+              <span>— loading…</span>
+            )}
+          </div>
+
+          {!regionIndex || regionsErr ? (
+            <div style={{ fontSize: 12, opacity: 0.75, lineHeight: 1.45 }}>
+              <b>Processing is disabled</b> until regions load successfully.
+            </div>
+          ) : null}
         </div>
       </section>
 
@@ -666,6 +726,7 @@ export default function AdminUploadsOntracPage() {
             type="button"
             onClick={doProcessBatch}
             disabled={!canProcess}
+            title={processDisabledReason ?? "Process batch"}
             style={{
               padding: "10px 14px",
               borderRadius: 12,
@@ -767,7 +828,7 @@ export default function AdminUploadsOntracPage() {
           padding: 18,
           borderRadius: 16,
           border: "1px dashed rgba(0,0,0,0.45)",
-          background: isOver ? "rgba(0,0,0,0.04)" : "transparent",
+          background: isOver ? "rgba(59, 130, 246, 0.18)" : "transparent",
           transition: "background 120ms ease",
         }}
       >
@@ -842,8 +903,8 @@ export default function AdminUploadsOntracPage() {
               const key = fileKey(f);
               const pv = previews[key];
 
-              const regionFromName = extractRegionFromFilename(f.name);
-              const regionInDb = regionDbSet ? (regionFromName ? regionDbSet.has(normalizeForMatch(regionFromName)) : false) : null;
+              const regionFromName = extractRegionFromFilename(f.name, regionIndex);
+              const regionInDb = regionIndex ? !!regionFromName : null;
 
               return (
                 <div
@@ -866,7 +927,7 @@ export default function AdminUploadsOntracPage() {
                     <div style={{ marginTop: 8, fontSize: 12, opacity: 0.85, lineHeight: 1.45 }}>
                       <div>
                         Region (filename): <b>{regionFromName ?? "NOT FOUND"}</b>{" "}
-                        {regionDbSet ? (
+                        {regionIndex ? (
                           <span style={{ opacity: 0.8 }}>
                             — DB: <b>{regionInDb ? "✅ match" : "❌ not found"}</b>
                           </span>
@@ -885,7 +946,9 @@ export default function AdminUploadsOntracPage() {
                         <div style={{ marginTop: 6, opacity: 0.9 }}>Preview error: {pv.error}</div>
                       ) : pv.kind === "csv" && pv.status === "ready" ? (
                         <div style={{ marginTop: 6 }}>
-                          CSV Row1 region: <b>{pv.region ?? "NOT FOUND"}</b> • Estimated rows: <b>{pv.dataRowsEstimate}</b>
+                          CSV Row1 region: <b>{pv.region ?? "NOT FOUND"}</b> • Estimated rows:{" "}
+                          <b>{pv.dataRowsEstimate}</b>
+                          {pv.note ? <div style={{ marginTop: 4, opacity: 0.75 }}>{pv.note}</div> : null}
                         </div>
                       ) : null}
                     </div>

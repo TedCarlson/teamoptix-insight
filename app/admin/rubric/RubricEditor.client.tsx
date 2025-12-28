@@ -1,3 +1,4 @@
+// app/admin/rubric/RubricEditor.client.tsx
 'use client'
 
 import React from 'react'
@@ -9,8 +10,6 @@ type ColorToken =
   | 'accent_warning'
   | 'accent_critical'
   | 'accent_muted'
-
-type Direction = 'higher' | 'lower'
 
 type DraftBand = {
   band: Band
@@ -26,17 +25,7 @@ type DraftMetricRubric = {
   report_label: string
   format: string
   category: 'p4p' | 'other' | 'both'
-  direction: Direction
   bands: DraftBand[]
-}
-
-type InitialBand = {
-  band: Band
-  min_value: number | null
-  max_value: number | null
-  inclusive_min: boolean
-  inclusive_max: boolean
-  color_token: ColorToken
 }
 
 type InitialMetricRubric = {
@@ -44,7 +33,14 @@ type InitialMetricRubric = {
   report_label: string
   format: string
   category: 'p4p' | 'other' | 'both'
-  bands: InitialBand[]
+  bands: Array<{
+    band: Band
+    min_value: number | null
+    max_value: number | null
+    inclusive_min: boolean
+    inclusive_max: boolean
+    color_token: ColorToken
+  }>
 }
 
 type VersionResp =
@@ -52,23 +48,8 @@ type VersionResp =
       ok: true
       scope: string
       source_system: string
-      fiscal_month_anchor: string
-      version: null
-      thresholds: any[]
-    }
-  | {
-      ok: true
-      scope: string
-      source_system: string
-      fiscal_month_anchor: string
-      version: {
-        id: number
-        fiscal_month_anchor: string
-        committed_at: string
-        committed_by?: string | null
-        notes?: string | null
-        active: boolean
-      }
+      fiscal_month_anchor: string | null
+      version: { id: number } | null
       thresholds: Array<{
         metric_name: string
         band: Band
@@ -77,21 +58,11 @@ type VersionResp =
         inclusive_min: boolean
         inclusive_max: boolean
         color_token: ColorToken
-        report_label_snapshot: string
-        format_snapshot: string
+        report_label_snapshot?: string | null
+        format_snapshot?: string | null
       }>
     }
   | { ok: false; error: string }
-
-const BAND_ORDER: Band[] = ['exceed', 'meet', 'needs_improvement', 'unacceptable', 'no_data']
-
-const BAND_LABEL: Record<Band, string> = {
-  exceed: 'Exceed Goal',
-  meet: 'Meeting Goal',
-  needs_improvement: 'Needs Improvement',
-  unacceptable: 'Unacceptable',
-  no_data: 'No Data',
-}
 
 const COLOR_TOKENS: ColorToken[] = [
   'accent_positive',
@@ -101,107 +72,22 @@ const COLOR_TOKENS: ColorToken[] = [
   'accent_muted',
 ]
 
-function swatchClass(token: ColorToken) {
-  switch (token) {
-    case 'accent_positive':
-      return 'bg-emerald-500'
-    case 'accent_neutral':
-      return 'bg-sky-500'
-    case 'accent_warning':
-      return 'bg-amber-500'
-    case 'accent_critical':
-      return 'bg-rose-500'
-    case 'accent_muted':
-      return 'bg-slate-400'
-  }
+// UI-only swatch mapping. Tokens remain DB truth.
+const TOKEN_SWATCH: Record<ColorToken, string> = {
+  accent_positive: '#16a34a',
+  accent_neutral: '#64748b',
+  accent_warning: '#f59e0b',
+  accent_critical: '#dc2626',
+  accent_muted: '#94a3b8',
 }
 
-function numberToInput(n: number | null) {
-  return n === null || n === undefined ? '' : String(n)
-}
-
-export function parseNumericInput(raw: string): number | null {
-  const t = raw.trim()
-  if (!t) return null
-  const normalized = t.startsWith('.') ? `0${t}` : t
-  const n = Number(normalized)
-  return Number.isFinite(n) ? n : null
-}
-
-function toDraft(initial: InitialMetricRubric[]): DraftMetricRubric[] {
-  return initial.map((m) => ({
-    ...m,
-    direction: 'higher',
-    bands: m.bands.map((b) => ({
-      band: b.band,
-      min_input: numberToInput(b.min_value),
-      max_input: numberToInput(b.max_value),
-      inclusive_min: b.inclusive_min,
-      inclusive_max: b.inclusive_max,
-      color_token: b.color_token,
-    })),
-  }))
-}
-
-function bandMeaning(direction: Direction, band: Band) {
-  if (band === 'no_data') return 'Missing / not applicable'
-  if (direction === 'higher') {
-    switch (band) {
-      case 'exceed':
-        return 'Higher values are better'
-      case 'meet':
-        return 'On target'
-      case 'needs_improvement':
-        return 'Below target'
-      case 'unacceptable':
-        return 'Far below target'
-    }
-  } else {
-    switch (band) {
-      case 'exceed':
-        return 'Lower values are better'
-      case 'meet':
-        return 'On target'
-      case 'needs_improvement':
-        return 'Above target'
-      case 'unacceptable':
-        return 'Far above target'
-    }
-  }
-}
-
-function fillTemplate(direction: Direction) {
-  if (direction === 'higher') {
-    return {
-      exceed: { min: '96', max: '' },
-      meet: { min: '93', max: '96' },
-      needs_improvement: { min: '89', max: '93' },
-      unacceptable: { min: '', max: '89' },
-    }
-  }
-  return {
-    exceed: { min: '', max: '4' },
-    meet: { min: '4', max: '6' },
-    needs_improvement: { min: '6', max: '8' },
-    unacceptable: { min: '8', max: '' },
-  }
-}
-
-type CommitBand = {
-  band: Band
-  min_value: number | null
-  max_value: number | null
-  inclusive_min: boolean
-  inclusive_max: boolean
-  color_token: ColorToken
-}
-
-type CommitMetric = {
-  metric_name: string
-  report_label_snapshot: string
-  format_snapshot: string
-  bands: CommitBand[]
-}
+const DEFAULT_BANDS: DraftBand[] = [
+  { band: 'exceed', min_input: '', max_input: '', inclusive_min: true, inclusive_max: false, color_token: 'accent_positive' },
+  { band: 'meet', min_input: '', max_input: '', inclusive_min: true, inclusive_max: false, color_token: 'accent_neutral' },
+  { band: 'needs_improvement', min_input: '', max_input: '', inclusive_min: true, inclusive_max: false, color_token: 'accent_warning' },
+  { band: 'unacceptable', min_input: '', max_input: '', inclusive_min: true, inclusive_max: false, color_token: 'accent_critical' },
+  { band: 'no_data', min_input: '', max_input: '', inclusive_min: true, inclusive_max: true, color_token: 'accent_muted' },
+]
 
 function calendarMonthAnchor(dateISO: string) {
   const d = new Date(`${dateISO}T00:00:00Z`)
@@ -211,446 +97,369 @@ function calendarMonthAnchor(dateISO: string) {
   return `${y}-${mm}-01`
 }
 
+function numberToInput(n: number | null) {
+  if (n === null || n === undefined) return ''
+  if (n === Infinity) return 'Infinity'
+  if (n === -Infinity) return '-Infinity'
+  return String(n)
+}
+
+function inputToNumber(s: string): number | null {
+  const t = String(s ?? '').trim()
+  if (!t) return null
+  if (t === 'Infinity') return Infinity
+  if (t === '-Infinity') return -Infinity
+  const n = Number(t)
+  return Number.isFinite(n) ? n : null
+}
+
+function prettyBand(b: Band) {
+  if (b === 'needs_improvement') return 'Needs improvement'
+  if (b === 'no_data') return 'No data'
+  return b.charAt(0).toUpperCase() + b.slice(1)
+}
+
+// Basic safety: require min/max numeric for non-no_data bands; allow blanks if you want looser rules.
+function validateDraft(draft: DraftMetricRubric[]) {
+  const errors: string[] = []
+
+  for (const m of draft) {
+    if (!m.metric_name) continue
+
+    const bands = m.bands
+    for (const b of bands) {
+      if (b.band === 'no_data') continue
+
+      const min = inputToNumber(b.min_input)
+      const max = inputToNumber(b.max_input)
+
+      // allow one-sided open ranges only if explicitly Infinity/-Infinity
+      const minRaw = String(b.min_input ?? '').trim()
+      const maxRaw = String(b.max_input ?? '').trim()
+
+      if (!minRaw || !maxRaw) {
+        errors.push(`${m.report_label}: ${prettyBand(b.band)} requires Min and Max`)
+        continue
+      }
+
+      if (min === null || max === null) {
+        errors.push(`${m.report_label}: ${prettyBand(b.band)} has invalid Min/Max`)
+        continue
+      }
+
+      if (Number.isFinite(min) && Number.isFinite(max) && min > max) {
+        errors.push(`${m.report_label}: ${prettyBand(b.band)} has Min > Max`)
+      }
+    }
+  }
+
+  return errors
+}
+
 export default function RubricEditorClient(props: { initial: InitialMetricRubric[] }) {
-  const [draft, setDraft] = React.useState<DraftMetricRubric[]>(() => toDraft(props.initial))
-  const [showAdvanced, setShowAdvanced] = React.useState(false)
-
-  const [committing, setCommitting] = React.useState(false)
-  const [commitError, setCommitError] = React.useState<string | null>(null)
-  const [commitOk, setCommitOk] = React.useState<string | null>(null)
-
-  const [loadingCommitted, setLoadingCommitted] = React.useState(false)
-  const [committedInfo, setCommittedInfo] = React.useState<string | null>(null)
-
-  const updateBand = React.useCallback(
-    (metric_name: string, band: Band, patch: Partial<DraftBand>) => {
-      setDraft((prev) =>
-        prev.map((m) => {
-          if (m.metric_name !== metric_name) return m
-          return {
-            ...m,
-            bands: m.bands.map((b) => (b.band === band ? { ...b, ...patch } : b)),
-          }
-        })
-      )
-    },
-    []
+  const [draft, setDraft] = React.useState<DraftMetricRubric[]>(() =>
+    props.initial.map((m) => ({
+      metric_name: m.metric_name,
+      report_label: m.report_label,
+      format: m.format,
+      category: m.category,
+      bands: DEFAULT_BANDS.map((b) => ({ ...b })),
+    }))
   )
 
-  const updateDirection = React.useCallback((metric_name: string, direction: Direction) => {
-    setDraft((prev) => prev.map((m) => (m.metric_name === metric_name ? { ...m, direction } : m)))
-  }, [])
+  const [loadingCommitted, setLoadingCommitted] = React.useState(false)
+  const [committing, setCommitting] = React.useState(false)
 
-  const applyTemplate = React.useCallback((metric_name: string) => {
-    setDraft((prev) =>
-      prev.map((m) => {
-        if (m.metric_name !== metric_name) return m
-        const t = fillTemplate(m.direction)
-        return {
-          ...m,
-          bands: m.bands.map((b) => {
-            if (b.band === 'no_data') return b
-            const tt = (t as any)[b.band]
-            if (!tt) return b
-            return { ...b, min_input: tt.min, max_input: tt.max }
-          }),
-        }
-      })
-    )
-  }, [])
+  const [errorMsg, setErrorMsg] = React.useState<string | null>(null)
+  const [okMsg, setOkMsg] = React.useState<string | null>(null)
 
-  const resetMetric = React.useCallback((metric_name: string) => {
+  const [committedInfo, setCommittedInfo] = React.useState<string | null>(null)
+  const [loadedAnchor, setLoadedAnchor] = React.useState<string | null>(null)
+  const [loadedVersionId, setLoadedVersionId] = React.useState<number | null>(null)
+
+  const setBand = (
+    metric_name: string,
+    band: Band,
+    patch: Partial<Pick<DraftBand, 'min_input' | 'max_input' | 'color_token' | 'inclusive_min' | 'inclusive_max'>>
+  ) => {
     setDraft((prev) =>
       prev.map((m) => {
         if (m.metric_name !== metric_name) return m
         return {
           ...m,
-          bands: m.bands.map((b) => ({
-            ...b,
-            min_input: '',
-            max_input: '',
-            inclusive_min: b.band === 'no_data' ? true : true,
-            inclusive_max: b.band === 'no_data' ? true : false,
-          })),
+          bands: m.bands.map((b) => (b.band === band ? { ...b, ...patch } : b)),
         }
       })
     )
-  }, [])
-
-  function buildCommitPayload(): { metrics: CommitMetric[] } {
-    const metrics: CommitMetric[] = draft.map((m) => {
-      const bands: CommitBand[] = BAND_ORDER.map((band) => {
-        const b = m.bands.find((x) => x.band === band)!
-        const isNoData = band === 'no_data'
-
-        const min_value = isNoData ? null : parseNumericInput(b.min_input)
-        const max_value = isNoData ? null : parseNumericInput(b.max_input)
-
-        return {
-          band,
-          min_value,
-          max_value,
-          inclusive_min: isNoData ? true : b.inclusive_min,
-          inclusive_max: isNoData ? true : b.inclusive_max,
-          color_token: b.color_token,
-        }
-      })
-
-      return {
-        metric_name: m.metric_name,
-        report_label_snapshot: m.report_label,
-        format_snapshot: m.format || 'number',
-        bands,
-      }
-    })
-
-    return { metrics }
   }
 
-  function validateForCommit(payload: { metrics: CommitMetric[] }) {
-    for (const m of payload.metrics) {
-      const nd = m.bands.find((b) => b.band === 'no_data')
-      if (!nd) throw new Error(`Missing no_data band for ${m.metric_name}`)
-      if (nd.min_value !== null || nd.max_value !== null) throw new Error(`no_data must have blank min/max for ${m.metric_name}`)
-
-      for (const b of m.bands) {
-        if (b.band === 'no_data') continue
-        if (b.min_value !== null && b.max_value !== null && b.min_value > b.max_value) {
-          throw new Error(`Invalid range for ${m.metric_name} (${b.band}): min > max`)
-        }
-      }
-    }
-  }
-
-  const onCommit = async () => {
-    setCommitError(null)
-    setCommitOk(null)
-
-    try {
-      const payload = buildCommitPayload()
-      validateForCommit(payload)
-
-      setCommitting(true)
-
-      const res = await fetch('/api/rubric/commit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          scope: 'global',
-          source_system: 'ontrac',
-          metrics: payload.metrics,
-        }),
-      })
-
-      const json = await res.json().catch(() => null)
-
-      if (!res.ok || !json?.ok) {
-        throw new Error(json?.error ?? `Commit failed (${res.status})`)
-      }
-
-      setCommitOk(`Committed rubric_version_id=${json.rubric_version?.id ?? 'unknown'}`)
-    } catch (e: any) {
-      setCommitError(e?.message ?? String(e))
-    } finally {
-      setCommitting(false)
-    }
+  const onResetMetric = (metric_name: string) => {
+    setDraft((prev) =>
+      prev.map((m) => (m.metric_name === metric_name ? { ...m, bands: DEFAULT_BANDS.map((b) => ({ ...b })) } : m))
+    )
   }
 
   const onLoadCommitted = async () => {
-    setCommitError(null)
-    setCommitOk(null)
-    setCommittedInfo(null)
+    setErrorMsg(null)
+    setOkMsg(null)
 
     try {
       setLoadingCommitted(true)
 
-      const todayISO = new Date().toISOString().slice(0, 10)
-      const anchor = calendarMonthAnchor(todayISO)
-
-      const res = await fetch(`/api/rubric/version?anchor=${encodeURIComponent(anchor)}&scope=global&source_system=ontrac`, {
-        method: 'GET',
+      // ✅ Do NOT pass anchor. API resolves latest as-of today.
+      const res = await fetch('/api/rubric/version?scope=global&source_system=ontrac', {
         cache: 'no-store',
       })
 
-      const json = (await res.json().catch(() => null)) as VersionResp | null
-      if (!res.ok || !json || (json as any).ok === false) {
+      const json = (await res.json()) as VersionResp
+      if (!res.ok || (json as any).ok === false) {
         throw new Error((json as any)?.error ?? `Load failed (${res.status})`)
       }
 
-      if (!('version' in json) || !json.version) {
-        throw new Error(`No committed rubric found for ${anchor}`)
+      const ok = json as Extract<VersionResp, { ok: true }>
+
+      if (!ok.version) {
+        setLoadedAnchor(ok.fiscal_month_anchor ? String(ok.fiscal_month_anchor).slice(0, 10) : null)
+        setLoadedVersionId(null)
+        setCommittedInfo('No committed version found (latest as-of today)')
+        return
       }
 
-      const v = json.version
-      const rows = (json as any).thresholds as VersionResp extends any ? any[] : any[]
-
-      const byMetricBand = new Map<string, any>()
-      for (const r of rows) {
-        byMetricBand.set(`${r.metric_name}__${r.band}`, r)
+      const byKey = new Map<string, any>()
+      for (const r of ok.thresholds) {
+        byKey.set(`${r.metric_name}__${r.band}`, r)
       }
 
       setDraft((prev) =>
-        prev.map((m) => {
-          // Only hydrate metrics present in committed snapshot; leave others unchanged
-          const anyBand = byMetricBand.get(`${m.metric_name}__exceed`) || byMetricBand.get(`${m.metric_name}__meet`)
-          if (!anyBand) return m
-
-          return {
-            ...m,
-            // Keep labels/formats from Settings (ingredient layer) to avoid “UI drift”.
-            // Bands come from committed snapshot:
-            bands: m.bands.map((b) => {
-              const r = byMetricBand.get(`${m.metric_name}__${b.band}`)
-              if (!r) return b
-              return {
-                ...b,
-                min_input: numberToInput(r.min_value ?? null),
-                max_input: numberToInput(r.max_value ?? null),
-                inclusive_min: Boolean(r.inclusive_min),
-                inclusive_max: Boolean(r.inclusive_max),
-                color_token: (r.color_token ?? b.color_token) as ColorToken,
-              }
-            }),
-          }
-        })
+        prev.map((m) => ({
+          ...m,
+          bands: m.bands.map((b) => {
+            const r = byKey.get(`${m.metric_name}__${b.band}`)
+            if (!r) return b
+            return {
+              ...b,
+              min_input: numberToInput(r.min_value),
+              max_input: numberToInput(r.max_value),
+              inclusive_min: Boolean(r.inclusive_min),
+              inclusive_max: Boolean(r.inclusive_max),
+              color_token: r.color_token,
+            }
+          }),
+        }))
       )
 
-      setCommittedInfo(`Loaded committed version #${v.id} (${new Date(v.committed_at).toLocaleString()})`)
+      const anchor = ok.fiscal_month_anchor ? String(ok.fiscal_month_anchor).slice(0, 10) : null
+      setLoadedAnchor(anchor)
+      setLoadedVersionId(ok.version.id)
+      setCommittedInfo(`Loaded committed version #${ok.version.id}${anchor ? ` (${anchor})` : ''}`)
     } catch (e: any) {
-      setCommitError(e?.message ?? String(e))
+      setErrorMsg(e?.message ?? String(e))
     } finally {
       setLoadingCommitted(false)
     }
   }
 
+  const onCommit = async () => {
+    setErrorMsg(null)
+    setOkMsg(null)
+
+    const errs = validateDraft(draft)
+    if (errs.length) {
+      setErrorMsg(errs[0])
+      return
+    }
+
+    try {
+      setCommitting(true)
+
+      const todayISO = new Date().toISOString().slice(0, 10)
+      const anchor = loadedAnchor ?? calendarMonthAnchor(todayISO)
+
+      const payload = {
+        scope: 'global',
+        source_system: 'ontrac',
+        fiscal_month_anchor: anchor,
+        notes: `admin commit (ui)`,
+        metrics: draft.map((m) => ({
+          metric_name: m.metric_name,
+          report_label: m.report_label,
+          format: m.format,
+          // Keep direction stable (server may ignore; safe for forward compatibility)
+          direction: 'higher_is_better',
+          bands: m.bands.map((b) => ({
+            metric_name: m.metric_name,
+            band: b.band,
+            min_value: inputToNumber(b.min_input),
+            max_value: inputToNumber(b.max_input),
+            inclusive_min: Boolean(b.inclusive_min),
+            inclusive_max: Boolean(b.inclusive_max),
+            color_token: b.color_token,
+            report_label_snapshot: m.report_label,
+            format_snapshot: m.format,
+          })),
+        })),
+      }
+
+      const res = await fetch('/api/rubric/commit', {
+        method: 'POST',
+        cache: 'no-store',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      const json = (await res.json().catch(() => null)) as any
+      if (!res.ok || !json || json.ok === false) {
+        throw new Error(json?.error ?? `Commit failed (${res.status})`)
+      }
+
+      setOkMsg(`Committed rubric for ${anchor}`)
+      // Refresh committed snapshot so UI stays DB-truth aligned
+      await onLoadCommitted()
+    } catch (e: any) {
+      setErrorMsg(e?.message ?? String(e))
+    } finally {
+      setCommitting(false)
+    }
+  }
+
+  React.useEffect(() => {
+    void onLoadCommitted()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   return (
-    <div className="mt-6 rounded-xl border">
+    <div className="rounded-xl border">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
         <div className="text-sm">
-          <span className="font-medium">Enabled metrics:</span>{' '}
-          <span className="text-muted-foreground">{draft.length}</span>
+          <span className="font-medium">Enabled metrics:</span> {draft.length}
           <div className="mt-1 text-xs text-muted-foreground">
-            Range rule: <span className="font-mono">min ≤ value &lt; max</span> (recommended)
+            Range rule: <span className="font-mono">min ≤ value &lt; max</span>
           </div>
-          {committedInfo ? <div className="mt-1 text-xs text-muted-foreground">{committedInfo}</div> : null}
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-3">
           <button
-            type="button"
-            onClick={() => setShowAdvanced((v) => !v)}
-            className="rounded-lg border px-3 py-2 text-xs font-medium"
-          >
-            {showAdvanced ? 'Hide Advanced' : 'Show Advanced'}
-          </button>
-
-          <button
-            type="button"
+            className="rounded-lg border px-4 py-2 text-sm"
             onClick={onLoadCommitted}
-            disabled={loadingCommitted || draft.length === 0}
-            className="rounded-lg border px-3 py-2 text-xs font-bold disabled:opacity-60"
-            title="Load the active committed rubric for the current fiscal month into the editor"
+            disabled={loadingCommitted}
           >
-            {loadingCommitted ? 'Loading…' : 'Load committed'}
+            {loadingCommitted ? 'Loading…' : 'Reload committed'}
           </button>
 
           <button
-            type="button"
+            className="rounded-lg border px-4 py-2 text-sm font-medium"
             onClick={onCommit}
-            disabled={committing || draft.length === 0}
-            className="rounded-lg border px-3 py-2 text-xs font-bold disabled:opacity-60"
-            title="Commit current draft rubric for reporting"
+            disabled={committing}
           >
             {committing ? 'Committing…' : 'Commit Rubric'}
           </button>
         </div>
+
+        <div className="rounded-lg border bg-slate-50 px-3 py-2 text-xs text-slate-700">
+          {committedInfo ?? 'No committed version loaded.'}
+          {loadedVersionId ? null : null}
+        </div>
       </div>
 
-      {commitError ? <div className="border-b p-4 text-sm text-red-600">{commitError}</div> : null}
-      {commitOk ? <div className="border-b p-4 text-sm text-emerald-700">{commitOk}</div> : null}
+      {errorMsg ? (
+        <div className="border-b bg-red-50 p-4 text-sm text-red-700">{errorMsg}</div>
+      ) : null}
 
-      {draft.length === 0 ? (
-        <div className="p-6 text-sm text-muted-foreground">
-          No enabled metrics found. Enable at least one metric in Admin → Settings.
-        </div>
-      ) : (
-        <div className="divide-y">
-          {draft.map((m) => (
-            <div key={m.metric_name} className="p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="font-medium">{m.report_label}</div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">
-                    <span className="font-mono">{m.metric_name}</span>
-                    {m.format ? <> · format: {m.format}</> : null}
-                    <> · category: {m.category}</>
-                  </div>
+      {okMsg ? (
+        <div className="border-b bg-green-50 p-4 text-sm text-green-700">{okMsg}</div>
+      ) : null}
 
-                  <div className="mt-3 flex flex-wrap items-center gap-3">
-                    <div className="text-xs font-medium text-muted-foreground">Direction</div>
-
-                    <div className="inline-flex overflow-hidden rounded-lg border">
-                      <button
-                        type="button"
-                        onClick={() => updateDirection(m.metric_name, 'higher')}
-                        className={`px-3 py-2 text-xs font-medium ${m.direction === 'higher' ? 'bg-black/5' : ''}`}
-                      >
-                        Higher is better
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => updateDirection(m.metric_name, 'lower')}
-                        className={`px-3 py-2 text-xs font-medium ${m.direction === 'lower' ? 'bg-black/5' : ''}`}
-                      >
-                        Lower is better
-                      </button>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => applyTemplate(m.metric_name)}
-                      className="rounded-lg border px-3 py-2 text-xs font-medium"
-                    >
-                      Fill template
-                    </button>
-                  </div>
+      <div className="space-y-8 p-4">
+        {draft.map((m) => (
+          <div key={m.metric_name} className="rounded-xl border p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-xl font-semibold">{m.report_label}</div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  {m.metric_name} · format: {m.format} · category: {m.category}
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => resetMetric(m.metric_name)}
-                  className="rounded-lg border px-3 py-2 text-xs font-medium"
-                >
-                  Reset metric
-                </button>
               </div>
 
-              <div className="mt-4 overflow-x-auto">
-                <table className="w-full min-w-[1040px] text-sm">
-                  <thead>
-                    <tr className="text-left text-xs text-muted-foreground">
-                      <th className="py-2 pr-3">Band</th>
-                      <th className="py-2 pr-3">Meaning</th>
-                      <th className="py-2 pr-3">Min</th>
-                      <th className="py-2 pr-3">Max</th>
-                      {showAdvanced ? (
-                        <>
-                          <th className="py-2 pr-3">Inclusive Min</th>
-                          <th className="py-2 pr-3">Inclusive Max</th>
-                        </>
-                      ) : (
-                        <th className="py-2 pr-3 text-muted-foreground">Range</th>
-                      )}
-                      <th className="py-2 pr-3">Color</th>
+              <button
+                type="button"
+                className="rounded-lg border px-4 py-2 text-sm"
+                onClick={() => onResetMetric(m.metric_name)}
+              >
+                Reset metric
+              </button>
+            </div>
+
+            <div className="mt-6 overflow-x-auto">
+              <table className="min-w-[900px] w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="py-2 text-left font-medium">Band</th>
+                    <th className="py-2 text-left font-medium">Min</th>
+                    <th className="py-2 text-left font-medium">Max</th>
+                    <th className="py-2 text-left font-medium">Color</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {m.bands.map((b) => (
+                    <tr key={b.band} className="border-b">
+                      <td className="py-3 pr-4 font-medium">{prettyBand(b.band)}</td>
+
+                      <td className="py-3 pr-4">
+                        <input
+                          className="w-40 rounded-md border px-3 py-2"
+                          value={b.min_input}
+                          onChange={(e) => setBand(m.metric_name, b.band, { min_input: e.target.value })}
+                        />
+                      </td>
+
+                      <td className="py-3 pr-4">
+                        <input
+                          className="w-40 rounded-md border px-3 py-2"
+                          value={b.max_input}
+                          onChange={(e) => setBand(m.metric_name, b.band, { max_input: e.target.value })}
+                        />
+                      </td>
+
+                      <td className="py-3 pr-4">
+                        <div className="flex items-center gap-3">
+                          <span
+                            title={b.color_token}
+                            style={{
+                              display: 'inline-block',
+                              width: 14,
+                              height: 14,
+                              borderRadius: 9999,
+                              border: '1px solid rgba(0,0,0,0.25)',
+                              backgroundColor: TOKEN_SWATCH[b.color_token],
+                            }}
+                          />
+                          <select
+                            className="w-56 rounded-md border px-3 py-2"
+                            value={b.color_token}
+                            onChange={(e) =>
+                              setBand(m.metric_name, b.band, { color_token: e.target.value as ColorToken })
+                            }
+                          >
+                            {COLOR_TOKENS.map((t) => (
+                              <option key={t} value={t}>
+                                {t}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </td>
                     </tr>
-                  </thead>
+                  ))}
+                </tbody>
+              </table>
 
-                  <tbody className="align-top">
-                    {BAND_ORDER.map((band) => {
-                      const b = m.bands.find((x) => x.band === band)!
-                      const isNoData = band === 'no_data'
-
-                      return (
-                        <tr key={band} className="border-t">
-                          <td className="py-3 pr-3 font-medium">{BAND_LABEL[band]}</td>
-                          <td className="py-3 pr-3 text-muted-foreground">{bandMeaning(m.direction, band)}</td>
-
-                          <td className="py-3 pr-3">
-                            {isNoData ? (
-                              <span className="text-muted-foreground">—</span>
-                            ) : (
-                              <input
-                                value={b.min_input}
-                                onChange={(e) => updateBand(m.metric_name, band, { min_input: e.target.value })}
-                                inputMode="decimal"
-                                className="w-40 rounded-lg border px-3 py-2 text-sm"
-                              />
-                            )}
-                          </td>
-
-                          <td className="py-3 pr-3">
-                            {isNoData ? (
-                              <span className="text-muted-foreground">—</span>
-                            ) : (
-                              <input
-                                value={b.max_input}
-                                onChange={(e) => updateBand(m.metric_name, band, { max_input: e.target.value })}
-                                inputMode="decimal"
-                                className="w-40 rounded-lg border px-3 py-2 text-sm"
-                              />
-                            )}
-                          </td>
-
-                          {showAdvanced ? (
-                            <>
-                              <td className="py-3 pr-3">
-                                {isNoData ? (
-                                  <span className="text-muted-foreground">—</span>
-                                ) : (
-                                  <label className="inline-flex items-center gap-2 text-sm">
-                                    <input
-                                      type="checkbox"
-                                      checked={b.inclusive_min}
-                                      onChange={(e) => updateBand(m.metric_name, band, { inclusive_min: e.target.checked })}
-                                    />
-                                    <span className="text-muted-foreground">inclusive</span>
-                                  </label>
-                                )}
-                              </td>
-
-                              <td className="py-3 pr-3">
-                                {isNoData ? (
-                                  <span className="text-muted-foreground">—</span>
-                                ) : (
-                                  <label className="inline-flex items-center gap-2 text-sm">
-                                    <input
-                                      type="checkbox"
-                                      checked={b.inclusive_max}
-                                      onChange={(e) => updateBand(m.metric_name, band, { inclusive_max: e.target.checked })}
-                                    />
-                                    <span className="text-muted-foreground">inclusive</span>
-                                  </label>
-                                )}
-                              </td>
-                            </>
-                          ) : (
-                            <td className="py-3 pr-3 text-muted-foreground">
-                              {isNoData ? '—' : <span className="font-mono">[min, max)</span>}
-                            </td>
-                          )}
-
-                          <td className="py-3 pr-3">
-                            <div className="flex items-center gap-2">
-                              <span className={`h-3 w-3 rounded-full ${swatchClass(b.color_token)}`} />
-                              <select
-                                value={b.color_token}
-                                onChange={(e) =>
-                                  updateBand(m.metric_name, band, { color_token: e.target.value as ColorToken })
-                                }
-                                className="rounded-lg border px-3 py-2 text-sm"
-                              >
-                                {COLOR_TOKENS.map((t) => (
-                                  <option key={t} value={t}>
-                                    {t}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-
-                <div className="mt-3 text-xs text-muted-foreground">
-                  Load committed hydrates band values/colors from the active snapshot for the current month.
-                </div>
+              <div className="mt-2 text-xs text-muted-foreground">
+                Color tokens are stored as strings in the DB; the circle is a UI preview.
               </div>
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

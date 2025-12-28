@@ -29,7 +29,9 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 
   if (!looksJson) {
     const snippet = text.slice(0, 240).replace(/\s+/g, " ").trim();
-    throw new Error(`Non-JSON response from ${url}: HTTP ${res.status} ${res.statusText} • ${snippet}`);
+    throw new Error(
+      `Non-JSON response from ${url}: HTTP ${res.status} ${res.statusText} • ${snippet}`
+    );
   }
 
   let json: any;
@@ -37,7 +39,9 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
     json = text ? JSON.parse(text) : null;
   } catch {
     const snippet = text.slice(0, 240).replace(/\s+/g, " ").trim();
-    throw new Error(`Invalid JSON from ${url}: HTTP ${res.status} ${res.statusText} • ${snippet}`);
+    throw new Error(
+      `Invalid JSON from ${url}: HTTP ${res.status} ${res.statusText} • ${snippet}`
+    );
   }
 
   if (!res.ok || (json && json.ok === false)) {
@@ -61,20 +65,21 @@ function normalizeRow(x: any): ReportSettingRow | null {
   if (!metric_name) return null;
 
   return {
-  metric_name,
-  report_label: String(x?.report_label ?? x?.label ?? x?.kpi_name ?? metric_name).trim(),
+    metric_name,
+    report_label: String(x?.report_label ?? x?.label ?? x?.kpi_name ?? metric_name).trim(),
 
-  // tolerate legacy fields: enabled/weight -> p4p_enabled/p4p_weight
-  p4p_enabled: Boolean(x?.p4p_enabled ?? x?.enabled ?? false),
-  p4p_weight: Number(x?.p4p_weight ?? x?.weight ?? 0) || 0,
+    // tolerate legacy fields: enabled/weight -> p4p_enabled/p4p_weight
+    p4p_enabled: Boolean(x?.p4p_enabled ?? x?.enabled ?? false),
+    p4p_weight: Number(x?.p4p_weight ?? x?.weight ?? 0) || 0,
 
-  other_enabled: Boolean(x?.other_enabled ?? false),
-  other_weight: Number(x?.other_weight ?? 0) || 0,
-};
-
+    other_enabled: Boolean(x?.other_enabled ?? false),
+    other_weight: Number(x?.other_weight ?? 0) || 0,
+  };
 }
 
-async function loadReportSettings(scope: string): Promise<{ scope: string; rows: ReportSettingRow[] }> {
+async function loadReportSettings(
+  scope: string
+): Promise<{ scope: string; rows: ReportSettingRow[] }> {
   const base = await getBaseUrl();
   const url = `${base}/api/ingest/settings?scope=${encodeURIComponent(scope)}`;
 
@@ -82,10 +87,8 @@ async function loadReportSettings(scope: string): Promise<{ scope: string; rows:
 
   const rowsRaw = (json as any)?.rows ?? [];
   const rows: ReportSettingRow[] = Array.isArray(rowsRaw)
-  ? rowsRaw
-      .map(normalizeRow)
-      .filter((r): r is ReportSettingRow => r !== null)
-  : [];
+    ? rowsRaw.map(normalizeRow).filter((r): r is ReportSettingRow => r !== null)
+    : [];
 
   return { scope: (json as any).scope ?? scope, rows };
 }
@@ -96,6 +99,12 @@ export default async function AdminSettingsPage() {
 
   return (
     <main style={{ padding: 40, maxWidth: 1200, margin: "0 auto" }}>
+      <div style={{ marginBottom: 16 }}>
+        <a href="/admin" style={{ display: "inline-block", fontSize: 14, textDecoration: "underline" }}>
+          ← Back to Admin
+        </a>
+      </div>
+
       <h1 style={{ margin: 0, fontSize: 28, fontWeight: 900 }}>Admin: Settings</h1>
       <p style={{ marginTop: 10, opacity: 0.75 }}>
         Configure report ingredients: select metrics and weights for <b>P4P</b> and <b>Other/Internal</b>.

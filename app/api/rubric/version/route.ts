@@ -1,3 +1,4 @@
+// app/api/rubric/version/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -9,14 +10,6 @@ function sbAdmin() {
   return createClient(url, service, { auth: { persistSession: false } });
 }
 
-function calendarMonthAnchor(dateISO: string) {
-  const d = new Date(`${dateISO}T00:00:00Z`);
-  const y = d.getUTCFullYear();
-  const m = d.getUTCMonth() + 1;
-  const mm = String(m).padStart(2, "0");
-  return `${y}-${mm}-01`;
-}
-
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -26,10 +19,44 @@ export async function GET(req: Request) {
 
     const todayISO = new Date().toISOString().slice(0, 10);
     const anchorParam = searchParams.get("anchor");
-    const fiscal_month_anchor = anchorParam ? anchorParam.slice(0, 10) : calendarMonthAnchor(todayISO);
 
     const sb = sbAdmin();
 
+    // If caller provides an anchor, honor it.
+    // Otherwise: resolve "latest committed rubric version as-of today" (<= today).
+    let fiscal_month_anchor: string | null = anchorParam ? anchorParam.slice(0, 10) : null;
+
+    if (!fiscal_month_anchor) {
+      const { data: latestList, error: latestErr } = await sb
+        .from("ingest_rubric_versions_v1")
+        .select("fiscal_month_anchor, committed_at")
+        .eq("scope", scope)
+        .eq("source_system", source_system)
+        .eq("active", true)
+        .lte("fiscal_month_anchor", todayISO)
+        .order("fiscal_month_anchor", { ascending: false })
+        .order("committed_at", { ascending: false })
+        .limit(1);
+
+      if (latestErr) throw latestErr;
+
+      const latest = (latestList ?? [])[0] ?? null;
+
+      if (!latest?.fiscal_month_anchor) {
+        return NextResponse.json({
+          ok: true,
+          scope,
+          source_system,
+          fiscal_month_anchor: null,
+          version: null,
+          thresholds: [],
+        });
+      }
+
+      fiscal_month_anchor = String(latest.fiscal_month_anchor).slice(0, 10);
+    }
+
+    // Load all versions for that anchor, pick active if present, else newest
     const { data: versions, error: vErr } = await sb
       .from("ingest_rubric_versions_v1")
       .select("id, scope, source_system, fiscal_month_anchor, committed_at, committed_by, notes, active")

@@ -43,7 +43,7 @@ const boxBody: React.CSSProperties = {
 export default function Page() {
   return (
     <main style={page}>
-      <h1 style={title}>SMART Report (Business Partner)</h1>
+      <h1 style={title}>SMART Report (Internal)</h1>
       <p style={subtitle}>Landing placeholder. Navigation lives in the menu.</p>
 
       <section style={box}>

@@ -1,4 +1,5 @@
-// app/api/ingest/commit-ontrac/route.ts
+//app/api/ingest/commit-ontrac/route.ts
+
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import ExcelJS from "exceljs";
@@ -11,13 +12,43 @@ const BATCH_TABLE = "ingest_batches_v1";
 
 // IMPORTANT: preserve raw header names exactly as in file
 const EXPECTED_HEADERS = [
-  "TechId","TechName","Supervisor","Total Jobs","Installs","TCs","SROs","TUResult","TUEligibleJobs",
-  "ToolUsage","Promoters","Detractors","tNPS Surveys","tNPS Rate","FTRFailJobs","Total FTR/Contact Jobs","FTR%",
-  "48Hr Contact Orders","48Hr Contact Rate%","PHT Jobs","PHT Pure Pass","PHT Fails","PHT RTM","PHT Pass%","PHT Pure Pass%",
-  "TotalAppts","TotalMetAppts","MetRate","Rework Count","Rework Rate%","SOI Count","SOI Rate%","Repeat Count","Repeat Rate%",
+  "TechId",
+  "TechName",
+  "Supervisor",
+  "Total Jobs",
+  "Installs",
+  "TCs",
+  "SROs",
+  "TUResult",
+  "TUEligibleJobs",
+  "ToolUsage",
+  "Promoters",
+  "Detractors",
+  "tNPS Surveys",
+  "tNPS Rate",
+  "FTRFailJobs",
+  "Total FTR/Contact Jobs",
+  "FTR%",
+  "48Hr Contact Orders",
+  "48Hr Contact Rate%",
+  "PHT Jobs",
+  "PHT Pure Pass",
+  "PHT Fails",
+  "PHT RTM",
+  "PHT Pass%",
+  "PHT Pure Pass%",
+  "TotalAppts",
+  "TotalMetAppts",
+  "MetRate",
+  "Rework Count",
+  "Rework Rate%",
+  "SOI Count",
+  "SOI Rate%",
+  "Repeat Count",
+  "Repeat Rate%",
 ] as const;
 
-const ALLOWED_REGIONS = ["Keystone","Beltway","Big South","Florida","Freedom","New England"] as const;
+const ALLOWED_REGIONS = ["Keystone", "Beltway", "Big South", "Florida", "Freedom", "New England"] as const;
 
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
@@ -27,7 +58,10 @@ function supabaseAdmin() {
 }
 
 function normalizeForFingerprint(s: string) {
-  return String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  return String(s ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 }
 function fingerprint(headers: string[]) {
   return headers.map(normalizeForFingerprint).join("|");
@@ -44,7 +78,10 @@ function cellText(v: any) {
 
 function getRowTexts(row: ExcelJS.Row) {
   const vals = (row.values as any[]) ?? [];
-  return vals.slice(1).map(cellText).map((s) => s.replace(/\u0000/g, "").trim());
+  return vals
+    .slice(1)
+    .map(cellText)
+    .map((s) => s.replace(/\u0000/g, "").trim());
 }
 
 function detectRegionFromRow1(row1Text: string): string | null {
@@ -58,18 +95,24 @@ function detectRegionFromRow1(row1Text: string): string | null {
 function looksLikeFooter(joined: string) {
   const h = joined.toUpperCase();
   if (!h.trim()) return true;
-  const patterns = ["GRAND TOTAL","SUBTOTAL","SUB TOTAL","TOTALS","TOTAL","SUMMARY","END OF REPORT","REPORT TOTAL","PAGE "];
+  const patterns = [
+    "GRAND TOTAL",
+    "SUBTOTAL",
+    "SUB TOTAL",
+    "TOTALS",
+    "TOTAL",
+    "SUMMARY",
+    "END OF REPORT",
+    "REPORT TOTAL",
+    "PAGE ",
+  ];
   if (patterns.some((p) => h.includes(p))) return true;
   const tokens = joined.split(/\s+/).filter(Boolean);
   if (tokens.length <= 2) return true;
   return false;
 }
 
-async function insertInChunks(
-  sb: ReturnType<typeof supabaseAdmin>,
-  rows: any[],
-  chunkSize = 500
-) {
+async function insertInChunks(sb: ReturnType<typeof supabaseAdmin>, rows: any[], chunkSize = 500) {
   for (let i = 0; i < rows.length; i += chunkSize) {
     const chunk = rows.slice(i, i + chunkSize);
     const { error } = await sb.from(RAW_TABLE).insert(chunk);
@@ -182,7 +225,9 @@ export async function POST(req: Request) {
 
       for (const ws of wb.worksheets ?? []) {
         const row2 = ws.getRow(2);
-        const headers = getRowTexts(row2).map((h) => h.trim()).filter((h) => h.length > 0);
+        const headers = getRowTexts(row2)
+          .map((h) => h.trim())
+          .filter((h) => h.length > 0);
         if (!headers.length) continue;
         if (fingerprint(headers) === expectedFP) {
           matchedSheet = ws;
@@ -212,111 +257,97 @@ export async function POST(req: Request) {
 
       const ws = matchedSheet;
       const row1Text = getRowTexts(ws.getRow(1)).filter(Boolean).join(" ").trim();
-      const region = detectRegionFromRow1(row1Text);
+      const regionDetected = detectRegionFromRow1(row1Text);
 
       const rowsOutForJsonl: any[] = [];
       let fileRowCount = 0;
 
+      // Data rows start at row 3
       for (let r = 3; r <= ws.rowCount; r++) {
         const row = ws.getRow(r);
-        if (!row.hasValues) continue;
-
-        const texts = getRowTexts(row);
-        const joined = texts.filter(Boolean).join(" ").trim();
+        const vals = getRowTexts(row);
+        const joined = vals.filter(Boolean).join(" ").trim();
         if (!joined) continue;
         if (looksLikeFooter(joined)) continue;
 
-        const rec: Record<string, any> = {};
+        // Map header -> value (source-native keys)
+        const payload: Record<string, string> = {};
         for (let i = 0; i < fileHeaders.length; i++) {
-          const h = fileHeaders[i];
-          rec[h] = texts[i] ?? null;
+          const k = fileHeaders[i];
+          payload[k] = String(vals[i] ?? "").trim();
         }
 
-        // Artifact row (storage)
-        rowsOutForJsonl.push({
-          source_system: "ontrac",
-          fiscal_month_anchor,
-          region,
-          row_num: r,
-          raw: rec,
-        });
+        const tech_id = String(payload["TechId"] ?? payload["TechID"] ?? payload["tech_id"] ?? "").trim();
+        if (!tech_id) continue;
 
-        /**
-         * ✅ DB row insert:
-         * DO NOT include fiscal_month_anchor here unless ingest_raw_rows_v1 actually has the column.
-         * We preserve fiscal_month_anchor as a batch truth in ingest_batches_v1,
-         * and expose it for reporting via view ingest_raw_rows_with_anchor_v1.
-         */
-        // ✅ DB row insert: MUST match ingest_raw_rows_v1 columns exactly (including NOT NULL payload)
-        const tech_id = String(rec["TechId"] ?? "").trim() || null;
-        if (!tech_id) continue; // optional guardrail
+        const region =
+          String(regionDetected ?? "").trim() || String((payload as any)["Region"] ?? "").trim() || null;
 
-        dbRows.push({
+        const dbRow = {
           batch_id,
-          region: region ?? null,
+          source_file: storage_path,
+          sheet_name: matchedSheetName,
           row_num: r,
-          source_file: name,
+          row_number: r,
           tech_id,
+          region,
+          payload,
+          raw: {},
+        };
 
-        // REQUIRED: ingest_raw_rows_v1.payload is NOT NULL
-        // Store the row payload as JSON (keeps exact raw keys without schema explosion)
-          payload: rec,
-        });
-
-
-        fileRowCount += 1;
-      }
-
-      // Upload JSONL artifact for this file
-      const jsonl = rowsOutForJsonl.map((o) => JSON.stringify(o)).join("\n");
-      const outPath = `${commit_prefix}/${name}.jsonl`;
-
-      const { error: upErr } = await sb.storage.from(BUCKET).upload(outPath, new TextEncoder().encode(jsonl), {
-        contentType: "application/x-ndjson",
-        upsert: true,
-      });
-
-      if (upErr) {
-        results.push({ ok: false, file: name, storage_path, error: `Commit upload failed: ${upErr.message}` });
-        continue;
+        dbRows.push(dbRow);
+        rowsOutForJsonl.push(dbRow);
+        fileRowCount++;
       }
 
       totalRows += fileRowCount;
+
+      // Write JSONL artifact (best-effort; commit should still proceed if artifact write fails)
+      try {
+        const jsonl = rowsOutForJsonl.map((x) => JSON.stringify(x)).join("\n") + "\n";
+        const jsonlPath = `${commit_prefix}/${name}.jsonl`;
+        await sb.storage.from(BUCKET).upload(jsonlPath, new TextEncoder().encode(jsonl), {
+          contentType: "application/jsonl",
+          upsert: true,
+        });
+      } catch (e: any) {
+        results.push({
+          ok: false,
+          file: name,
+          storage_path,
+          sheet: matchedSheetName,
+          regionDetected,
+          rowsParsed: fileRowCount,
+          warning: `JSONL artifact write failed: ${e?.message || "unknown"}`,
+        });
+        continue;
+      }
 
       results.push({
         ok: true,
         file: name,
         storage_path,
-        committed_path: outPath,
-        sheetCount,
-        sheetNames,
-        matchedSheetName,
-        expectedHeaderFingerprint: expectedFP,
-        fileHeaderFingerprint: expectedFP,
-        headerMatch: true,
-        regionDetected: region ?? null,
-        dataRows: fileRowCount,
+        sheet: matchedSheetName,
+        regionDetected,
+        rowsParsed: fileRowCount,
       });
     }
 
-    const okFiles = results.filter((r) => r.ok).length;
-    const failedFiles = results.filter((r) => !r.ok).length;
+    const okFiles = results.filter((r) => r?.ok).length;
+    const failedFiles = results.filter((r) => !r?.ok).length;
 
-    // 3) DB write: idempotent clear then insert
-    const { error: delErr } = await sb.from(RAW_TABLE).delete().eq("batch_id", batch_id);
-    if (delErr) throw new Error(`DB delete failed (pre-insert): ${delErr.message}`);
-
+    // 3) Insert DB rows (even if some files failed)
     if (dbRows.length > 0) {
       await insertInChunks(sb, dbRows, 500);
     }
 
-    // 4) manifest.json artifact
+    // 4) Write commit manifest
     const manifest = {
-      ok: failedFiles === 0 && okFiles > 0,
-      batch_id,
+      ok: failedFiles === 0,
+      source_system: "ontrac",
       upload_set_id,
+      batch_id,
       fiscal_month_anchor,
-      bucket: BUCKET,
       source_prefix: prefix,
       commit_prefix,
       counts: {
@@ -335,9 +366,68 @@ export async function POST(req: Request) {
       upsert: true,
     });
 
-    // 5) Update batch pointers + status
+    // 5) Pin rule versions (historical/effective-dated) + update batch pointers + status
     const finalStatus = manifest.ok ? "committed" : "committed_with_errors";
 
+    // ---- Historical pinning (must exist before we mark batch committed) ----
+    // Rubric pin: select latest rubric effective <= this commit anchor (rubric changes rarely)
+    const scope = "global";
+    const source_system = "ontrac";
+
+    const { data: rubricRows, error: rubricErr } = await sb
+      .from("ingest_rubric_versions_v1")
+      .select("id,fiscal_month_anchor")
+      .eq("scope", scope)
+      .eq("source_system", source_system)
+      .lte("fiscal_month_anchor", fiscal_month_anchor)
+      .order("fiscal_month_anchor", { ascending: false })
+      .limit(1);
+
+    if (rubricErr) {
+      throw new Error(`Failed to resolve rubric version: ${rubricErr.message}`);
+    }
+
+    const rubricRow = rubricRows?.[0] ?? null;
+    if (!rubricRow?.id) {
+      throw new Error(
+        `Missing effective rubric for scope=${scope} source_system=${source_system} fiscal_month_anchor<=${fiscal_month_anchor}`
+      );
+    }
+
+    // Settings pin: settings are pre-seeded; pin as-of max(updated_at)
+    const { data: settingsRows, error: settingsErr } = await sb
+      .from("ingest_report_settings_v1")
+      .select("updated_at")
+      .eq("scope", scope)
+      .eq("source_system", source_system)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+
+    if (settingsErr) {
+      throw new Error(`Failed to read settings for scope=${scope} source_system=${source_system}: ${settingsErr.message}`);
+    }
+
+    const settings_pinned_at = settingsRows?.[0]?.updated_at;
+    if (!settings_pinned_at) {
+      throw new Error(`No settings rows found for scope=${scope} source_system=${source_system} (required)`);
+    }
+
+    // Write pin row (one per batch). If re-run, upsert keeps it stable.
+    const { error: pinErr } = await sb.from("ingest_batch_pins_v1").upsert(
+      {
+        batch_id,
+        scope,
+        source_system,
+        fiscal_month_anchor,
+        rubric_version_id: rubricRow.id, // bigint FK
+        settings_pinned_at,
+      },
+      { onConflict: "batch_id" }
+    );
+
+    if (pinErr) throw new Error(`Failed to pin batch rules: ${pinErr.message}`);
+
+    // ---- Now it is safe to mark batch committed ----
     const { error: updErr } = await sb
       .from(BATCH_TABLE)
       .update({
@@ -364,9 +454,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json(resp);
   } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: e?.message || "Unknown commit error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: e?.message || "Unknown commit error" }, { status: 500 });
   }
 }
