@@ -175,22 +175,19 @@ export default function SiteNav() {
           >
             SMART (Partner)
           </a>
-          <a href="/metrics" style={linkStyle} onClick={close} onMouseEnter={onLinkEnter} onMouseLeave={onLinkLeave}>
-            Metrics (Current)
-          </a>
 
           <div style={sectionLabel}>Org</div>
           <a href="/regions" style={linkStyle} onClick={close} onMouseEnter={onLinkEnter} onMouseLeave={onLinkLeave}>
             Regions
           </a>
           <a
-            href="/region/Keystone"
+            href="/regions/techs"
             style={linkStyle}
             onClick={close}
             onMouseEnter={onLinkEnter}
             onMouseLeave={onLinkLeave}
           >
-            Region: Keystone
+            Tech Report
           </a>
 
           <div style={sectionLabel}>Admin</div>
