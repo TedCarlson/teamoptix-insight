@@ -1,5 +1,5 @@
 // app/api/region/[region]/techs/route.ts
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -50,10 +50,14 @@ async function fetchRowsForRegion(sb: any, batch_id: string, region_name: string
  * Optional:
  *  - ?fiscal_month_anchor=YYYY-MM-DD
  *  - ?mode=reportable
+ *
+ * NOTE: Next.js 16 expects params as a Promise in route handler context typing.
  */
-export async function GET(req: Request, { params }: { params: { region: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ region: string }> }) {
   try {
-    const regionParam = s(params?.region);
+    const { region } = await params;
+
+    const regionParam = s(region);
     const region_name = regionParam ? decodeURIComponent(regionParam) : "";
 
     if (!region_name) {
@@ -104,19 +108,16 @@ export async function GET(req: Request, { params }: { params: { region: string }
     const batch_id = String(latest_batch.batch_id);
 
     // 2) Pin for that batch (if present)
-const { data: pin, error: pinErr } = await sb
-  .from(PINS_TABLE)
-  .select(
-  "batch_id,fiscal_month_anchor,scope,source_system,rubric_version_id,settings_pinned_at,pinned_at"
-)
-  .eq("batch_id", batch_id)
-  .limit(1)
-  .maybeSingle();
+    const { data: pin, error: pinErr } = await sb
+      .from(PINS_TABLE)
+      .select("batch_id,fiscal_month_anchor,scope,source_system,rubric_version_id,settings_pinned_at,pinned_at")
+      .eq("batch_id", batch_id)
+      .limit(1)
+      .maybeSingle();
 
-if (pinErr) {
-  return NextResponse.json({ ok: false, error: pinErr.message }, { status: 500 });
-}
-
+    if (pinErr) {
+      return NextResponse.json({ ok: false, error: pinErr.message }, { status: 500 });
+    }
 
     // 3) Pull raw rows for that batch + region (probe region column)
     const rowsResult = await fetchRowsForRegion(sb, batch_id, region_name);
