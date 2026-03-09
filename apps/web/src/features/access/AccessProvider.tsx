@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
+import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 type Membership = {
   company_id: string;
@@ -12,41 +13,89 @@ type Membership = {
   title: string | null;
 };
 
-type AccessContext = {
+type AccessState = {
   loading: boolean;
   auth_user_id?: string;
   profile_id?: string;
   email?: string;
+  first_name?: string;
+  last_name?: string;
   display_name?: string;
+  mobile_phone?: string | null;
+  profile_status?: string;
   is_platform_owner?: boolean;
-  memberships?: Membership[];
+  memberships: Membership[];
 };
 
-const AccessCtx = createContext<AccessContext>({ loading: true });
+const AccessCtx = createContext<AccessState>({
+  loading: true,
+  memberships: [],
+});
 
-export function AccessProvider(props: { children: React.ReactNode }) {
-  const [state, setState] = useState<AccessContext>({ loading: true });
+export function AccessProvider({ children }: { children: React.ReactNode }) {
+  const [state, setState] = useState<AccessState>({
+    loading: true,
+    memberships: [],
+  });
 
-  useEffect(() => {
-    async function loadAccess() {
-      try {
-        const res = await fetch("/api/access-context");
-        const data = await res.json();
+  async function loadAccess() {
+    try {
+      const res = await fetch("/api/access-context", {
+        method: "GET",
+        cache: "no-store",
+        credentials: "include",
+      });
 
+      const data = await res.json();
+
+      if (!data) {
         setState({
           loading: false,
-          ...data
+          memberships: [],
         });
-      } catch (err) {
-        console.error("access context load failed", err);
-        setState({ loading: false });
+        return;
       }
-    }
 
+      setState({
+        loading: false,
+        auth_user_id: data.auth_user_id,
+        profile_id: data.profile_id,
+        email: data.email,
+        first_name: data.first_name,
+        last_name: data.last_name,
+        display_name: data.display_name,
+        mobile_phone: data.mobile_phone ?? null,
+        profile_status: data.profile_status,
+        is_platform_owner: Boolean(data.is_platform_owner),
+        memberships: Array.isArray(data.memberships) ? data.memberships : [],
+      });
+    } catch (err) {
+      console.error("access context load failed", err);
+
+      setState({
+        loading: false,
+        memberships: [],
+      });
+    }
+  }
+
+  useEffect(() => {
     loadAccess();
+
+    const supabase = getSupabaseBrowserClient();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(() => {
+      loadAccess();
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
-  return <AccessCtx.Provider value={state}>{props.children}</AccessCtx.Provider>;
+  return <AccessCtx.Provider value={state}>{children}</AccessCtx.Provider>;
 }
 
 export function useAccess() {

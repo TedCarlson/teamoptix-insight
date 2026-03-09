@@ -1,9 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 export default function SignInPage() {
+  const router = useRouter();
+
   const [email, setEmail] = useState("admin@teamoptix.io");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -26,12 +29,12 @@ export default function SignInPage() {
 
       if (error) {
         setError(error.message);
-        setSubmitting(false);
         return;
       }
 
-      setMessage("Signed in successfully. You can now refresh session and access checks.");
-    } catch (err) {
+      router.refresh();
+      router.push("/company/setup");
+    } catch {
       setError("Unexpected sign-in error.");
     } finally {
       setSubmitting(false);
@@ -49,18 +52,17 @@ export default function SignInPage() {
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: window.location.origin,
+          emailRedirectTo: `${window.location.origin}/company/setup`,
         },
       });
 
       if (error) {
         setError(error.message);
-        setSubmitting(false);
         return;
       }
 
       setMessage("Magic link sent. Check your email.");
-    } catch (err) {
+    } catch {
       setError("Unexpected magic link error.");
     } finally {
       setSubmitting(false);

@@ -1,7 +1,32 @@
+"use client";
+
+import { useAccess } from "@/features/access/AccessProvider";
 import SiteHeader from "@/features/landing/components/SiteHeader";
 import ValueCard from "@/features/landing/components/ValueCard";
 
 export default function HomePage() {
+  const access = useAccess();
+
+  const signedIn = Boolean(access.auth_user_id);
+  const hasProfile = Boolean(access.profile_id);
+  const hasMemberships = Boolean(access.memberships?.length);
+
+  const primaryHref = !signedIn
+    ? "/sign-in"
+    : !hasProfile
+      ? "/profile/setup"
+      : !hasMemberships
+        ? "/company/setup"
+        : "/company/setup";
+
+  const primaryLabel = !signedIn
+    ? "Sign in"
+    : !hasProfile
+      ? "Complete profile"
+      : !hasMemberships
+        ? "Create company"
+        : "Continue";
+
   return (
     <main className="landing-page">
       <SiteHeader />
@@ -17,28 +42,37 @@ export default function HomePage() {
             </p>
 
             <div className="cta-row">
-              <a className="button button-primary" href="/sign-in">
-                Sign in
+              <a className="button button-primary" href={primaryHref}>
+                {primaryLabel}
               </a>
-              <a className="button" href="/profile/setup">
-                Create profile
-              </a>
-              <a className="button" href="/company/setup">
-                Create company
-              </a>
+
+              {!hasProfile ? (
+                <a className="button" href="/profile/setup">
+                  Create profile
+                </a>
+              ) : null}
+
+              {!hasMemberships ? (
+                <a className="button" href="/company/setup">
+                  Create company
+                </a>
+              ) : null}
             </div>
           </section>
 
           <aside className="hero-card hero-card--secondary">
             <p className="eyebrow">Platform posture</p>
+
             <div className="hero-stat">
               <span className="hero-stat__label">Identity</span>
               <strong>One user, many company relationships</strong>
             </div>
+
             <div className="hero-stat">
               <span className="hero-stat__label">Company model</span>
               <strong>Standalone first, relationships later</strong>
             </div>
+
             <div className="hero-stat">
               <span className="hero-stat__label">Onboarding</span>
               <strong>Quick-add ready for bulk company adoption</strong>

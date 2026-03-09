@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AccessProvider } from "@/features/access/AccessProvider";
 
 export const metadata: Metadata = {
   title: "Insight",
@@ -9,7 +10,9 @@ export const metadata: Metadata = {
 export default function RootLayout(props: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{props.children}</body>
+      <body>
+        <AccessProvider>{props.children}</AccessProvider>
+      </body>
     </html>
   );
 }
