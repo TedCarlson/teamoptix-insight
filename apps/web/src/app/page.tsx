@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useAccess } from "@/features/access/AccessProvider";
 import SiteHeader from "@/features/landing/components/SiteHeader";
 import ValueCard from "@/features/landing/components/ValueCard";
@@ -9,23 +10,24 @@ export default function HomePage() {
 
   const signedIn = Boolean(access.auth_user_id);
   const hasProfile = Boolean(access.profile_id);
-  const hasMemberships = Boolean(access.memberships?.length);
+  const membershipCount = access.memberships.length;
+  const canCreateCompany = Boolean(access.is_platform_owner);
 
   const primaryHref = !signedIn
     ? "/sign-in"
     : !hasProfile
       ? "/profile/setup"
-      : !hasMemberships
-        ? "/company/setup"
-        : "/company/setup";
+      : membershipCount > 0
+        ? "/companies"
+        : "/profile";
 
   const primaryLabel = !signedIn
     ? "Sign in"
     : !hasProfile
       ? "Complete profile"
-      : !hasMemberships
-        ? "Create company"
-        : "Continue";
+      : membershipCount > 0
+        ? "Go to companies"
+        : "Go to profile";
 
   return (
     <main className="landing-page">
@@ -42,20 +44,26 @@ export default function HomePage() {
             </p>
 
             <div className="cta-row">
-              <a className="button button-primary" href={primaryHref}>
+              <Link className="button button-primary" href={primaryHref}>
                 {primaryLabel}
-              </a>
+              </Link>
 
-              {!hasProfile ? (
-                <a className="button" href="/profile/setup">
-                  Create profile
-                </a>
+              {signedIn && membershipCount > 0 ? (
+                <Link className="button" href="/companies">
+                  Company directory
+                </Link>
               ) : null}
 
-              {!hasMemberships ? (
-                <a className="button" href="/company/setup">
+              {signedIn && membershipCount === 0 && canCreateCompany ? (
+                <Link className="button" href="/company/setup">
                   Create company
-                </a>
+                </Link>
+              ) : null}
+
+              {!signedIn ? (
+                <Link className="button" href="/profile/setup">
+                  Create profile
+                </Link>
               ) : null}
             </div>
           </section>
@@ -74,8 +82,14 @@ export default function HomePage() {
             </div>
 
             <div className="hero-stat">
-              <span className="hero-stat__label">Onboarding</span>
-              <strong>Quick-add ready for bulk company adoption</strong>
+              <span className="hero-stat__label">Current state</span>
+              <strong>
+                {!signedIn
+                  ? "Signed out"
+                  : membershipCount > 0
+                    ? "Company context available"
+                    : "No company memberships yet"}
+              </strong>
             </div>
           </aside>
         </div>
@@ -94,9 +108,9 @@ export default function HomePage() {
             body="Users keep one platform identity and move across opportunities cleanly."
           />
           <ValueCard
-            eyebrow="Adoption"
-            title="Bulk onboarding"
-            body="Large groups can be staged quickly through invite and CSV-first paths."
+            eyebrow="Governance"
+            title="Owner-gated creation"
+            body="Company creation is controlled intentionally instead of being open to every signed-in user."
           />
         </div>
       </section>

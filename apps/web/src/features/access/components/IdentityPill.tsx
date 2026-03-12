@@ -34,8 +34,9 @@ export default function IdentityPill() {
     access.email ||
     "Signed in";
 
-  const companyLabel =
-    access.memberships && access.memberships.length > 0
+  const secondary = access.is_platform_owner
+    ? "Platform Owner"
+    : access.memberships.length > 0
       ? access.memberships[0].company_name
       : "No company yet";
 
@@ -47,9 +48,7 @@ export default function IdentityPill() {
 
       <span className="identity-pill__content">
         <strong>{name}</strong>
-        <span>
-          {access.is_platform_owner ? "Platform Owner" : companyLabel}
-        </span>
+        <span>{secondary}</span>
       </span>
     </div>
   );

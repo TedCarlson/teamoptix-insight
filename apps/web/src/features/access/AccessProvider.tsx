@@ -80,7 +80,11 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
-    loadAccess();
+    async function init() {
+      await loadAccess();
+    }
+
+    init();
 
     const supabase = getSupabaseBrowserClient();
 

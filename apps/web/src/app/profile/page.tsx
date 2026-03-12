@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useAccess } from "@/features/access/AccessProvider";
 import SiteHeader from "@/features/landing/components/SiteHeader";
 
@@ -28,7 +29,8 @@ export default function ProfilePage() {
     access.email ||
     "User";
 
-  const membershipCount = access.memberships?.length ?? 0;
+  const membershipCount = access.memberships.length;
+  const canCreateCompany = Boolean(access.is_platform_owner);
 
   return (
     <main className="landing-page">
@@ -40,17 +42,24 @@ export default function ProfilePage() {
             <p className="eyebrow">Profile</p>
             <h1>{access.loading ? "Loading" : name}</h1>
             <p className="lede">
-              Signed-in checkpoint surface for reviewing identity, profile state,
+              Signed-in checkpoint surface for reviewing identity, access posture,
               and next actions without forcing workflow progression.
             </p>
 
             <div className="cta-row">
-              <a className="button button-primary" href="/company/setup">
-                Create company
-              </a>
-              <a className="button" href="/">
+              {membershipCount > 0 ? (
+                <Link className="button button-primary" href="/companies">
+                  Go to companies
+                </Link>
+              ) : canCreateCompany ? (
+                <Link className="button button-primary" href="/company/setup">
+                  Create company
+                </Link>
+              ) : null}
+
+              <Link className="button" href="/">
                 Back to home
-              </a>
+              </Link>
             </div>
           </section>
 
@@ -100,12 +109,20 @@ export default function ProfilePage() {
           />
 
           <StatusCard
-            eyebrow="Next step"
-            title={membershipCount > 0 ? "Continue platform flow" : "Create or join a company"}
+            eyebrow="Company access"
+            title={
+              membershipCount > 0
+                ? "Directory available"
+                : canCreateCompany
+                  ? "Owner-gated access granted"
+                  : "Restricted to platform owner"
+            }
             body={
               membershipCount > 0
-                ? "You are ready for the next authenticated application surfaces."
-                : "You can create a company now, or return later without being forced forward."
+                ? "Use the company directory to enter a workspace and inspect modules."
+                : canCreateCompany
+                  ? "You can provision the first company workspace from this account."
+                  : "Company creation is intentionally gated and not available from this account."
             }
           />
         </div>
