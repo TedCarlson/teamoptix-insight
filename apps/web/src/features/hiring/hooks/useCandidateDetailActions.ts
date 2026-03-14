@@ -1,0 +1,110 @@
+import type {
+  ApiEventRow,
+  CandidateRecord,
+} from "@/features/hiring/lib/candidate-detail.types";
+
+type Args = {
+  slug: string;
+  rosterId: string;
+  setError: (value: string | null) => void;
+  setCandidate: React.Dispatch<React.SetStateAction<CandidateRecord | null>>;
+  setEvents: React.Dispatch<React.SetStateAction<ApiEventRow[]>>;
+};
+
+export function useCandidateDetailActions(args: Args) {
+  const { slug, rosterId, setError, setCandidate, setEvents } = args;
+
+  async function activateCandidate(
+    setActivating: (value: boolean) => void
+  ) {
+    try {
+      setActivating(true);
+      setError(null);
+
+      const res = await fetch(
+        `/api/company/${slug}/people/roster/${rosterId}/activate`,
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data?.error ?? "Failed to activate candidate.");
+        return;
+      }
+
+      setCandidate((current) =>
+        current
+          ? {
+              ...current,
+              employment_status: "Active",
+            }
+          : current
+      );
+    } catch {
+      setError("Failed to activate candidate.");
+    } finally {
+      setActivating(false);
+    }
+  }
+
+  async function sendInvite(
+    setInviting: (value: boolean) => void
+  ) {
+    try {
+      setInviting(true);
+      setError(null);
+
+      const res = await fetch(
+        `/api/company/${slug}/people/roster/${rosterId}/invite`,
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data?.error ?? "Failed to send invite.");
+        return;
+      }
+
+      setCandidate((current) =>
+        current
+          ? {
+              ...current,
+              invite_status: "Invited",
+            }
+          : current
+      );
+
+      setEvents((current) => [
+        {
+          id: `local-invite-${Date.now()}`,
+          company_id: "",
+          roster_id: rosterId,
+          event_category: "onboarding",
+          event_type: "invite_sent",
+          event_detail: "Invite sent from candidate detail.",
+          event_metadata: null,
+          occurred_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+        },
+        ...current,
+      ]);
+    } catch {
+      setError("Failed to send invite.");
+    } finally {
+      setInviting(false);
+    }
+  }
+
+  return {
+    activateCandidate,
+    sendInvite,
+  };
+}
