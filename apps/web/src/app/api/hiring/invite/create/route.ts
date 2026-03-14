@@ -66,7 +66,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const origin = new URL(req.url).origin;
+    const configuredBaseUrl = process.env.APP_BASE_URL?.trim();
+
+    const origin = configuredBaseUrl || new URL(req.url).origin;
 
     const inviteUrl = `${origin}/onboarding/invite/${token}`;
 

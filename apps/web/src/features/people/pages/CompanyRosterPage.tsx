@@ -127,11 +127,12 @@ export default function CompanyRosterPage() {
       setInviteError(null);
       setInviteMessage(null);
 
-      await sendInvite(slug, rosterId);
+      const result = await sendInvite(slug, rosterId);
+      const nextInviteStatus = String(result?.invite_status ?? "Invited");
 
       setRows((prev) =>
         prev.map((row) =>
-          row.id === rosterId ? { ...row, invite_status: "Invited" } : row
+          row.id === rosterId ? { ...row, invite_status: nextInviteStatus } : row
         )
       );
 
@@ -314,11 +315,6 @@ export default function CompanyRosterPage() {
 
                   <tbody>
                     {filteredRows.map((row) => {
-                      const inviteDisabled =
-                        row.status !== "Candidate" ||
-                        row.invite_status === "Invited" ||
-                        invitingRosterId === row.id;
-
                       let viewHref: string | null = null;
 
                       if (row.status === "Candidate") {
@@ -326,6 +322,11 @@ export default function CompanyRosterPage() {
                       } else if (row.status === "Active") {
                         viewHref = `/company/${slug}/people/active/${row.id}`;
                       }
+
+                      const inviteDisabled =
+                        row.status === "Former" ||
+                        row.invite_status === "Invited" ||
+                        invitingRosterId === row.id;
 
                       return (
                         <tr key={row.id}>
