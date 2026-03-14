@@ -52,6 +52,12 @@ async function sendInvite(slug: string, rosterId: string) {
   return data;
 }
 
+const cellStyle: React.CSSProperties = {
+  padding: "12px",
+  borderBottom: "1px solid #e6edf5",
+  verticalAlign: "top",
+};
+
 export default function CompanyRosterPage() {
   const params = useParams();
   const slug = String(params?.slug ?? "");
@@ -314,7 +320,10 @@ export default function CompanyRosterPage() {
 
                   <tbody>
                     {filteredRows.map((row) => {
+                      const canViewCandidate = row.status === "Candidate";
+
                       const inviteDisabled =
+                        row.status !== "Candidate" ||
                         row.invite_status === "Invited" ||
                         invitingRosterId === row.id;
 
@@ -330,9 +339,25 @@ export default function CompanyRosterPage() {
                           <td style={cellStyle}>{row.compliance}</td>
                           <td style={cellStyle}>
                             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                              <button type="button" className="button">
-                                View
-                              </button>
+                              {canViewCandidate ? (
+                                <Link
+                                  className="button"
+                                  href={`/company/${slug}/hiring/candidate/${row.id}`}
+                                >
+                                  View
+                                </Link>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="button"
+                                  disabled
+                                  title="Active and Former detail surfaces are next."
+                                  style={{ opacity: 0.6, cursor: "not-allowed" }}
+                                >
+                                  View
+                                </button>
+                              )}
+
                               <button
                                 type="button"
                                 className="button"
@@ -360,9 +385,3 @@ export default function CompanyRosterPage() {
     </main>
   );
 }
-
-const cellStyle: React.CSSProperties = {
-  padding: "12px",
-  borderBottom: "1px solid #e6edf5",
-  verticalAlign: "top",
-};
