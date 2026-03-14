@@ -228,6 +228,7 @@ export default function HiringCandidateDetailPage() {
   const [loadingOnboarding, setLoadingOnboarding] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activating, setActivating] = useState(false);
+  const [inviting, setInviting] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -363,6 +364,11 @@ export default function HiringCandidateDetailPage() {
     candidate?.employment_status === "Candidate" &&
     Boolean(candidate?.onboarding_completed_at);
 
+  const canInvite =
+    candidate?.employment_status === "Candidate" &&
+    candidate?.invite_status !== "Invited" &&
+    !onboarding?.has_session;
+
   async function activateCandidate() {
     try {
       setActivating(true);
@@ -395,6 +401,56 @@ export default function HiringCandidateDetailPage() {
       setError("Failed to activate candidate.");
     } finally {
       setActivating(false);
+    }
+  }
+
+  async function sendInvite() {
+    try {
+      setInviting(true);
+      setError(null);
+
+      const res = await fetch(
+        `/api/company/${slug}/people/roster/${rosterId}/invite`,
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data?.error ?? "Failed to send invite.");
+        return;
+      }
+
+      setCandidate((current) =>
+        current
+          ? {
+              ...current,
+              invite_status: "Invited",
+            }
+          : current
+      );
+
+      setEvents((current) => [
+        {
+          id: `local-invite-${Date.now()}`,
+          company_id: "",
+          roster_id: rosterId,
+          event_category: "onboarding",
+          event_type: "invite_sent",
+          event_detail: "Invite sent from candidate detail.",
+          event_metadata: null,
+          occurred_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+        },
+        ...current,
+      ]);
+    } catch {
+      setError("Failed to send invite.");
+    } finally {
+      setInviting(false);
     }
   }
 
@@ -634,8 +690,13 @@ export default function HiringCandidateDetailPage() {
 
           <DetailCard eyebrow="Actions" title="Next actions">
             <div className="cta-row">
-              <button className="button" type="button">
-                Send invite
+              <button
+                className="button"
+                type="button"
+                disabled={!canInvite || inviting}
+                onClick={sendInvite}
+              >
+                {inviting ? "Sending..." : candidate?.invite_status === "Invited" ? "Invited" : "Send invite"}
               </button>
               <button className="button" type="button">
                 Move stage

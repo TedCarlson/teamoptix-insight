@@ -5,20 +5,20 @@ export const runtime = "nodejs";
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: Promise<{ sessionId: string }> }
+  context: { params: Promise<{ sessionId: string }> }
 ) {
   try {
-    const { sessionId } = await params;
+    const { sessionId } = await context.params;
     const supabase = await getSupabaseServerClient();
 
-    const { data: steps, error: stepsError } = await supabase
+    const { data: steps, error } = await supabase
       .from("onboarding_step")
       .select("step_key, label, step_order")
       .order("step_order", { ascending: true });
 
-    if (stepsError) {
+    if (error) {
       return NextResponse.json(
-        { error: stepsError.message, steps: [] },
+        { error: error.message, steps: [] },
         { status: 500 }
       );
     }
@@ -56,7 +56,9 @@ export async function GET(
     return NextResponse.json({ steps: merged }, { status: 200 });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to load onboarding steps.";
+      error instanceof Error
+        ? error.message
+        : "Failed to load onboarding steps.";
 
     return NextResponse.json(
       { error: message, steps: [] },
