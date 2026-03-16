@@ -14,6 +14,9 @@ type ScheduleGridRowModel = {
   full_name: string;
   tech_id?: string | null;
 
+  role_label: string | null;
+  role_bucket: "DRIVER_HELPER" | "OTHER";
+
   preset_id: string | null;
   preset_code: string | null;
 
@@ -61,6 +64,7 @@ type Props = {
   onToggle: (rosterMemberId: string) => void;
   onClose: () => void;
   onSave: (draft: ScheduleBaselineDraft) => Promise<void>;
+  onRemove: (rosterMemberId: string) => Promise<void>;
 };
 
 function schedulePill(text: string, kind: "off" | "on") {
@@ -85,6 +89,86 @@ function schedulePill(text: string, kind: "off" | "on") {
       }}
     >
       {text}
+    </span>
+  );
+}
+
+function roleChip(roleLabel: string | null) {
+  const upper = (roleLabel ?? "").trim().toUpperCase();
+
+  if (!upper) return null;
+  if (!upper.includes("DRIVER") && !upper.includes("HELPER")) return null;
+
+  const label = upper.includes("HELPER") ? "Helper" : "Driver";
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        height: 20,
+        padding: "0 8px",
+        borderRadius: 999,
+        background: "#eef4ff",
+        border: "1px solid #c9d7f2",
+        color: "#32508f",
+        fontSize: 11,
+        fontWeight: 700,
+        lineHeight: 1,
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function rotationLabel(rotationMode: string | null) {
+  if (!rotationMode) return "—";
+  if (rotationMode === "NONE") return "None";
+  if (rotationMode === "WEEKEND_ALT") return "Weekend Alt";
+  return rotationMode.replaceAll("_", " ");
+}
+
+function rotationChip(rotationMode: string | null) {
+  if (!rotationMode || rotationMode === "NONE") {
+    return (
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          height: 20,
+          padding: "0 8px",
+          borderRadius: 999,
+          border: "1px solid #d6dfeb",
+          background: "#f8fafc",
+          color: "#64748b",
+          fontSize: 11,
+          fontWeight: 700,
+          lineHeight: 1,
+        }}
+      >
+        None
+      </span>
+    );
+  }
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        height: 20,
+        padding: "0 8px",
+        borderRadius: 999,
+        border: "1px solid #c9d7f2",
+        background: "#eef4ff",
+        color: "#32508f",
+        fontSize: 11,
+        fontWeight: 700,
+        lineHeight: 1,
+      }}
+    >
+      {rotationLabel(rotationMode)}
     </span>
   );
 }
@@ -121,6 +205,22 @@ const rowActionButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
+const removeButtonStyle: React.CSSProperties = {
+  appearance: "none",
+  WebkitAppearance: "none",
+  background: "#fff",
+  border: "1px solid #efc4be",
+  color: "#b42318",
+  minHeight: 36,
+  padding: "0 14px",
+  borderRadius: 12,
+  fontSize: 13,
+  fontWeight: 700,
+  lineHeight: 1,
+  boxShadow: "none",
+  cursor: "pointer",
+};
+
 export default function ScheduleGridRow(props: Props) {
   const {
     row,
@@ -131,6 +231,7 @@ export default function ScheduleGridRow(props: Props) {
     onToggle,
     onClose,
     onSave,
+    onRemove,
   } = props;
 
   const hasPreset = Boolean(row.preset_id);
@@ -151,8 +252,19 @@ export default function ScheduleGridRow(props: Props) {
     <>
       <tr>
         <td style={cellStyle}>
-          <div style={{ display: "grid", gap: 2 }}>
-            <span>{row.full_name}</span>
+          <div style={{ display: "grid", gap: 4 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
+              <span>{row.full_name}</span>
+              {roleChip(row.role_label)}
+            </div>
+
             <span
               style={{
                 fontSize: 11,
@@ -166,7 +278,18 @@ export default function ScheduleGridRow(props: Props) {
         </td>
 
         <td style={cellStyle}>
-          {row.preset_code ?? <span style={{ color: "#c62828" }}>—</span>}
+          <div
+            style={{
+              minWidth: 0,
+              fontSize: 12,
+              fontWeight: 600,
+              color: row.preset_code ? "#7b879c" : "#c62828",
+              lineHeight: 1.15,
+              wordBreak: "break-word",
+            }}
+          >
+            {row.preset_code ?? "—"}
+          </div>
         </td>
 
         <td style={compactCellStyle}>
@@ -213,7 +336,22 @@ export default function ScheduleGridRow(props: Props) {
         </td>
 
         <td style={cellStyle}>
-          {row.rotation_mode ?? <span style={{ color: "#64748b" }}>—</span>}
+          <div style={{ display: "grid", gap: 4 }}>
+            <div>{rotationChip(row.rotation_mode)}</div>
+            <span
+              style={{
+                fontSize: 11,
+                lineHeight: 1.2,
+                color: "#7b879c",
+              }}
+            >
+              {row.rotation_mode === "WEEKEND_ALT"
+                ? row.anchor_date
+                  ? `anchor ${row.anchor_date}`
+                  : "anchor pending"
+                : " "}
+            </span>
+          </div>
         </td>
 
         <td
@@ -251,38 +389,65 @@ export default function ScheduleGridRow(props: Props) {
             >
               <div
                 style={{
-                  marginBottom: 10,
-                  display: "flex",
-                  gap: 16,
-                  flexWrap: "wrap",
-                  fontSize: 12,
-                  color: "#5c6b84",
+                  marginBottom: 12,
+                  display: "grid",
+                  gap: 8,
                 }}
               >
-                <span>
-                  Anchor:{" "}
-                  <strong style={{ color: "#17213a" }}>
-                    {row.anchor_date ?? "will set on save"}
-                  </strong>
-                </span>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  {rotationChip(row.rotation_mode)}
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: "#5c6b84",
+                    }}
+                  >
+                    Rotation behavior is applied per person from this row’s
+                    schedule setup.
+                  </span>
+                </div>
 
-                {weekendPreview ? (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 16,
+                    flexWrap: "wrap",
+                    fontSize: 12,
+                    color: "#5c6b84",
+                  }}
+                >
                   <span>
-                    Next two weekend shifts:{" "}
+                    Anchor:{" "}
                     <strong style={{ color: "#17213a" }}>
-                      {weekendPreview.first}
-                    </strong>{" "}
-                    and{" "}
-                    <strong style={{ color: "#17213a" }}>
-                      {weekendPreview.second}
+                      {row.anchor_date ?? "will set on save"}
                     </strong>
                   </span>
-                ) : row.rotation_mode === "WEEKEND_ALT" ? (
-                  <span>
-                    Next two weekend shifts will calculate once anchor is
-                    established.
-                  </span>
-                ) : null}
+
+                  {weekendPreview ? (
+                    <span>
+                      Next two weekend shifts:{" "}
+                      <strong style={{ color: "#17213a" }}>
+                        {weekendPreview.first}
+                      </strong>{" "}
+                      and{" "}
+                      <strong style={{ color: "#17213a" }}>
+                        {weekendPreview.second}
+                      </strong>
+                    </span>
+                  ) : row.rotation_mode === "WEEKEND_ALT" ? (
+                    <span>
+                      Next two weekend shifts will calculate once anchor is
+                      established.
+                    </span>
+                  ) : null}
+                </div>
               </div>
 
               <ScheduleBaselineEditor
@@ -294,6 +459,25 @@ export default function ScheduleGridRow(props: Props) {
                 onClose={onClose}
                 onSave={onSave}
               />
+
+              {row.preset_id ? (
+                <div
+                  style={{
+                    marginTop: 12,
+                    display: "flex",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  <button
+                    type="button"
+                    style={removeButtonStyle}
+                    disabled={baselineBusy}
+                    onClick={() => onRemove(row.roster_member_id)}
+                  >
+                    Remove schedule
+                  </button>
+                </div>
+              ) : null}
             </div>
           </td>
         </tr>

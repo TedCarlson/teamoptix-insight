@@ -1,5 +1,7 @@
 "use client";
 
+type PeopleFilter = "drivers_helpers" | "others";
+
 type Props = {
   search: string;
   onSearchChange: (value: string) => void;
@@ -8,6 +10,8 @@ type Props = {
   rotationOptions: string[];
   pendingOnly: boolean;
   onPendingOnlyChange: (value: boolean) => void;
+  peopleFilter: PeopleFilter;
+  onPeopleFilterChange: (value: PeopleFilter) => void;
 };
 
 const inputStyle: React.CSSProperties = {
@@ -27,6 +31,8 @@ export default function ScheduleFilters(props: Props) {
     rotationOptions,
     pendingOnly,
     onPendingOnlyChange,
+    peopleFilter,
+    onPeopleFilterChange,
   } = props;
 
   return (
@@ -35,7 +41,7 @@ export default function ScheduleFilters(props: Props) {
         display: "grid",
         gap: 12,
         gridTemplateColumns:
-          "minmax(240px, 1.2fr) minmax(180px, 0.7fr) minmax(180px, 0.7fr)",
+          "minmax(240px, 1.15fr) minmax(170px, 0.65fr) minmax(170px, 0.65fr) minmax(190px, 0.75fr)",
       }}
     >
       <input
@@ -78,6 +84,17 @@ export default function ScheduleFilters(props: Props) {
         />
         <span>Pending only</span>
       </label>
+
+      <select
+        value={peopleFilter}
+        onChange={(e) =>
+          onPeopleFilterChange(e.target.value as PeopleFilter)
+        }
+        style={inputStyle}
+      >
+        <option value="drivers_helpers">Drivers / Helpers</option>
+        <option value="others">All others</option>
+      </select>
     </div>
   );
 }

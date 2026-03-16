@@ -3,9 +3,10 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-type RosterRow = {
-  roster_member_id: string;
-  full_name: string | null;
+type RosterRecord = {
+  roster_member_id?: string | null;
+  full_name?: string | null;
+  [key: string]: unknown;
 };
 
 type BaselineRow = {
@@ -36,6 +37,38 @@ type PresetRow = {
   uses_rotation: boolean;
 };
 
+function normalizeRoleLabel(record: RosterRecord): string | null {
+  const candidates = [
+    record.role_label,
+    record.role_name,
+    record.role,
+    record.worker_type,
+    record.employee_type,
+    record.position_type,
+    record.position_title,
+    record.job_title,
+    record.labor_role,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  return null;
+}
+
+function classifyRoleBucket(roleLabel: string | null): "DRIVER_HELPER" | "OTHER" {
+  const value = (roleLabel ?? "").trim().toUpperCase();
+
+  if (value.includes("DRIVER") || value.includes("HELPER")) {
+    return "DRIVER_HELPER";
+  }
+
+  return "OTHER";
+}
+
 export async function GET(
   _req: NextRequest,
   context: { params: Promise<{ slug: string }> }
@@ -59,7 +92,7 @@ export async function GET(
 
     const { data: rosterData, error: rosterErr } = await sb
       .from("company_roster_view")
-      .select("roster_member_id, full_name")
+      .select("*")
       .eq("company_id", company.id)
       .eq("employment_status", "Active")
       .order("full_name");
@@ -71,10 +104,10 @@ export async function GET(
       );
     }
 
-    const rosterRows = (rosterData ?? []) as RosterRow[];
+    const rosterRows = (rosterData ?? []) as RosterRecord[];
     const rosterIds = rosterRows
       .map((row) => row.roster_member_id)
-      .filter(Boolean);
+      .filter((value): value is string => Boolean(value));
 
     let baselineRows: BaselineRow[] = [];
 
@@ -161,42 +194,62 @@ export async function GET(
       presetById.set(row.id, row);
     }
 
-    const rows = rosterRows.map((roster) => {
-      const baseline = baselineByRosterId.get(roster.roster_member_id) ?? null;
-      const preset =
-        baseline?.preset_id != null
-          ? presetById.get(baseline.preset_id) ?? null
-          : null;
+    const rows = rosterRows
+      .filter((roster): roster is RosterRecord & { roster_member_id: string } =>
+        Boolean(roster.roster_member_id)
+      )
+      .map((roster) => {
+        const baseline = baselineByRosterId.get(roster.roster_member_id) ?? null;
+        const preset =
+          baseline?.preset_id != null
+            ? presetById.get(baseline.preset_id) ?? null
+            : null;
 
-      return {
-        roster_member_id: roster.roster_member_id,
-        full_name: roster.full_name ?? "Unnamed worker",
-        tech_id: null,
+        const roleLabel = normalizeRoleLabel(roster);
+        const roleBucket = classifyRoleBucket(roleLabel);
 
-        preset_id: baseline?.preset_id ?? null,
-        preset_code: preset?.preset_code ?? null,
+        return {
+          roster_member_id: roster.roster_member_id,
+          full_name:
+            typeof roster.full_name === "string" && roster.full_name.trim()
+              ? roster.full_name.trim()
+              : "Unnamed worker",
 
-        preset_works_s: preset?.works_s ?? null,
-        preset_works_u: preset?.works_u ?? null,
-        preset_works_m: preset?.works_m ?? null,
-        preset_works_t: preset?.works_t ?? null,
-        preset_works_w: preset?.works_w ?? null,
-        preset_works_h: preset?.works_h ?? null,
-        preset_works_f: preset?.works_f ?? null,
+          tech_id:
+            typeof roster.tech_id === "string"
+              ? roster.tech_id
+              : typeof roster.tech_num === "string"
+                ? roster.tech_num
+                : null,
 
-        rotation_mode: baseline?.rotation_mode ?? null,
+          role_label: roleLabel,
+          role_bucket: roleBucket,
 
-        default_route_s: baseline?.default_route_s ?? null,
-        default_route_u: baseline?.default_route_u ?? null,
-        default_route_m: baseline?.default_route_m ?? null,
-        default_route_t: baseline?.default_route_t ?? null,
-        default_route_w: baseline?.default_route_w ?? null,
-        default_route_h: baseline?.default_route_h ?? null,
-        default_route_f: baseline?.default_route_f ?? null,
+          preset_id: baseline?.preset_id ?? null,
+          preset_code: preset?.preset_code ?? null,
 
-        schedule_pending: !baseline?.preset_id,
-      };
-    });
+          preset_works_s: preset?.works_s ?? null,
+          preset_works_u: preset?.works_u ?? null,
+          preset_works_m: preset?.works_m ?? null,
+          preset_works_t: preset?.works_t ?? null,
+          preset_works_w: preset?.works_w ?? null,
+          preset_works_h: preset?.works_h ?? null,
+          preset_works_f: preset?.works_f ?? null,
+
+          rotation_mode: baseline?.rotation_mode ?? null,
+          anchor_date: baseline?.anchor_date ?? null,
+
+          default_route_s: baseline?.default_route_s ?? null,
+          default_route_u: baseline?.default_route_u ?? null,
+          default_route_m: baseline?.default_route_m ?? null,
+          default_route_t: baseline?.default_route_t ?? null,
+          default_route_w: baseline?.default_route_w ?? null,
+          default_route_h: baseline?.default_route_h ?? null,
+          default_route_f: baseline?.default_route_f ?? null,
+
+          schedule_pending: !baseline?.preset_id,
+        };
+      });
 
     return NextResponse.json({
       company_id: company.id,

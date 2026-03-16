@@ -8,15 +8,15 @@ import ScheduleFilters from "@/features/schedule/components/ScheduleFilters";
 import ScheduleGrid from "@/features/schedule/components/ScheduleGrid";
 import SchedulePostureBand from "@/features/schedule/components/SchedulePostureBand";
 import type { ScheduleBaselineDraft } from "@/features/schedule/components/ScheduleBaselineEditor";
-import type {
-  DayCounts,
-  DayKey,
-} from "@/features/schedule/lib/scheduleWorkbench";
+import type { DayCounts } from "@/features/schedule/lib/scheduleWorkbench";
 
 type ScheduleGridRow = {
   roster_member_id: string;
   full_name: string;
   tech_id?: string | null;
+
+  role_label: string | null;
+  role_bucket: "DRIVER_HELPER" | "OTHER";
 
   preset_id: string | null;
   preset_code: string | null;
@@ -66,6 +66,8 @@ type RouteRow = {
   runs_f: boolean;
 };
 
+type PeopleFilter = "drivers_helpers" | "others";
+
 const EMPTY_BASELINE_DRAFT: ScheduleBaselineDraft = {
   preset_id: "",
   rotation_mode: "NONE",
@@ -108,6 +110,8 @@ export default function ScheduleLandingPage() {
   const [search, setSearch] = useState("");
   const [pendingOnly, setPendingOnly] = useState(false);
   const [rotationFilter, setRotationFilter] = useState("ALL");
+  const [peopleFilter, setPeopleFilter] =
+    useState<PeopleFilter>("drivers_helpers");
 
   const [inlineOpenRosterId, setInlineOpenRosterId] = useState<string | null>(
     null
@@ -234,9 +238,19 @@ export default function ScheduleLandingPage() {
             ? !row.rotation_mode
             : row.rotation_mode === rotationFilter;
 
-      return matchesSearch && matchesPending && matchesRotation;
+      const matchesPeople =
+        peopleFilter === "drivers_helpers"
+          ? row.role_bucket === "DRIVER_HELPER"
+          : row.role_bucket === "OTHER";
+
+      return (
+        matchesSearch &&
+        matchesPending &&
+        matchesRotation &&
+        matchesPeople
+      );
     });
-  }, [rows, search, pendingOnly, rotationFilter]);
+  }, [rows, search, pendingOnly, rotationFilter, peopleFilter]);
 
   const routeTotals = useMemo<DayCounts>(() => routeDemand, [routeDemand]);
 
@@ -268,11 +282,6 @@ export default function ScheduleLandingPage() {
       f: headcountTotals.f - routeTotals.f,
     };
   }, [headcountTotals, routeTotals]);
-
-  const selectedRow = useMemo(
-    () => rows.find((row) => row.roster_member_id === inlineOpenRosterId) ?? null,
-    [rows, inlineOpenRosterId]
-  );
 
   function getBaselineDraft(row: ScheduleGridRow): ScheduleBaselineDraft {
     return {
@@ -318,6 +327,37 @@ export default function ScheduleLandingPage() {
       await loadRouteDemand();
     } catch {
       setError("Failed to save schedule baseline.");
+    } finally {
+      setBaselineBusy(false);
+    }
+  }
+
+  async function handleRemoveSchedule(rosterMemberId: string) {
+    try {
+      setBaselineBusy(true);
+      setError(null);
+
+      const res = await fetch(
+        `/api/company/${slug}/schedule/${rosterMemberId}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data?.error ?? "Failed to remove schedule.");
+        return;
+      }
+
+      setInlineOpenRosterId(null);
+      await loadSchedule();
+      await loadPresets();
+      await loadRouteDemand();
+    } catch {
+      setError("Failed to remove schedule.");
     } finally {
       setBaselineBusy(false);
     }
@@ -426,6 +466,8 @@ export default function ScheduleLandingPage() {
               rotationOptions={rotationOptions}
               pendingOnly={pendingOnly}
               onPendingOnlyChange={setPendingOnly}
+              peopleFilter={peopleFilter}
+              onPeopleFilterChange={setPeopleFilter}
             />
 
             <SchedulePostureBand
@@ -444,6 +486,7 @@ export default function ScheduleLandingPage() {
               onToggleInlineEditor={handleToggleInlineEditor}
               onCloseInlineEditor={handleCloseInlineEditor}
               onSaveBaseline={handleSaveBaseline}
+              onRemoveSchedule={handleRemoveSchedule}
             />
 
             <div

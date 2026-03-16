@@ -12,118 +12,226 @@ type Props = {
   deltaTotals: DayCounts;
 };
 
-const cellStyle: React.CSSProperties = {
-  padding: "10px 10px",
-  borderBottom: "1px solid #e6edf5",
-  verticalAlign: "middle",
-  background: "#fff",
-};
+const DAY_KEYS: DayKey[] = ["s", "u", "m", "t", "w", "h", "f"];
 
-const compactCellStyle: React.CSSProperties = {
-  padding: "8px 2px",
-  borderBottom: "1px solid #e6edf5",
-  verticalAlign: "middle",
-  textAlign: "center",
-  background: "#fff",
-};
+function sumCounts(counts: DayCounts) {
+  return DAY_KEYS.reduce((sum, key) => sum + counts[key], 0);
+}
+
+const TRACKS = "18% 10% 7.5% 7.5% 7.5% 7.5% 7.5% 7.5% 7.5% 10% 8%";
 
 export default function SchedulePostureBand(props: Props) {
   const { headcountTotals, routeTotals, deltaTotals } = props;
+
+  const driverWeekTotal = sumCounts(headcountTotals);
+  const routeWeekTotal = sumCounts(routeTotals);
+  const deltaWeekTotal = sumCounts(deltaTotals);
 
   return (
     <div
       style={{
         marginTop: 16,
-        display: "grid",
-        gridTemplateColumns: "18% 10% repeat(7, 7.5%) 10% 8%",
         border: "1px solid #d6dfeb",
         borderRadius: 28,
-        overflow: "hidden",
         background: "#fff",
+        overflow: "hidden",
       }}
     >
-      <div style={{ ...cellStyle, borderBottom: "none", fontWeight: 800 }}>
-        Posture
+      <div
+        style={{
+          padding: "12px 0",
+          textAlign: "center",
+          fontSize: 14,
+          fontWeight: 800,
+          color: "#17213a",
+        }}
+      >
+        Forecast
       </div>
-      <div style={{ ...cellStyle, borderBottom: "none" }} />
 
-      {(["s", "u", "m", "t", "w", "h", "f"] as DayKey[]).map((key) => {
-        const tone = deltaTone(deltaTotals[key], routeTotals[key]);
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: TRACKS,
+          padding: "0 14px 16px",
+          columnGap: 0,
+          rowGap: 8,
+          alignItems: "center",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            color: "#5c6b84",
+          }}
+        >
+          Day
+        </div>
 
-        return (
+        <div />
+        {DAY_KEYS.map((key) => (
           <div
-            key={key}
+            key={`day-${key}`}
             style={{
-              ...compactCellStyle,
-              borderBottom: "none",
-              paddingTop: 10,
-              paddingBottom: 10,
+              textAlign: "center",
+              fontSize: 12,
+              fontWeight: 800,
+              color: "#5c6b84",
             }}
           >
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 800,
-                color: "#5c6b84",
-                marginBottom: 6,
-              }}
-            >
-              {key.toUpperCase()}
-            </div>
-
-            <div style={{ fontSize: 10, color: "#64748b" }}>HC</div>
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 800,
-                color: "#0f172a",
-              }}
-            >
-              {headcountTotals[key]}
-            </div>
-
-            <div style={{ fontSize: 10, color: "#64748b", marginTop: 4 }}>
-              RT
-            </div>
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 800,
-                color: "#0f172a",
-              }}
-            >
-              {routeTotals[key]}
-            </div>
-
-            <div style={{ fontSize: 10, color: "#64748b", marginTop: 4 }}>
-              Δ
-            </div>
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                minWidth: 34,
-                height: 20,
-                padding: "0 8px",
-                borderRadius: 999,
-                border: `1px solid ${String(tone.border)}`,
-                background: String(tone.background),
-                color: String(tone.color),
-                fontSize: 11,
-                fontWeight: 800,
-                lineHeight: 1,
-                marginTop: 2,
-              }}
-            >
-              {deltaTotals[key]}
-            </div>
+            {key.toUpperCase()}
           </div>
-        );
-      })}
+        ))}
+        <div />
+        <div
+          style={{
+            textAlign: "center",
+            fontSize: 12,
+            fontWeight: 700,
+            color: "#5c6b84",
+          }}
+        >
+          Weekly Totals
+        </div>
 
-      <div style={{ ...cellStyle, borderBottom: "none" }} />
-      <div style={{ ...cellStyle, borderBottom: "none" }} />
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            color: "#5c6b84",
+          }}
+        >
+          Drivers
+        </div>
+
+        <div />
+        {DAY_KEYS.map((key) => (
+          <div
+            key={`drivers-${key}`}
+            style={{
+              textAlign: "center",
+              fontSize: 18,
+              fontWeight: 600,
+              color: "#17213a",
+            }}
+          >
+            {headcountTotals[key]}
+          </div>
+        ))}
+        <div />
+        <div
+          style={{
+            textAlign: "center",
+            fontSize: 18,
+            fontWeight: 600,
+            color: "#17213a",
+          }}
+        >
+          {driverWeekTotal}
+        </div>
+
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            color: "#7b879c",
+          }}
+        >
+          Routes
+        </div>
+
+        <div />
+        {DAY_KEYS.map((key) => (
+          <div
+            key={`routes-${key}`}
+            style={{
+              textAlign: "center",
+              fontSize: 15,
+              fontWeight: 500,
+              color: "#7b879c",
+            }}
+          >
+            {routeTotals[key]}
+          </div>
+        ))}
+        <div />
+        <div
+          style={{
+            textAlign: "center",
+            fontSize: 15,
+            fontWeight: 500,
+            color: "#7b879c",
+          }}
+        >
+          {routeWeekTotal}
+        </div>
+
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            color: "#5c6b84",
+          }}
+        >
+          Deltas
+        </div>
+
+        <div />
+        {DAY_KEYS.map((key) => {
+          const tone = deltaTone(deltaTotals[key], routeTotals[key]);
+
+          return (
+            <div key={`delta-${key}`} style={{ textAlign: "center" }}>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minWidth: 38,
+                  height: 20,
+                  padding: "0 10px",
+                  borderRadius: 999,
+                  border: `1px solid ${String(tone.border)}`,
+                  background: String(tone.background),
+                  color: String(tone.color),
+                  fontSize: 11,
+                  fontWeight: 800,
+                }}
+              >
+                {deltaTotals[key]}
+              </span>
+            </div>
+          );
+        })}
+        <div />
+        {(() => {
+          const tone = deltaTone(deltaWeekTotal, routeWeekTotal);
+
+          return (
+            <div style={{ textAlign: "center" }}>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minWidth: 42,
+                  height: 20,
+                  padding: "0 10px",
+                  borderRadius: 999,
+                  border: `1px solid ${String(tone.border)}`,
+                  background: String(tone.background),
+                  color: String(tone.color),
+                  fontSize: 11,
+                  fontWeight: 800,
+                }}
+              >
+                {deltaWeekTotal}
+              </span>
+            </div>
+          );
+        })()}
+      </div>
     </div>
   );
 }

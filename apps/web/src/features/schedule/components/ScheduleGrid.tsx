@@ -8,6 +8,9 @@ type ScheduleGridRowModel = {
   full_name: string;
   tech_id?: string | null;
 
+  role_label: string | null;
+  role_bucket: "DRIVER_HELPER" | "OTHER";
+
   preset_id: string | null;
   preset_code: string | null;
 
@@ -56,6 +59,7 @@ type Props = {
   onToggleInlineEditor: (rosterMemberId: string) => void;
   onCloseInlineEditor: () => void;
   onSaveBaseline: (draft: ScheduleBaselineDraft) => Promise<void>;
+  onRemoveSchedule: (rosterMemberId: string) => Promise<void>;
 };
 
 const headerBaseStyle: React.CSSProperties = {
@@ -91,6 +95,7 @@ export default function ScheduleGrid(props: Props) {
     onToggleInlineEditor,
     onCloseInlineEditor,
     onSaveBaseline,
+    onRemoveSchedule,
   } = props;
 
   const stickyTopHeader = 0;
@@ -180,6 +185,7 @@ export default function ScheduleGrid(props: Props) {
                 onToggle={onToggleInlineEditor}
                 onClose={onCloseInlineEditor}
                 onSave={onSaveBaseline}
+                onRemove={onRemoveSchedule}
               />
             ))
           )}
