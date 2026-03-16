@@ -57,6 +57,12 @@ export function useActivePersonDetailData(slug: string, rosterId: string) {
           invite_status: found.invite_status ?? "Not Invited",
           compliance_summary: found.compliance_summary ?? "Missing",
           onboarding_completed_at: found.onboarding_completed_at ?? null,
+
+          dswid: found.dswid ?? null,
+          dot_expiration_date: found.dot_expiration_date ?? null,
+          qual_cert_expiration_date: found.qual_cert_expiration_date ?? null,
+          daily_pay: found.daily_pay ?? null,
+          scanner_serial: found.scanner_serial ?? null,
         });
       } catch {
         if (!active) return;

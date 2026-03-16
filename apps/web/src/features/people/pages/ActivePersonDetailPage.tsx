@@ -9,6 +9,7 @@ import PersonStatusCard from "@/features/people/components/person-detail/PersonS
 import PersonIdentifiersCard from "@/features/people/components/person-detail/PersonIdentifiersCard";
 import PersonTimelinePanel from "@/features/people/components/person-detail/PersonTimelinePanel";
 import ActiveOperationalPanel from "@/features/people/components/person-detail/ActiveOperationalPanel";
+import ActiveOperationsEditor from "@/features/people/components/person-detail/ActiveOperationsEditor";
 import { useActivePersonDetailData } from "@/features/people/hooks/useActivePersonDetailData";
 import { useActivePersonDetailActions } from "@/features/people/hooks/useActivePersonDetailActions";
 
@@ -33,6 +34,43 @@ export default function ActivePersonDetailPage() {
     setError: setActionError,
     setPerson,
   });
+
+  async function saveOperations(draft: {
+    dswid: string;
+    dot_expiration_date: string;
+    qual_cert_expiration_date: string;
+    daily_pay: boolean;
+    scanner_serial: string;
+  }) {
+    setActionError(null);
+
+    const res = await fetch(
+      `/api/company/${slug}/people/roster/${rosterId}/operations`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(draft),
+        credentials: "include",
+      }
+    );
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data?.error ?? "Update failed");
+    }
+
+    setPerson((prev) =>
+      prev
+        ? {
+            ...prev,
+            ...draft,
+          }
+        : prev
+    );
+  }
 
   const displayError = actionError ?? error;
 
@@ -91,6 +129,12 @@ export default function ActivePersonDetailPage() {
           <ActiveOperationalPanel
             person={person}
             loading={loadingPerson}
+          />
+
+          <ActiveOperationsEditor
+            person={person}
+            loading={loadingPerson}
+            onSave={saveOperations}
           />
 
           <PersonTimelinePanel

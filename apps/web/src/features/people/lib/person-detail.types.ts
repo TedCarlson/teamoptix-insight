@@ -9,6 +9,12 @@ export type ApiRosterRow = {
   invite_status: string | null;
   compliance_summary: string | null;
   onboarding_completed_at?: string | null;
+
+  dswid?: string | null;
+  dot_expiration_date?: string | null;
+  qual_cert_expiration_date?: string | null;
+  daily_pay?: boolean | null;
+  scanner_serial?: string | null;
 };
 
 export type ApiEventRow = {
@@ -34,4 +40,10 @@ export type PersonRecord = {
   invite_status: string;
   compliance_summary: string;
   onboarding_completed_at: string | null;
+
+  dswid: string | null;
+  dot_expiration_date: string | null;
+  qual_cert_expiration_date: string | null;
+  daily_pay: boolean | null;
+  scanner_serial: string | null;
 };

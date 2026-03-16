@@ -278,9 +278,15 @@ export default function CompanyPage() {
             <div className="cta-row" style={{ marginTop: 14 }}>
               <Link
                 className="button button-primary"
-                href={`/company/${slug}/activity`}
+                href={`/company/${slug}/schedule`}
               >
-                Open Activity
+                Schedule
+              </Link>
+              <Link
+                className="button"
+                href={`/company/${slug}/routes`}
+              >
+                Routes
               </Link>
             </div>
           </SectionCard>
@@ -418,5 +424,4 @@ const inputStyle: React.CSSProperties = {
 const inputStyleDisabled: React.CSSProperties = {
   ...inputStyle,
   background: "#f4f7fb",
-  color: "#5c6b84",
 };
