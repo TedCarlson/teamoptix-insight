@@ -1,6 +1,9 @@
 "use client";
 
-import type { ScheduleBaselineDraft } from "@/features/schedule/components/ScheduleBaselineEditor";
+import type {
+  RouteOption,
+  ScheduleBaselineDraft,
+} from "@/features/schedule/components/ScheduleBaselineEditor";
 import ScheduleGridRow from "@/features/schedule/components/ScheduleGridRow";
 
 type ScheduleGridRowModel = {
@@ -24,6 +27,7 @@ type ScheduleGridRowModel = {
 
   rotation_mode: string | null;
   anchor_date: string | null;
+  effective_start: string | null;
 
   default_route_s: string | null;
   default_route_u: string | null;
@@ -53,6 +57,7 @@ type Props = {
   loading: boolean;
   rows: ScheduleGridRowModel[];
   presets: SchedulePresetRow[];
+  routeOptions: RouteOption[];
   inlineOpenRosterId: string | null;
   baselineBusy: boolean;
   getBaselineDraft: (row: ScheduleGridRowModel) => ScheduleBaselineDraft;
@@ -89,6 +94,7 @@ export default function ScheduleGrid(props: Props) {
     loading,
     rows,
     presets,
+    routeOptions,
     inlineOpenRosterId,
     baselineBusy,
     getBaselineDraft,
@@ -180,6 +186,7 @@ export default function ScheduleGrid(props: Props) {
                 row={row}
                 isOpen={inlineOpenRosterId === row.roster_member_id}
                 presets={presets}
+                routeOptions={routeOptions}
                 baselineBusy={baselineBusy}
                 baselineDraft={getBaselineDraft(row)}
                 onToggle={onToggleInlineEditor}

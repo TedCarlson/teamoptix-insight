@@ -15,6 +15,7 @@ type BaselineRow = {
   preset_id: string | null;
   rotation_mode: string | null;
   anchor_date: string | null;
+  effective_start: string | null;
   default_route_s: string | null;
   default_route_u: string | null;
   default_route_m: string | null;
@@ -120,6 +121,7 @@ export async function GET(
           preset_id,
           rotation_mode,
           anchor_date,
+          effective_start,
           default_route_s,
           default_route_u,
           default_route_m,
@@ -238,6 +240,7 @@ export async function GET(
 
           rotation_mode: baseline?.rotation_mode ?? null,
           anchor_date: baseline?.anchor_date ?? null,
+          effective_start: baseline?.effective_start ?? null,
 
           default_route_s: baseline?.default_route_s ?? null,
           default_route_u: baseline?.default_route_u ?? null,

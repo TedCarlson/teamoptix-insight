@@ -7,7 +7,10 @@ import SiteHeader from "@/features/landing/components/SiteHeader";
 import ScheduleFilters from "@/features/schedule/components/ScheduleFilters";
 import ScheduleGrid from "@/features/schedule/components/ScheduleGrid";
 import SchedulePostureBand from "@/features/schedule/components/SchedulePostureBand";
-import type { ScheduleBaselineDraft } from "@/features/schedule/components/ScheduleBaselineEditor";
+import type {
+  RouteOption,
+  ScheduleBaselineDraft,
+} from "@/features/schedule/components/ScheduleBaselineEditor";
 import type { DayCounts } from "@/features/schedule/lib/scheduleWorkbench";
 
 type ScheduleGridRow = {
@@ -31,6 +34,7 @@ type ScheduleGridRow = {
 
   rotation_mode: string | null;
   anchor_date: string | null;
+  effective_start: string | null;
 
   default_route_s: string | null;
   default_route_u: string | null;
@@ -57,6 +61,8 @@ type SchedulePresetRow = {
 };
 
 type RouteRow = {
+  route_name: string | null;
+  current_wa_num: string | null;
   runs_s: boolean;
   runs_u: boolean;
   runs_m: boolean;
@@ -68,18 +74,6 @@ type RouteRow = {
 
 type PeopleFilter = "drivers_helpers" | "others";
 
-const EMPTY_BASELINE_DRAFT: ScheduleBaselineDraft = {
-  preset_id: "",
-  rotation_mode: "NONE",
-  default_route_s: "",
-  default_route_u: "",
-  default_route_m: "",
-  default_route_t: "",
-  default_route_w: "",
-  default_route_h: "",
-  default_route_f: "",
-};
-
 const toolbarButtonStyle: React.CSSProperties = {
   minHeight: 46,
   padding: "0 22px",
@@ -88,12 +82,17 @@ const toolbarButtonStyle: React.CSSProperties = {
   fontWeight: 700,
 };
 
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export default function ScheduleLandingPage() {
   const params = useParams();
   const slug = String(params?.slug ?? "");
 
   const [rows, setRows] = useState<ScheduleGridRow[]>([]);
   const [presets, setPresets] = useState<SchedulePresetRow[]>([]);
+  const [routeOptions, setRouteOptions] = useState<RouteOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -165,7 +164,7 @@ export default function ScheduleLandingPage() {
     }
   }
 
-  async function loadRouteDemand() {
+  async function loadRoutes() {
     try {
       const res = await fetch(`/api/company/${slug}/routes`, {
         credentials: "include",
@@ -175,6 +174,7 @@ export default function ScheduleLandingPage() {
       if (!res.ok) return;
 
       const routes = (data?.routes ?? []) as RouteRow[];
+
       const counts: DayCounts = { s: 0, u: 0, m: 0, t: 0, w: 0, h: 0, f: 0 };
 
       for (const r of routes) {
@@ -188,6 +188,34 @@ export default function ScheduleLandingPage() {
       }
 
       setRouteDemand(counts);
+
+      const options = routes
+        .map((route) => {
+          const wa = (route.current_wa_num ?? "").trim();
+          const name = (route.route_name ?? "").trim();
+
+          if (!wa && !name) return null;
+
+          if (wa && name) {
+            return {
+              value: wa,
+              label: `${wa} · ${name}`,
+            };
+          }
+
+          const value = wa || name;
+          return {
+            value,
+            label: value,
+          };
+        })
+        .filter((route): route is RouteOption => Boolean(route));
+
+      const deduped = Array.from(
+        new Map(options.map((option) => [option.value, option])).values()
+      );
+
+      setRouteOptions(deduped);
     } catch {
       // silent
     }
@@ -197,7 +225,7 @@ export default function ScheduleLandingPage() {
     if (!slug) return;
     loadSchedule();
     loadPresets();
-    loadRouteDemand();
+    loadRoutes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
@@ -287,6 +315,7 @@ export default function ScheduleLandingPage() {
     return {
       preset_id: row.preset_id ?? "",
       rotation_mode: row.rotation_mode ?? "NONE",
+      effective_start: row.effective_start ?? todayIso(),
       default_route_s: row.default_route_s ?? "",
       default_route_u: row.default_route_u ?? "",
       default_route_m: row.default_route_m ?? "",
@@ -324,7 +353,7 @@ export default function ScheduleLandingPage() {
       setInlineOpenRosterId(null);
       await loadSchedule();
       await loadPresets();
-      await loadRouteDemand();
+      await loadRoutes();
     } catch {
       setError("Failed to save schedule baseline.");
     } finally {
@@ -355,7 +384,7 @@ export default function ScheduleLandingPage() {
       setInlineOpenRosterId(null);
       await loadSchedule();
       await loadPresets();
-      await loadRouteDemand();
+      await loadRoutes();
     } catch {
       setError("Failed to remove schedule.");
     } finally {
@@ -402,11 +431,7 @@ export default function ScheduleLandingPage() {
               <div>
                 <p
                   className="value-card__eyebrow"
-                  style={{
-                    marginBottom: 4,
-                    fontSize: 12,
-                    letterSpacing: "0.08em",
-                  }}
+                  style={{ marginBottom: 4, fontSize: 12, letterSpacing: "0.08em" }}
                 >
                   Schedule
                 </p>
@@ -419,18 +444,10 @@ export default function ScheduleLandingPage() {
               </div>
 
               <div className="cta-row" style={{ marginTop: 0, gap: 10 }}>
-                <Link
-                  className="button"
-                  href={`/company/${slug}`}
-                  style={toolbarButtonStyle}
-                >
+                <Link className="button" href={`/company/${slug}`} style={toolbarButtonStyle}>
                   Back
                 </Link>
-                <Link
-                  className="button"
-                  href={`/company/${slug}/routes`}
-                  style={toolbarButtonStyle}
-                >
+                <Link className="button" href={`/company/${slug}/routes`} style={toolbarButtonStyle}>
                   Routes
                 </Link>
                 <Link
@@ -480,6 +497,7 @@ export default function ScheduleLandingPage() {
               loading={loading}
               rows={filteredRows}
               presets={presets}
+              routeOptions={routeOptions}
               inlineOpenRosterId={inlineOpenRosterId}
               baselineBusy={baselineBusy}
               getBaselineDraft={getBaselineDraft}

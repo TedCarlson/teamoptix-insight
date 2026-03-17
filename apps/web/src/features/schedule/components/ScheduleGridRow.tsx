@@ -1,6 +1,7 @@
 "use client";
 
 import ScheduleBaselineEditor, {
+  type RouteOption,
   type ScheduleBaselineDraft,
 } from "@/features/schedule/components/ScheduleBaselineEditor";
 import {
@@ -30,6 +31,7 @@ type ScheduleGridRowModel = {
 
   rotation_mode: string | null;
   anchor_date: string | null;
+  effective_start: string | null;
 
   default_route_s: string | null;
   default_route_u: string | null;
@@ -59,6 +61,7 @@ type Props = {
   row: ScheduleGridRowModel;
   isOpen: boolean;
   presets: SchedulePresetRow[];
+  routeOptions: RouteOption[];
   baselineBusy: boolean;
   baselineDraft: ScheduleBaselineDraft;
   onToggle: (rosterMemberId: string) => void;
@@ -226,6 +229,7 @@ export default function ScheduleGridRow(props: Props) {
     row,
     isOpen,
     presets,
+    routeOptions,
     baselineBusy,
     baselineDraft,
     onToggle,
@@ -424,6 +428,13 @@ export default function ScheduleGridRow(props: Props) {
                   }}
                 >
                   <span>
+                    Start:{" "}
+                    <strong style={{ color: "#17213a" }}>
+                      {row.effective_start ?? "will set on save"}
+                    </strong>
+                  </span>
+
+                  <span>
                     Anchor:{" "}
                     <strong style={{ color: "#17213a" }}>
                       {row.anchor_date ?? "will set on save"}
@@ -451,10 +462,12 @@ export default function ScheduleGridRow(props: Props) {
               </div>
 
               <ScheduleBaselineEditor
+                key={`${row.roster_member_id}:${baselineDraft.preset_id}:${baselineDraft.rotation_mode}:${baselineDraft.effective_start}`}
                 open={true}
                 busy={baselineBusy}
                 driverName={row.full_name}
                 presetOptions={presets}
+                routeOptions={routeOptions}
                 initialDraft={baselineDraft}
                 onClose={onClose}
                 onSave={onSave}

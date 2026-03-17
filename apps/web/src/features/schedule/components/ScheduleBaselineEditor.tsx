@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 type PresetOption = {
   id: string;
@@ -15,9 +15,15 @@ type PresetOption = {
   uses_rotation: boolean;
 };
 
+export type RouteOption = {
+  value: string;
+  label: string;
+};
+
 export type ScheduleBaselineDraft = {
   preset_id: string;
   rotation_mode: string;
+  effective_start: string;
   default_route_s: string;
   default_route_u: string;
   default_route_m: string;
@@ -33,6 +39,27 @@ const inputStyle: React.CSSProperties = {
   borderRadius: 10,
   border: "1px solid #d6dfeb",
   background: "#fff",
+};
+
+const compactSelectStyle: React.CSSProperties = {
+  height: 36,
+  padding: "0 10px",
+  borderRadius: 10,
+  border: "1px solid #d6dfeb",
+  background: "#fff",
+  fontSize: 13,
+};
+
+const compactButtonStyle: React.CSSProperties = {
+  height: 36,
+  padding: "0 12px",
+  borderRadius: 10,
+  border: "1px solid #c9d4e4",
+  background: "#f8fbff",
+  color: "#17213a",
+  fontSize: 13,
+  fontWeight: 700,
+  cursor: "pointer",
 };
 
 const checkboxLikeStyle: React.CSSProperties = {
@@ -58,23 +85,48 @@ const activeDayStyle: React.CSSProperties = {
   color: "#2f8f46",
 };
 
+type DayRouteKey =
+  | "default_route_s"
+  | "default_route_u"
+  | "default_route_m"
+  | "default_route_t"
+  | "default_route_w"
+  | "default_route_h"
+  | "default_route_f";
+
+const DAY_KEYS: Array<[string, DayRouteKey]> = [
+  ["S", "default_route_s"],
+  ["U", "default_route_u"],
+  ["M", "default_route_m"],
+  ["T", "default_route_t"],
+  ["W", "default_route_w"],
+  ["H", "default_route_h"],
+  ["F", "default_route_f"],
+];
+
 export default function ScheduleBaselineEditor(props: {
   open: boolean;
   busy: boolean;
   driverName: string;
   presetOptions: PresetOption[];
+  routeOptions: RouteOption[];
   initialDraft: ScheduleBaselineDraft;
   onClose: () => void;
   onSave: (draft: ScheduleBaselineDraft) => Promise<void>;
 }) {
-  const { open, busy, driverName, presetOptions, initialDraft, onClose, onSave } =
-    props;
+  const {
+    open,
+    busy,
+    driverName,
+    presetOptions,
+    routeOptions,
+    initialDraft,
+    onClose,
+    onSave,
+  } = props;
 
   const [draft, setDraft] = useState<ScheduleBaselineDraft>(initialDraft);
-
-  useEffect(() => {
-    setDraft(initialDraft);
-  }, [initialDraft]);
+  const [paintRouteValue, setPaintRouteValue] = useState("");
 
   const selectedPreset = useMemo(
     () => presetOptions.find((preset) => preset.id === draft.preset_id) ?? null,
@@ -87,18 +139,7 @@ export default function ScheduleBaselineEditor(props: {
     await onSave(draft);
   }
 
-  function dayEnabled(
-    day: keyof Pick<
-      ScheduleBaselineDraft,
-      | "default_route_s"
-      | "default_route_u"
-      | "default_route_m"
-      | "default_route_t"
-      | "default_route_w"
-      | "default_route_h"
-      | "default_route_f"
-    >
-  ) {
+  function dayEnabled(day: DayRouteKey) {
     if (!selectedPreset) return false;
 
     const map = {
@@ -114,14 +155,30 @@ export default function ScheduleBaselineEditor(props: {
     return map[day];
   }
 
+  function applyPaintRoute() {
+    if (!paintRouteValue) return;
+
+    setDraft((current) => {
+      const next = { ...current };
+
+      DAY_KEYS.forEach(([, key]) => {
+        if (dayEnabled(key)) {
+          next[key] = paintRouteValue;
+        }
+      });
+
+      return next;
+    });
+  }
+
   return (
     <article className="value-card" style={{ gridColumn: "1 / -1" }}>
       <p className="value-card__eyebrow">Schedule setup</p>
       <h3 className="value-card__title">{driverName}</h3>
       <p className="value-card__body" style={{ marginTop: 8 }}>
-        Choose the preset, apply rotation behavior if needed, and define the
-        default route-by-day planning shape. Rotation is interpreted internally;
-        this surface focuses on the produced schedule.
+        Choose the preset, apply rotation behavior if needed, choose the start
+        date, and define the default route-by-day planning shape. Rotation is
+        interpreted internally; this surface focuses on the produced schedule.
       </p>
 
       <div
@@ -129,7 +186,8 @@ export default function ScheduleBaselineEditor(props: {
           marginTop: 16,
           display: "grid",
           gap: 12,
-          gridTemplateColumns: "minmax(220px, 1fr) minmax(180px, 0.8fr)",
+          gridTemplateColumns:
+            "minmax(220px, 1fr) minmax(180px, 0.8fr) minmax(180px, 0.8fr)",
         }}
       >
         <select
@@ -163,6 +221,54 @@ export default function ScheduleBaselineEditor(props: {
           <option value="NONE">None</option>
           <option value="WEEKEND_ALT">Weekend alternate</option>
         </select>
+
+        <input
+          type="date"
+          value={draft.effective_start}
+          onChange={(e) =>
+            setDraft((current) => ({
+              ...current,
+              effective_start: e.target.value,
+            }))
+          }
+          style={inputStyle}
+        />
+      </div>
+
+      <div
+        style={{
+          marginTop: 16,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          flexWrap: "wrap",
+        }}
+      >
+        <select
+          value={paintRouteValue}
+          onChange={(e) => setPaintRouteValue(e.target.value)}
+          style={{ ...compactSelectStyle, minWidth: 240 }}
+        >
+          <option value="">Paint route…</option>
+          {routeOptions.map((route) => (
+            <option key={route.value} value={route.value}>
+              {route.label}
+            </option>
+          ))}
+        </select>
+
+        <button
+          type="button"
+          disabled={!paintRouteValue || busy}
+          onClick={applyPaintRoute}
+          style={{
+            ...compactButtonStyle,
+            opacity: !paintRouteValue || busy ? 0.6 : 1,
+            cursor: !paintRouteValue || busy ? "default" : "pointer",
+          }}
+        >
+          Apply
+        </button>
       </div>
 
       <div
@@ -173,27 +279,8 @@ export default function ScheduleBaselineEditor(props: {
           gridTemplateColumns: "repeat(7, minmax(90px, 1fr))",
         }}
       >
-        {[
-          ["S", "default_route_s"],
-          ["U", "default_route_u"],
-          ["M", "default_route_m"],
-          ["T", "default_route_t"],
-          ["W", "default_route_w"],
-          ["H", "default_route_h"],
-          ["F", "default_route_f"],
-        ].map(([label, key]) => {
-          const enabled = dayEnabled(
-            key as keyof Pick<
-              ScheduleBaselineDraft,
-              | "default_route_s"
-              | "default_route_u"
-              | "default_route_m"
-              | "default_route_t"
-              | "default_route_w"
-              | "default_route_h"
-              | "default_route_f"
-            >
-          );
+        {DAY_KEYS.map(([label, key]) => {
+          const enabled = dayEnabled(key);
 
           return (
             <div key={key} style={{ display: "grid", gap: 8 }}>
@@ -203,7 +290,7 @@ export default function ScheduleBaselineEditor(props: {
                 </span>
               </div>
               <input
-                value={draft[key as keyof ScheduleBaselineDraft] as string}
+                value={draft[key]}
                 onChange={(e) =>
                   setDraft((current) => ({
                     ...current,
