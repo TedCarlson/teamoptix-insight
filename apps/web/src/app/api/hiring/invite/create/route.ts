@@ -13,9 +13,14 @@ export async function POST(req: Request) {
     const supabase = await getSupabaseServerClient();
     const body = await req.json();
 
-    const { candidate_id, pc_org_id, email } = body;
+    const roster_id =
+      typeof body?.roster_id === "string" ? body.roster_id.trim() : "";
+    const company_id =
+      typeof body?.company_id === "string" ? body.company_id.trim() : "";
+    const email =
+      typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
 
-    if (!candidate_id || !pc_org_id || !email) {
+    if (!roster_id || !company_id || !email) {
       return NextResponse.json(
         { error: "missing fields" },
         { status: 400 }
@@ -28,14 +33,26 @@ export async function POST(req: Request) {
     expires.setDate(expires.getDate() + 7);
 
     /**
-     * Expire any existing active invites for this candidate
+     * Canonical contract for this project is:
+     *   - roster_id
+     *   - company_id
+     *   - email
+     *
+     * The table still carries legacy column names today.
+     * Keep that mapping trapped here until DB rename/migration is done.
+     */
+    const legacyCandidateId = roster_id;
+    const legacyCompanyId = company_id;
+
+    /**
+     * Expire any existing active invites for this roster person
      */
     const { error: expireError } = await supabase
       .from("hiring_invite_token")
       .update({
         status: "expired"
       })
-      .eq("candidate_id", candidate_id)
+      .eq("candidate_id", legacyCandidateId)
       .eq("status", "active");
 
     if (expireError) {
@@ -51,8 +68,8 @@ export async function POST(req: Request) {
     const { error: insertError } = await supabase
       .from("hiring_invite_token")
       .insert({
-        candidate_id,
-        pc_org_id,
+        candidate_id: legacyCandidateId,
+        pc_org_id: legacyCompanyId,
         email,
         token,
         status: "active",
@@ -67,19 +84,23 @@ export async function POST(req: Request) {
     }
 
     const configuredBaseUrl = process.env.APP_BASE_URL?.trim();
-
     const origin = configuredBaseUrl || new URL(req.url).origin;
-
     const inviteUrl = `${origin}/onboarding/invite/${token}`;
 
     return NextResponse.json({
       success: true,
-      invite_url: inviteUrl
+      invite_url: inviteUrl,
+      token,
+      roster_id,
+      company_id,
+      email
     });
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : "Failed to create invite.";
 
-  } catch (err: any) {
     return NextResponse.json(
-      { error: err.message },
+      { error: message },
       { status: 500 }
     );
   }

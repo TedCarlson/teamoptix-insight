@@ -7,8 +7,8 @@ import SiteHeader from "@/features/landing/components/SiteHeader";
 
 type InviteRecord = {
   id: string;
-  candidate_id: string;
-  pc_org_id: string;
+  roster_id: string;
+  company_id: string;
   email: string;
   token: string;
   status: "active" | "expired" | "used" | "revoked" | string;
@@ -127,7 +127,29 @@ export default function OnboardingInviteLandingPage() {
           return;
         }
 
-        setInvite(data.invite as InviteRecord);
+        /**
+         * Canonical project contract:
+         *   - roster_id
+         *   - company_id
+         *
+         * Legacy storage may still return candidate_id / pc_org_id.
+         * Normalize that here and keep the drift quarantined.
+         */
+        const rawInvite = data.invite ?? {};
+
+        const normalizedInvite: InviteRecord = {
+          id: String(rawInvite.id ?? ""),
+          roster_id: String(rawInvite.roster_id ?? rawInvite.candidate_id ?? ""),
+          company_id: String(rawInvite.company_id ?? rawInvite.pc_org_id ?? ""),
+          email: String(rawInvite.email ?? ""),
+          token: String(rawInvite.token ?? token),
+          status: String(rawInvite.status ?? "active"),
+          expires_at: String(rawInvite.expires_at ?? ""),
+          used_at: rawInvite.used_at ? String(rawInvite.used_at) : null,
+          created_at: String(rawInvite.created_at ?? "")
+        };
+
+        setInvite(normalizedInvite);
         setInviteState("valid");
       } catch {
         if (!active) return;
@@ -202,9 +224,9 @@ export default function OnboardingInviteLandingPage() {
             <p className="value-card__eyebrow">Onboarding</p>
             <h2 className="value-card__title">You’ve been invited</h2>
             <p className="value-card__body">
-              This is the onboarding entry surface a candidate reaches from an
-              invite link. This version validates the invite token and begins a
-              real onboarding session when the user continues.
+              This is the onboarding entry surface a rostered user reaches from
+              an invite link. This version validates the invite token and begins
+              a real onboarding session when the user continues.
             </p>
 
             <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
@@ -268,7 +290,7 @@ export default function OnboardingInviteLandingPage() {
           <DetailCard
             eyebrow="Invitation"
             title="What this invite means"
-            body="You have been invited into a company onboarding flow. This process will eventually connect your profile, documents, and readiness steps to the company’s candidate workflow."
+            body="You have been invited into a company onboarding flow. This process will eventually connect your profile, documents, and readiness steps to the company roster and onboarding workflow."
           />
 
           <DetailCard
@@ -293,9 +315,9 @@ export default function OnboardingInviteLandingPage() {
           </DetailCard>
 
           <DetailCard
-            eyebrow="Candidate progress"
+            eyebrow="Onboarding progress"
             title="How this affects your status"
-            body="This invite is the beginning of the candidate journey inside Insight. Future versions of this page will show your progress, missing items, and completion posture in real time."
+            body="This invite is the beginning of your onboarding journey inside Insight. Future versions of this page will show progress, missing items, and completion posture in real time."
           />
 
           <DetailCard
@@ -323,7 +345,7 @@ export default function OnboardingInviteLandingPage() {
             <p className="value-card__body" style={{ marginTop: 8 }}>
               The next implementation slice will connect the onboarding session
               to the first true onboarding form and then use that session state
-              to drive candidate progress automatically.
+              to drive progress automatically.
             </p>
           </article>
         </div>

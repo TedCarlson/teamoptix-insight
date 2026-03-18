@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useState } from "react";
 
 export type RosterRow = {
   id: string;
@@ -30,6 +31,46 @@ export default function RosterTable(props: Props) {
   const params = useParams();
   const slug = String(params?.slug ?? "");
 
+  const [inviteBusyId, setInviteBusyId] = useState<string | null>(null);
+  const [inviteStatusById, setInviteStatusById] = useState<Record<string, string>>(
+    () =>
+      Object.fromEntries(
+        rows.map((row) => [row.id, row.invite_status || "Not Invited"])
+      )
+  );
+  const [inviteError, setInviteError] = useState<string | null>(null);
+
+  async function handleInvite(row: RosterRow) {
+    try {
+      setInviteError(null);
+      setInviteBusyId(row.id);
+
+      const res = await fetch(
+        `/api/company/${slug}/people/roster/${row.id}/invite`,
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setInviteError(data?.error ?? `Failed to invite ${row.full_name}.`);
+        return;
+      }
+
+      setInviteStatusById((current) => ({
+        ...current,
+        [row.id]: String(data?.invite_status ?? "Invited"),
+      }));
+    } catch {
+      setInviteError(`Failed to invite ${row.full_name}.`);
+    } finally {
+      setInviteBusyId(null);
+    }
+  }
+
   if (rows.length === 0) {
     return (
       <div>
@@ -48,6 +89,10 @@ export default function RosterTable(props: Props) {
 
   return (
     <div style={{ overflowX: "auto" }}>
+      {inviteError ? (
+        <p style={{ margin: "0 0 12px", color: "#c62828" }}>{inviteError}</p>
+      ) : null}
+
       <table
         style={{
           width: "100%",
@@ -90,6 +135,11 @@ export default function RosterTable(props: Props) {
           {rows.map((row) => {
             const isCandidate = row.status === "Candidate";
             const candidateHref = `/company/${slug}/hiring/candidate/${row.id}`;
+            const inviteBusy = inviteBusyId === row.id;
+            const inviteStatus = inviteStatusById[row.id] ?? row.invite_status;
+            const inviteDisabled =
+              inviteBusy ||
+              inviteStatus.toLowerCase() === "invited";
 
             return (
               <tr key={row.id}>
@@ -99,7 +149,7 @@ export default function RosterTable(props: Props) {
                 <td style={cellStyle}>{row.market}</td>
                 <td style={cellStyle}>{row.reports_to}</td>
                 <td style={cellStyle}>{row.start_date}</td>
-                <td style={cellStyle}>{row.invite_status}</td>
+                <td style={cellStyle}>{inviteStatus}</td>
                 <td style={cellStyle}>{row.compliance}</td>
                 <td style={cellStyle}>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -119,8 +169,22 @@ export default function RosterTable(props: Props) {
                       </button>
                     )}
 
-                    <button type="button" className="button">
-                      Invite
+                    <button
+                      type="button"
+                      className="button"
+                      disabled={inviteDisabled}
+                      onClick={() => void handleInvite(row)}
+                      style={
+                        inviteDisabled
+                          ? { opacity: 0.6, cursor: "not-allowed" }
+                          : undefined
+                      }
+                    >
+                      {inviteBusy
+                        ? "Inviting..."
+                        : inviteStatus.toLowerCase() === "invited"
+                          ? "Invited"
+                          : "Invite"}
                     </button>
                   </div>
                 </td>
