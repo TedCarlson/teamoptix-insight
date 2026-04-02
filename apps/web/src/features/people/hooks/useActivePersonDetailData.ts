@@ -49,6 +49,8 @@ export function useActivePersonDetailData(slug: string, rosterId: string) {
         setPerson({
           id: found.roster_member_id,
           full_name: found.full_name ?? "Unknown",
+          email: found.email ?? null,
+          phone: found.phone ?? null,
           worker_type: found.worker_type ?? "Unassigned",
           employment_status: found.employment_status ?? "Active",
           market_code: found.market_code ?? "—",

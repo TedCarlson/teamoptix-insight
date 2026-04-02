@@ -1,31 +1,7 @@
-type CandidateRecord = {
-  id: string;
-  full_name: string;
-  worker_type: string;
-  employment_status: "Active" | "Candidate" | "Former";
-  market_code: string;
-  reports_to_name: string;
-  hire_date: string;
-  invite_status: string;
-  compliance_summary: string;
-  onboarding_completed_at: string | null;
-};
-
-type OnboardingPayload = {
-  has_session: boolean;
-  session_id: string | null;
-  session_status: string | null;
-  onboarding_completed_at: string | null;
-  progress_pct: number;
-  current_step: string | null;
-  steps: Array<{
-    step_key: string;
-    label: string;
-    step_order: number;
-    completed: boolean;
-    completed_at: string | null;
-  }>;
-};
+import type {
+  CandidateRecord,
+  OnboardingPayload,
+} from "@/features/hiring/lib/candidate-detail.types";
 
 export default function CandidateActionsCard(props: {
   candidate: CandidateRecord | null;
@@ -46,9 +22,15 @@ export default function CandidateActionsCard(props: {
     onActivate,
   } = props;
 
+  const hasInviteEmail = Boolean(candidate?.email && candidate.email.trim());
+
+  const inviteStatus = (candidate?.invite_status ?? "Not Invited").toLowerCase();
+
   const canInvite =
     candidate?.employment_status === "Candidate" &&
-    candidate?.invite_status !== "Invited" &&
+    hasInviteEmail &&
+    inviteStatus !== "invited" &&
+    inviteStatus !== "linked" &&
     !onboarding?.has_session;
 
   const canActivate =
@@ -66,12 +48,30 @@ export default function CandidateActionsCard(props: {
           type="button"
           disabled={!canInvite || inviting}
           onClick={onSendInvite}
+          title={
+            !hasInviteEmail
+              ? "Add an email before sending an invite."
+              : onboarding?.has_session
+                ? "An onboarding session already exists."
+                : inviteStatus === "linked"
+                  ? "This candidate is already linked."
+                  : undefined
+          }
+          style={
+            !canInvite && !inviting
+              ? { opacity: 0.6, cursor: "not-allowed" }
+              : undefined
+          }
         >
           {inviting
             ? "Sending..."
-            : candidate?.invite_status === "Invited"
-              ? "Invited"
-              : "Send invite"}
+            : !hasInviteEmail
+              ? "Need Email"
+              : inviteStatus === "linked"
+                ? "Linked"
+                : inviteStatus === "invited"
+                  ? "Invited"
+                  : "Send invite"}
         </button>
 
         <button className="button" type="button">
@@ -104,6 +104,13 @@ export default function CandidateActionsCard(props: {
           <div className="hero-stat">
             <span className="hero-stat__label">Start date</span>
             <strong>{candidate.hire_date}</strong>
+          </div>
+
+          <div className="hero-stat">
+            <span className="hero-stat__label">Invite email</span>
+            <strong style={{ wordBreak: "break-word", lineHeight: 1.35 }}>
+              {candidate.email ?? "—"}
+            </strong>
           </div>
         </div>
       ) : null}

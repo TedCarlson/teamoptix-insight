@@ -1,15 +1,4 @@
-type CandidateRecord = {
-  id: string;
-  full_name: string;
-  worker_type: string;
-  employment_status: "Active" | "Candidate" | "Former";
-  market_code: string;
-  reports_to_name: string;
-  hire_date: string;
-  invite_status: string;
-  compliance_summary: string;
-  onboarding_completed_at: string | null;
-};
+import type { CandidateRecord } from "@/features/hiring/lib/candidate-detail.types";
 
 export default function CandidateIdentityCard(props: {
   candidate: CandidateRecord | null;
@@ -30,6 +19,18 @@ export default function CandidateIdentityCard(props: {
           <div className="hero-stat">
             <span className="hero-stat__label">Display name</span>
             <strong>{candidate?.full_name ?? "—"}</strong>
+          </div>
+
+          <div className="hero-stat">
+            <span className="hero-stat__label">Email</span>
+            <strong style={{ wordBreak: "break-word", lineHeight: 1.35 }}>
+              {candidate?.email ?? "—"}
+            </strong>
+          </div>
+
+          <div className="hero-stat">
+            <span className="hero-stat__label">Phone</span>
+            <strong>{candidate?.phone ?? "—"}</strong>
           </div>
 
           <div className="hero-stat">

@@ -10,6 +10,7 @@ import CandidateIdentityCard from "@/features/hiring/components/candidate-detail
 import CandidateStatusCard from "@/features/hiring/components/candidate-detail/CandidateStatusCard";
 import CandidateIdentifiersCard from "@/features/hiring/components/candidate-detail/CandidateIdentifiersCard";
 import CandidateActionsCard from "@/features/hiring/components/candidate-detail/CandidateActionsCard";
+import CandidateContactEditor from "@/features/hiring/components/candidate-detail/CandidateContactEditor";
 import { useCandidateDetailData } from "@/features/hiring/hooks/useCandidateDetailData";
 import { useCandidateDetailActions } from "@/features/hiring/hooks/useCandidateDetailActions";
 
@@ -96,6 +97,13 @@ export default function HiringCandidateDetailPage() {
           <CandidateIdentifiersCard
             candidate={candidate}
             loading={loadingCandidate}
+          />
+
+          <CandidateContactEditor
+            slug={slug}
+            candidate={candidate}
+            loading={loadingCandidate}
+            onSaved={setCandidate}
           />
 
           <CandidateProgressPanel

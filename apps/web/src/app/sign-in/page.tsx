@@ -1,17 +1,31 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 export default function SignInPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const [email, setEmail] = useState("admin@teamoptix.io");
+  const invitedEmail = searchParams.get("email")?.trim() ?? "";
+  const returnTo = searchParams.get("returnTo")?.trim() ?? "";
+
+  const [email, setEmail] = useState(invitedEmail || "admin@teamoptix.io");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (invitedEmail) {
+      setEmail(invitedEmail);
+    }
+  }, [invitedEmail]);
+
+  const nextHref = useMemo(() => {
+    return returnTo || "/profile";
+  }, [returnTo]);
 
   async function handlePasswordSignIn(e: React.FormEvent) {
     e.preventDefault();
@@ -33,7 +47,7 @@ export default function SignInPage() {
       }
 
       router.refresh();
-      router.push("/company/setup");
+      router.push(nextHref);
     } catch {
       setError("Unexpected sign-in error.");
     } finally {
@@ -49,10 +63,12 @@ export default function SignInPage() {
     try {
       const supabase = getSupabaseBrowserClient();
 
+      const redirectTarget = `${window.location.origin}${nextHref}`;
+
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: `${window.location.origin}/company/setup`,
+          emailRedirectTo: redirectTarget,
         },
       });
 
@@ -75,8 +91,14 @@ export default function SignInPage() {
         <p className="eyebrow">Auth</p>
         <h1>Sign in</h1>
         <p className="lede">
-          Sign in with your existing account to begin resolving your platform access.
+          Sign in with your existing account to continue into your app workspace or onboarding flow.
         </p>
+
+        {returnTo ? (
+          <p style={{ marginTop: 12, color: "#5c6b84" }}>
+            After sign-in, you will continue to: <strong>{nextHref}</strong>
+          </p>
+        ) : null}
 
         <form onSubmit={handlePasswordSignIn} style={{ marginTop: 24 }}>
           <div style={{ display: "grid", gap: 12 }}>
@@ -86,14 +108,7 @@ export default function SignInPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              style={{
-                width: "100%",
-                height: 46,
-                padding: "0 14px",
-                borderRadius: 12,
-                border: "1px solid #d6dfeb",
-                background: "#fff",
-              }}
+              style={inputStyle}
             />
 
             <input
@@ -102,14 +117,7 @@ export default function SignInPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              style={{
-                width: "100%",
-                height: 46,
-                padding: "0 14px",
-                borderRadius: 12,
-                border: "1px solid #d6dfeb",
-                background: "#fff",
-              }}
+              style={inputStyle}
             />
           </div>
 
@@ -151,3 +159,12 @@ export default function SignInPage() {
     </main>
   );
 }
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  height: 46,
+  padding: "0 14px",
+  borderRadius: 12,
+  border: "1px solid #d6dfeb",
+  background: "#fff",
+};

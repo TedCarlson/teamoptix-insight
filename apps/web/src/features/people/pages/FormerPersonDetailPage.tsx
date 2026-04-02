@@ -9,6 +9,7 @@ import PersonIdentityCard from "@/features/people/components/person-detail/Perso
 import PersonStatusCard from "@/features/people/components/person-detail/PersonStatusCard";
 import PersonIdentifiersCard from "@/features/people/components/person-detail/PersonIdentifiersCard";
 import PersonTimelinePanel from "@/features/people/components/person-detail/PersonTimelinePanel";
+import PersonContactEditor from "@/features/people/components/person-detail/PersonContactEditor";
 import FormerArchivePanel from "@/features/people/components/person-detail/FormerArchivePanel";
 
 import { useFormerPersonDetailData } from "@/features/people/hooks/useFormerPersonDetailData";
@@ -89,6 +90,13 @@ export default function FormerPersonDetailPage() {
             loading={loadingPerson}
             eyebrow="Identifiers"
             title="Operational bridge fields"
+          />
+
+          <PersonContactEditor
+            slug={slug}
+            person={person}
+            loading={loadingPerson}
+            onSaved={setPerson}
           />
 
           <FormerArchivePanel

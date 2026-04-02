@@ -8,6 +8,7 @@ import PersonIdentityCard from "@/features/people/components/person-detail/Perso
 import PersonStatusCard from "@/features/people/components/person-detail/PersonStatusCard";
 import PersonIdentifiersCard from "@/features/people/components/person-detail/PersonIdentifiersCard";
 import PersonTimelinePanel from "@/features/people/components/person-detail/PersonTimelinePanel";
+import PersonContactEditor from "@/features/people/components/person-detail/PersonContactEditor";
 import ActiveOperationalPanel from "@/features/people/components/person-detail/ActiveOperationalPanel";
 import ActiveOperationsEditor from "@/features/people/components/person-detail/ActiveOperationsEditor";
 import { useActivePersonDetailData } from "@/features/people/hooks/useActivePersonDetailData";
@@ -124,6 +125,13 @@ export default function ActivePersonDetailPage() {
             loading={loadingPerson}
             eyebrow="Identifiers"
             title="Operational bridge fields"
+          />
+
+          <PersonContactEditor
+            slug={slug}
+            person={person}
+            loading={loadingPerson}
+            onSaved={setPerson}
           />
 
           <ActiveOperationalPanel

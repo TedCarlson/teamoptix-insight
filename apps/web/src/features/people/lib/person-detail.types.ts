@@ -1,6 +1,8 @@
 export type ApiRosterRow = {
   roster_member_id: string;
   full_name: string | null;
+  email: string | null;
+  phone: string | null;
   worker_type: string | null;
   employment_status: "Active" | "Candidate" | "Former" | null;
   market_code: string | null;
@@ -32,6 +34,8 @@ export type ApiEventRow = {
 export type PersonRecord = {
   id: string;
   full_name: string;
+  email: string | null;
+  phone: string | null;
   worker_type: string;
   employment_status: "Active" | "Candidate" | "Former";
   market_code: string;

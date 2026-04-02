@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import SiteHeader from "@/features/landing/components/SiteHeader";
 
@@ -94,6 +94,7 @@ function formatExpiry(value: string) {
 
 export default function OnboardingInviteLandingPage() {
   const params = useParams();
+  const router = useRouter();
   const token = String(params?.token ?? "");
 
   const [inviteState, setInviteState] = useState<
@@ -127,14 +128,6 @@ export default function OnboardingInviteLandingPage() {
           return;
         }
 
-        /**
-         * Canonical project contract:
-         *   - roster_id
-         *   - company_id
-         *
-         * Legacy storage may still return candidate_id / pc_org_id.
-         * Normalize that here and keep the drift quarantined.
-         */
         const rawInvite = data.invite ?? {};
 
         const normalizedInvite: InviteRecord = {
@@ -146,7 +139,7 @@ export default function OnboardingInviteLandingPage() {
           status: String(rawInvite.status ?? "active"),
           expires_at: String(rawInvite.expires_at ?? ""),
           used_at: rawInvite.used_at ? String(rawInvite.used_at) : null,
-          created_at: String(rawInvite.created_at ?? "")
+          created_at: String(rawInvite.created_at ?? ""),
         };
 
         setInvite(normalizedInvite);
@@ -165,7 +158,7 @@ export default function OnboardingInviteLandingPage() {
       return;
     }
 
-    validateInvite();
+    void validateInvite();
 
     return () => {
       active = false;
@@ -176,6 +169,19 @@ export default function OnboardingInviteLandingPage() {
     try {
       setStarting(true);
       setErrorText(null);
+
+      const authRes = await fetch("/api/auth/session", {
+        credentials: "include",
+        cache: "no-store",
+      });
+      const authData = await authRes.json().catch(() => ({}));
+
+      if (!authData?.user?.id) {
+        router.push(
+          `/sign-in?email=${encodeURIComponent(invite?.email ?? "")}&returnTo=${encodeURIComponent(`/onboarding/invite/${token}`)}`
+        );
+        return;
+      }
 
       const res = await fetch("/api/onboarding/start", {
         method: "POST",
@@ -208,8 +214,8 @@ export default function OnboardingInviteLandingPage() {
   }, [inviteState, errorText]);
 
   const entryState = useMemo(() => {
-    if (starting) return "Starting onboarding session";
-    if (inviteState === "valid") return "Ready for onboarding start";
+    if (starting) return "Preparing onboarding entry";
+    if (inviteState === "valid") return "Ready to authenticate and begin";
     if (inviteState === "loading") return "Checking invite";
     return "Invite validation required";
   }, [inviteState, starting]);
@@ -224,9 +230,8 @@ export default function OnboardingInviteLandingPage() {
             <p className="value-card__eyebrow">Onboarding</p>
             <h2 className="value-card__title">You’ve been invited</h2>
             <p className="value-card__body">
-              This is the onboarding entry surface a rostered user reaches from
-              an invite link. This version validates the invite token and begins
-              a real onboarding session when the user continues.
+              This is the invite entry point for a rostered user. It validates the token,
+              confirms the invite target, and routes the user into sign-in and onboarding.
             </p>
 
             <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
@@ -278,7 +283,7 @@ export default function OnboardingInviteLandingPage() {
                 disabled={inviteState !== "valid" || starting}
                 onClick={startOnboarding}
               >
-                {starting ? "Starting…" : "Begin onboarding"}
+                {starting ? "Continuing…" : "Continue"}
               </button>
 
               <Link className="button" href="/">
@@ -290,7 +295,7 @@ export default function OnboardingInviteLandingPage() {
           <DetailCard
             eyebrow="Invitation"
             title="What this invite means"
-            body="You have been invited into a company onboarding flow. This process will eventually connect your profile, documents, and readiness steps to the company roster and onboarding workflow."
+            body="You were invited from a company roster record. Completing this flow links your signed-in app profile to that company record."
           />
 
           <DetailCard
@@ -299,55 +304,26 @@ export default function OnboardingInviteLandingPage() {
           >
             <StepRow
               step="1"
-              title="Claim your access"
-              detail="Authenticate and connect this invite to your platform identity."
+              title="Sign in"
+              detail="Use your app account or magic link so onboarding is tied to a real identity."
             />
             <StepRow
               step="2"
               title="Complete your profile"
-              detail="Provide the personal and contact details needed to move through onboarding."
+              detail="Provide the first identity details needed for app access and roster linkage."
             />
             <StepRow
               step="3"
-              title="Finish onboarding tasks"
-              detail="Complete company and compliance-driven steps such as required forms or supporting items."
+              title="Finish onboarding"
+              detail="Complete the remaining onboarding steps and activate company linkage."
             />
           </DetailCard>
 
           <DetailCard
-            eyebrow="Onboarding progress"
-            title="How this affects your status"
-            body="This invite is the beginning of your onboarding journey inside Insight. Future versions of this page will show progress, missing items, and completion posture in real time."
+            eyebrow="Outcome"
+            title="What completion does"
+            body="When onboarding completes successfully, the app links profile, person, company membership, company onboarding, and roster identity together."
           />
-
-          <DetailCard
-            eyebrow="Safety"
-            title="Invite handling posture"
-          >
-            <div style={{ display: "grid", gap: 10 }}>
-              <div className="hero-stat">
-                <span className="hero-stat__label">Single-use expectation</span>
-                <strong>Invite links are treated as one-time entry links</strong>
-              </div>
-
-              <div className="hero-stat">
-                <span className="hero-stat__label">Expired or used link</span>
-                <strong>
-                  Invalid, expired, or used invites are blocked before onboarding begins
-                </strong>
-              </div>
-            </div>
-          </DetailCard>
-
-          <article className="value-card" style={{ gridColumn: "1 / -1" }}>
-            <p className="value-card__eyebrow">Onboarding shell</p>
-            <h3 className="value-card__title">What comes next</h3>
-            <p className="value-card__body" style={{ marginTop: 8 }}>
-              The next implementation slice will connect the onboarding session
-              to the first true onboarding form and then use that session state
-              to drive progress automatically.
-            </p>
-          </article>
         </div>
       </section>
     </main>

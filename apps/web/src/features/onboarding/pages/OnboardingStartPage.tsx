@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import SiteHeader from "@/features/landing/components/SiteHeader";
 
 type OnboardingStepRow = {
@@ -12,40 +12,9 @@ type OnboardingStepRow = {
   completed_at: string | null;
 };
 
-function StepCard(props: {
-  eyebrow: string;
-  title: string;
-  body: string;
-  state: "complete" | "current" | "pending";
-  action?: React.ReactNode;
-}) {
-  const { eyebrow, title, body, state, action } = props;
-
-  const badgeText =
-    state === "complete"
-      ? "Complete"
-      : state === "current"
-        ? "Current"
-        : "Pending";
-
-  return (
-    <article className="value-card">
-      <p className="value-card__eyebrow">{eyebrow}</p>
-      <h3 className="value-card__title">{title}</h3>
-      <p className="value-card__body">{body}</p>
-
-      <div style={{ marginTop: 14 }} className="hero-stat">
-        <span className="hero-stat__label">Status</span>
-        <strong>{badgeText}</strong>
-      </div>
-
-      {action ? <div style={{ marginTop: 14 }}>{action}</div> : null}
-    </article>
-  );
-}
-
 export default function OnboardingStartPage() {
   const params = useParams();
+  const router = useRouter();
   const sessionId = String(params?.sessionId ?? "");
 
   const [steps, setSteps] = useState<OnboardingStepRow[]>([]);
@@ -53,6 +22,49 @@ export default function OnboardingStartPage() {
   const [error, setError] = useState<string | null>(null);
   const [savingStepKey, setSavingStepKey] = useState<string | null>(null);
   const [sessionComplete, setSessionComplete] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    async function checkAuth() {
+      try {
+        const res = await fetch("/api/auth/session", {
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if (!active) return;
+
+        if (!data?.user?.id) {
+          router.replace(
+            `/sign-in?returnTo=${encodeURIComponent(`/profile/setup?sessionId=${sessionId}`)}`
+          );
+          return;
+        }
+
+        setAuthReady(true);
+      } catch {
+        if (!active) return;
+        router.replace(
+          `/sign-in?returnTo=${encodeURIComponent(`/profile/setup?sessionId=${sessionId}`)}`
+        );
+      } finally {
+        if (active) setAuthChecked(true);
+      }
+    }
+
+    if (sessionId) {
+      void checkAuth();
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [router, sessionId]);
 
   useEffect(() => {
     let active = true;
@@ -87,12 +99,14 @@ export default function OnboardingStartPage() {
       }
     }
 
-    if (sessionId) loadSteps();
+    if (sessionId && authReady) {
+      void loadSteps();
+    }
 
     return () => {
       active = false;
     };
-  }, [sessionId]);
+  }, [sessionId, authReady]);
 
   const progress = useMemo(() => {
     if (steps.length === 0) return 0;
@@ -122,13 +136,13 @@ export default function OnboardingStartPage() {
 
   function bodyForStep(stepKey: string) {
     if (stepKey === "profile") {
-      return "Candidates will enter their personal information and confirm contact details required for the hiring process.";
+      return "Complete your platform identity so your roster record can be linked to a real user profile.";
     }
     if (stepKey === "documents") {
       return "Identity and compliance documents will be uploaded and verified.";
     }
     if (stepKey === "confirmation") {
-      return "Candidates will confirm readiness and complete onboarding.";
+      return "Confirm readiness and finish onboarding.";
     }
     return "Onboarding step ready for implementation.";
   }
@@ -205,12 +219,9 @@ export default function OnboardingStartPage() {
         <button
           className="button button-primary"
           type="button"
-          disabled={savingStepKey === step.step_key}
-          onClick={() => completeStep(step.step_key)}
+          onClick={() => router.push(`/profile/setup?sessionId=${encodeURIComponent(sessionId)}`)}
         >
-          {savingStepKey === step.step_key
-            ? "Saving..."
-            : "Complete Profile Setup"}
+          Complete Profile Setup
         </button>
       );
     }
@@ -248,6 +259,38 @@ export default function OnboardingStartPage() {
     return undefined;
   }
 
+  function StepCard(props: {
+    eyebrow: string;
+    title: string;
+    body: string;
+    state: "complete" | "current" | "pending";
+    action?: React.ReactNode;
+  }) {
+    const { eyebrow, title, body, state, action } = props;
+
+    const badgeText =
+      state === "complete"
+        ? "Complete"
+        : state === "current"
+          ? "Current"
+          : "Pending";
+
+    return (
+      <article className="value-card">
+        <p className="value-card__eyebrow">{eyebrow}</p>
+        <h3 className="value-card__title">{title}</h3>
+        <p className="value-card__body">{body}</p>
+
+        <div style={{ marginTop: 14 }} className="hero-stat">
+          <span className="hero-stat__label">Status</span>
+          <strong>{badgeText}</strong>
+        </div>
+
+        {action ? <div style={{ marginTop: 14 }}>{action}</div> : null}
+      </article>
+    );
+  }
+
   return (
     <main className="landing-page">
       <SiteHeader />
@@ -259,8 +302,7 @@ export default function OnboardingStartPage() {
             <h2 className="value-card__title">Welcome to onboarding</h2>
 
             <p className="value-card__body">
-              Your onboarding session has been created successfully. This page
-              now walks the candidate through a real onboarding flow to completion.
+              Your onboarding session is now tied to a signed-in app identity and can proceed step by step.
             </p>
 
             <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
@@ -311,7 +353,11 @@ export default function OnboardingStartPage() {
             ) : null}
           </article>
 
-          {loading ? (
+          {!authChecked || (authChecked && !authReady) ? (
+            <article className="value-card" style={{ gridColumn: "1 / -1" }}>
+              <p className="value-card__body">Checking app identity...</p>
+            </article>
+          ) : loading ? (
             <article className="value-card" style={{ gridColumn: "1 / -1" }}>
               <p className="value-card__body">Loading onboarding steps...</p>
             </article>

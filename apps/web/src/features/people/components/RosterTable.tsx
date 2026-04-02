@@ -2,22 +2,12 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
-
-export type RosterRow = {
-  id: string;
-  full_name: string;
-  worker_type: string;
-  status: "Active" | "Candidate" | "Former";
-  market: string;
-  reports_to: string;
-  start_date: string;
-  invite_status: string;
-  compliance: string;
-};
+import { useEffect, useMemo, useState } from "react";
+import type { RosterRow } from "@/features/people/types/roster.types";
 
 type Props = {
   rows: RosterRow[];
+  onInviteStatusChange?: (rosterId: string, inviteStatus: string) => void;
 };
 
 const cellStyle: React.CSSProperties = {
@@ -26,44 +16,75 @@ const cellStyle: React.CSSProperties = {
   verticalAlign: "top",
 };
 
+function resolveViewHref(slug: string, row: RosterRow) {
+  if (row.employment_status === "Active") {
+    return `/company/${slug}/people/active/${row.roster_member_id}`;
+  }
+
+  if (row.employment_status === "Former") {
+    return `/company/${slug}/people/former/${row.roster_member_id}`;
+  }
+
+  return `/company/${slug}/hiring/candidate/${row.roster_member_id}`;
+}
+
 export default function RosterTable(props: Props) {
-  const { rows } = props;
+  const { rows, onInviteStatusChange } = props;
   const params = useParams();
   const slug = String(params?.slug ?? "");
 
   const [inviteBusyId, setInviteBusyId] = useState<string | null>(null);
-  const [inviteStatusById, setInviteStatusById] = useState<Record<string, string>>(
-    () =>
-      Object.fromEntries(
-        rows.map((row) => [row.id, row.invite_status || "Not Invited"])
-      )
-  );
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteStatusById, setInviteStatusById] = useState<Record<string, string>>(
+    {}
+  );
+
+  useEffect(() => {
+    setInviteStatusById(
+      Object.fromEntries(
+        rows.map((row) => [row.roster_member_id, row.invite_status || "Not Invited"])
+      )
+    );
+  }, [rows]);
+
+  const normalizedRows = useMemo(
+    () =>
+      rows.map((row) => ({
+        ...row,
+        current_invite_status:
+          inviteStatusById[row.roster_member_id] ?? row.invite_status ?? "Not Invited",
+      })),
+    [rows, inviteStatusById]
+  );
 
   async function handleInvite(row: RosterRow) {
     try {
       setInviteError(null);
-      setInviteBusyId(row.id);
+      setInviteBusyId(row.roster_member_id);
 
       const res = await fetch(
-        `/api/company/${slug}/people/roster/${row.id}/invite`,
+        `/api/company/${slug}/people/roster/${row.roster_member_id}/invite`,
         {
           method: "POST",
           credentials: "include",
         }
       );
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         setInviteError(data?.error ?? `Failed to invite ${row.full_name}.`);
         return;
       }
 
+      const nextInviteStatus = String(data?.invite_status ?? "Invited");
+
       setInviteStatusById((current) => ({
         ...current,
-        [row.id]: String(data?.invite_status ?? "Invited"),
+        [row.roster_member_id]: nextInviteStatus,
       }));
+
+      onInviteStatusChange?.(row.roster_member_id, nextInviteStatus);
     } catch {
       setInviteError(`Failed to invite ${row.full_name}.`);
     } finally {
@@ -71,7 +92,7 @@ export default function RosterTable(props: Props) {
     }
   }
 
-  if (rows.length === 0) {
+  if (normalizedRows.length === 0) {
     return (
       <div>
         <p className="value-card__body">No roster records match the current view.</p>
@@ -79,9 +100,9 @@ export default function RosterTable(props: Props) {
           <button className="button button-primary" type="button">
             Add person
           </button>
-          <button className="button" type="button">
+          <Link className="button" href={`/company/${slug}/people/import`}>
             Import roster
-          </button>
+          </Link>
         </div>
       </div>
     );
@@ -97,13 +118,15 @@ export default function RosterTable(props: Props) {
         style={{
           width: "100%",
           borderCollapse: "collapse",
-          minWidth: 980,
+          minWidth: 1220,
         }}
       >
         <thead>
           <tr>
             {[
               "Name",
+              "Email",
+              "Phone",
               "Worker Type",
               "Status",
               "Market",
@@ -132,48 +155,58 @@ export default function RosterTable(props: Props) {
         </thead>
 
         <tbody>
-          {rows.map((row) => {
-            const isCandidate = row.status === "Candidate";
-            const candidateHref = `/company/${slug}/hiring/candidate/${row.id}`;
-            const inviteBusy = inviteBusyId === row.id;
-            const inviteStatus = inviteStatusById[row.id] ?? row.invite_status;
+          {normalizedRows.map((row) => {
+            const viewHref = resolveViewHref(slug, row);
+            const inviteBusy = inviteBusyId === row.roster_member_id;
+            const inviteStatus = row.current_invite_status;
+            const hasEmail = Boolean(row.email && row.email.trim());
             const inviteDisabled =
               inviteBusy ||
-              inviteStatus.toLowerCase() === "invited";
+              !hasEmail ||
+              inviteStatus.toLowerCase() === "invited" ||
+              inviteStatus.toLowerCase() === "linked";
 
             return (
-              <tr key={row.id}>
+              <tr key={row.roster_member_id}>
                 <td style={cellStyle}>{row.full_name}</td>
-                <td style={cellStyle}>{row.worker_type}</td>
-                <td style={cellStyle}>{row.status}</td>
-                <td style={cellStyle}>{row.market}</td>
-                <td style={cellStyle}>{row.reports_to}</td>
-                <td style={cellStyle}>{row.start_date}</td>
+                <td style={cellStyle}>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <strong style={{ fontWeight: 600 }}>
+                      {row.email ?? "—"}
+                    </strong>
+                    {!hasEmail ? (
+                      <span style={{ color: "#b26a00", fontSize: 12 }}>
+                        Missing invite email
+                      </span>
+                    ) : null}
+                  </div>
+                </td>
+                <td style={cellStyle}>{row.phone ?? "—"}</td>
+                <td style={cellStyle}>{row.worker_type ?? "—"}</td>
+                <td style={cellStyle}>{row.employment_status}</td>
+                <td style={cellStyle}>{row.market_code ?? "—"}</td>
+                <td style={cellStyle}>{row.reports_to_name ?? "—"}</td>
+                <td style={cellStyle}>{row.hire_date ?? "—"}</td>
                 <td style={cellStyle}>{inviteStatus}</td>
-                <td style={cellStyle}>{row.compliance}</td>
+                <td style={cellStyle}>{row.compliance_summary ?? "—"}</td>
                 <td style={cellStyle}>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {isCandidate ? (
-                      <Link className="button" href={candidateHref}>
-                        View
-                      </Link>
-                    ) : (
-                      <button
-                        type="button"
-                        className="button"
-                        disabled
-                        title="Status-aware View for Active and Former is next."
-                        style={{ opacity: 0.6, cursor: "not-allowed" }}
-                      >
-                        View
-                      </button>
-                    )}
+                    <Link className="button" href={viewHref}>
+                      View
+                    </Link>
 
                     <button
                       type="button"
                       className="button"
                       disabled={inviteDisabled}
                       onClick={() => void handleInvite(row)}
+                      title={
+                        !hasEmail
+                          ? "Add an email on the detail page before inviting."
+                          : inviteStatus.toLowerCase() === "linked"
+                            ? "This person is already linked."
+                            : undefined
+                      }
                       style={
                         inviteDisabled
                           ? { opacity: 0.6, cursor: "not-allowed" }
@@ -182,9 +215,13 @@ export default function RosterTable(props: Props) {
                     >
                       {inviteBusy
                         ? "Inviting..."
-                        : inviteStatus.toLowerCase() === "invited"
-                          ? "Invited"
-                          : "Invite"}
+                        : !hasEmail
+                          ? "Need Email"
+                          : inviteStatus.toLowerCase() === "linked"
+                            ? "Linked"
+                            : inviteStatus.toLowerCase() === "invited"
+                              ? "Invited"
+                              : "Invite"}
                     </button>
                   </div>
                 </td>

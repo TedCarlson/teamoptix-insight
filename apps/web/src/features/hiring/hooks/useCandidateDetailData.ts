@@ -52,6 +52,8 @@ export function useCandidateDetailData(slug: string, rosterId: string) {
         setCandidate({
           id: found.roster_member_id,
           full_name: found.full_name ?? "Unknown",
+          email: found.email ?? null,
+          phone: found.phone ?? null,
           worker_type: found.worker_type ?? "Unassigned",
           employment_status: found.employment_status ?? "Candidate",
           market_code: found.market_code ?? "—",

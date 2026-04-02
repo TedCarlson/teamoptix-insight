@@ -31,7 +31,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (invite.status !== "active") {
+    if (invite.status !== "active" && invite.status !== "used") {
       return NextResponse.json(
         { error: "invite inactive" },
         { status: 400 }
@@ -58,11 +58,17 @@ export async function POST(req: Request) {
     }
 
     const roster_id =
-      typeof invite.roster_id === "string" ? invite.roster_id : String(invite.roster_id ?? "");
+      typeof invite.roster_id === "string"
+        ? invite.roster_id
+        : String(invite.roster_id ?? "");
     const company_id =
-      typeof invite.company_id === "string" ? invite.company_id : String(invite.company_id ?? "");
+      typeof invite.company_id === "string"
+        ? invite.company_id
+        : String(invite.company_id ?? "");
     const email =
-      typeof invite.email === "string" ? invite.email.trim().toLowerCase() : "";
+      typeof invite.email === "string"
+        ? invite.email.trim().toLowerCase()
+        : "";
 
     if (!roster_id || !company_id || !email) {
       return NextResponse.json(
@@ -73,17 +79,20 @@ export async function POST(req: Request) {
 
     const { data: existingSession } = await supabase
       .from("onboarding_session")
-      .select("id, status")
+      .select("id, status, roster_id, company_id")
       .eq("invite_token", token)
+      .order("created_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (existingSession?.id) {
       return NextResponse.json({
         success: true,
         session_id: existingSession.id,
-        roster_id,
-        company_id,
+        roster_id: existingSession.roster_id ?? roster_id,
+        company_id: existingSession.company_id ?? company_id,
         email,
+        session_status: existingSession.status ?? null,
       });
     }
 
@@ -95,32 +104,25 @@ export async function POST(req: Request) {
         candidate_id: roster_id,
         pc_org_id: company_id,
         invite_token: token,
+        status: "in_progress",
       })
-      .select()
+      .select("id, status, roster_id, company_id")
       .single();
 
-    if (sessionError) {
+    if (sessionError || !session) {
       return NextResponse.json(
-        { error: sessionError.message },
+        { error: sessionError?.message ?? "Failed to create onboarding session." },
         { status: 500 }
       );
     }
 
-    await supabase
-      .from("hiring_invite_token")
-      .update({
-        status: "used",
-        used_at: new Date().toISOString(),
-      })
-      .eq("token", token)
-      .eq("status", "active");
-
     return NextResponse.json({
       success: true,
       session_id: session.id,
-      roster_id,
-      company_id,
+      roster_id: session.roster_id ?? roster_id,
+      company_id: session.company_id ?? company_id,
       email,
+      session_status: session.status ?? null,
     });
   } catch (err: unknown) {
     const message =

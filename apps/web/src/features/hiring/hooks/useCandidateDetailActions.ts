@@ -29,7 +29,7 @@ export function useCandidateDetailActions(args: Args) {
         }
       );
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         setError(data?.error ?? "Failed to activate candidate.");
@@ -44,6 +44,21 @@ export function useCandidateDetailActions(args: Args) {
             }
           : current
       );
+
+      setEvents((current) => [
+        {
+          id: `local-activate-${Date.now()}`,
+          company_id: "",
+          roster_id: rosterId,
+          event_category: "lifecycle",
+          event_type: "candidate_activated",
+          event_detail: "Candidate activated from candidate detail.",
+          event_metadata: null,
+          occurred_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+        },
+        ...current,
+      ]);
     } catch {
       setError("Failed to activate candidate.");
     } finally {
@@ -66,18 +81,20 @@ export function useCandidateDetailActions(args: Args) {
         }
       );
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         setError(data?.error ?? "Failed to send invite.");
         return;
       }
 
+      const nextInviteStatus = String(data?.invite_status ?? "Invited");
+
       setCandidate((current) =>
         current
           ? {
               ...current,
-              invite_status: "Invited",
+              invite_status: nextInviteStatus,
             }
           : current
       );
@@ -90,7 +107,9 @@ export function useCandidateDetailActions(args: Args) {
           event_category: "onboarding",
           event_type: "invite_sent",
           event_detail: "Invite sent from candidate detail.",
-          event_metadata: null,
+          event_metadata: {
+            email: typeof data?.email === "string" ? data.email : null,
+          },
           occurred_at: new Date().toISOString(),
           created_at: new Date().toISOString(),
         },

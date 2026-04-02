@@ -1,30 +1,41 @@
+export type RosterEmploymentStatus = "Active" | "Candidate" | "Former";
+
+export type RosterInviteStatus =
+  | "Not Invited"
+  | "Invited"
+  | "Linked"
+  | string;
+
+export type RosterComplianceSummary =
+  | "Compliant"
+  | "Missing"
+  | "Expiring"
+  | "Expired"
+  | "Archived"
+  | string;
+
 export type RosterRow = {
-  roster_member_id: string
-  person_id: string | null
+  roster_member_id: string;
+  person_id?: string | null;
+  profile_id?: string | null;
 
-  full_name: string
+  full_name: string;
+  email: string | null;
+  phone: string | null;
 
-  worker_type: string | null
-  job_title: string | null
+  worker_type: string | null;
+  job_title?: string | null;
 
-  employment_status: "Active" | "Candidate" | "Former"
+  employment_status: RosterEmploymentStatus;
 
-  market_code: string | null
-  reports_to_name: string | null
+  market_code: string | null;
+  reports_to_name: string | null;
 
-  hire_date: string | null
+  hire_date: string | null;
 
-  invite_status:
-    | "Not Invited"
-    | "Invited"
-    | "Linked"
+  invite_status: RosterInviteStatus;
+  compliance_summary: RosterComplianceSummary;
 
-  compliance_summary:
-    | "Compliant"
-    | "Missing"
-    | "Expiring"
-    | "Expired"
-
-  fx_id: string | null
-  dswid: string | null
-}
+  fx_id?: string | null;
+  dswid?: string | null;
+};

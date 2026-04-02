@@ -30,6 +30,18 @@ export default function PersonIdentityCard(props: {
           </div>
 
           <div className="hero-stat">
+            <span className="hero-stat__label">Email</span>
+            <strong style={{ wordBreak: "break-word", lineHeight: 1.35 }}>
+              {person?.email ?? "—"}
+            </strong>
+          </div>
+
+          <div className="hero-stat">
+            <span className="hero-stat__label">Phone</span>
+            <strong>{person?.phone ?? "—"}</strong>
+          </div>
+
+          <div className="hero-stat">
             <span className="hero-stat__label">Roster ID</span>
             <strong style={{ wordBreak: "break-word", lineHeight: 1.35 }}>
               {person?.id ?? rosterId}
