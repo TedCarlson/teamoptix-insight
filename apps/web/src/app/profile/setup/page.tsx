@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAccess } from "@/features/access/AccessProvider";
 import SiteHeader from "@/features/landing/components/SiteHeader";
 
-export default function ProfileSetupPage() {
+function ProfileSetupInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const access = useAccess();
@@ -26,7 +26,16 @@ export default function ProfileSetupPage() {
     if (!lastName && access.last_name) setLastName(access.last_name);
     if (!displayName && access.display_name) setDisplayName(access.display_name);
     if (!mobilePhone && access.mobile_phone) setMobilePhone(access.mobile_phone);
-  }, [access.first_name, access.last_name, access.display_name, access.mobile_phone, firstName, lastName, displayName, mobilePhone]);
+  }, [
+    access.first_name,
+    access.last_name,
+    access.display_name,
+    access.mobile_phone,
+    firstName,
+    lastName,
+    displayName,
+    mobilePhone,
+  ]);
 
   const nextHref = useMemo(() => {
     if (returnTo) return returnTo;
@@ -164,6 +173,14 @@ export default function ProfileSetupPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+export default function ProfileSetupPage() {
+  return (
+    <Suspense fallback={<main className="page-shell"><section className="panel"><p className="eyebrow">Profile</p><h1>Loading profile setup…</h1></section></main>}>
+      <ProfileSetupInner />
+    </Suspense>
   );
 }
 

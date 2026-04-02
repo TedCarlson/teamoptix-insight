@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
-export default function SignInPage() {
+function SignInInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -157,6 +157,23 @@ export default function SignInPage() {
         </form>
       </section>
     </main>
+  );
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="page-shell">
+          <section className="panel">
+            <p className="eyebrow">Auth</p>
+            <h1>Loading sign-in…</h1>
+          </section>
+        </main>
+      }
+    >
+      <SignInInner />
+    </Suspense>
   );
 }
 
