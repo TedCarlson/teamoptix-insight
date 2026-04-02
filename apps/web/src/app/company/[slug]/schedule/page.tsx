@@ -1,3 +1,5 @@
-import ScheduleLandingPage from "@/features/schedule/pages/ScheduleLandingPage";
+import GeneratedSchedulePage from "@/features/schedule/pages/GeneratedSchedulePage";
 
-export default ScheduleLandingPage;
+export default function Page() {
+  return <GeneratedSchedulePage />;
+}

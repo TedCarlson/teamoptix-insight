@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import SiteHeader from "@/features/landing/components/SiteHeader";
 import { useLob } from "@/features/lob/hooks/useLob";
 import RosterSummaryStrip from "@/features/people/components/RosterSummaryStrip";
 import RosterControlsBar, {
@@ -50,6 +49,35 @@ async function sendInvite(slug: string, rosterId: string) {
   }
 
   return data;
+}
+
+function InlineMessage(props: {
+  tone: "error" | "success";
+  message: string;
+}) {
+  const { tone, message } = props;
+
+  return (
+    <div
+      className="value-card"
+      style={{
+        gridColumn: "1 / -1",
+        padding: "12px 16px",
+        border:
+          tone === "error" ? "1px solid rgba(198,40,40,0.2)" : "1px solid rgba(15,159,110,0.2)",
+      }}
+    >
+      <p
+        style={{
+          margin: 0,
+          color: tone === "error" ? "#c62828" : "#0f9f6e",
+          fontWeight: 600,
+        }}
+      >
+        {message}
+      </p>
+    </div>
+  );
 }
 
 export default function CompanyRosterPage() {
@@ -183,72 +211,62 @@ export default function CompanyRosterPage() {
 
   return (
     <main className="landing-page">
-      <SiteHeader />
+      <section
+        style={{
+          width: "min(1200px, calc(100% - 32px))",
+          margin: "0 auto",
+          padding: "28px 0 12px",
+          display: "grid",
+          gap: 12,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 16,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ display: "grid", gap: 6 }}>
+            <p className="eyebrow">People</p>
+            <h1 style={{ margin: 0 }}>Roster</h1>
+            <p className="lede" style={{ margin: 0, maxWidth: 760 }}>
+              Manage active, candidate, and former people records from one operational surface.
+            </p>
+          </div>
 
-      <section className="value-strip">
-        <div className="value-grid">
-          <article className="value-card" style={{ gridColumn: "1 / -1" }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 16,
-                alignItems: "flex-start",
-                flexWrap: "wrap",
-              }}
-            >
-              <div>
-                <p className="value-card__eyebrow">People</p>
-                <h2 className="value-card__title">Roster</h2>
-                <p className="value-card__body">
-                  Operational workforce index for the company. Manage active,
-                  candidate, and former people records from one surface.
-                </p>
-              </div>
+          <div className="cta-row" style={{ marginTop: 0 }}>
+            <Link className="button" href={`/company/${slug}/people`}>
+              Back to people
+            </Link>
+            <button className="button button-primary" type="button">
+              Add person
+            </button>
+            <Link className="button" href={`/company/${slug}/people/import`}>
+              Import roster
+            </Link>
+          </div>
+        </div>
 
-              <div style={{ minWidth: 260, display: "grid", gap: 10 }}>
-                <div className="hero-stat">
-                  <span className="hero-stat__label">LOB</span>
-                  <strong>{lob.lob_label}</strong>
-                </div>
-
-                <div className="hero-stat">
-                  <span className="hero-stat__label">Industry</span>
-                  <strong>{lob.industry_label}</strong>
-                </div>
-              </div>
-            </div>
-
-            <div className="cta-row" style={{ marginTop: 14 }}>
-              <Link className="button" href={`/company/${slug}/people`}>
-                Back to people
-              </Link>
-              <button className="button button-primary" type="button">
-                Add person
-              </button>
-              <Link className="button" href={`/company/${slug}/people/import`}>
-                Import roster
-              </Link>
-            </div>
-          </article>
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            flexWrap: "wrap",
+            fontSize: 14,
+            color: "#5c6b84",
+          }}
+        >
+          <span>
+            <strong>LOB:</strong> {lob.lob_label}
+          </span>
+          <span>
+            <strong>Industry:</strong> {lob.industry_label}
+          </span>
         </div>
       </section>
-
-      {error ? (
-        <div style={{ padding: 24, color: "#c62828" }}>{error}</div>
-      ) : null}
-
-      {inviteError ? (
-        <div style={{ padding: "0 24px 24px", color: "#c62828" }}>
-          {inviteError}
-        </div>
-      ) : null}
-
-      {inviteMessage ? (
-        <div style={{ padding: "0 24px 24px", color: "#0f9f6e" }}>
-          {inviteMessage}
-        </div>
-      ) : null}
 
       <RosterSummaryStrip
         activeCount={activeCount}
@@ -257,8 +275,12 @@ export default function CompanyRosterPage() {
         complianceAlertCount={complianceAlertCount}
       />
 
-      <section className="value-strip">
+      <section className="value-strip" style={{ paddingTop: 16 }}>
         <div className="value-grid">
+          {error ? <InlineMessage tone="error" message={error} /> : null}
+          {inviteError ? <InlineMessage tone="error" message={inviteError} /> : null}
+          {inviteMessage ? <InlineMessage tone="success" message={inviteMessage} /> : null}
+
           <article style={{ gridColumn: "1 / -1" }}>
             <RosterControlsBar
               tab={tab}
@@ -272,7 +294,9 @@ export default function CompanyRosterPage() {
             {loading ? (
               <div style={{ padding: 24 }}>Loading roster...</div>
             ) : filteredRows.length === 0 ? (
-              <div style={{ padding: 24 }}>No roster records match the current view.</div>
+              <div style={{ padding: 24 }}>
+                No roster records match the current view.
+              </div>
             ) : (
               <div style={{ marginTop: 4, overflowX: "auto" }}>
                 <table

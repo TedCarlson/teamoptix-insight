@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import SiteHeader from "@/features/landing/components/SiteHeader";
 import { useLob } from "@/features/lob/hooks/useLob";
 
 type ApiRosterRow = {
@@ -30,6 +29,8 @@ type PipelineCandidateRow = {
   compliance: string;
 };
 
+type PipelineFilter = "all" | "new" | "invited" | "onboarding" | "ready";
+
 function SummaryCard(props: {
   eyebrow: string;
   title: string;
@@ -38,9 +39,11 @@ function SummaryCard(props: {
   const { eyebrow, title, body } = props;
 
   return (
-    <article className="value-card">
+    <article className="value-card" style={{ padding: 16 }}>
       <p className="value-card__eyebrow">{eyebrow}</p>
-      <h3 className="value-card__title">{title}</h3>
+      <h3 className="value-card__title" style={{ fontSize: "1rem" }}>
+        {title}
+      </h3>
       <p className="value-card__body">{body}</p>
     </article>
   );
@@ -66,6 +69,43 @@ function deriveProgress(stage: string) {
   return "10%";
 }
 
+function matchesFilter(row: PipelineCandidateRow, filter: PipelineFilter) {
+  if (filter === "all") return true;
+  if (filter === "new") return row.stage === "Candidate Created";
+  if (filter === "invited") return row.stage === "Invited";
+  if (filter === "onboarding") return row.stage === "Onboarding";
+  if (filter === "ready") {
+    return row.stage === "Ready" || row.stage === "Ready for Activation";
+  }
+  return true;
+}
+
+function FilterButton(props: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const { label, active, onClick } = props;
+
+  return (
+    <button
+      className="button"
+      type="button"
+      onClick={onClick}
+      style={
+        active
+          ? {
+              borderColor: "#0f172a",
+              fontWeight: 700,
+            }
+          : undefined
+      }
+    >
+      {label}
+    </button>
+  );
+}
+
 export default function HiringPipelinePage() {
   const params = useParams();
   const slug = String(params?.slug ?? "");
@@ -75,6 +115,7 @@ export default function HiringPipelinePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<PipelineFilter>("all");
 
   useEffect(() => {
     let active = true;
@@ -139,18 +180,20 @@ export default function HiringPipelinePage() {
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
 
-    if (!q) return rows;
+    return rows
+      .filter((row) => matchesFilter(row, filter))
+      .filter((row) => {
+        if (!q) return true;
 
-    return rows.filter((row) => {
-      return (
-        row.full_name.toLowerCase().includes(q) ||
-        row.role.toLowerCase().includes(q) ||
-        row.market.toLowerCase().includes(q) ||
-        row.stage.toLowerCase().includes(q) ||
-        row.invite_status.toLowerCase().includes(q)
-      );
-    });
-  }, [rows, search]);
+        return (
+          row.full_name.toLowerCase().includes(q) ||
+          row.role.toLowerCase().includes(q) ||
+          row.market.toLowerCase().includes(q) ||
+          row.stage.toLowerCase().includes(q) ||
+          row.invite_status.toLowerCase().includes(q)
+        );
+      });
+  }, [rows, search, filter]);
 
   const newCount = rows.filter((row) => row.stage === "Candidate Created").length;
   const invitedCount = rows.filter((row) => row.stage === "Invited").length;
@@ -161,102 +204,106 @@ export default function HiringPipelinePage() {
 
   return (
     <main className="landing-page">
-      <SiteHeader />
+      <section
+        style={{
+          width: "min(1200px, calc(100% - 32px))",
+          margin: "0 auto",
+          padding: "28px 0 12px",
+          display: "grid",
+          gap: 12,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 16,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ display: "grid", gap: 6 }}>
+            <p className="eyebrow">Hiring</p>
+            <h1 style={{ margin: 0 }}>Candidate pipeline</h1>
+            <p className="lede" style={{ margin: 0, maxWidth: 760 }}>
+              Review candidate readiness, onboarding progress, and next actions.
+            </p>
+          </div>
 
-      <section className="value-strip">
+          <div className="cta-row" style={{ marginTop: 0 }}>
+            <Link className="button" href={`/company/${slug}`}>
+              Back to company
+            </Link>
+            <Link className="button" href={`/company/${slug}/people`}>
+              People
+            </Link>
+            <Link className="button" href={`/company/${slug}/people/roster`}>
+              Roster
+            </Link>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            flexWrap: "wrap",
+            fontSize: 14,
+            color: "#5c6b84",
+          }}
+        >
+          <span>
+            <strong>LOB:</strong> {lob.lob_label}
+          </span>
+          <span>
+            <strong>Industry:</strong> {lob.industry_label}
+          </span>
+        </div>
+      </section>
+
+      <section className="value-strip" style={{ paddingTop: 12, paddingBottom: 12 }}>
+        <div
+          className="value-grid"
+          style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}
+        >
+          <SummaryCard
+            eyebrow="New"
+            title={String(newCount)}
+            body="Newly created candidates."
+          />
+          <SummaryCard
+            eyebrow="Invited"
+            title={String(invitedCount)}
+            body="Invite sent."
+          />
+          <SummaryCard
+            eyebrow="Onboarding"
+            title={String(onboardingCount)}
+            body="In onboarding flow."
+          />
+          <SummaryCard
+            eyebrow="Ready"
+            title={String(readyCount)}
+            body="Ready for review."
+          />
+        </div>
+      </section>
+
+      <section className="value-strip" style={{ paddingTop: 12 }}>
         <div className="value-grid">
           <article className="value-card" style={{ gridColumn: "1 / -1" }}>
             <div
               style={{
                 display: "flex",
                 justifyContent: "space-between",
-                gap: 16,
                 alignItems: "flex-start",
+                gap: 16,
                 flexWrap: "wrap",
               }}
             >
-              <div>
-                <p className="value-card__eyebrow">Hiring</p>
-                <h2 className="value-card__title">Candidate pipeline</h2>
-                <p className="value-card__body">
-                  Manager-facing hiring workflow surface for candidates inside
-                  the company roster. This page reads live candidate rows and
-                  now reflects onboarding completion without auto-activating a
-                  real person.
-                </p>
-              </div>
-
-              <div style={{ minWidth: 260, display: "grid", gap: 10 }}>
-                <div className="hero-stat">
-                  <span className="hero-stat__label">LOB</span>
-                  <strong>{lob.lob_label}</strong>
-                </div>
-
-                <div className="hero-stat">
-                  <span className="hero-stat__label">Industry</span>
-                  <strong>{lob.industry_label}</strong>
-                </div>
-              </div>
-            </div>
-
-            <div className="cta-row" style={{ marginTop: 14 }}>
-              <Link className="button" href={`/company/${slug}`}>
-                Back to company
-              </Link>
-              <Link className="button" href={`/company/${slug}/people`}>
-                People
-              </Link>
-              <Link className="button" href={`/company/${slug}/people/roster`}>
-                Roster
-              </Link>
-            </div>
-          </article>
-
-          <SummaryCard
-            eyebrow="New"
-            title={String(newCount)}
-            body="Candidates newly added and not yet meaningfully advanced."
-          />
-
-          <SummaryCard
-            eyebrow="Invited"
-            title={String(invitedCount)}
-            body="Candidates who have already received an onboarding invite."
-          />
-
-          <SummaryCard
-            eyebrow="Onboarding"
-            title={String(onboardingCount)}
-            body="Candidates actively moving through onboarding steps."
-          />
-
-          <SummaryCard
-            eyebrow="Ready"
-            title={String(readyCount)}
-            body="Candidates who have finished onboarding and are ready for review or activation."
-          />
-
-          <article className="value-card" style={{ gridColumn: "1 / -1" }}>
-            <p className="value-card__eyebrow">Pipeline controls</p>
-            <h3 className="value-card__title">Filter candidate view</h3>
-
-            <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
-              <div className="cta-row">
-                <button className="button" type="button">
-                  All
-                </button>
-                <button className="button" type="button">
-                  New
-                </button>
-                <button className="button" type="button">
-                  Invited
-                </button>
-                <button className="button" type="button">
-                  Onboarding
-                </button>
-                <button className="button" type="button">
-                  Ready
-                </button>
+              <div style={{ display: "grid", gap: 6 }}>
+                <p className="value-card__eyebrow">Pipeline</p>
+                <h3 className="value-card__title">Candidate list</h3>
               </div>
 
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
@@ -267,24 +314,42 @@ export default function HiringPipelinePage() {
                   onChange={(e) => setSearch(e.target.value)}
                   style={inputStyle}
                 />
-                <button className="button" type="button">
-                  Filters
-                </button>
               </div>
             </div>
-          </article>
 
-          <article className="value-card" style={{ gridColumn: "1 / -1" }}>
-            <p className="value-card__eyebrow">Pipeline</p>
-            <h3 className="value-card__title">Candidate list</h3>
-            <p className="value-card__body" style={{ marginTop: 8 }}>
-              Live candidate rows are sourced from company roster records with
-              Candidate status. Stage now recognizes onboarding completion as a
-              non-activating readiness state.
-            </p>
+            <div
+              className="cta-row"
+              style={{ marginTop: 14, marginBottom: 8, flexWrap: "wrap" }}
+            >
+              <FilterButton
+                label="All"
+                active={filter === "all"}
+                onClick={() => setFilter("all")}
+              />
+              <FilterButton
+                label="New"
+                active={filter === "new"}
+                onClick={() => setFilter("new")}
+              />
+              <FilterButton
+                label="Invited"
+                active={filter === "invited"}
+                onClick={() => setFilter("invited")}
+              />
+              <FilterButton
+                label="Onboarding"
+                active={filter === "onboarding"}
+                onClick={() => setFilter("onboarding")}
+              />
+              <FilterButton
+                label="Ready"
+                active={filter === "ready"}
+                onClick={() => setFilter("ready")}
+              />
+            </div>
 
             {error ? (
-              <p style={{ color: "#c62828", marginTop: 14 }}>{error}</p>
+              <p style={{ color: "#c62828", marginTop: 12 }}>{error}</p>
             ) : null}
 
             {loading ? (
@@ -292,7 +357,7 @@ export default function HiringPipelinePage() {
             ) : filteredRows.length === 0 ? (
               <div style={{ padding: "16px 0" }}>No candidate rows found.</div>
             ) : (
-              <div style={{ marginTop: 16, overflowX: "auto" }}>
+              <div style={{ marginTop: 12, overflowX: "auto" }}>
                 <table
                   style={{
                     width: "100%",
@@ -357,16 +422,6 @@ export default function HiringPipelinePage() {
                 </table>
               </div>
             )}
-          </article>
-
-          <article className="value-card" style={{ gridColumn: "1 / -1" }}>
-            <p className="value-card__eyebrow">What comes next</p>
-            <h3 className="value-card__title">Pipeline maturity direction</h3>
-            <p className="value-card__body" style={{ marginTop: 8 }}>
-              Next slice will reflect this onboarding-complete readiness state
-              inside candidate detail and then add a distinct manager activation
-              action.
-            </p>
           </article>
         </div>
       </section>

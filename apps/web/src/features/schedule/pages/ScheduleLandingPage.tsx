@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
-import SiteHeader from "@/features/landing/components/SiteHeader";
 import ScheduleFilters from "@/features/schedule/components/ScheduleFilters";
 import ScheduleGrid from "@/features/schedule/components/ScheduleGrid";
 import SchedulePostureBand from "@/features/schedule/components/SchedulePostureBand";
@@ -72,15 +70,20 @@ type RouteRow = {
   runs_f: boolean;
 };
 
-type PeopleFilter = "drivers_helpers" | "others";
-
-const toolbarButtonStyle: React.CSSProperties = {
-  minHeight: 46,
-  padding: "0 22px",
-  borderRadius: 24,
-  fontSize: 14,
-  fontWeight: 700,
+type CommitResult = {
+  ok?: boolean;
+  mode?: string;
+  company_id?: string;
+  window_start?: string;
+  window_end?: string;
+  baselines_touched?: number;
+  deleted_existing_count?: number;
+  generated_count?: number;
+  override_count?: number;
+  terminal_id_used?: string;
 };
+
+type PeopleFilter = "drivers_helpers" | "others";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -116,6 +119,9 @@ export default function ScheduleLandingPage() {
     null
   );
   const [baselineBusy, setBaselineBusy] = useState(false);
+  const [commitBusy, setCommitBusy] = useState(false);
+  const [commitMessage, setCommitMessage] = useState<string | null>(null);
+  const [commitResult, setCommitResult] = useState<CommitResult | null>(null);
 
   async function loadSchedule() {
     try {
@@ -221,11 +227,13 @@ export default function ScheduleLandingPage() {
     }
   }
 
+  async function refreshAll() {
+    await Promise.all([loadSchedule(), loadPresets(), loadRoutes()]);
+  }
+
   useEffect(() => {
     if (!slug) return;
-    loadSchedule();
-    loadPresets();
-    loadRoutes();
+    refreshAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
@@ -332,6 +340,8 @@ export default function ScheduleLandingPage() {
     try {
       setBaselineBusy(true);
       setError(null);
+      setCommitMessage(null);
+      setCommitResult(null);
 
       const res = await fetch(
         `/api/company/${slug}/schedule/${inlineOpenRosterId}`,
@@ -351,9 +361,8 @@ export default function ScheduleLandingPage() {
       }
 
       setInlineOpenRosterId(null);
-      await loadSchedule();
-      await loadPresets();
-      await loadRoutes();
+      setCommitMessage("Baseline saved. Commit schedule to rebuild future facts.");
+      await refreshAll();
     } catch {
       setError("Failed to save schedule baseline.");
     } finally {
@@ -365,6 +374,8 @@ export default function ScheduleLandingPage() {
     try {
       setBaselineBusy(true);
       setError(null);
+      setCommitMessage(null);
+      setCommitResult(null);
 
       const res = await fetch(
         `/api/company/${slug}/schedule/${rosterMemberId}`,
@@ -382,13 +393,50 @@ export default function ScheduleLandingPage() {
       }
 
       setInlineOpenRosterId(null);
-      await loadSchedule();
-      await loadPresets();
-      await loadRoutes();
+      setCommitMessage("Baseline removed. Commit schedule to rebuild future facts.");
+      await refreshAll();
     } catch {
       setError("Failed to remove schedule.");
     } finally {
       setBaselineBusy(false);
+    }
+  }
+
+  async function handleCommitSchedule() {
+    try {
+      setCommitBusy(true);
+      setError(null);
+      setCommitMessage(null);
+      setCommitResult(null);
+
+      const res = await fetch(`/api/company/${slug}/schedule/commit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          start_date: todayIso(),
+          horizon_days: 70,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data?.error ?? "Failed to commit schedule.");
+        return;
+      }
+
+      const commit = (data?.commit ?? {}) as CommitResult;
+      setCommitResult(commit);
+      setCommitMessage(
+        `Schedule committed. ${commit.generated_count ?? 0} future rows generated across ${commit.baselines_touched ?? 0} active baselines.`
+      );
+
+      await refreshAll();
+    } catch {
+      setError("Failed to commit schedule.");
+    } finally {
+      setCommitBusy(false);
     }
   }
 
@@ -406,64 +454,85 @@ export default function ScheduleLandingPage() {
 
   return (
     <main className="landing-page">
-      <SiteHeader />
-
-      <section className="value-strip">
-        <div className="value-grid">
-          <article
-            className="value-card"
-            style={{
-              gridColumn: "1 / -1",
-              paddingTop: 18,
-              paddingBottom: 18,
-              borderRadius: 40,
-            }}
+      <section
+        style={{
+          width: "min(1240px, calc(100% - 32px))",
+          margin: "0 auto",
+          padding: "24px 0 12px",
+          display: "grid",
+          gap: 12,
+        }}
+      >
+        <div style={{ display: "grid", gap: 4 }}>
+          <p
+            className="eyebrow"
+            style={{ margin: 0, fontSize: 12, letterSpacing: "0.08em" }}
           >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 16,
-                flexWrap: "wrap",
-              }}
-            >
-              <div>
-                <p
-                  className="value-card__eyebrow"
-                  style={{ marginBottom: 4, fontSize: 12, letterSpacing: "0.08em" }}
-                >
-                  Schedule
-                </p>
-                <h2
-                  className="value-card__title"
-                  style={{ marginBottom: 0, fontSize: 20, lineHeight: 1.05 }}
-                >
-                  Workbench
-                </h2>
-              </div>
+            Schedule
+          </p>
+          <h1 style={{ margin: 0, fontSize: 24, lineHeight: 1.05 }}>
+            Workbench
+          </h1>
+        </div>
+      </section>
 
-              <div className="cta-row" style={{ marginTop: 0, gap: 10 }}>
-                <Link className="button" href={`/company/${slug}`} style={toolbarButtonStyle}>
-                  Back
-                </Link>
-                <Link className="button" href={`/company/${slug}/routes`} style={toolbarButtonStyle}>
-                  Routes
-                </Link>
-                <Link
-                  className="button button-primary"
-                  href={`/company/${slug}/schedule/presets`}
-                  style={toolbarButtonStyle}
-                >
-                  Presets
-                </Link>
-              </div>
-            </div>
-          </article>
-
+      <section className="value-strip" style={{ paddingTop: 12 }}>
+        <div className="value-grid">
           {error ? (
-            <article className="value-card" style={{ gridColumn: "1 / -1" }}>
+            <article
+              className="value-card"
+              style={{ gridColumn: "1 / -1", padding: "12px 16px" }}
+            >
               <p style={{ color: "#c62828", margin: 0 }}>{error}</p>
+            </article>
+          ) : null}
+
+          {commitMessage ? (
+            <article
+              className="value-card"
+              style={{ gridColumn: "1 / -1", padding: "12px 16px" }}
+            >
+              <p style={{ color: "#0f9f6e", margin: 0, fontWeight: 600 }}>
+                {commitMessage}
+              </p>
+            </article>
+          ) : null}
+
+          {commitResult ? (
+            <article
+              className="value-card"
+              style={{ gridColumn: "1 / -1", padding: "12px 16px" }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  gap: 16,
+                  flexWrap: "wrap",
+                  fontSize: 14,
+                  color: "#334155",
+                }}
+              >
+                <span>
+                  <strong>Window:</strong> {commitResult.window_start ?? "—"} →{" "}
+                  {commitResult.window_end ?? "—"}
+                </span>
+                <span>
+                  <strong>Baselines:</strong>{" "}
+                  {commitResult.baselines_touched ?? 0}
+                </span>
+                <span>
+                  <strong>Generated:</strong>{" "}
+                  {commitResult.generated_count ?? 0}
+                </span>
+                <span>
+                  <strong>Overrides:</strong>{" "}
+                  {commitResult.override_count ?? 0}
+                </span>
+                <span>
+                  <strong>Cleared:</strong>{" "}
+                  {commitResult.deleted_existing_count ?? 0}
+                </span>
+              </div>
             </article>
           ) : null}
 
@@ -471,10 +540,27 @@ export default function ScheduleLandingPage() {
             className="value-card"
             style={{
               gridColumn: "1 / -1",
-              paddingTop: 20,
-              borderRadius: 36,
+              paddingTop: 18,
+              paddingBottom: 18,
             }}
           >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                marginBottom: 12,
+              }}
+            >
+              <button
+                type="button"
+                className="button button-primary"
+                onClick={handleCommitSchedule}
+                disabled={commitBusy || baselineBusy || loading}
+              >
+                {commitBusy ? "Committing..." : "Commit Schedule"}
+              </button>
+            </div>
+
             <ScheduleFilters
               search={search}
               onSearchChange={setSearch}
@@ -499,25 +585,12 @@ export default function ScheduleLandingPage() {
               presets={presets}
               routeOptions={routeOptions}
               inlineOpenRosterId={inlineOpenRosterId}
-              baselineBusy={baselineBusy}
+              baselineBusy={baselineBusy || commitBusy}
               getBaselineDraft={getBaselineDraft}
               onToggleInlineEditor={handleToggleInlineEditor}
               onCloseInlineEditor={handleCloseInlineEditor}
               onSaveBaseline={handleSaveBaseline}
               onRemoveSchedule={handleRemoveSchedule}
-            />
-
-            <div
-              style={{
-                position: "sticky",
-                bottom: 0,
-                zIndex: 3,
-                marginTop: 16,
-                height: 14,
-                border: "1px solid #d6dfeb",
-                borderRadius: 28,
-                background: "#fff",
-              }}
             />
           </article>
         </div>

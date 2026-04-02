@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import SiteHeader from "@/features/landing/components/SiteHeader";
 import { useAccess } from "@/features/access/AccessProvider";
 
 type Membership = {
@@ -21,38 +20,39 @@ function CompanyCard(props: {
   const { membership, isPlatformOwner } = props;
 
   return (
-    <article className="value-card">
-      <p className="value-card__eyebrow">Company</p>
-      <h3 className="value-card__title">{membership.company_name}</h3>
-      <p className="value-card__body">
-        {membership.relationship_type} · {membership.membership_status}
-      </p>
+    <article className="value-card" style={{ display: "grid", gap: 14 }}>
+      <div style={{ display: "grid", gap: 4 }}>
+        <p className="value-card__eyebrow">Company</p>
+        <h3 className="value-card__title">{membership.company_name}</h3>
+        <p className="value-card__body">
+          {membership.relationship_type} · {membership.membership_status}
+        </p>
+      </div>
 
-      <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
-        <div className="hero-stat">
-          <span className="hero-stat__label">Slug</span>
-          <strong>{membership.company_slug}</strong>
+      <div
+        style={{
+          display: "grid",
+          gap: 8,
+          fontSize: 14,
+        }}
+      >
+        <div>
+          <strong>Slug:</strong> {membership.company_slug}
         </div>
-
-        <div className="hero-stat">
-          <span className="hero-stat__label">Company status</span>
-          <strong>{membership.company_status}</strong>
+        <div>
+          <strong>Status:</strong> {membership.company_status}
         </div>
-
-        <div className="hero-stat">
-          <span className="hero-stat__label">Membership title</span>
-          <strong>{membership.title ?? "Not assigned"}</strong>
+        <div>
+          <strong>Title:</strong> {membership.title ?? "Not assigned"}
         </div>
-
         {isPlatformOwner ? (
-          <div className="hero-stat">
-            <span className="hero-stat__label">Developer insight</span>
-            <strong>{membership.company_id}</strong>
+          <div>
+            <strong>Company ID:</strong> {membership.company_id}
           </div>
         ) : null}
       </div>
 
-      <div className="cta-row" style={{ marginTop: 18 }}>
+      <div className="cta-row" style={{ marginTop: 4 }}>
         <Link
           className="button button-primary"
           href={`/company/${membership.company_slug}`}
@@ -64,57 +64,94 @@ function CompanyCard(props: {
   );
 }
 
+function DirectorySummary(props: {
+  userLabel: string;
+  membershipCount: number;
+  isPlatformOwner: boolean;
+}) {
+  const { userLabel, membershipCount, isPlatformOwner } = props;
+
+  return (
+    <section
+      className="value-strip"
+      style={{ paddingTop: 0, paddingBottom: 0, marginTop: 12 }}
+    >
+      <div
+        className="value-grid"
+        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}
+      >
+        <article className="value-card" style={{ padding: 16 }}>
+          <p className="value-card__eyebrow">User</p>
+          <h3 className="value-card__title" style={{ fontSize: "1rem" }}>
+            {userLabel}
+          </h3>
+        </article>
+
+        <article className="value-card" style={{ padding: 16 }}>
+          <p className="value-card__eyebrow">Memberships</p>
+          <h3 className="value-card__title" style={{ fontSize: "1rem" }}>
+            {membershipCount}
+          </h3>
+        </article>
+
+        <article className="value-card" style={{ padding: 16 }}>
+          <p className="value-card__eyebrow">Privilege</p>
+          <h3 className="value-card__title" style={{ fontSize: "1rem" }}>
+            {isPlatformOwner ? "Platform Owner" : "Standard User"}
+          </h3>
+        </article>
+      </div>
+    </section>
+  );
+}
+
 export default function CompaniesPage() {
   const access = useAccess();
   const memberships = (access.memberships ?? []) as Membership[];
 
   return (
     <main className="landing-page">
-      <SiteHeader />
-
-      <section className="hero">
-        <div className="hero__grid">
-          <section className="hero-card hero-card--primary">
+      <section
+        style={{
+          width: "min(1120px, calc(100% - 32px))",
+          margin: "0 auto",
+          padding: "32px 0 16px",
+          display: "grid",
+          gap: 16,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 16,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ display: "grid", gap: 6 }}>
             <p className="eyebrow">Companies</p>
-            <h1>Your company directory</h1>
-            <p className="lede">
-              Select a company workspace to enter the membership experience for
-              that company.
+            <h1 style={{ margin: 0 }}>Choose a workspace</h1>
+            <p className="lede" style={{ margin: 0, maxWidth: 720 }}>
+              Select a company to enter its operational workspace.
             </p>
+          </div>
 
-            <div className="cta-row">
-              <Link className="button" href="/profile">
-                Back to profile
-              </Link>
-            </div>
-          </section>
-
-          <aside className="hero-card hero-card--secondary">
-            <p className="eyebrow">Directory snapshot</p>
-
-            <div className="hero-stat">
-              <span className="hero-stat__label">User</span>
-              <strong>
-                {access.display_name || access.email || "Unknown user"}
-              </strong>
-            </div>
-
-            <div className="hero-stat">
-              <span className="hero-stat__label">Memberships</span>
-              <strong>{memberships.length}</strong>
-            </div>
-
-            <div className="hero-stat">
-              <span className="hero-stat__label">Privilege</span>
-              <strong>
-                {access.is_platform_owner ? "Platform Owner" : "Standard User"}
-              </strong>
-            </div>
-          </aside>
+          <div className="cta-row" style={{ marginTop: 0 }}>
+            <Link className="button" href="/profile">
+              Back to profile
+            </Link>
+          </div>
         </div>
       </section>
 
-      <section className="value-strip">
+      <DirectorySummary
+        userLabel={access.display_name || access.email || "Unknown user"}
+        membershipCount={memberships.length}
+        isPlatformOwner={Boolean(access.is_platform_owner)}
+      />
+
+      <section className="value-strip" style={{ paddingTop: 16 }}>
         {memberships.length > 0 ? (
           <div className="value-grid">
             {memberships.map((membership) => (

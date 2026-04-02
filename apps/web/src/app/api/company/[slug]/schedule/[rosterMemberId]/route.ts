@@ -72,7 +72,8 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
     const rotationMode = cleanText(body.rotation_mode) ?? "NONE";
     const anchorDate = existing?.anchor_date ?? todayIso();
-    const effectiveStart = cleanText(body.effective_start) ?? existing?.effective_start ?? todayIso();
+    const effectiveStart =
+      cleanText(body.effective_start) ?? existing?.effective_start ?? todayIso();
 
     const writePayload = {
       company_id: company.id,
@@ -92,6 +93,8 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       effective_end: null,
     };
 
+    let mode: "insert" | "update" = "insert";
+
     if (existing?.id) {
       const { error: updateErr } = await sb
         .from("schedule_baseline")
@@ -110,26 +113,32 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
         );
       }
 
-      return NextResponse.json({ ok: true, mode: "update" });
+      mode = "update";
+    } else {
+      const { error: insertErr } = await sb
+        .from("schedule_baseline")
+        .insert(writePayload);
+
+      if (insertErr) {
+        return NextResponse.json(
+          {
+            error: insertErr.message,
+            detail: insertErr,
+            step: "insert",
+            writePayload,
+          },
+          { status: 500 }
+        );
+      }
+
+      mode = "insert";
     }
 
-    const { error: insertErr } = await sb
-      .from("schedule_baseline")
-      .insert(writePayload);
-
-    if (insertErr) {
-      return NextResponse.json(
-        {
-          error: insertErr.message,
-          detail: insertErr,
-          step: "insert",
-          writePayload,
-        },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ ok: true, mode: "insert" });
+    return NextResponse.json({
+      ok: true,
+      mode,
+      pending_commit: true,
+    });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to save schedule baseline.";
@@ -172,12 +181,19 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
 
     if (updateErr) {
       return NextResponse.json(
-        { error: updateErr.message, detail: updateErr, step: "delete" },
+        {
+          error: updateErr.message,
+          detail: updateErr,
+          step: "delete_baseline",
+        },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      pending_commit: true,
+    });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to remove schedule.";
