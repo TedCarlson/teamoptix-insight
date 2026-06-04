@@ -63,7 +63,12 @@ function SignInInner() {
     try {
       const supabase = getSupabaseBrowserClient();
 
-      const redirectTarget = `${window.location.origin}${nextHref}`;
+      const appBaseUrl =
+        process.env.NEXT_PUBLIC_APP_URL ||
+        process.env.NEXT_PUBLIC_SITE_URL ||
+        window.location.origin;
+
+      const redirectTarget = `${appBaseUrl.replace(/\/$/, "")}${nextHref}`;
 
       const { error } = await supabase.auth.signInWithOtp({
         email,
