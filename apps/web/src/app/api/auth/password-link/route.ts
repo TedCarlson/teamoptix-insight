@@ -30,9 +30,7 @@ export async function POST(req: Request) {
     const emailFromName = process.env.RESEND_FROM_NAME?.trim() || "Insight";
 
     const callbackUrl =
-      `${appBaseUrl}/auth/callback?next=${encodeURIComponent(
-        `/set-password?returnTo=${encodeURIComponent(returnTo)}`
-      )}`;
+      `${appBaseUrl}/auth/callback?setPassword=1&next=${encodeURIComponent(returnTo)}`;
 
     const admin = getSupabaseAdminClient();
 

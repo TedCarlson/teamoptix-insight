@@ -1,0 +1,99 @@
+"use client";
+
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
+
+function safePath(value: string | null) {
+  if (!value) return "/profile";
+  if (!value.startsWith("/")) return "/profile";
+  if (value.startsWith("//")) return "/profile";
+  return value;
+}
+
+function AuthCallbackInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [message, setMessage] = useState("Preparing secure session…");
+
+  const next = useMemo(() => {
+    return safePath(searchParams.get("next"));
+  }, [searchParams]);
+
+  const setPassword = searchParams.get("setPassword") === "1";
+
+  useEffect(() => {
+    let active = true;
+
+    async function completeAuth() {
+      const supabase = getSupabaseBrowserClient();
+
+      const code = searchParams.get("code");
+
+      if (code) {
+        setMessage("Completing sign-in…");
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+        if (error) {
+          if (!active) return;
+          router.replace(
+            `/sign-in?error=${encodeURIComponent(error.message)}&returnTo=${encodeURIComponent(next)}`
+          );
+          return;
+        }
+      }
+
+      const { data } = await supabase.auth.getSession();
+
+      if (!active) return;
+
+      if (!data.session) {
+        router.replace(
+          `/sign-in?error=${encodeURIComponent(
+            "Secure session was not established. Please request a fresh password setup link."
+          )}&returnTo=${encodeURIComponent(next)}`
+        );
+        return;
+      }
+
+      const destination = setPassword
+        ? `/set-password?returnTo=${encodeURIComponent(next)}`
+        : next;
+
+      router.replace(destination);
+    }
+
+    void completeAuth();
+
+    return () => {
+      active = false;
+    };
+  }, [next, router, searchParams, setPassword]);
+
+  return (
+    <main className="page-shell">
+      <section className="panel">
+        <p className="eyebrow">Auth</p>
+        <h1>{message}</h1>
+        <p className="lede">Please wait while Insight completes your secure sign-in.</p>
+      </section>
+    </main>
+  );
+}
+
+export default function AuthCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="page-shell">
+          <section className="panel">
+            <p className="eyebrow">Auth</p>
+            <h1>Loading secure session…</h1>
+          </section>
+        </main>
+      }
+    >
+      <AuthCallbackInner />
+    </Suspense>
+  );
+}
