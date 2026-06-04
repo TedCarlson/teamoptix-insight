@@ -25,13 +25,13 @@ function AuthCallbackInner() {
   useEffect(() => {
     let active = true;
 
-    async function completeAuth() {
+    async function waitForSession() {
       const supabase = getSupabaseBrowserClient();
-
       const code = searchParams.get("code");
 
       if (code) {
         setMessage("Completing sign-in…");
+
         const { error } = await supabase.auth.exchangeCodeForSession(code);
 
         if (error) {
@@ -43,27 +43,33 @@ function AuthCallbackInner() {
         }
       }
 
-      const { data } = await supabase.auth.getSession();
+      setMessage("Finalizing secure session…");
 
-      if (!active) return;
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const { data } = await supabase.auth.getSession();
 
-      if (!data.session) {
-        router.replace(
-          `/sign-in?error=${encodeURIComponent(
-            "Secure session was not established. Please request a fresh password setup link."
-          )}&returnTo=${encodeURIComponent(next)}`
-        );
-        return;
+        if (!active) return;
+
+        if (data.session) {
+          const destination = setPassword
+            ? `/set-password?returnTo=${encodeURIComponent(next)}`
+            : next;
+
+          router.replace(destination);
+          return;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 250));
       }
 
-      const destination = setPassword
-        ? `/set-password?returnTo=${encodeURIComponent(next)}`
-        : next;
-
-      router.replace(destination);
+      router.replace(
+        `/sign-in?error=${encodeURIComponent(
+          "Secure session was not established. Please request a fresh password setup link."
+        )}&returnTo=${encodeURIComponent(next)}`
+      );
     }
 
-    void completeAuth();
+    void waitForSession();
 
     return () => {
       active = false;
