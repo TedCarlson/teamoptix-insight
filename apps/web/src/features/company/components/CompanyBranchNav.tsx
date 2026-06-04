@@ -80,6 +80,11 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
       match: (path) => path.startsWith(`${base}/schedule`),
     },
     {
+      label: "Dispatch",
+      href: `${base}/dispatch`,
+      match: (path) => path.startsWith(`${base}/dispatch`),
+    },
+    {
       label: "Routes",
       href: `${base}/routes`,
       match: (path) => path.startsWith(`${base}/routes`),
