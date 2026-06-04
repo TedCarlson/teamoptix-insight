@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import SiteHeader from "@/features/landing/components/SiteHeader";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
@@ -9,12 +9,66 @@ function SetPasswordInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnTo = searchParams.get("returnTo")?.trim() || "/profile";
+  const code = searchParams.get("code")?.trim() ?? "";
 
+  const [sessionReady, setSessionReady] = useState(false);
+  const [sessionChecking, setSessionChecking] = useState(true);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function prepareSession() {
+      try {
+        setSessionChecking(true);
+        setError(null);
+
+        const supabase = getSupabaseBrowserClient();
+
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+          if (error) {
+            setError(error.message);
+            setSessionReady(false);
+            return;
+          }
+
+          if (active) {
+            router.replace(`/set-password?returnTo=${encodeURIComponent(returnTo)}`);
+          }
+        }
+
+        const { data } = await supabase.auth.getSession();
+
+        if (!active) return;
+
+        if (!data.session) {
+          setError("Password setup link is missing or expired. Please request a new password setup link.");
+          setSessionReady(false);
+          return;
+        }
+
+        setSessionReady(true);
+      } catch {
+        if (!active) return;
+        setError("Failed to prepare password setup session.");
+        setSessionReady(false);
+      } finally {
+        if (active) setSessionChecking(false);
+      }
+    }
+
+    void prepareSession();
+
+    return () => {
+      active = false;
+    };
+  }, [code, returnTo, router]);
 
   const canSubmit = useMemo(() => {
     return password.length >= 8 && password === confirmPassword;
@@ -98,6 +152,12 @@ function SetPasswordInner() {
                 <p style={{ color: "#2e7d32", marginTop: 14 }}>{message}</p>
               ) : null}
 
+              {sessionChecking ? (
+                <p style={{ color: "#5c6b84", marginTop: 14 }}>
+                  Preparing secure password session…
+                </p>
+              ) : null}
+
               {error ? (
                 <p style={{ color: "#c62828", marginTop: 14 }}>{error}</p>
               ) : null}
@@ -106,7 +166,7 @@ function SetPasswordInner() {
                 <button
                   className="button button-primary"
                   type="submit"
-                  disabled={submitting || !canSubmit}
+                  disabled={submitting || sessionChecking || !sessionReady || !canSubmit}
                 >
                   {submitting ? "Saving..." : "Set password"}
                 </button>
