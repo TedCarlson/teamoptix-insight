@@ -104,24 +104,28 @@ function SignInInner() {
     setMessage(null);
 
     try {
-      const supabase = getSupabaseBrowserClient();
-
-      const callbackUrl = `${appBaseUrl}/auth/callback?next=${encodeURIComponent(
-        `/set-password?returnTo=${encodeURIComponent(nextHref)}`
-      )}`;
-
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: callbackUrl,
+      const res = await fetch("/api/auth/password-link", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          email,
+          returnTo: nextHref,
+        }),
       });
 
-      if (error) {
-        setError(error.message);
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setError(data?.error ?? "Failed to send password setup link.");
         return;
       }
 
       setMessage("Password setup link sent. Check your email.");
     } catch {
-      setError("Unexpected password recovery error.");
+      setError("Unexpected password setup error.");
     } finally {
       setSubmitting(false);
     }
