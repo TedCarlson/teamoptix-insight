@@ -123,7 +123,7 @@ export async function POST(
     }
 
     const resendApiKey = requireEnv("RESEND_API_KEY");
-    const emailFrom = requireEnv("EMAIL_FROM");
+    const emailFrom = requireEnv("RESEND_FROM_EMAIL");
     const appBaseUrl =
       process.env.APP_BASE_URL?.trim() || new URL(req.url).origin;
 
