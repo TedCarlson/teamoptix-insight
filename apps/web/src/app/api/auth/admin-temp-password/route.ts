@@ -20,17 +20,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
     }
 
-    const admin = getSupabaseAdminClient();
+    const { data: access, error: accessError } =
+      await supabase.rpc("access_context");
 
-    const { data: profile, error: profileError } = await admin
-      .from("profiles")
-      .select("profile_id, is_platform_owner")
-      .eq("auth_user_id", user.id)
-      .single();
-
-    if (profileError || !profile?.is_platform_owner) {
+    if (accessError || !access?.is_platform_owner) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
+
+    const admin = getSupabaseAdminClient();
 
     const body = await req.json();
     const email =
