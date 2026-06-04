@@ -43,6 +43,38 @@ function AuthCallbackInner() {
         }
       }
 
+      const hashParams = new URLSearchParams(
+        window.location.hash.startsWith("#")
+          ? window.location.hash.slice(1)
+          : window.location.hash
+      );
+
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+
+      if (accessToken && refreshToken) {
+        setMessage("Securing recovery session…");
+
+        const { error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+
+        if (error) {
+          if (!active) return;
+          router.replace(
+            `/sign-in?error=${encodeURIComponent(error.message)}&returnTo=${encodeURIComponent(next)}`
+          );
+          return;
+        }
+
+        window.history.replaceState(
+          null,
+          "",
+          `/auth/callback?setPassword=${setPassword ? "1" : "0"}&next=${encodeURIComponent(next)}`
+        );
+      }
+
       setMessage("Finalizing secure session…");
 
       for (let attempt = 0; attempt < 20; attempt += 1) {
