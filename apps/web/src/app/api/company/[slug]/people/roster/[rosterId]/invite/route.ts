@@ -127,7 +127,11 @@ export async function POST(
     const appBaseUrl =
       process.env.APP_BASE_URL?.trim() || new URL(req.url).origin;
 
-    const inviteUrl = `${appBaseUrl}/onboarding/invite/${encodeURIComponent(token)}`;
+    const finalDestination = `/profile/setup?returnTo=${encodeURIComponent(`/company/${company.company_slug}`)}`;
+    const passwordDestination = `/set-password?returnTo=${encodeURIComponent(finalDestination)}`;
+    const inviteUrl =
+      `${appBaseUrl.replace(/\/$/, "")}/sign-in?email=${encodeURIComponent(recipientEmail)}` +
+      `&returnTo=${encodeURIComponent(passwordDestination)}`;
 
     const resendResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -143,14 +147,14 @@ export async function POST(
           <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #17213a;">
             <h2 style="margin: 0 0 12px;">You’ve been invited</h2>
             <p style="margin: 0 0 12px;">
-              Click below to complete your setup.
+              Click below to sign in, secure your account, and enter your workspace.
             </p>
             <p style="margin: 0 0 16px;">
               <a
                 href="${inviteUrl}"
                 style="display:inline-block;padding:10px 16px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;"
               >
-                Accept Invite
+                Continue to Insight
               </a>
             </p>
             <p style="margin: 0 0 8px;">If the button does not work, use this link:</p>

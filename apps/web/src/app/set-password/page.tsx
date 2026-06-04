@@ -13,6 +13,7 @@ function SetPasswordInner() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const canSubmit = useMemo(() => {
@@ -23,6 +24,7 @@ function SetPasswordInner() {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
+    setMessage(null);
 
     try {
       if (password.length < 8) {
@@ -46,6 +48,7 @@ function SetPasswordInner() {
         return;
       }
 
+      setMessage("Password saved.");
       router.refresh();
       router.push(returnTo);
     } catch {
@@ -62,10 +65,10 @@ function SetPasswordInner() {
       <section className="value-strip">
         <div className="value-grid">
           <article className="value-card" style={{ gridColumn: "1 / -1" }}>
-            <p className="value-card__eyebrow">Account Security</p>
+            <p className="value-card__eyebrow">Account Access</p>
             <h2 className="value-card__title">Set your password</h2>
             <p className="value-card__body">
-              Create a password for future sign-ins. This works after you have authenticated through your invite or magic link.
+              Create or reset your password so you can sign in directly next time.
             </p>
 
             <form onSubmit={handleSubmit} style={{ marginTop: 14 }}>
@@ -90,6 +93,10 @@ function SetPasswordInner() {
                   style={inputStyle}
                 />
               </div>
+
+              {message ? (
+                <p style={{ color: "#2e7d32", marginTop: 14 }}>{message}</p>
+              ) : null}
 
               {error ? (
                 <p style={{ color: "#c62828", marginTop: 14 }}>{error}</p>
@@ -127,7 +134,7 @@ export default function SetPasswordPage() {
       fallback={
         <main className="page-shell">
           <section className="panel">
-            <p className="eyebrow">Account Security</p>
+            <p className="eyebrow">Account Access</p>
             <h1>Loading password setup…</h1>
           </section>
         </main>

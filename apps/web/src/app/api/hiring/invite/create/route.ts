@@ -85,7 +85,11 @@ export async function POST(req: Request) {
 
     const configuredBaseUrl = process.env.APP_BASE_URL?.trim();
     const origin = configuredBaseUrl || new URL(req.url).origin;
-    const inviteUrl = `${origin}/onboarding/invite/${token}`;
+    const finalDestination = `/profile/setup?returnTo=${encodeURIComponent("/profile")}`;
+    const passwordDestination = `/set-password?returnTo=${encodeURIComponent(finalDestination)}`;
+    const inviteUrl =
+      `${origin}/sign-in?email=${encodeURIComponent(email)}` +
+      `&returnTo=${encodeURIComponent(passwordDestination)}`;
 
     return NextResponse.json({
       success: true,

@@ -4,18 +4,23 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
+function cleanBaseUrl(value: string) {
+  return value.replace(/\/$/, "");
+}
+
 function SignInInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const invitedEmail = searchParams.get("email")?.trim() ?? "";
   const returnTo = searchParams.get("returnTo")?.trim() ?? "";
+  const urlError = searchParams.get("error")?.trim() ?? "";
 
-  const [email, setEmail] = useState(invitedEmail || "admin@teamoptix.io");
+  const [email, setEmail] = useState(invitedEmail || "");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(urlError || null);
 
   useEffect(() => {
     if (invitedEmail) {
@@ -26,6 +31,12 @@ function SignInInner() {
   const nextHref = useMemo(() => {
     return returnTo || "/profile";
   }, [returnTo]);
+
+  const appBaseUrl = useMemo(() => {
+    return cleanBaseUrl(
+      process.env.NEXT_PUBLIC_APP_URL || window.location.origin
+    );
+  }, []);
 
   async function handlePasswordSignIn(e: React.FormEvent) {
     e.preventDefault();
@@ -63,17 +74,14 @@ function SignInInner() {
     try {
       const supabase = getSupabaseBrowserClient();
 
-      const appBaseUrl =
-        process.env.NEXT_PUBLIC_APP_URL ||
-        process.env.NEXT_PUBLIC_SITE_URL ||
-        window.location.origin;
-
-      const redirectTarget = `${appBaseUrl.replace(/\/$/, "")}${nextHref}`;
+      const callbackUrl = `${appBaseUrl}/auth/callback?next=${encodeURIComponent(
+        nextHref
+      )}&setPassword=1`;
 
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: redirectTarget,
+          emailRedirectTo: callbackUrl,
         },
       });
 
@@ -90,13 +98,42 @@ function SignInInner() {
     }
   }
 
+  async function handlePasswordRecovery() {
+    setSubmitting(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const supabase = getSupabaseBrowserClient();
+
+      const callbackUrl = `${appBaseUrl}/auth/callback?next=${encodeURIComponent(
+        `/set-password?returnTo=${encodeURIComponent(nextHref)}`
+      )}`;
+
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: callbackUrl,
+      });
+
+      if (error) {
+        setError(error.message);
+        return;
+      }
+
+      setMessage("Password setup link sent. Check your email.");
+    } catch {
+      setError("Unexpected password recovery error.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <main className="page-shell">
       <section className="panel">
         <p className="eyebrow">Auth</p>
         <h1>Sign in</h1>
         <p className="lede">
-          Sign in with your existing account to continue into your app workspace or onboarding flow.
+          Sign in with your password, request a magic link, or send yourself a password setup link.
         </p>
 
         {returnTo ? (
@@ -121,23 +158,23 @@ function SignInInner() {
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              required
               style={inputStyle}
             />
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 12,
-              marginTop: 16,
-            }}
-          >
+          {message ? (
+            <p style={{ color: "#2e7d32", marginTop: 14 }}>{message}</p>
+          ) : null}
+
+          {error ? (
+            <p style={{ color: "#c62828", marginTop: 14 }}>{error}</p>
+          ) : null}
+
+          <div className="cta-row" style={{ marginTop: 18 }}>
             <button
               className="button button-primary"
               type="submit"
-              disabled={submitting}
+              disabled={submitting || !email || !password}
             >
               {submitting ? "Signing in..." : "Sign in"}
             </button>
@@ -146,19 +183,20 @@ function SignInInner() {
               className="button"
               type="button"
               onClick={handleMagicLink}
-              disabled={submitting}
+              disabled={submitting || !email}
             >
-              Send magic link instead
+              Send magic link
+            </button>
+
+            <button
+              className="button"
+              type="button"
+              onClick={handlePasswordRecovery}
+              disabled={submitting || !email}
+            >
+              Set or reset password
             </button>
           </div>
-
-          {message ? (
-            <p style={{ color: "#0f9f6e", marginTop: 14 }}>{message}</p>
-          ) : null}
-
-          {error ? (
-            <p style={{ color: "#c62828", marginTop: 14 }}>{error}</p>
-          ) : null}
         </form>
       </section>
     </main>
@@ -172,7 +210,7 @@ export default function SignInPage() {
         <main className="page-shell">
           <section className="panel">
             <p className="eyebrow">Auth</p>
-            <h1>Loading sign-in…</h1>
+            <h1>Loading sign in…</h1>
           </section>
         </main>
       }
