@@ -45,10 +45,12 @@ function ProfileSetupInner() {
         membership.company_slug
     );
 
-    if (returnTo) return returnTo;
-    if (activeMembership) return `/company/${activeMembership.company_slug}`;
-    if (sessionId) return `/onboarding/start/${sessionId}`;
-    return "/profile";
+    const finalHref = returnTo
+      || (activeMembership ? `/company/${activeMembership.company_slug}` : "")
+      || (sessionId ? `/onboarding/start/${sessionId}` : "")
+      || "/profile";
+
+    return `/set-password?returnTo=${encodeURIComponent(finalHref)}`;
   }, [access.memberships, returnTo, sessionId]);
 
   async function handleSubmit(e: React.FormEvent) {

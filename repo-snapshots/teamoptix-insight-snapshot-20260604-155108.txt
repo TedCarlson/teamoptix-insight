@@ -1,0 +1,13 @@
+# TeamOptix Insight Repo Snapshot
+# Generated: Thu Jun  4 15:51:08 EDT 2026
+# Root: /Users/tedoffice/Developer/teamoptix-insight
+
+## Git
+```
+?? repo-snapshots/teamoptix-insight-snapshot-20260604-155108.txt
+main
+69835b5 v1.6.4.4 Email From
+```
+
+## Repo Tree
+```
