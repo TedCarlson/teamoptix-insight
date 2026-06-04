@@ -38,10 +38,18 @@ function ProfileSetupInner() {
   ]);
 
   const nextHref = useMemo(() => {
+    const activeMembership = access.memberships.find(
+      (membership) =>
+        membership.membership_status === "active" &&
+        membership.company_status === "active" &&
+        membership.company_slug
+    );
+
     if (returnTo) return returnTo;
+    if (activeMembership) return `/company/${activeMembership.company_slug}`;
     if (sessionId) return `/onboarding/start/${sessionId}`;
     return "/profile";
-  }, [returnTo, sessionId]);
+  }, [access.memberships, returnTo, sessionId]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -92,7 +100,7 @@ function ProfileSetupInner() {
             <p className="value-card__eyebrow">Profile</p>
             <h2 className="value-card__title">Complete your profile</h2>
             <p className="value-card__body">
-              This is the required identity setup step for app access and onboarding completion.
+              This creates the minimum platform identity needed for app access. Any remaining onboarding or compliance items can be completed later.
             </p>
 
             <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
