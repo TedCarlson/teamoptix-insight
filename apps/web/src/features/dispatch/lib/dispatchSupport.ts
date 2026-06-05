@@ -56,11 +56,16 @@ export type AssignmentIntent = {
 } | null;
 
 export function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
-export function todayRunFlag() {
-  const day = new Date().getDay();
+export function runFlagForDate(serviceDate: string) {
+  const [year, month, dayOfMonth] = serviceDate.split("-").map(Number);
+  const day = new Date(year, month - 1, dayOfMonth).getDay();
   if (day === 6) return "runs_s";
   if (day === 0) return "runs_u";
   if (day === 1) return "runs_m";
@@ -68,6 +73,10 @@ export function todayRunFlag() {
   if (day === 3) return "runs_w";
   if (day === 4) return "runs_h";
   return "runs_f";
+}
+
+export function todayRunFlag() {
+  return runFlagForDate(todayIso());
 }
 
 export function cleanRouteKey(value: string | null | undefined) {

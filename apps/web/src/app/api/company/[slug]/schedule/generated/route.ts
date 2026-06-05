@@ -7,10 +7,11 @@ type RouteContext = {
   params: Promise<{ slug: string }>;
 };
 
-export async function GET(_req: NextRequest, context: RouteContext) {
+export async function GET(req: NextRequest, context: RouteContext) {
   try {
     const { slug } = await context.params;
     const sb = await getSupabaseServerClient();
+    const serviceDate = req.nextUrl.searchParams.get("date");
 
     const { data: company, error: companyErr } = await sb
       .from("companies")
@@ -25,10 +26,16 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       );
     }
 
-    const { data, error } = await sb
+    let query = sb
       .from("schedule_day_fact_view")
       .select("*")
-      .eq("company_id", company.id)
+      .eq("company_id", company.id);
+
+    if (serviceDate) {
+      query = query.eq("service_date", serviceDate);
+    }
+
+    const { data, error } = await query
       .order("service_date", { ascending: true })
       .order("full_name", { ascending: true });
 

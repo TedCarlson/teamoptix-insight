@@ -25,8 +25,8 @@ import {
   routeRowBase,
   seatButtonBase,
   selectedButton,
+  runFlagForDate,
   todayIso,
-  todayRunFlag,
 } from "../lib/dispatchSupport";
 import { DispatchEventOverlay } from "../components/DispatchEventOverlay";
 import { DispatchRightRail } from "../components/DispatchRightRail";
@@ -61,7 +61,7 @@ export default function DispatchPage() {
         setError(null);
 
         const [scheduleRes, routesRes, dispatchDayRes, eventTypesRes] = await Promise.all([
-          fetch(`/api/company/${slug}/schedule/generated`, {
+          fetch(`/api/company/${slug}/schedule/generated?date=${serviceDate}`, {
             credentials: "include",
             cache: "no-store",
           }),
@@ -139,7 +139,7 @@ export default function DispatchPage() {
   }, [serviceDate, slug]);
 
   const hydratedRoutes = useMemo(() => {
-    const runFlag = todayRunFlag();
+    const runFlag = runFlagForDate(serviceDate);
     const routeMap = new Map<string, DispatchRoute>();
 
     for (const route of routes) {
@@ -244,7 +244,15 @@ export default function DispatchPage() {
   const assignedIds = useMemo(() => {
     const ids = new Set<string>();
 
+    const visibleRouteKeys = new Set(
+      hydratedRoutes
+        .filter((route) => route.route_key !== "UNASSIGNED")
+        .map((route) => route.route_key)
+    );
+
     for (const route of dispatchRoutes) {
+      if (!visibleRouteKeys.has(route.route_key)) continue;
+
       if (route.driver) ids.add(route.driver.roster_member_id);
       for (const person of route.helpers) ids.add(person.roster_member_id);
       for (const person of route.trainees) ids.add(person.roster_member_id);
@@ -252,7 +260,7 @@ export default function DispatchPage() {
     }
 
     return ids;
-  }, [dispatchRoutes]);
+  }, [dispatchRoutes, hydratedRoutes]);
 
   const workforce = useMemo(() => {
     const available = allPeople.filter((person) => !assignedIds.has(person.roster_member_id));
