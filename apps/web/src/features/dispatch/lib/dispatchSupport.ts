@@ -220,6 +220,10 @@ export type DispatchEventRow = {
   event_category: string;
   route_key: string | null;
   route_label: string | null;
+  from_route_key: string | null;
+  from_route_label: string | null;
+  to_route_key: string | null;
+  to_route_label: string | null;
   seat: string | null;
   person_roster_member_id: string | null;
   person_name: string | null;

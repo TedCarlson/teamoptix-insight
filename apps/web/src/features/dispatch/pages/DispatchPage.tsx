@@ -33,6 +33,90 @@ import { DispatchRightRail } from "../components/DispatchRightRail";
 import { DispatchRouteQueue } from "../components/DispatchRouteQueue";
 import { DispatchWorkforceRail } from "../components/DispatchWorkforceRail";
 
+function dispatchPersonFromEvent(event: DispatchEventRow): DispatchPerson | null {
+  if (!event.person_roster_member_id || !event.person_name) return null;
+
+  return {
+    roster_member_id: event.person_roster_member_id,
+    full_name: event.person_name,
+    worker_type: null,
+    source_kind: "DISPATCH_EVENT",
+    override_type: null,
+  };
+}
+
+function removePersonFromRoute(route: DispatchRoute, rosterMemberId: string): DispatchRoute {
+  return {
+    ...route,
+    driver:
+      route.driver?.roster_member_id === rosterMemberId ? null : route.driver,
+    helpers: route.helpers.filter((person) => person.roster_member_id !== rosterMemberId),
+    trainees: route.trainees.filter((person) => person.roster_member_id !== rosterMemberId),
+    extras: route.extras.filter((person) => person.roster_member_id !== rosterMemberId),
+  };
+}
+
+function applyDispatchEvent(
+  current: Record<string, DispatchRoute>,
+  event: DispatchEventRow
+): Record<string, DispatchRoute> {
+  const code = event.event_code;
+  const routeKey = event.route_key ?? event.to_route_key ?? null;
+  const seat = event.seat as Seat | null;
+  const person = dispatchPersonFromEvent(event);
+
+  if (!seat) return current;
+
+  if (code.startsWith("ASSIGN_")) {
+    if (!routeKey || !person || !current[routeKey]) return current;
+
+    const next: Record<string, DispatchRoute> = {};
+
+    for (const [key, route] of Object.entries(current)) {
+      next[key] = removePersonFromRoute(route, person.roster_member_id);
+    }
+
+    const target = next[routeKey];
+    if (!target) return current;
+
+    if (seat === "driver") {
+      if (target.driver) target.extras = [...target.extras, target.driver];
+      target.driver = person;
+    }
+
+    if (seat === "helper") {
+      target.helpers = [...target.helpers, person];
+    }
+
+    if (seat === "trainee") {
+      target.trainees = [...target.trainees, person];
+    }
+
+    next[routeKey] = target;
+    return next;
+  }
+
+  if (code.startsWith("UNASSIGN_")) {
+    if (!routeKey || !current[routeKey]) return current;
+
+    const target = current[routeKey];
+    const nextRoute: DispatchRoute = { ...target };
+
+    if (person) {
+      const cleaned = removePersonFromRoute(nextRoute, person.roster_member_id);
+      return { ...current, [routeKey]: cleaned };
+    }
+
+    if (seat === "driver") nextRoute.driver = null;
+    if (seat === "helper") nextRoute.helpers = [];
+    if (seat === "trainee") nextRoute.trainees = [];
+
+    return { ...current, [routeKey]: nextRoute };
+  }
+
+  return current;
+}
+
 export default function DispatchPage() {
   const params = useParams();
   const slug = String(params?.slug ?? "");
@@ -163,21 +247,10 @@ export default function DispatchPage() {
     for (const row of scheduleRows) {
       if (row.service_date !== serviceDate || !row.planned_on) continue;
 
-      const key = cleanRouteKey(row.route_name);
+      const rawRouteName = row.route_name?.trim();
+      if (!rawRouteName) continue;
 
-      if (!routeMap.has(key)) {
-        routeMap.set(key, {
-          route_key: key,
-          route_name: key,
-          current_wa_num: null,
-          route_location: null,
-          route_type: null,
-          driver: null,
-          helpers: [],
-          trainees: [],
-          extras: [],
-        });
-      }
+      const key = cleanRouteKey(rawRouteName);
 
       const route = routeMap.get(key);
       if (!route) continue;
@@ -205,7 +278,8 @@ export default function DispatchPage() {
   }, [routes, scheduleRows, serviceDate]);
 
   useEffect(() => {
-    const next: Record<string, DispatchRoute> = {};
+    let next: Record<string, DispatchRoute> = {};
+
     for (const route of hydratedRoutes) {
       next[route.route_key] = {
         ...route,
@@ -214,9 +288,18 @@ export default function DispatchPage() {
         extras: [...route.extras],
       };
     }
+
+    const orderedEvents = [...dispatchEvents].sort((a, b) =>
+      a.created_at.localeCompare(b.created_at)
+    );
+
+    for (const event of orderedEvents) {
+      next = applyDispatchEvent(next, event);
+    }
+
     setAssignments(next);
     setIntent(null);
-  }, [hydratedRoutes]);
+  }, [hydratedRoutes, dispatchEvents]);
 
   const dispatchRoutes = useMemo(
     () =>
@@ -312,6 +395,56 @@ export default function DispatchPage() {
     });
   }
 
+  async function recordAssignmentEvent(payload: {
+    event_code: string;
+    event_label: string;
+    route_key: string;
+    route_label: string;
+    seat: Seat;
+    person?: DispatchPerson | null;
+  }) {
+    try {
+      const res = await fetch(`/api/company/${slug}/dispatch/event`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          dispatch_date: serviceDate,
+          event_category: "ASSIGNMENT",
+          event_code: payload.event_code,
+          event_label: payload.event_label,
+          route_key: payload.route_key,
+          route_label: payload.route_label,
+          to_route_key: payload.route_key,
+          to_route_label: payload.route_label,
+          seat: payload.seat,
+          person_roster_member_id: payload.person?.roster_member_id ?? null,
+          person_name: payload.person?.full_name ?? null,
+          event_payload: {
+            source: "dispatch_seat_edit",
+          },
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data?.error ?? "Failed to record dispatch assignment.");
+        return;
+      }
+
+      if (data?.event) {
+        setDispatchEvents((current) => [...current, data.event as DispatchEventRow]);
+      }
+
+      if (data?.dispatch_day) {
+        setDispatchDay(data.dispatch_day as DispatchDayRow);
+      }
+    } catch {
+      setError("Failed to record dispatch assignment.");
+    }
+  }
+
   function assignPerson(person: DispatchPerson) {
     if (!intent || dispatchLocked) return;
 
@@ -364,6 +497,25 @@ export default function DispatchPage() {
       return next;
     });
 
+    void recordAssignmentEvent({
+      event_code:
+        intent.seat === "driver"
+          ? "ASSIGN_DRIVER"
+          : intent.seat === "helper"
+            ? "ASSIGN_HELPER"
+            : "ASSIGN_TRAINEE",
+      event_label:
+        intent.seat === "driver"
+          ? "Driver assigned"
+          : intent.seat === "helper"
+            ? "Helper assigned"
+            : "Trainee assigned",
+      route_key: intent.route_key,
+      route_label: intent.route_label,
+      seat: intent.seat,
+      person,
+    });
+
     setIntent(null);
   }
 
@@ -384,6 +536,27 @@ export default function DispatchPage() {
         ...current,
         [routeKey]: nextRoute,
       };
+    });
+
+    const route = assignments[routeKey];
+
+    void recordAssignmentEvent({
+      event_code:
+        seat === "driver"
+          ? "UNASSIGN_DRIVER"
+          : seat === "helper"
+            ? "UNASSIGN_HELPER"
+            : "UNASSIGN_TRAINEE",
+      event_label:
+        seat === "driver"
+          ? "Driver unassigned"
+          : seat === "helper"
+            ? "Helper unassigned"
+            : "Trainee unassigned",
+      route_key: routeKey,
+      route_label: route ? routeLabel(route) : routeKey,
+      seat,
+      person: null,
     });
 
     setIntent(null);
