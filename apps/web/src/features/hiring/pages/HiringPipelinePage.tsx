@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useLob } from "@/features/lob/hooks/useLob";
+import AddCandidateOverlay from "@/features/hiring/components/AddCandidateOverlay";
 
 type ApiRosterRow = {
   roster_member_id: string;
@@ -116,6 +117,9 @@ export default function HiringPipelinePage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<PipelineFilter>("all");
+  const [candidateOverlayOpen, setCandidateOverlayOpen] = useState(false);
+  const [savingCandidate, setSavingCandidate] = useState(false);
+  const [candidateError, setCandidateError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -202,6 +206,48 @@ export default function HiringPipelinePage() {
     (row) => row.stage === "Ready" || row.stage === "Ready for Activation"
   ).length;
 
+  async function saveCandidate(payload: {
+    full_name: string;
+    email: string;
+    phone: string;
+    worker_type: string;
+    market_code: string;
+    note: string;
+  }) {
+    try {
+      setSavingCandidate(true);
+      setCandidateError(null);
+
+      const res = await fetch(`/api/company/${slug}/hiring/candidates`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setCandidateError(data?.error ?? "Failed to save candidate.");
+        return;
+      }
+
+      const candidate = data?.candidate;
+      const id = candidate?.roster_id;
+
+      if (id) {
+        window.location.href = `/company/${slug}/hiring/candidate/${id}`;
+        return;
+      }
+
+      window.location.reload();
+    } catch {
+      setCandidateError("Failed to save candidate.");
+    } finally {
+      setSavingCandidate(false);
+    }
+  }
+
   return (
     <main className="workspace-shell">
       <section
@@ -231,6 +277,17 @@ export default function HiringPipelinePage() {
           </div>
 
           <div className="cta-row" style={{ marginTop: 0 }}>
+            <button
+              className="button button-primary"
+              type="button"
+              onClick={() => {
+                setCandidateError(null);
+                setCandidateOverlayOpen(true);
+              }}
+            >
+              + Add Candidate
+            </button>
+
             <Link className="button" href={`/company/${slug}`}>
               Back to company
             </Link>
@@ -425,6 +482,13 @@ export default function HiringPipelinePage() {
           </article>
         </div>
       </section>
+      <AddCandidateOverlay
+        open={candidateOverlayOpen}
+        saving={savingCandidate}
+        error={candidateError}
+        onClose={() => setCandidateOverlayOpen(false)}
+        onSubmit={saveCandidate}
+      />
     </main>
   );
 }
