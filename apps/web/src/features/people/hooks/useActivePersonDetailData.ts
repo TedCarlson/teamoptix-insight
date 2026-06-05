@@ -22,8 +22,9 @@ export function useActivePersonDetailData(slug: string, rosterId: string) {
         setLoadingPerson(true);
         setError(null);
 
-        const res = await fetch(`/api/company/${slug}/people/roster`, {
+        const res = await fetch(`/api/company/${slug}/people/roster/${rosterId}`, {
           credentials: "include",
+          cache: "no-store",
         });
 
         const data = await res.json();
@@ -36,9 +37,7 @@ export function useActivePersonDetailData(slug: string, rosterId: string) {
           return;
         }
 
-        const found = ((data?.roster ?? []) as ApiRosterRow[]).find(
-          (row) => row.roster_member_id === rosterId
-        );
+        const found = data?.roster as ApiRosterRow | null;
 
         if (!found) {
           setError("Person record not found.");
@@ -56,6 +55,7 @@ export function useActivePersonDetailData(slug: string, rosterId: string) {
           market_code: found.market_code ?? "—",
           reports_to_name: found.reports_to_name ?? "—",
           hire_date: found.hire_date ?? "—",
+          separation_date: found.separation_date ?? null,
           invite_status: found.invite_status ?? "Not Invited",
           compliance_summary: found.compliance_summary ?? "Missing",
           onboarding_completed_at: found.onboarding_completed_at ?? null,

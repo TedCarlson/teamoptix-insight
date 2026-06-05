@@ -12,7 +12,7 @@ import PersonContactEditor from "@/features/people/components/person-detail/Pers
 import FormerArchivePanel from "@/features/people/components/person-detail/FormerArchivePanel";
 
 import { useFormerPersonDetailData } from "@/features/people/hooks/useFormerPersonDetailData";
-import { useFormerPersonDetailActions } from "@/features/people/hooks/useFormerPersonDetailActions";
+import { usePersonStatusTransition } from "@/features/people/hooks/usePersonStatusTransition";
 
 export default function FormerPersonDetailPage() {
   const params = useParams();
@@ -31,7 +31,9 @@ export default function FormerPersonDetailPage() {
     setPerson,
   } = useFormerPersonDetailData(slug, rosterId);
 
-  const { restoreToActive } = useFormerPersonDetailActions({
+  const { transitionStatus } = usePersonStatusTransition({
+    slug,
+    rosterId,
     setError: setActionError,
     setPerson,
   });
@@ -112,14 +114,9 @@ export default function FormerPersonDetailPage() {
             <h3 className="value-card__title">Archive management</h3>
 
             <div className="cta-row">
-              <button
-                className="button"
-                type="button"
-                disabled={submitting}
-                onClick={() => restoreToActive(setSubmitting)}
-              >
-                {submitting ? "Updating..." : "Restore to Active"}
-              </button>
+              <Link className="button" href={`/company/${slug}/people/roster`}>
+                Manage roster
+              </Link>
             </div>
 
             {!loadingPerson && person ? (

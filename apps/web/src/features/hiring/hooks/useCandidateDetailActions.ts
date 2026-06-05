@@ -22,10 +22,16 @@ export function useCandidateDetailActions(args: Args) {
       setError(null);
 
       const res = await fetch(
-        `/api/company/${slug}/people/roster/${rosterId}/activate`,
+        `/api/company/${slug}/people/roster/${rosterId}/status`,
         {
-          method: "POST",
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
           credentials: "include",
+          body: JSON.stringify({
+            employment_status: "Active",
+            effective_date: new Date().toISOString().slice(0, 10),
+            note: "Activated from candidate detail.",
+          }),
         }
       );
 
@@ -40,10 +46,12 @@ export function useCandidateDetailActions(args: Args) {
         current
           ? {
               ...current,
-              employment_status: "Active",
+              employment_status: data?.roster?.employment_status ?? "Active",
             }
           : current
       );
+
+      window.location.href = `/company/${slug}/people/active/${rosterId}`;
 
       setEvents((current) => [
         {

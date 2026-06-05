@@ -8,34 +8,64 @@ export async function GET() {
     const supabase = await getSupabaseServerClient();
 
     const {
-      data: { session },
-    } = await supabase.auth.getSession();
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
 
-    if (!session?.access_token) {
+    if (userError) {
+      return NextResponse.json(
+        { ok: false, stage: "getUser", error: userError.message },
+        { status: 500 }
+      );
+    }
+
+    if (!user?.id) {
       return NextResponse.json(null, { status: 200 });
     }
 
-    const res = await fetch(
-      process.env.NEXT_PUBLIC_SUPABASE_URL + "/rest/v1/rpc/access_context",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
-          Authorization: `Bearer ${session.access_token}`,
+    const { error: ensureError } = await supabase.rpc("ensure_access_context");
+
+    if (ensureError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          stage: "ensure_access_context_rpc",
+          auth_user_id: user.id,
+          email: user.email,
+          error: ensureError.message,
+          details: ensureError.details,
+          hint: ensureError.hint,
+          code: ensureError.code,
         },
-      }
-    );
+        { status: 500 }
+      );
+    }
 
-    const data = await res.json();
+    const { data, error } = await supabase.rpc("access_context");
 
-    return NextResponse.json(data, { status: 200 });
+    if (error) {
+      return NextResponse.json(
+        {
+          ok: false,
+          stage: "access_context_rpc",
+          auth_user_id: user.id,
+          email: user.email,
+          error: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+        },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(data ?? null, { status: 200 });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "unknown access context error";
 
     return NextResponse.json(
-      { ok: false, error: message },
+      { ok: false, stage: "catch", error: message },
       { status: 500 }
     );
   }

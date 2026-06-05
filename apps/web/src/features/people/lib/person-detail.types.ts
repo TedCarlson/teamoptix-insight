@@ -8,6 +8,7 @@ export type ApiRosterRow = {
   market_code: string | null;
   reports_to_name: string | null;
   hire_date: string | null;
+  separation_date?: string | null;
   invite_status: string | null;
   compliance_summary: string | null;
   onboarding_completed_at?: string | null;
@@ -41,6 +42,7 @@ export type PersonRecord = {
   market_code: string;
   reports_to_name: string;
   hire_date: string;
+  separation_date: string | null;
   invite_status: string;
   compliance_summary: string;
   onboarding_completed_at: string | null;

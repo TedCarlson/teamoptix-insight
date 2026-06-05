@@ -25,8 +25,9 @@ export function useCandidateDetailData(slug: string, rosterId: string) {
         setLoadingCandidate(true);
         setError(null);
 
-        const res = await fetch(`/api/company/${slug}/people/roster`, {
+        const res = await fetch(`/api/company/${slug}/people/roster/${rosterId}`, {
           credentials: "include",
+          cache: "no-store",
         });
 
         const data = await res.json();
@@ -39,9 +40,7 @@ export function useCandidateDetailData(slug: string, rosterId: string) {
           return;
         }
 
-        const found = ((data?.roster ?? []) as ApiRosterRow[]).find(
-          (row) => row.roster_member_id === rosterId
-        );
+        const found = data?.roster as ApiRosterRow | null;
 
         if (!found) {
           setError("Candidate record not found.");

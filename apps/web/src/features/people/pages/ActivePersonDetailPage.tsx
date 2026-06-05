@@ -11,7 +11,7 @@ import PersonContactEditor from "@/features/people/components/person-detail/Pers
 import ActiveOperationalPanel from "@/features/people/components/person-detail/ActiveOperationalPanel";
 import ActiveOperationsEditor from "@/features/people/components/person-detail/ActiveOperationsEditor";
 import { useActivePersonDetailData } from "@/features/people/hooks/useActivePersonDetailData";
-import { useActivePersonDetailActions } from "@/features/people/hooks/useActivePersonDetailActions";
+import { usePersonStatusTransition } from "@/features/people/hooks/usePersonStatusTransition";
 
 export default function ActivePersonDetailPage() {
   const params = useParams();
@@ -30,7 +30,9 @@ export default function ActivePersonDetailPage() {
     setPerson,
   } = useActivePersonDetailData(slug, rosterId);
 
-  const { markFormer } = useActivePersonDetailActions({
+  const { transitionStatus } = usePersonStatusTransition({
+    slug,
+    rosterId,
     setError: setActionError,
     setPerson,
   });
@@ -116,6 +118,8 @@ export default function ActivePersonDetailPage() {
             stageLabel="Active"
             eyebrow="Status"
             title="Active workforce posture"
+            submitting={submitting}
+            onChangeStatus={(status) => transitionStatus(status, setSubmitting)}
           />
 
           <PersonIdentifiersCard
@@ -159,14 +163,9 @@ export default function ActivePersonDetailPage() {
               <button className="button" type="button">
                 Update identifiers
               </button>
-              <button
-                className="button"
-                type="button"
-                disabled={submitting}
-                onClick={() => markFormer(setSubmitting)}
-              >
-                {submitting ? "Updating..." : "Mark Former"}
-              </button>
+              <Link className="button" href={`/company/${slug}/people/roster`}>
+                Manage roster
+              </Link>
             </div>
 
             {!loadingPerson && person ? (

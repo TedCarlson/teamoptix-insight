@@ -1,5 +1,7 @@
 import type { PersonRecord } from "@/features/people/lib/person-detail.types";
 
+type PersonStatus = "Candidate" | "Active" | "Former";
+
 type Args = {
   slug: string;
   rosterId: string;
@@ -7,19 +9,22 @@ type Args = {
   setPerson: React.Dispatch<React.SetStateAction<PersonRecord | null>>;
 };
 
-function mapRosterToPersonPatch(roster: any): Partial<PersonRecord> {
-  return {
-    employment_status: roster?.employment_status ?? "Active",
-    separation_date: roster?.separation_date ?? null,
-  };
-}
-
-export function useFormerPersonDetailActions(args: Args) {
+export function usePersonStatusTransition(args: Args) {
   const { slug, rosterId, setError, setPerson } = args;
 
-  async function restoreToActive(setSubmitting: (value: boolean) => void) {
+  async function transitionStatus(
+    nextStatus: PersonStatus,
+    setSubmitting: (value: boolean) => void
+  ) {
     try {
-      const note = window.prompt("Optional reactivation note", "") ?? "";
+      const effectiveDate =
+        nextStatus === "Former"
+          ? window.prompt("Former effective date", new Date().toISOString().slice(0, 10)) ?? ""
+          : new Date().toISOString().slice(0, 10);
+
+      if (nextStatus === "Former" && !effectiveDate.trim()) return;
+
+      const note = window.prompt("Optional status note", "") ?? "";
 
       setSubmitting(true);
       setError(null);
@@ -31,8 +36,8 @@ export function useFormerPersonDetailActions(args: Args) {
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({
-            employment_status: "Active",
-            effective_date: new Date().toISOString().slice(0, 10),
+            employment_status: nextStatus,
+            effective_date: effectiveDate,
             note,
           }),
         }
@@ -41,7 +46,7 @@ export function useFormerPersonDetailActions(args: Args) {
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data?.error ?? "Failed to update former person.");
+        setError(data?.error ?? "Failed to update person status.");
         return;
       }
 
@@ -49,18 +54,17 @@ export function useFormerPersonDetailActions(args: Args) {
         current
           ? {
               ...current,
-              ...mapRosterToPersonPatch(data?.roster),
+              employment_status: data?.roster?.employment_status ?? nextStatus,
+              separation_date: data?.roster?.separation_date ?? null,
             }
           : current
       );
     } catch {
-      setError("Failed to update former person.");
+      setError("Failed to update person status.");
     } finally {
       setSubmitting(false);
     }
   }
 
-  return {
-    restoreToActive,
-  };
+  return { transitionStatus };
 }
