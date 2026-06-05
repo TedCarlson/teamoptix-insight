@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import SiteHeader from "@/features/landing/components/SiteHeader";
 
 import PersonIdentityCard from "@/features/people/components/person-detail/PersonIdentityCard";
 import PersonStatusCard from "@/features/people/components/person-detail/PersonStatusCard";
@@ -40,8 +39,7 @@ export default function FormerPersonDetailPage() {
   const displayError = actionError ?? error;
 
   return (
-    <main className="landing-page">
-      <SiteHeader />
+    <main className="workspace-shell">
 
       <section className="value-strip">
         <div className="value-grid">

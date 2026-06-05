@@ -175,7 +175,7 @@ export default function CompanyRosterPage() {
   ).length;
 
   return (
-    <main className="landing-page">
+    <main className="workspace-shell">
       <section
         style={{
           width: "min(1280px, calc(100% - 32px))",

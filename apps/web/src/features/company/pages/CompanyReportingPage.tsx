@@ -2,7 +2,6 @@
 
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import SiteHeader from "@/features/landing/components/SiteHeader";
 import { useLob } from "@/features/lob/hooks/useLob";
 
 export default function CompanyReportingPage() {
@@ -11,8 +10,7 @@ export default function CompanyReportingPage() {
   const lob = useLob();
 
   return (
-    <main className="landing-page">
-      <SiteHeader />
+    <main className="workspace-shell">
 
       <section className="hero">
         <div className="hero__grid">

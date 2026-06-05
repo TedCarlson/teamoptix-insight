@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import SiteHeader from "@/features/landing/components/SiteHeader";
 import CandidateTimelinePanel from "@/features/hiring/components/candidate-detail/CandidateTimelinePanel";
 import CandidateProgressPanel from "@/features/hiring/components/candidate-detail/CandidateProgressPanel";
 import CandidateIdentityCard from "@/features/hiring/components/candidate-detail/CandidateIdentityCard";
@@ -46,8 +45,7 @@ export default function HiringCandidateDetailPage() {
   const displayError = actionError ?? error;
 
   return (
-    <main className="landing-page">
-      <SiteHeader />
+    <main className="workspace-shell">
 
       <section className="value-strip">
         <div className="value-grid">

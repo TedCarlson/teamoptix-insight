@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import SiteHeader from "@/features/landing/components/SiteHeader";
 import { useLob } from "@/features/lob/hooks/useLob";
 
 type ParsedRow = {
@@ -254,8 +253,7 @@ export default function CompanyRosterImportPage() {
   }
 
   return (
-    <main className="landing-page">
-      <SiteHeader />
+    <main className="workspace-shell">
 
       <section className="value-strip">
         <div className="value-grid">

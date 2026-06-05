@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import SiteHeader from "@/features/landing/components/SiteHeader";
 import RouteDraftEditor, {
   type RouteDraft,
 } from "@/features/routes/components/RouteDraftEditor";
@@ -391,8 +390,7 @@ export default function RoutesLandingPage() {
   }
 
   return (
-    <main className="landing-page">
-      <SiteHeader />
+    <main className="workspace-shell">
 
       <section className="value-strip">
         <div className="value-grid">

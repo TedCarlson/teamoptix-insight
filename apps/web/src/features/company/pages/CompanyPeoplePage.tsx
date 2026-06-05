@@ -1,30 +1,40 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import SiteHeader from "@/features/landing/components/SiteHeader";
-import { useLob } from "@/features/lob/hooks/useLob";
 
-function ModuleCard(props: {
+type RosterMetricRow = {
+  employment_status?: string | null;
+  invite_status?: string | null;
+  compliance_summary?: string | null;
+  reports_to_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+};
+
+function MetricCard(props: {
   eyebrow: string;
   title: string;
   body: string;
-  href: string;
-  cta: string;
+  href?: string;
+  cta?: string;
 }) {
   const { eyebrow, title, body, href, cta } = props;
 
   return (
-    <article className="value-card">
+    <article className="app-card">
       <p className="value-card__eyebrow">{eyebrow}</p>
-      <h3 className="value-card__title">{title}</h3>
-      <p className="value-card__body">{body}</p>
+      <h3 className="app-card__title">{title}</h3>
+      <p className="app-card__body">{body}</p>
 
-      <div className="cta-row" style={{ marginTop: 14 }}>
-        <Link className="button button-primary" href={href}>
-          {cta}
-        </Link>
-      </div>
+      {href && cta ? (
+        <div className="cta-row" style={{ marginTop: 14 }}>
+          <Link className="button button-primary" href={href}>
+            {cta}
+          </Link>
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -32,87 +42,158 @@ function ModuleCard(props: {
 export default function CompanyPeoplePage() {
   const params = useParams();
   const slug = String(params?.slug ?? "");
-  const lob = useLob();
+
+  const [rows, setRows] = useState<RosterMetricRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadPeopleSignals() {
+      try {
+        setLoading(true);
+
+        const res = await fetch(`/api/company/${slug}/people/roster`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if (!active) return;
+
+        const nextRows =
+          Array.isArray(data?.rows)
+            ? data.rows
+            : Array.isArray(data?.roster)
+              ? data.roster
+              : Array.isArray(data?.people)
+                ? data.people
+                : [];
+
+        setRows(nextRows as RosterMetricRow[]);
+      } catch {
+        if (active) setRows([]);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    if (slug) void loadPeopleSignals();
+
+    return () => {
+      active = false;
+    };
+  }, [slug]);
+
+  const metrics = useMemo(() => {
+    const active = rows.filter((row) => row.employment_status === "Active").length;
+    const candidates = rows.filter((row) => row.employment_status === "Candidate").length;
+    const former = rows.filter((row) => row.employment_status === "Former").length;
+    const pendingInvites = rows.filter((row) =>
+      ["Not Invited", "Invited", "Pending"].includes(row.invite_status ?? "")
+    ).length;
+    const complianceFlags = rows.filter((row) => {
+      const value = (row.compliance_summary ?? "").toLowerCase();
+      return value.includes("missing") || value.includes("expired") || value.includes("incomplete");
+    }).length;
+    const profileFlags = rows.filter(
+      (row) => !row.email || !row.phone || !row.reports_to_name
+    ).length;
+
+    return {
+      active,
+      candidates,
+      former,
+      pendingInvites,
+      complianceFlags,
+      profileFlags,
+    };
+  }, [rows]);
 
   return (
-    <main className="landing-page">
-      <SiteHeader />
-
-      <section className="value-strip">
-        <div className="value-grid">
-          <article className="value-card" style={{ gridColumn: "1 / -1" }}>
-            <p className="value-card__eyebrow">People</p>
-            <h2 className="value-card__title">People workspace</h2>
-            <p className="value-card__body">
-              Workforce management for the selected company. This module will own
-              roster, employee profiles, hiring posture, compliance, imports, and
-              invitation workflows.
+    <main className="workspace-shell">
+      <section className="workspace-main">
+        <header className="workspace-header">
+          <div style={{ display: "grid", gap: 8 }}>
+            <p className="eyebrow">People</p>
+            <h1 className="workspace-title">People workspace</h1>
+            <p className="workspace-subtitle">
+              Review workforce posture, profile gaps, compliance signals, and invitation work before choosing the next action.
             </p>
+          </div>
 
-            <div className="cta-row" style={{ marginTop: 14 }}>
-              <Link className="button" href={`/company/${slug}`}>
-                Back to company
-              </Link>
-              <Link
-                className="button button-primary"
-                href={`/company/${slug}/people/roster`}
-              >
-                Open roster
-              </Link>
+          <div className="context-grid">
+            <div className="context-stat">
+              <span className="context-stat__label">Active workforce</span>
+              <strong>{loading ? "Loading" : metrics.active}</strong>
             </div>
-          </article>
-
-          <article className="value-card">
-            <p className="value-card__eyebrow">Shell context</p>
-
-            <div className="hero-stat">
-              <span className="hero-stat__label">LOB</span>
-              <strong>{lob.lob_label}</strong>
+            <div className="context-stat">
+              <span className="context-stat__label">Candidates</span>
+              <strong>{loading ? "Loading" : metrics.candidates}</strong>
             </div>
-
-            <div className="hero-stat">
-              <span className="hero-stat__label">Industry</span>
-              <strong>{lob.industry_label}</strong>
+            <div className="context-stat">
+              <span className="context-stat__label">Pending invites</span>
+              <strong>{loading ? "Loading" : metrics.pendingInvites}</strong>
             </div>
-
-            <div className="hero-stat">
-              <span className="hero-stat__label">Current surface</span>
-              <strong>People</strong>
+            <div className="context-stat">
+              <span className="context-stat__label">Profile flags</span>
+              <strong>{loading ? "Loading" : metrics.profileFlags}</strong>
             </div>
-          </article>
+          </div>
+        </header>
 
-          <ModuleCard
-            eyebrow="Roster"
-            title="Operational workforce index"
-            body="Active, candidate, and former workforce records for the company."
+        <section className="summary-grid">
+          <MetricCard
+            eyebrow="Workforce"
+            title={`${metrics.active} active`}
+            body={`${metrics.candidates} candidates · ${metrics.former} former records`}
             href={`/company/${slug}/people/roster`}
             cta="Open roster"
           />
 
-          <ModuleCard
+          <MetricCard
             eyebrow="Compliance"
-            title="Requirements and expirations"
-            body="Driver license, DOT, qualification, and onboarding requirement posture."
-            href="#"
-            cta="Coming soon"
+            title={`${metrics.complianceFlags} signals`}
+            body="Missing, incomplete, or expired document posture will surface here as compliance matures."
           />
 
-          <ModuleCard
-            eyebrow="Imports"
-            title="Bulk migration and matching"
-            body="Upload and review current or former employee records before commit."
-            href="#"
-            cta="Coming soon"
-          />
-
-          <ModuleCard
+          <MetricCard
             eyebrow="Invitations"
-            title="Link people into the app"
-            body="Send, track, and complete invitation and account-link workflows."
-            href="#"
-            cta="Coming soon"
+            title={`${metrics.pendingInvites} pending`}
+            body="Track workers who still need to connect their profile to the company workspace."
           />
-        </div>
+        </section>
+
+        <section className="workspace-grid">
+          <MetricCard
+            eyebrow="Profile quality"
+            title={`${metrics.profileFlags} records need review`}
+            body="Missing email, phone, or reporting alignment can reduce workforce visibility."
+            href={`/company/${slug}/people/roster`}
+            cta="Review people"
+          />
+
+          <MetricCard
+            eyebrow="Imports"
+            title="Bulk workforce updates"
+            body="Upload and review current or former employee records before commit."
+          />
+
+          <MetricCard
+            eyebrow="Hiring posture"
+            title={`${metrics.candidates} candidates`}
+            body="Candidate records are visible from the workforce spine while the hiring workflow matures."
+            href={`/company/${slug}/hiring`}
+            cta="Open hiring"
+          />
+
+          <MetricCard
+            eyebrow="Recent activity"
+            title="Activity feed pending"
+            body="Roster imports, accepted invites, profile updates, and status changes will land here."
+          />
+        </section>
       </section>
     </main>
   );

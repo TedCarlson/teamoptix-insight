@@ -325,7 +325,7 @@ export default function GeneratedSchedulePage() {
   }
 
   return (
-    <main className="landing-page">
+    <main className="workspace-shell">
       <section
         style={{
           width: "min(1440px, calc(100% - 24px))",

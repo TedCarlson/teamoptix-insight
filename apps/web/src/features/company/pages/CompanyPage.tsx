@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import SiteHeader from "@/features/landing/components/SiteHeader";
 import { useAccess } from "@/features/access/AccessProvider";
 import { useLob } from "@/features/lob/hooks/useLob";
 
@@ -30,10 +29,10 @@ function FieldCard(props: {
   const { eyebrow, title, body } = props;
 
   return (
-    <article className="value-card">
+    <article className="app-card">
       <p className="value-card__eyebrow">{eyebrow}</p>
-      <h3 className="value-card__title">{title}</h3>
-      <p className="value-card__body">{body}</p>
+      <h3 className="app-card__title">{title}</h3>
+      <p className="app-card__body">{body}</p>
     </article>
   );
 }
@@ -46,10 +45,10 @@ function SectionCard(props: {
   const { eyebrow, title, children } = props;
 
   return (
-    <article className="value-card">
+    <article className="app-card">
       <p className="value-card__eyebrow">{eyebrow}</p>
-      <h3 className="value-card__title">{title}</h3>
-      <div style={{ marginTop: 14 }}>{children}</div>
+      <h3 className="app-card__title">{title}</h3>
+      <div style={{ marginTop: 12 }}>{children}</div>
     </article>
   );
 }
@@ -188,24 +187,22 @@ export default function CompanyPage() {
     : "Unknown";
 
   return (
-    <main className="landing-page">
-      <SiteHeader />
-
-      <section className="hero">
-        <div className="hero__grid">
-          <section className="hero-card hero-card--primary">
+    <main className="workspace-shell">
+      <section className="workspace-main">
+        <header className="workspace-header">
+          <div style={{ display: "grid", gap: 10, alignContent: "center" }}>
             <p className="eyebrow">Company</p>
-            <h1>{heading}</h1>
-            <p className="lede">
+            <h1 className="workspace-title">{heading}</h1>
+            <p className="workspace-subtitle">
               {loading
                 ? "Resolving company context from the workspace slug."
                 : company
-                  ? "Company workspace shell for ownership, operations entry, and management."
+                  ? "Company workspace for ownership, operations entry, and management."
                   : "This company workspace could not be resolved."}
             </p>
 
             {pageError ? (
-              <p style={{ color: "#c62828", marginTop: 16 }}>{pageError}</p>
+              <p style={{ color: "#c62828", marginTop: 8 }}>{pageError}</p>
             ) : null}
 
             {!loading && company ? (
@@ -215,45 +212,41 @@ export default function CompanyPage() {
                 </Link>
               </div>
             ) : null}
-          </section>
+          </div>
 
-          <aside className="hero-card hero-card--secondary">
-            <p className="eyebrow">Workspace context</p>
-
-            <div className="hero-stat">
-              <span className="hero-stat__label">LOB</span>
+          <aside className="context-grid">
+            <div className="context-stat">
+              <span className="context-stat__label">LOB</span>
               <strong>{lob.lob_label}</strong>
             </div>
 
-            <div className="hero-stat">
-              <span className="hero-stat__label">Industry</span>
+            <div className="context-stat">
+              <span className="context-stat__label">Industry</span>
               <strong>{industryLabel}</strong>
             </div>
 
-            <div className="hero-stat">
-              <span className="hero-stat__label">Membership posture</span>
+            <div className="context-stat">
+              <span className="context-stat__label">Membership</span>
               <strong>
                 {membership
                   ? `${membership.relationship_type} · ${membership.membership_status}`
-                  : "No hydrated membership match yet"}
+                  : "No match"}
               </strong>
             </div>
 
-            <div className="hero-stat">
-              <span className="hero-stat__label">Workspace status</span>
+            <div className="context-stat">
+              <span className="context-stat__label">Status</span>
               <strong>{statusLabel}</strong>
             </div>
           </aside>
-        </div>
-      </section>
+        </header>
 
-      <section className="value-strip">
-        <div className="value-grid">
+        <section className="workspace-grid">
           <SectionCard
             eyebrow="People"
             title="People / Employees / Hiring / Roster"
           >
-            <p className="value-card__body">
+            <p className="app-card__body">
               Manage employee profiles, hiring posture, leadership alignment, and
               the active roster that drives the company.
             </p>
@@ -267,11 +260,8 @@ export default function CompanyPage() {
             </div>
           </SectionCard>
 
-          <SectionCard
-            eyebrow="Activity"
-            title="Activity / Routes / Planning"
-          >
-            <p className="value-card__body">
+          <SectionCard eyebrow="Activity" title="Activity / Routes / Planning">
+            <p className="app-card__body">
               Manage routes, operating activity, scheduling, planning, and the
               day-to-day work the company performs.
             </p>
@@ -282,20 +272,14 @@ export default function CompanyPage() {
               >
                 Schedule
               </Link>
-              <Link
-                className="button"
-                href={`/company/${slug}/routes`}
-              >
+              <Link className="button" href={`/company/${slug}/routes`}>
                 Routes
               </Link>
             </div>
           </SectionCard>
 
-          <SectionCard
-            eyebrow="Reporting"
-            title="Insights / Timing / Reporting"
-          >
-            <p className="value-card__body">
+          <SectionCard eyebrow="Reporting" title="Insights / Timing / Reporting">
+            <p className="app-card__body">
               Make sense of people and activity through reporting, schedule
               posture, performance timing, and operational insight.
             </p>
@@ -309,10 +293,7 @@ export default function CompanyPage() {
             </div>
           </SectionCard>
 
-          <SectionCard
-            eyebrow="Company profile"
-            title="Editable company settings"
-          >
+          <SectionCard eyebrow="Company profile" title="Editable company settings">
             {canEditCompany ? (
               <form onSubmit={handleSave} style={{ display: "grid", gap: 12 }}>
                 <input
@@ -375,7 +356,7 @@ export default function CompanyPage() {
                 </div>
               </form>
             ) : (
-              <p className="value-card__body">
+              <p className="app-card__body">
                 You do not have permission to edit this company.
               </p>
             )}
@@ -383,20 +364,20 @@ export default function CompanyPage() {
 
           <SectionCard eyebrow="Leadership" title="Leadership assignments">
             <div style={{ display: "grid", gap: 10 }}>
-              <div className="hero-stat">
-                <span className="hero-stat__label">Operations manager</span>
+              <div className="context-stat">
+                <span className="context-stat__label">Operations manager</span>
                 <strong>Select from active roster when People lands</strong>
               </div>
-              <div className="hero-stat">
-                <span className="hero-stat__label">Fleet manager</span>
+              <div className="context-stat">
+                <span className="context-stat__label">Fleet manager</span>
                 <strong>Select from active roster when People lands</strong>
               </div>
-              <div className="hero-stat">
-                <span className="hero-stat__label">Dispatch supervisor</span>
+              <div className="context-stat">
+                <span className="context-stat__label">Dispatch supervisor</span>
                 <strong>Select from active roster when People lands</strong>
               </div>
-              <div className="hero-stat">
-                <span className="hero-stat__label">Operations supervisor</span>
+              <div className="context-stat">
+                <span className="context-stat__label">Operations supervisor</span>
                 <strong>Select from active roster when People lands</strong>
               </div>
             </div>
@@ -407,7 +388,7 @@ export default function CompanyPage() {
             title={statusLabel}
             body={`Created ${createdLabel}`}
           />
-        </div>
+        </section>
       </section>
     </main>
   );

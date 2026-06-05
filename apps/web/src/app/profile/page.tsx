@@ -12,10 +12,10 @@ function StatusCard(props: {
   const { eyebrow, title, body } = props;
 
   return (
-    <article className="value-card">
+    <article className="app-card">
       <p className="value-card__eyebrow">{eyebrow}</p>
-      <h3 className="value-card__title">{title}</h3>
-      <p className="value-card__body">{body}</p>
+      <h3 className="app-card__title">{title}</h3>
+      <p className="app-card__body">{body}</p>
     </article>
   );
 }
@@ -33,17 +33,16 @@ export default function ProfilePage() {
   const canCreateCompany = Boolean(access.is_platform_owner);
 
   return (
-    <main className="landing-page">
+    <main className="workspace-shell">
       <SiteHeader />
 
-      <section className="hero">
-        <div className="hero__grid">
-          <section className="hero-card hero-card--primary">
+      <section className="workspace-main">
+        <header className="workspace-header">
+          <div style={{ display: "grid", gap: 10, alignContent: "center" }}>
             <p className="eyebrow">Profile</p>
-            <h1>{access.loading ? "Loading" : name}</h1>
-            <p className="lede">
-              Signed-in checkpoint surface for reviewing identity, access posture,
-              and next actions without forcing workflow progression.
+            <h1 className="workspace-title">{access.loading ? "Loading" : name}</h1>
+            <p className="workspace-subtitle">
+              Review your identity, access posture, and available workspaces without forcing onboarding progression.
             </p>
 
             <div className="cta-row">
@@ -61,33 +60,34 @@ export default function ProfilePage() {
                 Back to home
               </Link>
             </div>
-          </section>
+          </div>
 
-          <aside className="hero-card hero-card--secondary">
-            <p className="eyebrow">Access snapshot</p>
-
-            <div className="hero-stat">
-              <span className="hero-stat__label">Email</span>
+          <aside className="context-grid">
+            <div className="context-stat">
+              <span className="context-stat__label">Email</span>
               <strong>{access.email ?? "Not available"}</strong>
             </div>
 
-            <div className="hero-stat">
-              <span className="hero-stat__label">Profile status</span>
+            <div className="context-stat">
+              <span className="context-stat__label">Profile status</span>
               <strong>{access.profile_status ?? "Unknown"}</strong>
             </div>
 
-            <div className="hero-stat">
-              <span className="hero-stat__label">Role posture</span>
+            <div className="context-stat">
+              <span className="context-stat__label">Role posture</span>
               <strong>
                 {access.is_platform_owner ? "Platform Owner" : "Standard User"}
               </strong>
             </div>
-          </aside>
-        </div>
-      </section>
 
-      <section className="value-strip">
-        <div className="value-grid">
+            <div className="context-stat">
+              <span className="context-stat__label">Memberships</span>
+              <strong>{membershipCount}</strong>
+            </div>
+          </aside>
+        </header>
+
+        <section className="summary-grid">
           <StatusCard
             eyebrow="Identity"
             title={access.profile_id ? "Profile exists" : "Profile missing"}
@@ -125,7 +125,7 @@ export default function ProfilePage() {
                   : "Company creation is intentionally gated and not available from this account."
             }
           />
-        </div>
+        </section>
       </section>
     </main>
   );

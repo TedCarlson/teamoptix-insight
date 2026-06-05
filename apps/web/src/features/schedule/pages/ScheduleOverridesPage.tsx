@@ -225,7 +225,7 @@ export default function ScheduleOverridesPage() {
   }, [overrides, search]);
 
   return (
-    <main className="landing-page">
+    <main className="workspace-shell">
       <section
         style={{
           width: "min(1240px, calc(100% - 32px))",

@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     const admin = getSupabaseAdminClient();
 
     const { data, error } = await admin.auth.admin.generateLink({
-      type: "recovery",
+      type: "magiclink",
       email,
       options: {
         redirectTo: callbackUrl,
@@ -64,12 +64,12 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         from: `${emailFromName} <${emailFrom}>`,
         to: [email],
-        subject: "Set your Insight password",
+        subject: "Secure your Insight account",
         html: `
           <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #17213a;">
-            <h2 style="margin: 0 0 12px;">Set your Insight password</h2>
+            <h2 style="margin: 0 0 12px;">Secure your Insight account</h2>
             <p style="margin: 0 0 12px;">
-              Use this secure link to create or reset your password and continue into Insight.
+              Use this secure link to verify your email, create your password, and continue into Insight.
             </p>
             <p style="margin: 0 0 16px;">
               <a

@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import SiteHeader from "@/features/landing/components/SiteHeader";
 import SchedulePresetEditor, {
   type SchedulePresetDraft,
 } from "@/features/schedule/components/SchedulePresetEditor";
@@ -164,8 +163,7 @@ export default function SchedulePresetsPage() {
   }
 
   return (
-    <main className="landing-page">
-      <SiteHeader />
+    <main className="workspace-shell">
 
       <section className="value-strip">
         <div className="value-grid">

@@ -20,22 +20,16 @@ function CompanyCard(props: {
   const { membership, isPlatformOwner } = props;
 
   return (
-    <article className="value-card" style={{ display: "grid", gap: 14 }}>
+    <article className="app-card" style={{ display: "grid", gap: 14 }}>
       <div style={{ display: "grid", gap: 4 }}>
         <p className="value-card__eyebrow">Company</p>
-        <h3 className="value-card__title">{membership.company_name}</h3>
-        <p className="value-card__body">
+        <h3 className="app-card__title">{membership.company_name}</h3>
+        <p className="app-card__body">
           {membership.relationship_type} · {membership.membership_status}
         </p>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gap: 8,
-          fontSize: 14,
-        }}
-      >
+      <div style={{ display: "grid", gap: 8, fontSize: 14 }}>
         <div>
           <strong>Slug:</strong> {membership.company_slug}
         </div>
@@ -64,75 +58,18 @@ function CompanyCard(props: {
   );
 }
 
-function DirectorySummary(props: {
-  userLabel: string;
-  membershipCount: number;
-  isPlatformOwner: boolean;
-}) {
-  const { userLabel, membershipCount, isPlatformOwner } = props;
-
-  return (
-    <section
-      className="value-strip"
-      style={{ paddingTop: 0, paddingBottom: 0, marginTop: 12 }}
-    >
-      <div
-        className="value-grid"
-        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}
-      >
-        <article className="value-card" style={{ padding: 16 }}>
-          <p className="value-card__eyebrow">User</p>
-          <h3 className="value-card__title" style={{ fontSize: "1rem" }}>
-            {userLabel}
-          </h3>
-        </article>
-
-        <article className="value-card" style={{ padding: 16 }}>
-          <p className="value-card__eyebrow">Memberships</p>
-          <h3 className="value-card__title" style={{ fontSize: "1rem" }}>
-            {membershipCount}
-          </h3>
-        </article>
-
-        <article className="value-card" style={{ padding: 16 }}>
-          <p className="value-card__eyebrow">Privilege</p>
-          <h3 className="value-card__title" style={{ fontSize: "1rem" }}>
-            {isPlatformOwner ? "Platform Owner" : "Standard User"}
-          </h3>
-        </article>
-      </div>
-    </section>
-  );
-}
-
 export default function CompaniesPage() {
   const access = useAccess();
   const memberships = (access.memberships ?? []) as Membership[];
 
   return (
-    <main className="landing-page">
-      <section
-        style={{
-          width: "min(1120px, calc(100% - 32px))",
-          margin: "0 auto",
-          padding: "32px 0 16px",
-          display: "grid",
-          gap: 16,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            gap: 16,
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ display: "grid", gap: 6 }}>
+    <main className="directory-shell">
+      <section className="directory-main">
+        <header className="directory-header">
+          <div style={{ display: "grid", gap: 8 }}>
             <p className="eyebrow">Companies</p>
-            <h1 style={{ margin: 0 }}>Choose a workspace</h1>
-            <p className="lede" style={{ margin: 0, maxWidth: 720 }}>
+            <h1 className="directory-title">Choose a workspace</h1>
+            <p className="directory-subtitle">
               Select a company to enter its operational workspace.
             </p>
           </div>
@@ -142,18 +79,31 @@ export default function CompaniesPage() {
               Back to profile
             </Link>
           </div>
-        </div>
-      </section>
+        </header>
 
-      <DirectorySummary
-        userLabel={access.display_name || access.email || "Unknown user"}
-        membershipCount={memberships.length}
-        isPlatformOwner={Boolean(access.is_platform_owner)}
-      />
+        <section className="summary-grid">
+          <article className="app-card">
+            <p className="value-card__eyebrow">User</p>
+            <h3 className="app-card__title">
+              {access.display_name || access.email || "Unknown user"}
+            </h3>
+          </article>
 
-      <section className="value-strip" style={{ paddingTop: 16 }}>
+          <article className="app-card">
+            <p className="value-card__eyebrow">Memberships</p>
+            <h3 className="app-card__title">{memberships.length}</h3>
+          </article>
+
+          <article className="app-card">
+            <p className="value-card__eyebrow">Privilege</p>
+            <h3 className="app-card__title">
+              {access.is_platform_owner ? "Platform Owner" : "Standard User"}
+            </h3>
+          </article>
+        </section>
+
         {memberships.length > 0 ? (
-          <div className="value-grid">
+          <section className="directory-grid">
             {memberships.map((membership) => (
               <CompanyCard
                 key={`${membership.company_id}:${membership.relationship_type}`}
@@ -161,13 +111,13 @@ export default function CompaniesPage() {
                 isPlatformOwner={Boolean(access.is_platform_owner)}
               />
             ))}
-          </div>
+          </section>
         ) : (
-          <div className="value-grid">
-            <article className="value-card">
+          <section className="directory-grid">
+            <article className="app-card">
               <p className="value-card__eyebrow">No memberships</p>
-              <h3 className="value-card__title">No company access yet</h3>
-              <p className="value-card__body">
+              <h3 className="app-card__title">No company access yet</h3>
+              <p className="app-card__body">
                 This account does not currently have any company memberships.
               </p>
 
@@ -183,7 +133,7 @@ export default function CompaniesPage() {
                 </Link>
               </div>
             </article>
-          </div>
+          </section>
         )}
       </section>
     </main>

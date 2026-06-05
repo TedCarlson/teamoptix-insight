@@ -203,7 +203,7 @@ export default function HiringPipelinePage() {
   ).length;
 
   return (
-    <main className="landing-page">
+    <main className="workspace-shell">
       <section
         style={{
           width: "min(1200px, calc(100% - 32px))",

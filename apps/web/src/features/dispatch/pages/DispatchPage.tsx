@@ -22,7 +22,6 @@ import {
   routeRowBase,
   seatButtonBase,
   selectedButton,
-  shell,
   todayIso,
   todayRunFlag,
 } from "../lib/dispatchSupport";
@@ -340,71 +339,46 @@ export default function DispatchPage() {
   }
 
   return (
-    <main style={shell}>
-      <section
-        style={{
-          ...panel,
-          padding: "10px 12px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-          flexWrap: "wrap",
-        }}
-      >
-        <div>
-          <p style={eyebrow}>Dispatch Workspace</p>
-          <h1
-            style={{
-              margin: "2px 0 0",
-              maxWidth: "none",
-              fontSize: 26,
-              lineHeight: 1.1,
-              letterSpacing: "-0.04em",
-            }}
-          >
-            Today&apos;s Operation
-          </h1>
-        </div>
+    <main className="workspace-shell">
+      <section className="workspace-main">
+        <header className="workspace-header">
+          <div style={{ display: "grid", gap: 8 }}>
+            <p className="eyebrow">Dispatch</p>
+            <h1 className="workspace-title">Today&apos;s Operation</h1>
+            <p className="workspace-subtitle">
+              Assign drivers, helpers, and trainees while preserving the final dispatch shape for reporting.
+            </p>
+          </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            flexWrap: "wrap",
-            alignItems: "center",
-            fontSize: 13,
-            fontWeight: 900,
-          }}
-        >
-          <span>Service Date: {serviceDate}</span>
-          <span>·</span>
-          <span>State: Hydrated Draft</span>
-          <span>·</span>
-          <span>Routes: {summary.total}</span>
-          <span>·</span>
-          <span>Covered: {summary.withDriver}</span>
-          <span>·</span>
-          <span style={{ color: summary.withoutDriver ? "#b54708" : "#166534" }}>
-            Needs Driver: {summary.withoutDriver}
-          </span>
-        </div>
-      </section>
+          <div className="context-grid">
+            <div className="context-stat">
+              <span className="context-stat__label">Service date</span>
+              <strong>{serviceDate}</strong>
+            </div>
+            <div className="context-stat">
+              <span className="context-stat__label">State</span>
+              <strong>Hydrated Draft</strong>
+            </div>
+            <div className="context-stat">
+              <span className="context-stat__label">Routes</span>
+              <strong>{summary.total}</strong>
+            </div>
+            <div className="context-stat">
+              <span className="context-stat__label">Needs Driver</span>
+              <strong style={{ color: summary.withoutDriver ? "#b54708" : "#166534" }}>
+                {summary.withoutDriver}
+              </strong>
+            </div>
+          </div>
+        </header>
 
-      {error ? (
-        <section style={{ ...panel, padding: 12 }}>
-          <p style={{ color: "#c62828", margin: 0 }}>{error}</p>
-        </section>
-      ) : null}
+        {error ? (
+          <section style={{ ...panel, padding: 12, marginTop: 10 }}>
+            <p style={{ color: "#c62828", margin: 0 }}>{error}</p>
+          </section>
+        ) : null}
 
-      <section
-        style={{
-          display: "grid",
-          gridTemplateColumns: "260px minmax(0, 1fr) 300px",
-          gap: 10,
-          alignItems: "start",
-        }}
-      >
+        <section className="dispatch-grid">
         <DispatchWorkforceRail
           allPeopleCount={allPeople.length}
           availableCount={summary.available}
@@ -428,6 +402,7 @@ export default function DispatchPage() {
           summary={summary}
           dispatchRoutes={dispatchRoutes}
         />
+        </section>
       </section>
     </main>
   );
