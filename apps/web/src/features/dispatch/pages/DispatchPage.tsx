@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   type AssignmentIntent,
+  type DispatchDayRow,
+  type DispatchEventRow,
+  type DispatchEventTypeRow,
   type DispatchPerson,
   type DispatchRoute,
   type GeneratedScheduleRow,
@@ -25,6 +28,7 @@ import {
   todayIso,
   todayRunFlag,
 } from "../lib/dispatchSupport";
+import { DispatchEventOverlay } from "../components/DispatchEventOverlay";
 import { DispatchRightRail } from "../components/DispatchRightRail";
 import { DispatchRouteQueue } from "../components/DispatchRouteQueue";
 import { DispatchWorkforceRail } from "../components/DispatchWorkforceRail";
@@ -37,6 +41,12 @@ export default function DispatchPage() {
   const [routes, setRoutes] = useState<RouteRow[]>([]);
   const [assignments, setAssignments] = useState<Record<string, DispatchRoute>>({});
   const [intent, setIntent] = useState<AssignmentIntent>(null);
+  const [dispatchDay, setDispatchDay] = useState<DispatchDayRow | null>(null);
+  const [dispatchEvents, setDispatchEvents] = useState<DispatchEventRow[]>([]);
+  const [eventTypes, setEventTypes] = useState<DispatchEventTypeRow[]>([]);
+  const [eventOverlayOpen, setEventOverlayOpen] = useState(false);
+  const [savingEvent, setSavingEvent] = useState(false);
+  const [locking, setLocking] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,7 +60,7 @@ export default function DispatchPage() {
         setLoading(true);
         setError(null);
 
-        const [scheduleRes, routesRes] = await Promise.all([
+        const [scheduleRes, routesRes, dispatchDayRes, eventTypesRes] = await Promise.all([
           fetch(`/api/company/${slug}/schedule/generated`, {
             credentials: "include",
             cache: "no-store",
@@ -59,11 +69,21 @@ export default function DispatchPage() {
             credentials: "include",
             cache: "no-store",
           }),
+          fetch(`/api/company/${slug}/dispatch/day?date=${serviceDate}`, {
+            credentials: "include",
+            cache: "no-store",
+          }),
+          fetch(`/api/company/${slug}/dispatch/event-types`, {
+            credentials: "include",
+            cache: "no-store",
+          }),
         ]);
 
-        const [scheduleData, routesData] = await Promise.all([
+        const [scheduleData, routesData, dispatchDayData, eventTypesData] = await Promise.all([
           scheduleRes.json(),
           routesRes.json(),
+          dispatchDayRes.json(),
+          eventTypesRes.json(),
         ]);
 
         if (!active) return;
@@ -82,8 +102,25 @@ export default function DispatchPage() {
           return;
         }
 
+        if (!dispatchDayRes.ok) {
+          setError(dispatchDayData?.error ?? "Failed to load dispatch day.");
+          setScheduleRows([]);
+          setRoutes([]);
+          return;
+        }
+
+        if (!eventTypesRes.ok) {
+          setError(eventTypesData?.error ?? "Failed to load dispatch event types.");
+          setScheduleRows([]);
+          setRoutes([]);
+          return;
+        }
+
         setScheduleRows((scheduleData?.rows ?? []) as GeneratedScheduleRow[]);
         setRoutes((routesData?.routes ?? []) as RouteRow[]);
+        setDispatchDay((dispatchDayData?.dispatch_day ?? null) as DispatchDayRow | null);
+        setDispatchEvents((dispatchDayData?.events ?? []) as DispatchEventRow[]);
+        setEventTypes((eventTypesData?.event_types ?? []) as DispatchEventTypeRow[]);
       } catch {
         if (!active) return;
         setError("Dispatch hydration failed.");
@@ -99,7 +136,7 @@ export default function DispatchPage() {
     return () => {
       active = false;
     };
-  }, [slug]);
+  }, [serviceDate, slug]);
 
   const hydratedRoutes = useMemo(() => {
     const runFlag = todayRunFlag();
@@ -255,7 +292,11 @@ export default function DispatchPage() {
     };
   }, [dispatchRoutes, workforce.available.length]);
 
+  const dispatchLocked = dispatchDay?.status === "LOCKED";
+
   function openSeat(route: DispatchRoute, seat: Seat) {
+    if (dispatchLocked) return;
+
     setIntent({
       route_key: route.route_key,
       route_label: routeLabel(route),
@@ -264,7 +305,7 @@ export default function DispatchPage() {
   }
 
   function assignPerson(person: DispatchPerson) {
-    if (!intent) return;
+    if (!intent || dispatchLocked) return;
 
     setAssignments((current) => {
       const target = current[intent.route_key];
@@ -319,6 +360,8 @@ export default function DispatchPage() {
   }
 
   function clearSeat(routeKey: string, seat: Seat) {
+    if (dispatchLocked) return;
+
     setAssignments((current) => {
       const target = current[routeKey];
       if (!target) return current;
@@ -336,6 +379,100 @@ export default function DispatchPage() {
     });
 
     setIntent(null);
+  }
+
+  async function addManualDispatchEvent(payload: {
+    event_code: string;
+    event_label: string;
+    event_category: string;
+    note: string;
+    person_roster_member_id: string | null;
+    person_name: string | null;
+  }) {
+    try {
+      setSavingEvent(true);
+      setError(null);
+
+      const res = await fetch(`/api/company/${slug}/dispatch/event`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          dispatch_date: serviceDate,
+          ...payload,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data?.error ?? "Failed to add dispatch event.");
+        return;
+      }
+
+      if (data?.event) {
+        setDispatchEvents((current) => [...current, data.event as DispatchEventRow]);
+      }
+
+      if (data?.dispatch_day) {
+        setDispatchDay(data.dispatch_day as DispatchDayRow);
+      }
+
+      setEventOverlayOpen(false);
+    } catch {
+      setError("Failed to add dispatch event.");
+    } finally {
+      setSavingEvent(false);
+    }
+  }
+
+  async function lockDispatch() {
+    try {
+      setLocking(true);
+      setError(null);
+
+      const snapshot = {
+        service_date: serviceDate,
+        locked_at: new Date().toISOString(),
+        summary,
+        routes: dispatchRoutes,
+        event_count: dispatchEvents.length,
+        report: {
+          title: "Dispatch Lock Report",
+          routes_total: summary.total,
+          routes_covered: summary.withDriver,
+          routes_needing_driver: summary.withoutDriver,
+          helpers_assigned: summary.helpers,
+          trainees_assigned: summary.trainees,
+          available_workers: summary.available,
+        },
+      };
+
+      const res = await fetch(`/api/company/${slug}/dispatch/lock`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          dispatch_date: serviceDate,
+          snapshot_json: snapshot,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data?.error ?? "Failed to lock dispatch.");
+        return;
+      }
+
+      if (data?.dispatch_day) {
+        setDispatchDay(data.dispatch_day as DispatchDayRow);
+      }
+    } catch {
+      setError("Failed to lock dispatch.");
+    } finally {
+      setLocking(false);
+    }
   }
 
   return (
@@ -357,7 +494,7 @@ export default function DispatchPage() {
             </div>
             <div className="context-stat">
               <span className="context-stat__label">State</span>
-              <strong>Hydrated Draft</strong>
+              <strong>{dispatchLocked ? "Locked" : "Active Draft"}</strong>
             </div>
             <div className="context-stat">
               <span className="context-stat__label">Routes</span>
@@ -401,9 +538,23 @@ export default function DispatchPage() {
         <DispatchRightRail
           summary={summary}
           dispatchRoutes={dispatchRoutes}
+          dispatchDay={dispatchDay}
+          events={dispatchEvents}
+          locking={locking}
+          onAddEvent={() => setEventOverlayOpen(true)}
+          onLockDispatch={lockDispatch}
         />
         </section>
       </section>
+
+      <DispatchEventOverlay
+        open={eventOverlayOpen}
+        saving={savingEvent}
+        eventTypes={eventTypes}
+        workforce={allPeople}
+        onClose={() => setEventOverlayOpen(false)}
+        onSubmit={addManualDispatchEvent}
+      />
     </main>
   );
 }

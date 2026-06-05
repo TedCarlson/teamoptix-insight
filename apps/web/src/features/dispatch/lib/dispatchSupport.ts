@@ -193,3 +193,42 @@ export const seatButtonBase: React.CSSProperties = {
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
 };
+
+export type DispatchDayRow = {
+  id: string;
+  company_id: string;
+  dispatch_date: string;
+  status: "ACTIVE" | "LOCKED" | string;
+  locked_at: string | null;
+  locked_by_profile_id: string | null;
+  snapshot_json: unknown;
+};
+
+export type DispatchEventRow = {
+  id: string;
+  event_code: string;
+  event_label: string;
+  event_category: string;
+  route_key: string | null;
+  route_label: string | null;
+  seat: string | null;
+  person_roster_member_id: string | null;
+  person_name: string | null;
+  note: string | null;
+  created_at: string;
+};
+
+export type DispatchEventTypeRow = {
+  id: string;
+  event_code: string;
+  event_label: string;
+  event_category: string;
+  source: "system" | "company" | string;
+  entry_mode: "auto" | "manual" | "both" | string;
+  requires_person: boolean;
+  requires_route: boolean;
+  requires_assignment: boolean;
+  allows_note: boolean;
+  requires_note: boolean;
+  sort_order: number;
+};
