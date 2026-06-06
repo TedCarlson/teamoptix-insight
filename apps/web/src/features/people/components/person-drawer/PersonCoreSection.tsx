@@ -61,36 +61,51 @@ export default function PersonCoreSection({ person, saving, onSave }: Props) {
         </div>
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
-          <input
-            value={draft.full_name}
-            onChange={(e) => setDraft((d) => ({ ...d, full_name: e.target.value }))}
-            placeholder="Display name"
-            style={compactInput}
-          />
-          <input
-            value={draft.email}
-            onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))}
-            placeholder="Email"
-            style={compactInput}
-          />
-          <input
-            value={draft.phone}
-            onChange={(e) => setDraft((d) => ({ ...d, phone: e.target.value }))}
-            placeholder="Phone"
-            style={compactInput}
-          />
-          <input
-            value={draft.worker_type}
-            onChange={(e) => setDraft((d) => ({ ...d, worker_type: e.target.value }))}
-            placeholder="Worker type"
-            style={compactInput}
-          />
-          <input
-            value={draft.market_code}
-            onChange={(e) => setDraft((d) => ({ ...d, market_code: e.target.value }))}
-            placeholder="Market"
-            style={compactInput}
-          />
+          <label style={{ display: "grid", gap: 5 }}>
+            <span className="hero-stat__label">Name</span>
+            <input
+              value={draft.full_name}
+              onChange={(e) => setDraft((d) => ({ ...d, full_name: e.target.value }))}
+              placeholder="Display name"
+              style={compactInput}
+            />
+          </label>
+          <label style={{ display: "grid", gap: 5 }}>
+            <span className="hero-stat__label">Email</span>
+            <input
+              value={draft.email}
+              onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))}
+              placeholder="Email"
+              style={compactInput}
+            />
+          </label>
+          <label style={{ display: "grid", gap: 5 }}>
+            <span className="hero-stat__label">Phone</span>
+            <input
+              value={draft.phone}
+              onChange={(e) => setDraft((d) => ({ ...d, phone: e.target.value }))}
+              placeholder="Phone"
+              style={compactInput}
+            />
+          </label>
+          <label style={{ display: "grid", gap: 5 }}>
+            <span className="hero-stat__label">Role</span>
+            <input
+              value={draft.worker_type}
+              onChange={(e) => setDraft((d) => ({ ...d, worker_type: e.target.value }))}
+              placeholder="Worker type"
+              style={compactInput}
+            />
+          </label>
+          <label style={{ display: "grid", gap: 5 }}>
+            <span className="hero-stat__label">Market</span>
+            <input
+              value={draft.market_code}
+              onChange={(e) => setDraft((d) => ({ ...d, market_code: e.target.value }))}
+              placeholder="Market"
+              style={compactInput}
+            />
+          </label>
 
           <button
             className="button button-primary"

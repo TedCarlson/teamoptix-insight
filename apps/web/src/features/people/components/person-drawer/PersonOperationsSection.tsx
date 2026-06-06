@@ -72,45 +72,60 @@ export default function PersonOperationsSection({
         </div>
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
-          <input
-            value={draft.fx_id}
-            onChange={(e) => setDraft((d) => ({ ...d, fx_id: e.target.value }))}
-            placeholder="FX ID"
-            style={compactInput}
-          />
-          <input
-            value={draft.dswid}
-            onChange={(e) => setDraft((d) => ({ ...d, dswid: e.target.value }))}
-            placeholder="DSWID"
-            style={compactInput}
-          />
-          <input
-            value={draft.scanner_serial}
-            onChange={(e) =>
-              setDraft((d) => ({ ...d, scanner_serial: e.target.value }))
-            }
-            placeholder="Scanner serial"
-            style={compactInput}
-          />
-          <input
-            type="date"
-            value={draft.dot_expiration_date}
-            onChange={(e) =>
-              setDraft((d) => ({ ...d, dot_expiration_date: e.target.value }))
-            }
-            style={compactInput}
-          />
-          <input
-            type="date"
-            value={draft.qual_cert_expiration_date}
-            onChange={(e) =>
-              setDraft((d) => ({
-                ...d,
-                qual_cert_expiration_date: e.target.value,
-              }))
-            }
-            style={compactInput}
-          />
+          <label style={{ display: "grid", gap: 5 }}>
+            <span className="hero-stat__label">FX ID</span>
+            <input
+              value={draft.fx_id}
+              onChange={(e) => setDraft((d) => ({ ...d, fx_id: e.target.value }))}
+              placeholder="FX ID"
+              style={compactInput}
+            />
+          </label>
+          <label style={{ display: "grid", gap: 5 }}>
+            <span className="hero-stat__label">DSWID</span>
+            <input
+              value={draft.dswid}
+              onChange={(e) => setDraft((d) => ({ ...d, dswid: e.target.value }))}
+              placeholder="DSWID"
+              style={compactInput}
+            />
+          </label>
+          <label style={{ display: "grid", gap: 5 }}>
+            <span className="hero-stat__label">Scanner</span>
+            <input
+              value={draft.scanner_serial}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, scanner_serial: e.target.value }))
+              }
+              placeholder="Scanner serial"
+              style={compactInput}
+            />
+          </label>
+          <label style={{ display: "grid", gap: 5 }}>
+            <span className="hero-stat__label">DOT Exp</span>
+            <input
+              type="date"
+              value={draft.dot_expiration_date}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, dot_expiration_date: e.target.value }))
+              }
+              style={compactInput}
+            />
+          </label>
+          <label style={{ display: "grid", gap: 5 }}>
+            <span className="hero-stat__label">Qual Cert</span>
+            <input
+              type="date"
+              value={draft.qual_cert_expiration_date}
+              onChange={(e) =>
+                setDraft((d) => ({
+                  ...d,
+                  qual_cert_expiration_date: e.target.value,
+                }))
+              }
+              style={compactInput}
+            />
+          </label>
           <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <input
               type="checkbox"

@@ -78,102 +78,120 @@ export default function RouteDraftEditor(props: {
           gridTemplateColumns: "repeat(4, minmax(180px, 1fr))",
         }}
       >
-        <input
-          value={draft.route_name}
-          onChange={(e) =>
-            setDraft((current) => ({ ...current, route_name: e.target.value }))
-          }
-          placeholder="Route"
-          style={inputStyle}
-        />
-
-        <input
-          value={draft.current_wa_num}
-          onChange={(e) =>
-            setDraft((current) => ({
-              ...current,
-              current_wa_num: e.target.value,
-            }))
-          }
-          placeholder="WA#"
-          style={inputStyle}
-        />
-
-        <input
-          value={draft.route_location}
-          onChange={(e) =>
-            setDraft((current) => ({
-              ...current,
-              route_location: e.target.value,
-            }))
-          }
-          placeholder="Location"
-          style={inputStyle}
-        />
-
-        <select
-          value={draft.route_type}
-          onChange={(e) =>
-            setDraft((current) => ({
-              ...current,
-              route_type: e.target.value,
-            }))
-          }
-          style={inputStyle}
-        >
-          <option value="CORE">Core</option>
-          <option value="PEAK">Peak</option>
-          <option value="OVERFLOW">Overflow</option>
-        </select>
-
-        <input
-          value={draft.threshold_stops}
-          onChange={(e) =>
-            setDraft((current) => ({
-              ...current,
-              threshold_stops: e.target.value,
-            }))
-          }
-          placeholder="Threshold"
-          style={inputStyle}
-        />
-
-        <input
-          value={draft.threshold_rate}
-          onChange={(e) =>
-            setDraft((current) => ({
-              ...current,
-              threshold_rate: e.target.value,
-            }))
-          }
-          placeholder="Threshold $"
-          style={inputStyle}
-        />
-
-        <input
-          value={draft.rotation_name}
-          onChange={(e) =>
-            setDraft((current) => ({
-              ...current,
-              rotation_name: e.target.value,
-            }))
-          }
-          placeholder="Rotation"
-          style={inputStyle}
-        />
-
-        <label style={checkboxLabelStyle}>
+        <label style={{ display: "grid", gap: 5 }}>
+          <span className="hero-stat__label">Route</span>
           <input
-            type="checkbox"
-            checked={draft.is_active}
+            value={draft.route_name}
+            onChange={(e) =>
+              setDraft((current) => ({ ...current, route_name: e.target.value }))
+            }
+            style={inputStyle}
+          />
+        </label>
+
+        <label style={{ display: "grid", gap: 5 }}>
+          <span className="hero-stat__label">WA#</span>
+          <input
+            value={draft.current_wa_num}
             onChange={(e) =>
               setDraft((current) => ({
                 ...current,
-                is_active: e.target.checked,
+                current_wa_num: e.target.value,
               }))
             }
+            style={inputStyle}
           />
-          Active
+        </label>
+
+        <label style={{ display: "grid", gap: 5 }}>
+          <span className="hero-stat__label">Location</span>
+          <input
+            value={draft.route_location}
+            onChange={(e) =>
+              setDraft((current) => ({
+                ...current,
+                route_location: e.target.value,
+              }))
+            }
+            style={inputStyle}
+          />
+        </label>
+
+        <label style={{ display: "grid", gap: 5 }}>
+          <span className="hero-stat__label">Type</span>
+          <select
+            value={draft.route_type}
+            onChange={(e) =>
+              setDraft((current) => ({
+                ...current,
+                route_type: e.target.value,
+              }))
+            }
+            style={inputStyle}
+          >
+            <option value="CORE">Core</option>
+            <option value="PEAK">Peak</option>
+            <option value="OVERFLOW">Overflow</option>
+          </select>
+        </label>
+
+        <label style={{ display: "grid", gap: 5 }}>
+          <span className="hero-stat__label">Threshold Stops</span>
+          <input
+            value={draft.threshold_stops}
+            onChange={(e) =>
+              setDraft((current) => ({
+                ...current,
+                threshold_stops: e.target.value,
+              }))
+            }
+            style={inputStyle}
+          />
+        </label>
+
+        <label style={{ display: "grid", gap: 5 }}>
+          <span className="hero-stat__label">Threshold Rate</span>
+          <input
+            value={draft.threshold_rate}
+            onChange={(e) =>
+              setDraft((current) => ({
+                ...current,
+                threshold_rate: e.target.value,
+              }))
+            }
+            style={inputStyle}
+          />
+        </label>
+
+        <label style={{ display: "grid", gap: 5 }}>
+          <span className="hero-stat__label">Rotation</span>
+          <input
+            value={draft.rotation_name}
+            onChange={(e) =>
+              setDraft((current) => ({
+                ...current,
+                rotation_name: e.target.value,
+              }))
+            }
+            style={inputStyle}
+          />
+        </label>
+
+        <label style={{ display: "grid", gap: 5 }}>
+          <span className="hero-stat__label">Status</span>
+          <label style={checkboxLabelStyle}>
+            <input
+              type="checkbox"
+              checked={draft.is_active}
+              onChange={(e) =>
+                setDraft((current) => ({
+                  ...current,
+                  is_active: e.target.checked,
+                }))
+              }
+            />
+            Active
+          </label>
         </label>
       </div>
 

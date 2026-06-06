@@ -56,6 +56,10 @@ export default function ManagePersonDrawer({
 
   return (
     <div
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
       style={{
         position: "fixed",
         inset: 0,
@@ -66,6 +70,7 @@ export default function ManagePersonDrawer({
       }}
     >
       <aside
+        onMouseDown={(event) => event.stopPropagation()}
         style={{
           width: "min(760px,100%)",
           height: "100%",
