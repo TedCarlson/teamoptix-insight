@@ -2,9 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
-import { useLob } from "@/features/lob/hooks/useLob";
-import RosterSummaryStrip from "@/features/people/components/RosterSummaryStrip";
+import ManagePersonDrawer from "@/features/people/components/ManagePersonDrawer";
 import RosterControlsBar, {
   type RosterTab,
 } from "@/features/people/components/RosterControlsBar";
@@ -29,33 +27,31 @@ type ApiRosterRow = {
   dswid?: string | null;
 };
 
-function InlineMessage(props: {
-  tone: "error" | "success";
-  message: string;
-}) {
-  const { tone, message } = props;
+function normalizeRosterRow(row: ApiRosterRow): RosterRow {
+  return {
+    roster_member_id: row.roster_member_id,
+    profile_id: row.profile_id ?? null,
+    person_id: row.person_id ?? null,
+    full_name: row.full_name ?? "Unknown",
+    email: row.email ?? null,
+    phone: row.phone ?? null,
+    worker_type: row.worker_type ?? "Unassigned",
+    employment_status: row.employment_status ?? "Candidate",
+    market_code: row.market_code ?? "—",
+    reports_to_name: row.reports_to_name ?? "—",
+    hire_date: row.hire_date ?? "—",
+    invite_status: row.invite_status ?? "Not Invited",
+    compliance_summary: row.compliance_summary ?? "Missing",
+    fx_id: row.fx_id ?? null,
+    dswid: row.dswid ?? null,
+  };
+}
 
+function StatCard(props: { label: string; value: number }) {
   return (
-    <div
-      className="value-card"
-      style={{
-        gridColumn: "1 / -1",
-        padding: "12px 16px",
-        border:
-          tone === "error"
-            ? "1px solid rgba(198,40,40,0.2)"
-            : "1px solid rgba(15,159,110,0.2)",
-      }}
-    >
-      <p
-        style={{
-          margin: 0,
-          color: tone === "error" ? "#c62828" : "#0f9f6e",
-          fontWeight: 600,
-        }}
-      >
-        {message}
-      </p>
+    <div className="hero-stat">
+      <span className="hero-stat__label">{props.label}</span>
+      <strong>{props.value}</strong>
     </div>
   );
 }
@@ -63,12 +59,11 @@ function InlineMessage(props: {
 export default function CompanyRosterPage() {
   const params = useParams();
   const slug = String(params?.slug ?? "");
-  const lob = useLob();
 
   const [tab, setTab] = useState<RosterTab>("active");
   const [search, setSearch] = useState("");
-
   const [rows, setRows] = useState<RosterRow[]>([]);
+  const [managedPerson, setManagedPerson] = useState<RosterRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -94,27 +89,7 @@ export default function CompanyRosterPage() {
           return;
         }
 
-        const normalized: RosterRow[] = ((data?.roster ?? []) as ApiRosterRow[]).map(
-          (row) => ({
-            roster_member_id: row.roster_member_id,
-            profile_id: row.profile_id ?? null,
-            person_id: row.person_id ?? null,
-            full_name: row.full_name ?? "Unknown",
-            email: row.email ?? null,
-            phone: row.phone ?? null,
-            worker_type: row.worker_type ?? "Unassigned",
-            employment_status: row.employment_status ?? "Candidate",
-            market_code: row.market_code ?? "—",
-            reports_to_name: row.reports_to_name ?? "—",
-            hire_date: row.hire_date ?? "—",
-            invite_status: row.invite_status ?? "Not Invited",
-            compliance_summary: row.compliance_summary ?? "Missing",
-            fx_id: row.fx_id ?? null,
-            dswid: row.dswid ?? null,
-          })
-        );
-
-        setRows(normalized);
+        setRows(((data?.roster ?? []) as ApiRosterRow[]).map(normalizeRosterRow));
       } catch {
         if (!active) return;
         setError("Roster request failed.");
@@ -132,7 +107,7 @@ export default function CompanyRosterPage() {
   }, [slug]);
 
   const filteredRows = useMemo(() => {
-    const filteredByTab =
+    const byTab =
       tab === "all"
         ? rows
         : rows.filter((row) => {
@@ -143,109 +118,50 @@ export default function CompanyRosterPage() {
           });
 
     const q = search.trim().toLowerCase();
+    if (!q) return byTab;
 
-    if (!q) return filteredByTab;
-
-    return filteredByTab.filter((row) => {
-      return (
-        row.full_name.toLowerCase().includes(q) ||
-        (row.email ?? "").toLowerCase().includes(q) ||
-        (row.phone ?? "").toLowerCase().includes(q) ||
-        (row.worker_type ?? "").toLowerCase().includes(q) ||
-        (row.market_code ?? "").toLowerCase().includes(q) ||
-        (row.reports_to_name ?? "").toLowerCase().includes(q) ||
-        (row.invite_status ?? "").toLowerCase().includes(q) ||
-        (row.compliance_summary ?? "").toLowerCase().includes(q)
-      );
-    });
+    return byTab.filter((row) =>
+      [
+        row.full_name,
+        row.email,
+        row.phone,
+        row.worker_type,
+        row.market_code,
+        row.reports_to_name,
+        row.invite_status,
+        row.compliance_summary,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(q)
+    );
   }, [rows, search, tab]);
 
   const activeCount = rows.filter((r) => r.employment_status === "Active").length;
   const candidateCount = rows.filter((r) => r.employment_status === "Candidate").length;
   const formerCount = rows.filter((r) => r.employment_status === "Former").length;
-
   const complianceAlertCount = rows.filter(
-    (r) =>
-      r.compliance_summary !== "Compliant" &&
-      r.compliance_summary !== "Archived"
-  ).length;
-
-  const missingInviteEmailCount = rows.filter(
-    (r) => !r.email || !r.email.trim()
+    (r) => r.compliance_summary !== "Compliant"
   ).length;
 
   return (
-    <main className="workspace-shell">
+    <main className="landing-page">
       <section
         style={{
-          width: "min(1280px, calc(100% - 32px))",
+          width: "min(1440px, calc(100% - 32px))",
           margin: "0 auto",
-          padding: "28px 0 12px",
+          padding: "28px 0 32px",
           display: "grid",
-          gap: 12,
+          gap: 16,
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            gap: 16,
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ display: "grid", gap: 6 }}>
-            <p className="eyebrow">People</p>
-            <h1 style={{ margin: 0 }}>Roster</h1>
-            <p className="lede" style={{ margin: 0, maxWidth: 760 }}>
-              Manage active, candidate, and former people records from one operational surface.
+        {error ? (
+          <article className="value-card" style={{ padding: 14 }}>
+            <p style={{ margin: 0, color: "#c62828", fontWeight: 800 }}>
+              {error}
             </p>
-          </div>
-
-          <div className="cta-row" style={{ marginTop: 0 }}>
-            <Link className="button" href={`/company/${slug}/people`}>
-              Back to people
-            </Link>
-            <button className="button button-primary" type="button">
-              Add person
-            </button>
-            <Link className="button" href={`/company/${slug}/people/import`}>
-              Import roster
-            </Link>
-          </div>
-        </div>
-
-        {error ? <InlineMessage tone="error" message={error} /> : null}
-
-        {!error && missingInviteEmailCount > 0 ? (
-          <InlineMessage
-            tone="success"
-            message={`${missingInviteEmailCount} roster record${missingInviteEmailCount === 1 ? "" : "s"} ${
-              missingInviteEmailCount === 1 ? "is" : "are"
-            } missing invite email. Use View to add contact info before sending invites.`}
-          />
+          </article>
         ) : null}
-
-        <div
-          style={{
-            display: "flex",
-            gap: 12,
-            flexWrap: "wrap",
-            fontSize: 14,
-            color: "#5c6b84",
-          }}
-        >
-          <span>LOB context active</span>
-          <span>Company: {slug}</span>
-          <span>Total rostered: {rows.length}</span>
-        </div>
-
-        <RosterSummaryStrip
-          activeCount={activeCount}
-          candidateCount={candidateCount}
-          formerCount={formerCount}
-          complianceAlertCount={complianceAlertCount}
-        />
 
         <article className="value-card">
           <RosterControlsBar
@@ -253,37 +169,51 @@ export default function CompanyRosterPage() {
             setTab={setTab}
             search={search}
             setSearch={setSearch}
+            counts={{
+              active: activeCount,
+              candidates: candidateCount,
+              former: formerCount,
+              all: rows.length,
+              complianceAlerts: complianceAlertCount,
+            }}
           />
         </article>
 
-        <article className="value-card">
-          <p className="value-card__eyebrow">Roster table</p>
-          <h3 className="value-card__title">Operational people records</h3>
-          <p className="value-card__body">
-            Use View to maintain contact info. Invite only becomes available when an email is present.
-          </p>
+        <article className="value-card" style={{ padding: 18, overflow: "hidden" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 12,
+              alignItems: "center",
+              marginBottom: 12,
+            }}
+          >
+            <div>
+              <p className="value-card__eyebrow">Roster table</p>
+              <h3 className="value-card__title">Operational people records</h3>
+              <p className="value-card__body">
+                Use Manage to update details, status, invite posture, compliance, and lifecycle history.
+              </p>
+            </div>
+
+            <button className="button button-primary" type="button">
+              Add person
+            </button>
+          </div>
 
           {loading ? (
-            <p className="value-card__body" style={{ marginTop: 12 }}>
-              Loading roster...
-            </p>
+            <p className="value-card__body">Loading roster...</p>
           ) : (
-            <div style={{ marginTop: 14 }}>
-              <RosterTable
-                rows={filteredRows}
-                onInviteStatusChange={(rosterId, inviteStatus) => {
-                  setRows((current) =>
-                    current.map((row) =>
-                      row.roster_member_id === rosterId
-                        ? { ...row, invite_status: inviteStatus }
-                        : row
-                    )
-                  );
-                }}
-              />
-            </div>
+            <RosterTable rows={filteredRows} onManagePerson={setManagedPerson} />
           )}
         </article>
+
+        <ManagePersonDrawer
+          open={Boolean(managedPerson)}
+          person={managedPerson}
+          onClose={() => setManagedPerson(null)}
+        />
       </section>
     </main>
   );

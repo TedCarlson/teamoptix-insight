@@ -1,3 +1,5 @@
+"use client";
+
 export type RosterTab = "active" | "candidates" | "former" | "all";
 
 type Props = {
@@ -5,18 +7,28 @@ type Props = {
   setTab: (tab: RosterTab) => void;
   search: string;
   setSearch: (value: string) => void;
+  counts?: {
+    active: number;
+    candidates: number;
+    former: number;
+    all: number;
+    complianceAlerts: number;
+  };
 };
 
 const inputStyle: React.CSSProperties = {
-  height: 44,
-  padding: "0 12px",
-  borderRadius: 10,
+  width: "100%",
+  height: 46,
+  padding: "0 14px",
+  borderRadius: 14,
   border: "1px solid #d6dfeb",
   background: "#fff",
+  font: "inherit",
 };
 
 export default function RosterControlsBar(props: Props) {
-  const { tab, setTab, search, setSearch } = props;
+  const { tab, setTab, search, setSearch, counts } = props;
+  const dirty = search.trim().length > 0;
 
   return (
     <>
@@ -25,63 +37,63 @@ export default function RosterControlsBar(props: Props) {
 
       <div
         style={{
-          display: "flex",
-          gap: 10,
-          flexWrap: "wrap",
-          marginTop: 14,
-          marginBottom: 14,
-        }}
-      >
-        <button
-          type="button"
-          className="button"
-          aria-pressed={tab === "active"}
-          onClick={() => setTab("active")}
-        >
-          Active
-        </button>
-        <button
-          type="button"
-          className="button"
-          aria-pressed={tab === "candidates"}
-          onClick={() => setTab("candidates")}
-        >
-          Candidates
-        </button>
-        <button
-          type="button"
-          className="button"
-          aria-pressed={tab === "former"}
-          onClick={() => setTab("former")}
-        >
-          Former
-        </button>
-        <button
-          type="button"
-          className="button"
-          aria-pressed={tab === "all"}
-          onClick={() => setTab("all")}
-        >
-          All
-        </button>
-      </div>
-
-      <div
-        style={{
           display: "grid",
-          gridTemplateColumns: "minmax(0, 1fr) auto",
+          gridTemplateColumns: "auto minmax(260px, 1fr) auto",
           gap: 12,
           alignItems: "center",
+          marginTop: 14,
         }}
       >
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="button"
+            aria-pressed={tab === "active"}
+            onClick={() => setTab("active")}
+          >
+            Active {counts ? `(${counts.active})` : ""}
+          </button>
+          <button
+            type="button"
+            className="button"
+            aria-pressed={tab === "candidates"}
+            onClick={() => setTab("candidates")}
+          >
+            Candidates {counts ? `(${counts.candidates})` : ""}
+          </button>
+          <button
+            type="button"
+            className="button"
+            aria-pressed={tab === "former"}
+            onClick={() => setTab("former")}
+          >
+            Former {counts ? `(${counts.former})` : ""}
+          </button>
+          <button
+            type="button"
+            className="button"
+            aria-pressed={tab === "all"}
+            onClick={() => setTab("all")}
+          >
+            All {counts ? `(${counts.all})` : ""}
+          </button>
+        </div>
+
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search name, worker type, market, supervisor..."
           style={inputStyle}
         />
-        <button type="button" className="button">
-          Filters
+
+        <button
+          type="button"
+          className={dirty ? "button button-primary" : "button"}
+          onClick={() => {
+            if (dirty) setSearch("");
+          }}
+        >
+          {dirty ? "Clear" : "Filters"}
         </button>
       </div>
     </>

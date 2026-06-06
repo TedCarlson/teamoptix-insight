@@ -131,6 +131,7 @@ export default function DispatchPage() {
   const [eventOverlayOpen, setEventOverlayOpen] = useState(false);
   const [savingEvent, setSavingEvent] = useState(false);
   const [locking, setLocking] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -220,7 +221,7 @@ export default function DispatchPage() {
     return () => {
       active = false;
     };
-  }, [serviceDate, slug]);
+  }, [refreshKey, serviceDate, slug]);
 
   const hydratedRoutes = useMemo(() => {
     const runFlag = runFlagForDate(serviceDate);
@@ -666,6 +667,17 @@ export default function DispatchPage() {
             <p className="workspace-subtitle">
               Assign drivers, helpers, and trainees while preserving the final dispatch shape for reporting.
             </p>
+
+            <div className="cta-row" style={{ marginTop: 4 }}>
+              <button
+                type="button"
+                className="button"
+                disabled={loading}
+                onClick={() => setRefreshKey((current) => current + 1)}
+              >
+                {loading ? "Refreshing..." : "Refresh Dispatch"}
+              </button>
+            </div>
           </div>
 
           <div className="context-grid">

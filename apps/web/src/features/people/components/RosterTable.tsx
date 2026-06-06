@@ -1,233 +1,137 @@
 "use client";
 
-import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
 import type { RosterRow } from "@/features/people/types/roster.types";
 
 type Props = {
   rows: RosterRow[];
-  onInviteStatusChange?: (rosterId: string, inviteStatus: string) => void;
+  onManagePerson?: (row: RosterRow) => void;
 };
 
 const cellStyle: React.CSSProperties = {
-  padding: "12px",
+  padding: "10px 10px",
   borderBottom: "1px solid #e6edf5",
-  verticalAlign: "top",
+  verticalAlign: "middle",
+  fontSize: 14,
 };
 
-function resolveViewHref(slug: string, row: RosterRow) {
-  if (row.employment_status === "Active") {
-    return `/company/${slug}/people/active/${row.roster_member_id}`;
-  }
+function Pill(props: {
+  value: string | null | undefined;
+  tone?: "good" | "warn" | "neutral";
+}) {
+  const { value, tone = "neutral" } = props;
 
-  if (row.employment_status === "Former") {
-    return `/company/${slug}/people/former/${row.roster_member_id}`;
-  }
+  const colors =
+    tone === "good"
+      ? { bg: "#ecfdf3", fg: "#166534", border: "#bbf7d0" }
+      : tone === "warn"
+        ? { bg: "#fff7ed", fg: "#b54708", border: "#fed7aa" }
+        : { bg: "#f8fafc", fg: "#475569", border: "#dbe4ef" };
 
-  return `/company/${slug}/hiring/candidate/${row.roster_member_id}`;
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        minHeight: 24,
+        padding: "2px 8px",
+        borderRadius: 999,
+        border: `1px solid ${colors.border}`,
+        background: colors.bg,
+        color: colors.fg,
+        fontSize: 12,
+        fontWeight: 900,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {value || "—"}
+    </span>
+  );
+}
+
+function complianceTone(value: string | null | undefined) {
+  return value === "Compliant" ? "good" : "warn";
+}
+
+function inviteTone(value: string | null | undefined) {
+  return value === "Linked" || value === "Invited" ? "good" : "neutral";
 }
 
 export default function RosterTable(props: Props) {
-  const { rows, onInviteStatusChange } = props;
-  const params = useParams();
-  const slug = String(params?.slug ?? "");
+  const { rows, onManagePerson } = props;
 
-  const [inviteBusyId, setInviteBusyId] = useState<string | null>(null);
-  const [inviteError, setInviteError] = useState<string | null>(null);
-  const [inviteStatusById, setInviteStatusById] = useState<Record<string, string>>(
-    {}
-  );
-
-  useEffect(() => {
-    setInviteStatusById(
-      Object.fromEntries(
-        rows.map((row) => [row.roster_member_id, row.invite_status || "Not Invited"])
-      )
-    );
-  }, [rows]);
-
-  const normalizedRows = useMemo(
-    () =>
-      rows.map((row) => ({
-        ...row,
-        current_invite_status:
-          inviteStatusById[row.roster_member_id] ?? row.invite_status ?? "Not Invited",
-      })),
-    [rows, inviteStatusById]
-  );
-
-  async function handleInvite(row: RosterRow) {
-    try {
-      setInviteError(null);
-      setInviteBusyId(row.roster_member_id);
-
-      const res = await fetch(
-        `/api/company/${slug}/people/roster/${row.roster_member_id}/invite`,
-        {
-          method: "POST",
-          credentials: "include",
-        }
-      );
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        setInviteError(data?.error ?? `Failed to invite ${row.full_name}.`);
-        return;
-      }
-
-      const nextInviteStatus = String(data?.invite_status ?? "Invited");
-
-      setInviteStatusById((current) => ({
-        ...current,
-        [row.roster_member_id]: nextInviteStatus,
-      }));
-
-      onInviteStatusChange?.(row.roster_member_id, nextInviteStatus);
-    } catch {
-      setInviteError(`Failed to invite ${row.full_name}.`);
-    } finally {
-      setInviteBusyId(null);
-    }
-  }
-
-  if (normalizedRows.length === 0) {
-    return (
-      <div>
-        <p className="value-card__body">No roster records match the current view.</p>
-        <div className="cta-row" style={{ marginTop: 14 }}>
-          <button className="button button-primary" type="button">
-            Add person
-          </button>
-          <Link className="button" href={`/company/${slug}/people/import`}>
-            Import roster
-          </Link>
-        </div>
-      </div>
-    );
+  if (rows.length === 0) {
+    return <p className="value-card__body">No roster records match the current view.</p>;
   }
 
   return (
     <div style={{ overflowX: "auto" }}>
-      {inviteError ? (
-        <p style={{ margin: "0 0 12px", color: "#c62828" }}>{inviteError}</p>
-      ) : null}
-
       <table
         style={{
           width: "100%",
           borderCollapse: "collapse",
-          minWidth: 1220,
+          minWidth: 920,
         }}
       >
         <thead>
           <tr>
-            {[
-              "Name",
-              "Email",
-              "Phone",
-              "Worker Type",
-              "Status",
-              "Market",
-              "Reports To",
-              "Start Date",
-              "Invite Status",
-              "Compliance",
-              "Actions",
-            ].map((label) => (
-              <th
-                key={label}
-                style={{
-                  textAlign: "left",
-                  padding: "10px 12px",
-                  borderBottom: "1px solid #d6dfeb",
-                  fontSize: 12,
-                  letterSpacing: "0.04em",
-                  textTransform: "uppercase",
-                  color: "#5c6b84",
-                }}
-              >
-                {label}
-              </th>
-            ))}
+            {["Name", "Email", "Phone", "Role", "Status", "Invite", "Compliance"].map(
+              (label) => (
+                <th
+                  key={label}
+                  style={{
+                    textAlign: "left",
+                    padding: "8px 10px",
+                    borderBottom: "1px solid #d6dfeb",
+                    fontSize: 11,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    color: "#5c6b84",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {label}
+                </th>
+              )
+            )}
           </tr>
         </thead>
 
         <tbody>
-          {normalizedRows.map((row) => {
-            const viewHref = resolveViewHref(slug, row);
-            const inviteBusy = inviteBusyId === row.roster_member_id;
-            const inviteStatus = row.current_invite_status;
-            const hasEmail = Boolean(row.email && row.email.trim());
-            const inviteDisabled =
-              inviteBusy ||
-              !hasEmail ||
-              inviteStatus.toLowerCase() === "invited" ||
-              inviteStatus.toLowerCase() === "linked";
-
-            return (
-              <tr key={row.roster_member_id}>
-                <td style={cellStyle}>{row.full_name}</td>
-                <td style={cellStyle}>
-                  <div style={{ display: "grid", gap: 6 }}>
-                    <strong style={{ fontWeight: 600 }}>
-                      {row.email ?? "—"}
-                    </strong>
-                    {!hasEmail ? (
-                      <span style={{ color: "#b26a00", fontSize: 12 }}>
-                        Missing invite email
-                      </span>
-                    ) : null}
-                  </div>
-                </td>
-                <td style={cellStyle}>{row.phone ?? "—"}</td>
-                <td style={cellStyle}>{row.worker_type ?? "—"}</td>
-                <td style={cellStyle}>{row.employment_status}</td>
-                <td style={cellStyle}>{row.market_code ?? "—"}</td>
-                <td style={cellStyle}>{row.reports_to_name ?? "—"}</td>
-                <td style={cellStyle}>{row.hire_date ?? "—"}</td>
-                <td style={cellStyle}>{inviteStatus}</td>
-                <td style={cellStyle}>{row.compliance_summary ?? "—"}</td>
-                <td style={cellStyle}>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <Link className="button" href={viewHref}>
-                      View
-                    </Link>
-
-                    <button
-                      type="button"
-                      className="button"
-                      disabled={inviteDisabled}
-                      onClick={() => void handleInvite(row)}
-                      title={
-                        !hasEmail
-                          ? "Add an email on the detail page before inviting."
-                          : inviteStatus.toLowerCase() === "linked"
-                            ? "This person is already linked."
-                            : undefined
-                      }
-                      style={
-                        inviteDisabled
-                          ? { opacity: 0.6, cursor: "not-allowed" }
-                          : undefined
-                      }
-                    >
-                      {inviteBusy
-                        ? "Inviting..."
-                        : !hasEmail
-                          ? "Need Email"
-                          : inviteStatus.toLowerCase() === "linked"
-                            ? "Linked"
-                            : inviteStatus.toLowerCase() === "invited"
-                              ? "Invited"
-                              : "Invite"}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
+          {rows.map((row) => (
+            <tr
+              key={row.roster_member_id}
+              tabIndex={0}
+              role="button"
+              onClick={() => onManagePerson?.(row)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onManagePerson?.(row);
+                }
+              }}
+              style={{ cursor: "pointer" }}
+              title="Open person record"
+            >
+              <td style={cellStyle}>
+                <strong>{row.full_name}</strong>
+              </td>
+              <td style={cellStyle}>{row.email ?? "—"}</td>
+              <td style={cellStyle}>{row.phone ?? "—"}</td>
+              <td style={cellStyle}>{row.worker_type ?? "—"}</td>
+              <td style={cellStyle}>
+                <Pill value={row.employment_status} />
+              </td>
+              <td style={cellStyle}>
+                <Pill value={row.invite_status} tone={inviteTone(row.invite_status)} />
+              </td>
+              <td style={cellStyle}>
+                <Pill
+                  value={row.compliance_summary}
+                  tone={complianceTone(row.compliance_summary)}
+                />
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
