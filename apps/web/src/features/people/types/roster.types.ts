@@ -32,10 +32,15 @@ export type RosterRow = {
   reports_to_name: string | null;
 
   hire_date: string | null;
+  separation_date?: string | null;
 
   invite_status: RosterInviteStatus;
   compliance_summary: RosterComplianceSummary;
 
   fx_id?: string | null;
   dswid?: string | null;
+  dot_expiration_date?: string | null;
+  qual_cert_expiration_date?: string | null;
+  daily_pay?: boolean | null;
+  scanner_serial?: string | null;
 };

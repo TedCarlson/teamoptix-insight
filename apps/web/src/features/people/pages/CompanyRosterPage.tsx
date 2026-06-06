@@ -25,6 +25,10 @@ type ApiRosterRow = {
   compliance_summary: string | null;
   fx_id?: string | null;
   dswid?: string | null;
+  dot_expiration_date?: string | null;
+  qual_cert_expiration_date?: string | null;
+  daily_pay?: boolean | null;
+  scanner_serial?: string | null;
 };
 
 function normalizeRosterRow(row: ApiRosterRow): RosterRow {
@@ -44,10 +48,19 @@ function normalizeRosterRow(row: ApiRosterRow): RosterRow {
     compliance_summary: row.compliance_summary ?? "Missing",
     fx_id: row.fx_id ?? null,
     dswid: row.dswid ?? null,
+    dot_expiration_date: row.dot_expiration_date ?? null,
+    qual_cert_expiration_date: row.qual_cert_expiration_date ?? null,
+    daily_pay: row.daily_pay ?? null,
+    scanner_serial: row.scanner_serial ?? null,
   };
 }
 
 function StatCard(props: { label: string; value: number }) {
+
+  
+
+
+
   return (
     <div className="hero-stat">
       <span className="hero-stat__label">{props.label}</span>
@@ -64,6 +77,9 @@ export default function CompanyRosterPage() {
   const [search, setSearch] = useState("");
   const [rows, setRows] = useState<RosterRow[]>([]);
   const [managedPerson, setManagedPerson] = useState<RosterRow | null>(null);
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [savingOperations, setSavingOperations] = useState(false);
+  const [savingStatus, setSavingStatus] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -144,6 +160,169 @@ export default function CompanyRosterPage() {
     (r) => r.compliance_summary !== "Compliant"
   ).length;
 
+  async function savePersonDetails(draft: {
+    full_name: string;
+    email: string;
+    phone: string;
+    worker_type: string;
+    market_code: string;
+  }) {
+    if (!managedPerson) return;
+
+    setSavingDetails(true);
+    setError(null);
+
+    try {
+      const res = await fetch(
+        `/api/company/${slug}/people/roster/${managedPerson.roster_member_id}/details`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(draft),
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data?.error ?? "Failed to save person details.");
+        return;
+      }
+
+      if (data?.roster) {
+        const updated = normalizeRosterRow(data.roster as ApiRosterRow);
+        setRows((current) =>
+          current.map((row) =>
+            row.roster_member_id === updated.roster_member_id ? updated : row
+          )
+        );
+        setManagedPerson(updated);
+      }
+    } catch {
+      setError("Failed to save person details.");
+    } finally {
+      setSavingDetails(false);
+    }
+  }
+
+
+  async function saveOperations(draft: {
+    dswid: string;
+    dot_expiration_date: string;
+    qual_cert_expiration_date: string;
+    daily_pay: boolean;
+    scanner_serial: string;
+  }) {
+    if (!managedPerson) return;
+
+    setError(null);
+
+    try {
+      const res = await fetch(
+        `/api/company/${slug}/people/roster/${managedPerson.roster_member_id}/operations`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(draft),
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data?.error ?? "Failed to save operations.");
+        return;
+      }
+
+      setRows((current) =>
+        current.map((row) =>
+          row.roster_member_id === managedPerson.roster_member_id
+            ? {
+                ...row,
+                dswid: draft.dswid,
+                dot_expiration_date: draft.dot_expiration_date,
+                qual_cert_expiration_date: draft.qual_cert_expiration_date,
+                daily_pay: draft.daily_pay,
+                scanner_serial: draft.scanner_serial,
+              }
+            : row
+        )
+      );
+
+      setManagedPerson((current) =>
+        current
+          ? {
+              ...current,
+              dswid: draft.dswid,
+              dot_expiration_date: draft.dot_expiration_date,
+              qual_cert_expiration_date: draft.qual_cert_expiration_date,
+              daily_pay: draft.daily_pay,
+              scanner_serial: draft.scanner_serial,
+            }
+          : current
+      );
+    } catch {
+      setError("Failed to save operations.");
+    }
+  }
+
+  async function saveStatus(draft: {
+    employment_status: "Active" | "Candidate" | "Former";
+    effective_date: string;
+    note: string;
+  }) {
+    if (!managedPerson) return;
+
+    setError(null);
+
+    try {
+      const res = await fetch(
+        `/api/company/${slug}/people/roster/${managedPerson.roster_member_id}/status`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(draft),
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data?.error ?? "Failed to update status.");
+        return;
+      }
+
+      const nextStatus =
+        data?.roster?.employment_status ?? draft.employment_status;
+
+      setRows((current) =>
+        current.map((row) =>
+          row.roster_member_id === managedPerson.roster_member_id
+            ? {
+                ...row,
+                employment_status: nextStatus,
+              }
+            : row
+        )
+      );
+
+      setManagedPerson((current) =>
+        current
+          ? {
+              ...current,
+              employment_status: nextStatus,
+            }
+          : current
+      );
+    } catch {
+      setError("Failed to update status.");
+    }
+  }
+
+
   return (
     <main className="landing-page">
       <section
@@ -212,6 +391,12 @@ export default function CompanyRosterPage() {
         <ManagePersonDrawer
           open={Boolean(managedPerson)}
           person={managedPerson}
+          savingDetails={savingDetails}
+          savingOperations={savingOperations}
+          savingStatus={savingStatus}
+          onSaveDetails={savePersonDetails}
+          onSaveOperations={saveOperations}
+          onSaveStatus={saveStatus}
           onClose={() => setManagedPerson(null)}
         />
       </section>

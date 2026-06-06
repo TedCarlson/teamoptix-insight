@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { PersonRecord } from "@/features/people/lib/person-detail.types";
 
 type Draft = {
@@ -16,6 +16,18 @@ function toInputDate(value: string | null) {
   return value.slice(0, 10);
 }
 
+function buildDraft(person: PersonRecord | null): Draft {
+  return {
+    dswid: person?.dswid ?? "",
+    dot_expiration_date: toInputDate(person?.dot_expiration_date ?? null),
+    qual_cert_expiration_date: toInputDate(
+      person?.qual_cert_expiration_date ?? null
+    ),
+    daily_pay: person?.daily_pay ?? false,
+    scanner_serial: person?.scanner_serial ?? "",
+  };
+}
+
 export default function ActiveOperationsEditor(props: {
   person: PersonRecord | null;
   loading: boolean;
@@ -23,123 +35,124 @@ export default function ActiveOperationsEditor(props: {
 }) {
   const { person, loading, onSave } = props;
 
-  const [draft, setDraft] = useState<Draft>({
-    dswid: "",
-    dot_expiration_date: "",
-    qual_cert_expiration_date: "",
-    daily_pay: false,
-    scanner_serial: "",
-  });
-
+  const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState<Draft>(() => buildDraft(person));
 
-  useEffect(() => {
-    setDraft({
-      dswid: person?.dswid ?? "",
-      dot_expiration_date: toInputDate(person?.dot_expiration_date ?? null),
-      qual_cert_expiration_date: toInputDate(
-        person?.qual_cert_expiration_date ?? null
-      ),
-      daily_pay: person?.daily_pay ?? false,
-      scanner_serial: person?.scanner_serial ?? "",
-    });
-  }, [person]);
+  function startEdit() {
+    setDraft(buildDraft(person));
+    setEditing(true);
+  }
 
   async function handleSave() {
     setSaving(true);
+
     try {
       await onSave(draft);
+      setEditing(false);
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <article className="value-card" style={{ gridColumn: "1 / span 2" }}>
-      <p className="value-card__eyebrow">Edit operations</p>
-      <h3 className="value-card__title">FedEx workforce fields</h3>
-      <p className="value-card__body" style={{ marginTop: 8 }}>
-        Manage DSWID, scanner serial, compliance dates, and daily pay.
-      </p>
+    <section className="workspace-card" style={{ padding: 12 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 10,
+        }}
+      >
+        <div>
+          <p className="workspace-eyebrow">Operations</p>
+          <h3 className="workspace-card-title">FedEx workforce fields</h3>
+        </div>
+
+        <button
+          className="button"
+          type="button"
+          disabled={saving}
+          onClick={() => (editing ? setEditing(false) : startEdit())}
+        >
+          {editing ? "Cancel" : "Edit"}
+        </button>
+      </div>
 
       {loading ? (
-        <div style={{ paddingTop: 16 }}>Loading editor...</div>
+        <div style={{ paddingTop: 12 }}>Loading...</div>
+      ) : !editing ? (
+        <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+          <div className="hero-stat">
+            <span className="hero-stat__label">DSWID</span>
+            <strong>{person?.dswid ?? "—"}</strong>
+          </div>
+
+          <div className="hero-stat">
+            <span className="hero-stat__label">Scanner</span>
+            <strong>{person?.scanner_serial ?? "—"}</strong>
+          </div>
+
+          <div className="hero-stat">
+            <span className="hero-stat__label">DOT Expiration</span>
+            <strong>{person?.dot_expiration_date ?? "—"}</strong>
+          </div>
+
+          <div className="hero-stat">
+            <span className="hero-stat__label">Qual Cert</span>
+            <strong>{person?.qual_cert_expiration_date ?? "—"}</strong>
+          </div>
+
+          <div className="hero-stat">
+            <span className="hero-stat__label">Daily Pay</span>
+            <strong>{person?.daily_pay ? "Yes" : "No"}</strong>
+          </div>
+        </div>
       ) : (
-        <div style={{ marginTop: 16, display: "grid", gap: 16 }}>
-          <div
-            style={{
-              display: "grid",
-              gap: 12,
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            }}
-          >
-            <label style={{ display: "grid", gap: 6 }}>
-              <span className="value-card__eyebrow">DSWID</span>
-              <input
-                value={draft.dswid}
-                onChange={(e) =>
-                  setDraft((current) => ({ ...current, dswid: e.target.value }))
-                }
-                className="button"
-                style={{ textAlign: "left", background: "#fff" }}
-              />
-            </label>
+        <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+          <input
+            value={draft.dswid}
+            placeholder="DSWID"
+            onChange={(e) =>
+              setDraft((current) => ({
+                ...current,
+                dswid: e.target.value,
+              }))
+            }
+          />
 
-            <label style={{ display: "grid", gap: 6 }}>
-              <span className="value-card__eyebrow">Scanner serial</span>
-              <input
-                value={draft.scanner_serial}
-                onChange={(e) =>
-                  setDraft((current) => ({
-                    ...current,
-                    scanner_serial: e.target.value,
-                  }))
-                }
-                className="button"
-                style={{ textAlign: "left", background: "#fff" }}
-              />
-            </label>
-          </div>
+          <input
+            value={draft.scanner_serial}
+            placeholder="Scanner Serial"
+            onChange={(e) =>
+              setDraft((current) => ({
+                ...current,
+                scanner_serial: e.target.value,
+              }))
+            }
+          />
 
-          <div
-            style={{
-              display: "grid",
-              gap: 12,
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            }}
-          >
-            <label style={{ display: "grid", gap: 6 }}>
-              <span className="value-card__eyebrow">DOT expiration</span>
-              <input
-                type="date"
-                value={draft.dot_expiration_date}
-                onChange={(e) =>
-                  setDraft((current) => ({
-                    ...current,
-                    dot_expiration_date: e.target.value,
-                  }))
-                }
-                className="button"
-                style={{ textAlign: "left", background: "#fff" }}
-              />
-            </label>
+          <input
+            type="date"
+            value={draft.dot_expiration_date}
+            onChange={(e) =>
+              setDraft((current) => ({
+                ...current,
+                dot_expiration_date: e.target.value,
+              }))
+            }
+          />
 
-            <label style={{ display: "grid", gap: 6 }}>
-              <span className="value-card__eyebrow">Qual cert expiration</span>
-              <input
-                type="date"
-                value={draft.qual_cert_expiration_date}
-                onChange={(e) =>
-                  setDraft((current) => ({
-                    ...current,
-                    qual_cert_expiration_date: e.target.value,
-                  }))
-                }
-                className="button"
-                style={{ textAlign: "left", background: "#fff" }}
-              />
-            </label>
-          </div>
+          <input
+            type="date"
+            value={draft.qual_cert_expiration_date}
+            onChange={(e) =>
+              setDraft((current) => ({
+                ...current,
+                qual_cert_expiration_date: e.target.value,
+              }))
+            }
+          />
 
           <label
             style={{
@@ -158,21 +171,19 @@ export default function ActiveOperationsEditor(props: {
                 }))
               }
             />
-            <span>Daily pay enabled</span>
+            <span>Daily Pay Enabled</span>
           </label>
 
-          <div className="cta-row">
-            <button
-              className="button button-primary"
-              type="button"
-              disabled={saving}
-              onClick={handleSave}
-            >
-              {saving ? "Saving..." : "Save Changes"}
-            </button>
-          </div>
+          <button
+            className="button button-primary"
+            type="button"
+            disabled={saving}
+            onClick={handleSave}
+          >
+            {saving ? "Saving..." : "Save Operations"}
+          </button>
         </div>
       )}
-    </article>
+    </section>
   );
 }

@@ -12,18 +12,16 @@ export async function PATCH(
     const body = await req.json();
 
     const {
+      fx_id,
       dswid,
       dot_expiration_date,
       qual_cert_expiration_date,
       daily_pay,
-      scanner_serial
+      scanner_serial,
     } = body;
 
     const supabase = await getSupabaseServerClient();
 
-    /**
-     * Resolve company
-     */
     const { data: company, error: companyError } = await supabase
       .from("companies")
       .select("id")
@@ -37,18 +35,23 @@ export async function PATCH(
       );
     }
 
-    /**
-     * Update workforce fields
-     */
+    const { data: beforeRow } = await supabase
+      .schema("core")
+      .from("company_roster")
+      .select("*")
+      .eq("id", rosterId)
+      .single();
+
     const { error: updateError } = await supabase
       .schema("core")
       .from("company_roster")
       .update({
+        fx_id,
         dswid,
         dot_expiration_date,
         qual_cert_expiration_date,
         daily_pay,
-        scanner_serial
+        scanner_serial,
       })
       .eq("id", rosterId)
       .eq("company_id", company.id);
@@ -60,12 +63,38 @@ export async function PATCH(
       );
     }
 
+    const { data: afterRow } = await supabase
+      .schema("core")
+      .from("company_roster")
+      .select("*")
+      .eq("id", rosterId)
+      .single();
+
+    await supabase
+      .schema("core")
+      .from("company_roster_event")
+      .insert({
+        company_id: company.id,
+        roster_id: rosterId,
+        event_category: "OPERATIONS",
+        event_type: "operations_updated",
+        event_detail: "Operations fields updated",
+        event_metadata: {
+          before: beforeRow,
+          after: afterRow,
+        },
+      });
+
     return NextResponse.json({
-      success: true
+      success: true,
+      roster: afterRow,
     });
-  } catch (err: any) {
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Failed to update operations.";
+
     return NextResponse.json(
-      { error: err.message },
+      { error: message },
       { status: 500 }
     );
   }
