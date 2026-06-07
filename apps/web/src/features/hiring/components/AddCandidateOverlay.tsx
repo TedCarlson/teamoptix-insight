@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type AddCandidateOverlayProps = {
   open: boolean;
@@ -23,7 +23,37 @@ const inputStyle: React.CSSProperties = {
   borderRadius: 12,
   border: "1px solid #d6dfeb",
   background: "#fff",
+  font: "inherit",
 };
+
+const textareaStyle: React.CSSProperties = {
+  padding: 12,
+  borderRadius: 12,
+  border: "1px solid #d6dfeb",
+  font: "inherit",
+  resize: "vertical",
+};
+
+function Field(props: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  required?: boolean;
+  type?: string;
+}) {
+  return (
+    <label style={{ display: "grid", gap: 5 }}>
+      <span className="hero-stat__label">{props.label}</span>
+      <input
+        value={props.value}
+        onChange={(e) => props.onChange(e.target.value)}
+        required={props.required}
+        type={props.type ?? "text"}
+        style={inputStyle}
+      />
+    </label>
+  );
+}
 
 export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
   const { open, saving, error, onClose, onSubmit } = props;
@@ -34,6 +64,18 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
   const [workerType, setWorkerType] = useState("Driver");
   const [marketCode, setMarketCode] = useState("");
   const [note, setNote] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+
+    window.addEventListener("keydown", handleKey);
+
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [open, onClose]);
 
   if (!open) return null;
 
@@ -52,6 +94,10 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
 
   return (
     <div
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
       style={{
         position: "fixed",
         inset: 0,
@@ -63,6 +109,7 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
       }}
     >
       <section
+        onMouseDown={(event) => event.stopPropagation()}
         style={{
           width: "min(640px, 100%)",
           maxHeight: "calc(100vh - 32px)",
@@ -83,62 +130,40 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
             </p>
           </div>
 
-          <button className="button" type="button" onClick={onClose}>
+          <button
+            className="button"
+            type="button"
+            disabled={saving}
+            onClick={() => {
+              setFullName("");
+              setEmail("");
+              setPhone("");
+              setWorkerType("Driver");
+              setMarketCode("");
+              setNote("");
+              onClose();
+            }}
+          >
             Close
           </button>
         </div>
 
         <form onSubmit={handleSubmit} style={{ marginTop: 16, display: "grid", gap: 12 }}>
-          <input
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            placeholder="Full name"
-            required
-            style={inputStyle}
-          />
+          <Field label="Full name" value={fullName} onChange={setFullName} required />
+          <Field label="Email" value={email} onChange={setEmail} type="email" />
+          <Field label="Phone" value={phone} onChange={setPhone} />
+          <Field label="Role / worker type" value={workerType} onChange={setWorkerType} />
+          <Field label="Market / terminal code" value={marketCode} onChange={setMarketCode} />
 
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Email"
-            type="email"
-            style={inputStyle}
-          />
-
-          <input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="Phone"
-            style={inputStyle}
-          />
-
-          <input
-            value={workerType}
-            onChange={(e) => setWorkerType(e.target.value)}
-            placeholder="Role / worker type"
-            style={inputStyle}
-          />
-
-          <input
-            value={marketCode}
-            onChange={(e) => setMarketCode(e.target.value)}
-            placeholder="Market / terminal code"
-            style={inputStyle}
-          />
-
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Optional onboarding note"
-            rows={4}
-            style={{
-              padding: 12,
-              borderRadius: 12,
-              border: "1px solid #d6dfeb",
-              font: "inherit",
-              resize: "vertical",
-            }}
-          />
+          <label style={{ display: "grid", gap: 5 }}>
+            <span className="hero-stat__label">Optional onboarding note</span>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={4}
+              style={textareaStyle}
+            />
+          </label>
 
           {error ? <p style={{ color: "#c62828", margin: 0 }}>{error}</p> : null}
 
@@ -146,7 +171,20 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
             <button className="button button-primary" type="submit" disabled={saving}>
               {saving ? "Saving..." : "Save candidate"}
             </button>
-            <button className="button" type="button" onClick={onClose}>
+            <button
+              className="button"
+              type="button"
+              disabled={saving}
+              onClick={() => {
+                setFullName("");
+                setEmail("");
+                setPhone("");
+                setWorkerType("Driver");
+                setMarketCode("");
+                setNote("");
+                onClose();
+              }}
+            >
               Cancel
             </button>
           </div>

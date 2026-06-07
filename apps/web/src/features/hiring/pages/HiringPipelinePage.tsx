@@ -1,210 +1,294 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import ComplianceSignal from "@/features/compliance/components/ComplianceSignal";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { useLob } from "@/features/lob/hooks/useLob";
 import AddCandidateOverlay from "@/features/hiring/components/AddCandidateOverlay";
+import CandidateWorkflowDrawer from "@/features/hiring/components/candidate-drawer/CandidateWorkflowDrawer";
+import type { RosterRow } from "@/features/people/types/roster.types";
 
-type ApiRosterRow = {
-  roster_member_id: string;
-  full_name: string | null;
-  worker_type: string | null;
-  employment_status: "Active" | "Candidate" | "Former" | null;
-  market_code: string | null;
-  reports_to_name: string | null;
-  hire_date: string | null;
-  invite_status: string | null;
-  compliance_summary: string | null;
-  onboarding_completed_at?: string | null;
+type PipelineStage = {
+  stage_type_id: string;
+  stage_key: string;
+  label: string;
+  is_terminal: boolean;
+  sort_order: number;
+};
+
+type CandidateProgress = {
+  required_total: number;
+  required_complete: number;
+  percent: number;
 };
 
 type PipelineCandidateRow = {
   id: string;
   full_name: string;
+  email?: string | null;
+  phone?: string | null;
   role: string;
   market: string;
-  stage: string;
+  stage_key: string;
+  stage_label: string;
+  stage_sort_order: number;
   invite_status: string;
-  progress: string;
+  progress?: CandidateProgress | null;
   compliance: string;
+  reports_to_name?: string | null;
+  hire_date?: string | null;
+  separation_date?: string | null;
+  fx_id?: string | null;
+  dswid?: string | null;
+  dot_expiration_date?: string | null;
+  qual_cert_expiration_date?: string | null;
+  daily_pay?: boolean | null;
+  scanner_serial?: string | null;
 };
-
-type PipelineFilter = "all" | "new" | "invited" | "onboarding" | "ready";
-
-function SummaryCard(props: {
-  eyebrow: string;
-  title: string;
-  body: string;
-}) {
-  const { eyebrow, title, body } = props;
-
-  return (
-    <article className="value-card" style={{ padding: 16 }}>
-      <p className="value-card__eyebrow">{eyebrow}</p>
-      <h3 className="value-card__title" style={{ fontSize: "1rem" }}>
-        {title}
-      </h3>
-      <p className="value-card__body">{body}</p>
-    </article>
-  );
-}
-
-function deriveStage(row: {
-  invite_status: string | null;
-  compliance_summary: string | null;
-  onboarding_completed_at?: string | null;
-}) {
-  if (row.onboarding_completed_at) return "Ready for Activation";
-  if (row.invite_status === "Accepted") return "Onboarding";
-  if (row.invite_status === "Invited") return "Invited";
-  if (row.compliance_summary === "Compliant") return "Ready";
-  return "Candidate Created";
-}
-
-function deriveProgress(stage: string) {
-  if (stage === "Ready for Activation") return "100%";
-  if (stage === "Ready") return "90%";
-  if (stage === "Onboarding") return "70%";
-  if (stage === "Invited") return "35%";
-  return "10%";
-}
-
-function matchesFilter(row: PipelineCandidateRow, filter: PipelineFilter) {
-  if (filter === "all") return true;
-  if (filter === "new") return row.stage === "Candidate Created";
-  if (filter === "invited") return row.stage === "Invited";
-  if (filter === "onboarding") return row.stage === "Onboarding";
-  if (filter === "ready") {
-    return row.stage === "Ready" || row.stage === "Ready for Activation";
-  }
-  return true;
-}
 
 function FilterButton(props: {
   label: string;
   active: boolean;
   onClick: () => void;
 }) {
-  const { label, active, onClick } = props;
-
   return (
     <button
       className="button"
       type="button"
-      onClick={onClick}
+      onClick={props.onClick}
       style={
-        active
+        props.active
           ? {
               borderColor: "#0f172a",
-              fontWeight: 700,
+              fontWeight: 800,
             }
           : undefined
       }
     >
-      {label}
+      {props.label}
     </button>
   );
+}
+
+function readinessTone(percent: number) {
+  if (percent >= 100) {
+    return {
+      label: "Ready",
+      fill: "#16a34a",
+      bg: "#ecfdf3",
+      border: "#bbf7d0",
+      text: "#166534",
+    };
+  }
+
+  if (percent >= 80) {
+    return {
+      label: "Final",
+      fill: "#2563eb",
+      bg: "#eff6ff",
+      border: "#bfdbfe",
+      text: "#1d4ed8",
+    };
+  }
+
+  if (percent >= 60) {
+    return {
+      label: "Clearing",
+      fill: "#ca8a04",
+      bg: "#fefce8",
+      border: "#fde68a",
+      text: "#854d0e",
+    };
+  }
+
+  if (percent >= 40) {
+    return {
+      label: "Screening",
+      fill: "#f59e0b",
+      bg: "#fffbeb",
+      border: "#fed7aa",
+      text: "#92400e",
+    };
+  }
+
+  if (percent >= 20) {
+    return {
+      label: "Started",
+      fill: "#dc2626",
+      bg: "#fef2f2",
+      border: "#fecaca",
+      text: "#991b1b",
+    };
+  }
+
+  return {
+    label: "Not started",
+    fill: "#94a3b8",
+    bg: "#f8fafc",
+    border: "#dbe4ef",
+    text: "#475569",
+  };
+}
+
+function ReadinessBlocks(props: { progress?: CandidateProgress | null }) {
+  const progress = props.progress ?? {
+    required_total: 0,
+    required_complete: 0,
+    percent: 0,
+  };
+
+  const tone = readinessTone(progress.percent);
+  const filled = Math.min(5, Math.max(0, Math.ceil(progress.percent / 20)));
+
+  return (
+    <div
+      title={`${progress.percent}% · ${progress.required_complete}/${progress.required_total}`}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 10,
+        minWidth: 210,
+      }}
+    >
+      <div
+        style={{
+          display: "inline-flex",
+          gap: 4,
+          padding: "5px 7px",
+          borderRadius: 999,
+          border: `1px solid ${tone.border}`,
+          background: tone.bg,
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,.75)",
+        }}
+      >
+        {[0, 1, 2, 3, 4].map((index) => {
+          const active = index < filled;
+
+          return (
+            <span
+              key={index}
+              style={{
+                width: 16,
+                height: 10,
+                borderRadius: 3,
+                background: active ? tone.fill : "#e8eef6",
+                border: active ? `1px solid ${tone.fill}` : "1px solid #d6dfeb",
+                boxShadow: active
+                  ? "0 5px 12px rgba(15,23,42,.12)"
+                  : "inset 0 1px 0 rgba(255,255,255,.8)",
+              }}
+            />
+          );
+        })}
+      </div>
+
+      <div style={{ display: "grid", gap: 1 }}>
+        <strong
+          style={{
+            fontSize: 12,
+            lineHeight: 1,
+            color: tone.text,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {progress.percent}% · {progress.required_complete}/{progress.required_total}
+        </strong>
+        <span
+          style={{
+            fontSize: 11,
+            lineHeight: 1,
+            color: "#64748b",
+            fontWeight: 800,
+            letterSpacing: ".035em",
+            textTransform: "uppercase",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {tone.label}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function toRosterRow(row: PipelineCandidateRow): RosterRow {
+  return {
+    roster_member_id: row.id,
+    profile_id: null,
+    person_id: null,
+    full_name: row.full_name,
+    email: row.email ?? null,
+    phone: row.phone ?? null,
+    worker_type: row.role,
+    employment_status: "Candidate",
+    market_code: row.market,
+    reports_to_name: row.reports_to_name ?? "—",
+    hire_date: row.hire_date ?? "—",
+    invite_status: row.invite_status,
+    compliance_summary: row.compliance,
+    fx_id: null,
+    dswid: null,
+    dot_expiration_date: null,
+    qual_cert_expiration_date: null,
+    daily_pay: null,
+    separation_date: row.separation_date ?? null,
+    scanner_serial: row.scanner_serial ?? null,
+    candidate_progress: row.progress ?? null,
+  };
 }
 
 export default function HiringPipelinePage() {
   const params = useParams();
   const slug = String(params?.slug ?? "");
-  const lob = useLob();
 
+  const [stages, setStages] = useState<PipelineStage[]>([]);
   const [rows, setRows] = useState<PipelineCandidateRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<PipelineFilter>("all");
   const [candidateOverlayOpen, setCandidateOverlayOpen] = useState(false);
   const [savingCandidate, setSavingCandidate] = useState(false);
   const [candidateError, setCandidateError] = useState<string | null>(null);
+  const [selectedCandidate, setSelectedCandidate] = useState<RosterRow | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("all");
 
-  useEffect(() => {
-    let active = true;
+  const loadCandidates = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-    async function loadCandidates() {
-      try {
-        setLoading(true);
-        setError(null);
+      const res = await fetch(`/api/company/${slug}/hiring/candidates`, {
+        credentials: "include",
+      });
 
-        const res = await fetch(`/api/company/${slug}/people/roster`, {
-          credentials: "include",
-        });
+      const data = await res.json();
 
-        const data = await res.json();
-
-        if (!active) return;
-
-        if (!res.ok) {
-          setError(data?.error ?? "Failed to load candidate pipeline.");
-          setRows([]);
-          return;
-        }
-
-        const normalized: PipelineCandidateRow[] = (
-          (data?.roster ?? []) as ApiRosterRow[]
-        )
-          .filter((row) => row.employment_status === "Candidate")
-          .map((row) => {
-            const inviteStatus = row.invite_status ?? "Not Invited";
-            const compliance = row.compliance_summary ?? "Missing";
-            const stage = deriveStage(row);
-
-            return {
-              id: row.roster_member_id,
-              full_name: row.full_name ?? "Unknown",
-              role: row.worker_type ?? "Unassigned",
-              market: row.market_code ?? "—",
-              stage,
-              invite_status: inviteStatus,
-              progress: deriveProgress(stage),
-              compliance,
-            };
-          });
-
-        setRows(normalized);
-      } catch {
-        if (!active) return;
-        setError("Candidate pipeline request failed.");
+      if (!res.ok) {
+        setError(data?.error ?? "Failed to load candidate pipeline.");
         setRows([]);
-      } finally {
-        if (active) setLoading(false);
+        setStages([]);
+        return [];
       }
+
+      const nextStages = (data?.stages ?? []) as PipelineStage[];
+      const nextRows = (data?.candidates ?? []) as PipelineCandidateRow[];
+
+      setStages(nextStages);
+      setRows(nextRows);
+
+      return nextRows;
+    } catch {
+      setError("Candidate pipeline request failed.");
+      setRows([]);
+      setStages([]);
+      return [];
+    } finally {
+      setLoading(false);
     }
-
-    if (slug) loadCandidates();
-
-    return () => {
-      active = false;
-    };
   }, [slug]);
 
-  const filteredRows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-
-    return rows
-      .filter((row) => matchesFilter(row, filter))
-      .filter((row) => {
-        if (!q) return true;
-
-        return (
-          row.full_name.toLowerCase().includes(q) ||
-          row.role.toLowerCase().includes(q) ||
-          row.market.toLowerCase().includes(q) ||
-          row.stage.toLowerCase().includes(q) ||
-          row.invite_status.toLowerCase().includes(q)
-        );
-      });
-  }, [rows, search, filter]);
-
-  const newCount = rows.filter((row) => row.stage === "Candidate Created").length;
-  const invitedCount = rows.filter((row) => row.stage === "Invited").length;
-  const onboardingCount = rows.filter((row) => row.stage === "Onboarding").length;
-  const readyCount = rows.filter(
-    (row) => row.stage === "Ready" || row.stage === "Ready for Activation"
-  ).length;
+  useEffect(() => {
+    if (slug) void loadCandidates();
+  }, [slug, loadCandidates]);
 
   async function saveCandidate(payload: {
     full_name: string;
@@ -232,15 +316,8 @@ export default function HiringPipelinePage() {
         return;
       }
 
-      const candidate = data?.candidate;
-      const id = candidate?.roster_id;
-
-      if (id) {
-        window.location.href = `/company/${slug}/hiring/candidate/${id}`;
-        return;
-      }
-
-      window.location.reload();
+      setCandidateOverlayOpen(false);
+      await loadCandidates();
     } catch {
       setCandidateError("Failed to save candidate.");
     } finally {
@@ -248,35 +325,109 @@ export default function HiringPipelinePage() {
     }
   }
 
+  const countByStage = useMemo(() => {
+    const map = new Map<string, number>();
+
+    for (const row of rows) {
+      map.set(row.stage_key, (map.get(row.stage_key) ?? 0) + 1);
+    }
+
+    return map;
+  }, [rows]);
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+
+    return rows
+      .filter((row) => filter === "all" || row.stage_key === filter)
+      .filter((row) => {
+        if (!q) return true;
+
+        return [
+          row.full_name,
+          row.role,
+          row.market,
+          row.stage_label,
+          row.invite_status,
+          row.compliance,
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(q);
+      })
+      .sort((a, b) => {
+        if (a.stage_sort_order !== b.stage_sort_order) {
+          return a.stage_sort_order - b.stage_sort_order;
+        }
+
+        return a.full_name.localeCompare(b.full_name);
+      });
+  }, [rows, filter, search]);
+
+  const readyCount = rows.filter((row) => (row.progress?.percent ?? 0) === 100).length;
+  const avgProgress =
+    rows.length === 0
+      ? 0
+      : Math.round(
+          rows.reduce((sum, row) => sum + (row.progress?.percent ?? 0), 0) /
+            rows.length
+        );
+
   return (
-    <main className="workspace-shell">
+    <main className="landing-page">
       <section
         style={{
-          width: "min(1200px, calc(100% - 32px))",
+          width: "min(1440px, calc(100% - 32px))",
           margin: "0 auto",
-          padding: "28px 0 12px",
+          padding: "28px 0 32px",
           display: "grid",
-          gap: 12,
+          gap: 16,
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            gap: 16,
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ display: "grid", gap: 6 }}>
-            <p className="eyebrow">Hiring</p>
-            <h1 style={{ margin: 0 }}>Candidate pipeline</h1>
-            <p className="lede" style={{ margin: 0, maxWidth: 760 }}>
-              Review candidate readiness, onboarding progress, and next actions.
+        {error ? (
+          <article className="value-card" style={{ padding: 14 }}>
+            <p style={{ margin: 0, color: "#c62828", fontWeight: 800 }}>
+              {error}
             </p>
-          </div>
+          </article>
+        ) : null}
 
-          <div className="cta-row" style={{ marginTop: 0 }}>
+        <article className="value-card">
+          <p className="value-card__eyebrow">Hiring controls</p>
+          <h3 className="value-card__title">Filter the candidate view</h3>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              flexWrap: "wrap",
+              alignItems: "center",
+              marginTop: 14,
+            }}
+          >
+            <FilterButton
+              label={`All (${rows.length})`}
+              active={filter === "all"}
+              onClick={() => setFilter("all")}
+            />
+
+            {stages.map((stage) => (
+              <FilterButton
+                key={stage.stage_key}
+                label={`${stage.label} (${countByStage.get(stage.stage_key) ?? 0})`}
+                active={filter === stage.stage_key}
+                onClick={() => setFilter(stage.stage_key)}
+              />
+            ))}
+
+            <input
+              type="text"
+              placeholder="Search candidate, role, market..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={inputStyle}
+            />
+
             <button
               className="button button-primary"
               type="button"
@@ -285,210 +436,144 @@ export default function HiringPipelinePage() {
                 setCandidateOverlayOpen(true);
               }}
             >
-              + Add Candidate
+              Add candidate
             </button>
-
-            <Link className="button" href={`/company/${slug}`}>
-              Back to company
-            </Link>
-            <Link className="button" href={`/company/${slug}/people`}>
-              People
-            </Link>
-            <Link className="button" href={`/company/${slug}/people/roster`}>
-              Roster
-            </Link>
           </div>
-        </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: 12,
-            flexWrap: "wrap",
-            fontSize: 14,
-            color: "#5c6b84",
-          }}
-        >
-          <span>
-            <strong>LOB:</strong> {lob.lob_label}
-          </span>
-          <span>
-            <strong>Industry:</strong> {lob.industry_label}
-          </span>
-        </div>
-      </section>
+          <p className="value-card__body" style={{ marginTop: 12 }}>
+            {rows.length} candidates · {readyCount} ready · {avgProgress}% average readiness ·{" "}
+            {stages.length} configured stages
+          </p>
+        </article>
 
-      <section className="value-strip" style={{ paddingTop: 12, paddingBottom: 12 }}>
-        <div
-          className="value-grid"
-          style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}
-        >
-          <SummaryCard
-            eyebrow="New"
-            title={String(newCount)}
-            body="Newly created candidates."
-          />
-          <SummaryCard
-            eyebrow="Invited"
-            title={String(invitedCount)}
-            body="Invite sent."
-          />
-          <SummaryCard
-            eyebrow="Onboarding"
-            title={String(onboardingCount)}
-            body="In onboarding flow."
-          />
-          <SummaryCard
-            eyebrow="Ready"
-            title={String(readyCount)}
-            body="Ready for review."
-          />
-        </div>
-      </section>
-
-      <section className="value-strip" style={{ paddingTop: 12 }}>
-        <div className="value-grid">
-          <article className="value-card" style={{ gridColumn: "1 / -1" }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                gap: 16,
-                flexWrap: "wrap",
-              }}
-            >
-              <div style={{ display: "grid", gap: 6 }}>
-                <p className="value-card__eyebrow">Pipeline</p>
-                <h3 className="value-card__title">Candidate list</h3>
-              </div>
-
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                <input
-                  type="text"
-                  placeholder="Search candidate, role, market..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  style={inputStyle}
-                />
-              </div>
+        <article className="value-card" style={{ padding: 18, overflow: "hidden" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 12,
+              alignItems: "center",
+              marginBottom: 12,
+            }}
+          >
+            <div>
+              <p className="value-card__eyebrow">Pipeline table</p>
+              <h3 className="value-card__title">Candidate journeys</h3>
+              <p className="value-card__body">
+                Click a row to open the candidate workflow drawer.
+              </p>
             </div>
+          </div>
 
-            <div
-              className="cta-row"
-              style={{ marginTop: 14, marginBottom: 8, flexWrap: "wrap" }}
-            >
-              <FilterButton
-                label="All"
-                active={filter === "all"}
-                onClick={() => setFilter("all")}
-              />
-              <FilterButton
-                label="New"
-                active={filter === "new"}
-                onClick={() => setFilter("new")}
-              />
-              <FilterButton
-                label="Invited"
-                active={filter === "invited"}
-                onClick={() => setFilter("invited")}
-              />
-              <FilterButton
-                label="Onboarding"
-                active={filter === "onboarding"}
-                onClick={() => setFilter("onboarding")}
-              />
-              <FilterButton
-                label="Ready"
-                active={filter === "ready"}
-                onClick={() => setFilter("ready")}
-              />
-            </div>
-
-            {error ? (
-              <p style={{ color: "#c62828", marginTop: 12 }}>{error}</p>
-            ) : null}
-
-            {loading ? (
-              <div style={{ padding: "16px 0" }}>Loading candidate pipeline...</div>
-            ) : filteredRows.length === 0 ? (
-              <div style={{ padding: "16px 0" }}>No candidate rows found.</div>
-            ) : (
-              <div style={{ marginTop: 12, overflowX: "auto" }}>
-                <table
-                  style={{
-                    width: "100%",
-                    borderCollapse: "collapse",
-                    minWidth: 980,
-                  }}
-                >
-                  <thead>
-                    <tr>
-                      {[
-                        "Name",
-                        "Role",
-                        "Market",
-                        "Stage",
-                        "Invite",
-                        "Progress",
-                        "Actions",
-                      ].map((label) => (
-                        <th
-                          key={label}
-                          style={{
-                            textAlign: "left",
-                            padding: "10px 12px",
-                            borderBottom: "1px solid #d6dfeb",
-                            fontSize: 12,
-                            letterSpacing: "0.04em",
-                            textTransform: "uppercase",
-                            color: "#5c6b84",
-                          }}
-                        >
-                          {label}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {filteredRows.map((row) => (
-                      <tr key={row.id}>
-                        <td style={cellStyle}>{row.full_name}</td>
-                        <td style={cellStyle}>{row.role}</td>
-                        <td style={cellStyle}>{row.market}</td>
-                        <td style={cellStyle}>{row.stage}</td>
-                        <td style={cellStyle}>{row.invite_status}</td>
-                        <td style={cellStyle}>{row.progress}</td>
-                        <td style={cellStyle}>
-                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                            <Link
-                              className="button"
-                              href={`/company/${slug}/hiring/candidate/${row.id}`}
-                            >
-                              View
-                            </Link>
-                            <button className="button" type="button">
-                              Move stage
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+          {loading ? (
+            <p className="value-card__body">Loading candidate pipeline...</p>
+          ) : filteredRows.length === 0 ? (
+            <p className="value-card__body">No candidate records match the current view.</p>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  minWidth: 980,
+                }}
+              >
+                <thead>
+                  <tr>
+                    {[
+                      "Candidate",
+                      "Role",
+                      "Market",
+                      "Stage",
+                      "Invite",
+                      "Readiness",
+                      "Compliance",
+                    ].map((label) => (
+                      <th
+                        key={label}
+                        style={{
+                          textAlign: "left",
+                          padding: "8px 10px",
+                          borderBottom: "1px solid #d6dfeb",
+                          fontSize: 11,
+                          letterSpacing: "0.06em",
+                          textTransform: "uppercase",
+                          color: "#5c6b84",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {label}
+                      </th>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </article>
-        </div>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {filteredRows.map((row) => (
+                    <tr
+                      key={row.id}
+                      tabIndex={0}
+                      role="button"
+                      onClick={() => setSelectedCandidate(toRosterRow(row))}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedCandidate(toRosterRow(row));
+                        }
+                      }}
+                      className="operational-table-row"
+                      title="Open candidate workflow"
+                    >
+                      <td style={cellStyle}>
+                        <strong>{row.full_name}</strong>
+                      </td>
+                      <td style={cellStyle}>{row.role}</td>
+                      <td style={cellStyle}>{row.market}</td>
+                      <td style={cellStyle}>{row.stage_label}</td>
+                      <td style={cellStyle}>{row.invite_status}</td>
+                      <td style={cellStyle}>
+                        <ReadinessBlocks progress={row.progress} />
+                      </td>
+                      <td style={cellStyle}><ComplianceSignal value={row.compliance} compact /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
+
+        <CandidateWorkflowDrawer
+          open={Boolean(selectedCandidate)}
+          slug={slug}
+          person={selectedCandidate}
+          onClose={() => setSelectedCandidate(null)}
+          onSaved={(updated) => {
+            setSelectedCandidate(updated);
+            void loadCandidates();
+          }}
+          onRefresh={async () => {
+            const nextRows = await loadCandidates();
+            if (!selectedCandidate) return;
+
+            const match = nextRows.find(
+              (row) => row.id === selectedCandidate.roster_member_id
+            );
+
+            if (match) {
+              setSelectedCandidate(toRosterRow(match));
+            }
+          }}
+        />
+
+        <AddCandidateOverlay
+          open={candidateOverlayOpen}
+          saving={savingCandidate}
+          error={candidateError}
+          onClose={() => setCandidateOverlayOpen(false)}
+          onSubmit={saveCandidate}
+        />
       </section>
-      <AddCandidateOverlay
-        open={candidateOverlayOpen}
-        saving={savingCandidate}
-        error={candidateError}
-        onClose={() => setCandidateOverlayOpen(false)}
-        onSubmit={saveCandidate}
-      />
     </main>
   );
 }
@@ -503,7 +588,8 @@ const inputStyle: React.CSSProperties = {
 };
 
 const cellStyle: React.CSSProperties = {
-  padding: "12px",
+  padding: "10px",
   borderBottom: "1px solid #e6edf5",
-  verticalAlign: "top",
+  verticalAlign: "middle",
+  fontSize: 14,
 };

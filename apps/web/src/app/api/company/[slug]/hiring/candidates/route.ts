@@ -3,7 +3,201 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-function clean(value: unknown) {
+function fallbackStageKey(row: {
+  invite_status: string | null;
+  onboarding_completed_at?: string | null;
+}) {
+  if (row.onboarding_completed_at) return "ready_for_activation";
+  if (row.invite_status === "Accepted") return "onboarding";
+  if (row.invite_status === "Invited") return "invited";
+  return "candidate_created";
+}
+
+type ChecklistFactRow = {
+  roster_id: string;
+  item_type_id: string;
+  is_complete: boolean;
+};
+
+function buildCandidateProgress(
+  rosterId: string,
+  requiredItemIds: Set<string>,
+  checklistFacts: ChecklistFactRow[]
+) {
+  const requiredTotal = requiredItemIds.size;
+
+  if (requiredTotal === 0) {
+    return {
+      required_total: 0,
+      required_complete: 0,
+      percent: 0,
+    };
+  }
+
+  const requiredComplete = checklistFacts.filter(
+    (fact) =>
+      fact.roster_id === rosterId &&
+      requiredItemIds.has(fact.item_type_id) &&
+      fact.is_complete
+  ).length;
+
+  return {
+    required_total: requiredTotal,
+    required_complete: requiredComplete,
+    percent: Math.round((requiredComplete / requiredTotal) * 100),
+  };
+}
+
+export async function GET(
+  _req: NextRequest,
+  context: { params: Promise<{ slug: string }> }
+) {
+  try {
+    const { slug } = await context.params;
+    const supabase = await getSupabaseServerClient();
+
+    const { data: company, error: companyError } = await supabase
+      .from("companies")
+      .select("id")
+      .eq("company_slug", slug)
+      .single();
+
+    if (companyError || !company) {
+      return NextResponse.json(
+        { error: "Company not found.", stages: [], candidates: [] },
+        { status: 404 }
+      );
+    }
+
+    const { data: stageRows, error: stageError } = await supabase
+      .from("company_candidate_stage_config_v")
+      .select("*")
+      .eq("company_id", company.id)
+      .eq("is_enabled", true)
+      .order("sort_order", { ascending: true });
+
+    if (stageError) {
+      return NextResponse.json(
+        { error: stageError.message, stages: [], candidates: [] },
+        { status: 500 }
+      );
+    }
+
+    const stages = ((stageRows ?? []) as any[]).map((row) => ({
+      config_id: row.id,
+      stage_type_id: row.stage_type_id ?? "",
+      stage_key: row.stage_key ?? "",
+      label: row.display_label ?? row.default_label ?? "Stage",
+      is_terminal: Boolean(row.is_terminal),
+      sort_order: row.sort_order ?? row.stage_sort_order ?? 100,
+    }));
+
+    const stageByKey = new Map(stages.map((stage) => [stage.stage_key, stage]));
+
+    const { data: rosterRows, error: rosterError } = await supabase
+      .from("company_roster_view")
+      .select("*")
+      .eq("company_id", company.id)
+      .eq("employment_status", "Candidate")
+      .order("full_name");
+
+    if (rosterError) {
+      return NextResponse.json(
+        { error: rosterError.message, stages, candidates: [] },
+        { status: 500 }
+      );
+    }
+
+    const rosterIds = (rosterRows ?? []).map((row) => row.roster_member_id);
+
+    const { data: checklistConfigRows } = await supabase
+      .from("company_candidate_checklist_config_v")
+      .select("item_type_id, is_required")
+      .eq("company_id", company.id)
+      .eq("is_enabled", true);
+
+    const requiredItemIds = new Set(
+      ((checklistConfigRows ?? []) as Array<{
+        item_type_id: string;
+        is_required: boolean;
+      }>)
+        .filter((item) => item.is_required)
+        .map((item) => item.item_type_id)
+    );
+
+    let checklistFacts: ChecklistFactRow[] = [];
+
+    if (rosterIds.length > 0) {
+      const { data: checklistFactRows } = await supabase
+        .from("roster_candidate_checklist_fact_v")
+        .select("roster_id, item_type_id, is_complete")
+        .eq("company_id", company.id)
+        .in("roster_id", rosterIds);
+
+      checklistFacts = (checklistFactRows ?? []) as ChecklistFactRow[];
+    }
+
+    let factRows: any[] = [];
+
+    if (rosterIds.length > 0) {
+      const { data: facts } = await supabase
+        .from("roster_candidate_stage_v")
+        .select("*")
+        .eq("company_id", company.id)
+        .in("roster_id", rosterIds);
+
+      factRows = facts ?? [];
+    }
+
+    const factByRosterId = new Map(
+      factRows.map((fact) => [fact.roster_id, fact])
+    );
+
+    const candidates = (rosterRows ?? []).map((row) => {
+      const fact = factByRosterId.get(row.roster_member_id);
+      const stageKey = fact?.stage_key ?? fallbackStageKey(row);
+      const stage = stageByKey.get(stageKey);
+
+      return {
+        id: row.roster_member_id,
+        full_name: row.full_name ?? "Unknown",
+        role: row.worker_type ?? "Unassigned",
+        market: row.market_code ?? "—",
+        stage_key: stageKey,
+        stage_label:
+          stage?.label ?? fact?.default_label ?? "New",
+        stage_sort_order:
+          stage?.sort_order ?? fact?.stage_sort_order ?? 100,
+        invite_status: row.invite_status ?? "Not Invited",
+        compliance: row.compliance_summary ?? "Missing",
+        onboarding_completed_at: row.onboarding_completed_at ?? null,
+        updated_at: fact?.updated_at ?? null,
+        progress: buildCandidateProgress(
+          row.roster_member_id,
+          requiredItemIds,
+          checklistFacts
+        ),
+      };
+    });
+
+    return NextResponse.json({
+      company_id: company.id,
+      stages,
+      candidates,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to load candidates.";
+
+    return NextResponse.json(
+      { error: message, stages: [], candidates: [] },
+      { status: 500 }
+    );
+  }
+}
+
+
+function cleanText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
@@ -16,24 +210,89 @@ export async function POST(
     const supabase = await getSupabaseServerClient();
     const body = await req.json().catch(() => ({}));
 
-    const { data, error } = await supabase.rpc("hiring_upsert_candidate", {
-      p_company_slug: slug,
-      p_full_name: clean(body.full_name),
-      p_email: clean(body.email),
-      p_phone: clean(body.phone),
-      p_worker_type: clean(body.worker_type),
-      p_market_code: clean(body.market_code),
-      p_note: clean(body.note),
-    });
+    const fullName = cleanText(body.full_name);
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    if (!fullName) {
+      return NextResponse.json(
+        { error: "Candidate name is required." },
+        { status: 400 }
+      );
     }
 
-    return NextResponse.json({ ok: true, candidate: data }, { status: 200 });
+    const { data: company, error: companyError } = await supabase
+      .from("companies")
+      .select("id")
+      .eq("company_slug", slug)
+      .single();
+
+    if (companyError || !company) {
+      return NextResponse.json({ error: "Company not found." }, { status: 404 });
+    }
+
+    const { data: stage, error: stageError } = await supabase
+      .schema("core")
+      .from("candidate_stage_type")
+      .select("id")
+      .eq("stage_key", "candidate_created")
+      .single();
+
+    if (stageError || !stage) {
+      return NextResponse.json(
+        { error: "Candidate stage seed missing." },
+        { status: 500 }
+      );
+    }
+
+    const { data: inserted, error: insertError } = await supabase
+      .schema("core")
+      .from("company_roster")
+      .insert({
+        company_id: company.id,
+        full_name: fullName,
+        email: cleanText(body.email)?.toLowerCase() ?? null,
+        phone: cleanText(body.phone),
+        worker_type: cleanText(body.worker_type),
+        market_code: cleanText(body.market_code),
+        employment_status: "Candidate",
+        invite_status: "Not Invited",
+        compliance_summary: "Missing",
+      })
+      .select("id")
+      .single();
+
+    if (insertError || !inserted) {
+      return NextResponse.json(
+        { error: insertError?.message ?? "Failed to create candidate." },
+        { status: 500 }
+      );
+    }
+
+    await supabase.schema("core").from("roster_candidate_stage").insert({
+      company_id: company.id,
+      roster_id: inserted.id,
+      stage_type_id: stage.id,
+      note: cleanText(body.note),
+    });
+
+    await supabase.schema("core").from("company_roster_event").insert({
+      company_id: company.id,
+      roster_id: inserted.id,
+      event_category: "hiring",
+      event_type: "candidate_created",
+      event_detail: "Candidate record created.",
+      event_metadata: {
+        source: "add_candidate_overlay",
+      },
+      occurred_at: new Date().toISOString(),
+    });
+
+    return NextResponse.json(
+      { ok: true, roster_id: inserted.id },
+      { status: 201 }
+    );
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to save candidate.";
+      error instanceof Error ? error.message : "Failed to create candidate.";
 
     return NextResponse.json({ error: message }, { status: 500 });
   }

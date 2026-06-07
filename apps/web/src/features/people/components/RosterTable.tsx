@@ -1,5 +1,6 @@
 "use client";
 
+import ComplianceSignal from "@/features/compliance/components/ComplianceSignal";
 import type { RosterRow } from "@/features/people/types/roster.types";
 
 type Props = {
@@ -109,7 +110,7 @@ export default function RosterTable(props: Props) {
                   onManagePerson?.(row);
                 }
               }}
-              style={{ cursor: "pointer" }}
+              className="operational-table-row"
               title="Open person record"
             >
               <td style={cellStyle}>
@@ -125,10 +126,7 @@ export default function RosterTable(props: Props) {
                 <Pill value={row.invite_status} tone={inviteTone(row.invite_status)} />
               </td>
               <td style={cellStyle}>
-                <Pill
-                  value={row.compliance_summary}
-                  tone={complianceTone(row.compliance_summary)}
-                />
+                <ComplianceSignal value={row.compliance_summary} compact />
               </td>
             </tr>
           ))}

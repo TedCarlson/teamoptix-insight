@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import ManagePersonDrawer from "@/features/people/components/ManagePersonDrawer";
+import CandidateWorkflowDrawer from "@/features/hiring/components/candidate-drawer/CandidateWorkflowDrawer";
 import RosterControlsBar, {
   type RosterTab,
 } from "@/features/people/components/RosterControlsBar";
@@ -77,6 +78,7 @@ export default function CompanyRosterPage() {
   const [search, setSearch] = useState("");
   const [rows, setRows] = useState<RosterRow[]>([]);
   const [managedPerson, setManagedPerson] = useState<RosterRow | null>(null);
+  const [candidateWorkflowPerson, setCandidateWorkflowPerson] = useState<RosterRow | null>(null);
   const [savingDetails, setSavingDetails] = useState(false);
   const [savingOperations, setSavingOperations] = useState(false);
   const [savingStatus, setSavingStatus] = useState(false);
@@ -159,6 +161,17 @@ export default function CompanyRosterPage() {
   const complianceAlertCount = rows.filter(
     (r) => r.compliance_summary !== "Compliant"
   ).length;
+
+  function openWorkflowDrawer(row: RosterRow) {
+    if (row.employment_status === "Candidate") {
+      setCandidateWorkflowPerson(row);
+      setManagedPerson(null);
+      return;
+    }
+
+    setManagedPerson(row);
+    setCandidateWorkflowPerson(null);
+  }
 
   async function savePersonDetails(draft: {
     full_name: string;
@@ -384,9 +397,16 @@ export default function CompanyRosterPage() {
           {loading ? (
             <p className="value-card__body">Loading roster...</p>
           ) : (
-            <RosterTable rows={filteredRows} onManagePerson={setManagedPerson} />
+            <RosterTable rows={filteredRows} onManagePerson={openWorkflowDrawer} />
           )}
         </article>
+
+        <CandidateWorkflowDrawer
+          open={Boolean(candidateWorkflowPerson)}
+          slug={slug}
+          person={candidateWorkflowPerson}
+          onClose={() => setCandidateWorkflowPerson(null)}
+        />
 
         <ManagePersonDrawer
           open={Boolean(managedPerson)}

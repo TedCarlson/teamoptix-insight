@@ -43,4 +43,10 @@ export type RosterRow = {
   qual_cert_expiration_date?: string | null;
   daily_pay?: boolean | null;
   scanner_serial?: string | null;
+
+  candidate_progress?: {
+    required_total: number;
+    required_complete: number;
+    percent: number;
+  } | null;
 };

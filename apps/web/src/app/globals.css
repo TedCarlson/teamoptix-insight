@@ -742,3 +742,28 @@ h1 {
 .workspace-shell .hero__grid {
   max-width: none;
 }
+
+/* Shared operational table row affordance */
+.operational-table-row {
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.operational-table-row:hover {
+  background: rgba(37, 99, 235, 0.055);
+  box-shadow: inset 3px 0 0 #2563eb;
+}
+
+.operational-table-row:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+  background: rgba(37, 99, 235, 0.075);
+}
+
+.operational-table-row:active {
+  transform: translateY(1px);
+}
+
