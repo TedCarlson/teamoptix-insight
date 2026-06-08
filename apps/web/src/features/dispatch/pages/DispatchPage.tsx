@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   type AssignmentIntent,
@@ -134,8 +134,10 @@ export default function DispatchPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const persistedCalloutKeys = useRef(new Set<string>());
 
   const serviceDate = todayIso();
+  const dispatchLocked = dispatchDay?.status === "LOCKED";
 
   useEffect(() => {
     let active = true;
@@ -325,6 +327,53 @@ export default function DispatchPage() {
     return Array.from(byId.values()).sort(personSort);
   }, [scheduleRows, serviceDate]);
 
+  const callouts = useMemo(() => {
+    const byId = new Map<string, DispatchPerson>();
+
+    for (const row of scheduleRows) {
+      if (row.service_date !== serviceDate) continue;
+      if (row.override_type !== "CALL_OUT") continue;
+
+      const person = personFromRow(row);
+      byId.set(person.roster_member_id, person);
+    }
+
+    return Array.from(byId.values()).sort(personSort);
+  }, [scheduleRows, serviceDate]);
+
+  const calloutIds = useMemo(
+    () => new Set(callouts.map((person) => person.roster_member_id)),
+    [callouts]
+  );
+
+  useEffect(() => {
+    if (!slug || dispatchLocked || callouts.length === 0) return;
+
+    const existingCalloutIds = new Set(
+      dispatchEvents
+        .filter((event) => event.event_code === "CALL_OUT")
+        .map((event) => event.person_roster_member_id)
+        .filter(Boolean)
+    );
+
+    for (const person of callouts) {
+      const key = `${serviceDate}:${person.roster_member_id}`;
+      if (existingCalloutIds.has(person.roster_member_id)) continue;
+      if (persistedCalloutKeys.current.has(key)) continue;
+
+      persistedCalloutKeys.current.add(key);
+
+      void addManualDispatchEvent({
+        event_code: "CALL_OUT",
+        event_label: "Driver call-out",
+        event_category: "ATTENDANCE",
+        note: "Imported from schedule call-out override.",
+        person_roster_member_id: person.roster_member_id,
+        person_name: person.full_name,
+      });
+    }
+  }, [callouts, dispatchEvents, dispatchLocked, serviceDate, slug]);
+
   const assignedIds = useMemo(() => {
     const ids = new Set<string>();
 
@@ -347,7 +396,11 @@ export default function DispatchPage() {
   }, [dispatchRoutes, hydratedRoutes]);
 
   const workforce = useMemo(() => {
-    const available = allPeople.filter((person) => !assignedIds.has(person.roster_member_id));
+    const available = allPeople.filter(
+      (person) =>
+        !assignedIds.has(person.roster_member_id) &&
+        !calloutIds.has(person.roster_member_id)
+    );
     const drivers = allPeople.filter((person) => {
       const label = personTypeLabel(person).toLowerCase();
       return !label.includes("helper") && !label.includes("trainee");
@@ -365,7 +418,7 @@ export default function DispatchPage() {
       helpers,
       trainees,
     };
-  }, [allPeople, assignedIds]);
+  }, [allPeople, assignedIds, calloutIds]);
 
   const summary = useMemo(() => {
     const total = dispatchRoutes.length;
@@ -384,7 +437,6 @@ export default function DispatchPage() {
     };
   }, [dispatchRoutes, workforce.available.length]);
 
-  const dispatchLocked = dispatchDay?.status === "LOCKED";
 
   function openSeat(route: DispatchRoute, seat: Seat) {
     if (dispatchLocked) return;
@@ -540,6 +592,12 @@ export default function DispatchPage() {
     });
 
     const route = assignments[routeKey];
+    const removedPerson =
+      seat === "driver"
+        ? route?.driver ?? null
+        : seat === "helper"
+          ? route?.helpers[0] ?? null
+          : route?.trainees[0] ?? null;
 
     void recordAssignmentEvent({
       event_code:
@@ -557,7 +615,7 @@ export default function DispatchPage() {
       route_key: routeKey,
       route_label: route ? routeLabel(route) : routeKey,
       seat,
-      person: null,
+      person: removedPerson,
     });
 
     setIntent(null);
@@ -714,6 +772,7 @@ export default function DispatchPage() {
           availableCount={summary.available}
           intent={intent}
           availablePeople={workforce.available}
+          callouts={callouts}
           onCancelAssign={() => setIntent(null)}
           onSelectPerson={assignPerson}
         />

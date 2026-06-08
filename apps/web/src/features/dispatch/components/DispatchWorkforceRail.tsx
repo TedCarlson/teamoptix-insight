@@ -15,6 +15,7 @@ type DispatchWorkforceRailProps = {
   availableCount: number;
   intent: AssignmentIntent;
   availablePeople: DispatchPerson[];
+  callouts: DispatchPerson[];
   onCancelAssign: () => void;
   onSelectPerson: (person: DispatchPerson) => void;
 };
@@ -25,6 +26,7 @@ export function DispatchWorkforceRail(props: DispatchWorkforceRailProps) {
     availableCount,
     intent,
     availablePeople,
+    callouts,
     onCancelAssign,
     onSelectPerson,
   } = props;
@@ -101,17 +103,40 @@ export function DispatchWorkforceRail(props: DispatchWorkforceRailProps) {
             }}
           >
             <p style={eyebrow}>Callouts</p>
-            <strong>0</strong>
+            <strong style={{ color: callouts.length ? "#b42318" : "#64748b" }}>
+              {callouts.length}
+            </strong>
           </div>
 
-          <div
-            style={{
-              color: "#94a3b8",
-              fontSize: 12,
-            }}
-          >
-            No callouts recorded.
-          </div>
+          {callouts.length ? (
+            <div style={{ display: "grid", gap: 6 }}>
+              {callouts.map((person) => (
+                <div
+                  key={person.roster_member_id}
+                  style={{
+                    border: "1px solid #fecaca",
+                    background: "#fff1f2",
+                    color: "#991b1b",
+                    borderRadius: 10,
+                    padding: "7px 8px",
+                    fontSize: 12,
+                    fontWeight: 800,
+                  }}
+                >
+                  {person.full_name}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div
+              style={{
+                color: "#94a3b8",
+                fontSize: 12,
+              }}
+            >
+              No callouts recorded.
+            </div>
+          )}
         </section>
       </div>
     </aside>
