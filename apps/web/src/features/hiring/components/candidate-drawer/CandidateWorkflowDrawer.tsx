@@ -18,10 +18,12 @@ type CoreDraft = {
 type OperationsDraft = {
   fx_id: string;
   dswid: string;
+  scanner_serial: string;
   dot_expiration_date: string;
   qual_cert_expiration_date: string;
-  daily_pay: boolean;
-  scanner_serial: string;
+  daily_pay_effective_date: string;
+  fuel_card: string;
+  pin_id_no: string;
 };
 
 type StatusDraft = {
@@ -255,8 +257,10 @@ export default function CandidateWorkflowDrawer({
         dswid: draft.dswid,
         dot_expiration_date: draft.dot_expiration_date,
         qual_cert_expiration_date: draft.qual_cert_expiration_date,
-        daily_pay: draft.daily_pay,
+        daily_pay_effective_date: draft.daily_pay_effective_date,
         scanner_serial: draft.scanner_serial,
+        fuel_card: draft.fuel_card,
+        pin_id_no: draft.pin_id_no,
       });
     } catch {
       setError("Failed to save candidate operations.");

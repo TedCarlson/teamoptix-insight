@@ -9,12 +9,6 @@ function formatOptionalDate(value: string | null) {
   }
 }
 
-function formatDailyPay(value: boolean | null) {
-  if (value === true) return "Yes";
-  if (value === false) return "No";
-  return "—";
-}
-
 export default function ActiveOperationalPanel(props: {
   person: PersonRecord | null;
   loading: boolean;
@@ -32,13 +26,7 @@ export default function ActiveOperationalPanel(props: {
       {loading ? (
         <div style={{ paddingTop: 16 }}>Loading active posture...</div>
       ) : (
-        <div
-          style={{
-            marginTop: 14,
-            display: "grid",
-            gap: 16,
-          }}
-        >
+        <div style={{ marginTop: 14, display: "grid", gap: 16 }}>
           <div
             style={{
               display: "grid",
@@ -46,6 +34,11 @@ export default function ActiveOperationalPanel(props: {
               gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
             }}
           >
+            <div className="hero-stat">
+              <span className="hero-stat__label">FX ID</span>
+              <strong>{person?.fx_id ?? "—"}</strong>
+            </div>
+
             <div className="hero-stat">
               <span className="hero-stat__label">DSWID</span>
               <strong>{person?.dswid ?? "—"}</strong>
@@ -57,8 +50,13 @@ export default function ActiveOperationalPanel(props: {
             </div>
 
             <div className="hero-stat">
-              <span className="hero-stat__label">Daily pay</span>
-              <strong>{formatDailyPay(person?.daily_pay ?? null)}</strong>
+              <span className="hero-stat__label">Fuel Card</span>
+              <strong>{person?.fuel_card ?? "—"}</strong>
+            </div>
+
+            <div className="hero-stat">
+              <span className="hero-stat__label">ID No / PIN</span>
+              <strong>{person?.pin_id_no ?? "—"}</strong>
             </div>
           </div>
 
@@ -71,16 +69,17 @@ export default function ActiveOperationalPanel(props: {
           >
             <div className="hero-stat">
               <span className="hero-stat__label">DOT expiration</span>
-              <strong>
-                {formatOptionalDate(person?.dot_expiration_date ?? null)}
-              </strong>
+              <strong>{formatOptionalDate(person?.dot_expiration_date ?? null)}</strong>
             </div>
 
             <div className="hero-stat">
               <span className="hero-stat__label">Qual cert expiration</span>
-              <strong>
-                {formatOptionalDate(person?.qual_cert_expiration_date ?? null)}
-              </strong>
+              <strong>{formatOptionalDate(person?.qual_cert_expiration_date ?? null)}</strong>
+            </div>
+
+            <div className="hero-stat">
+              <span className="hero-stat__label">Daily pay effective</span>
+              <strong>{formatOptionalDate(person?.daily_pay_effective_date ?? null)}</strong>
             </div>
 
             <div className="hero-stat">

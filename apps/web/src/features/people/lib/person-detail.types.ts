@@ -13,11 +13,15 @@ export type ApiRosterRow = {
   compliance_summary: string | null;
   onboarding_completed_at?: string | null;
 
+  fx_id?: string | null;
   dswid?: string | null;
   dot_expiration_date?: string | null;
   qual_cert_expiration_date?: string | null;
-  daily_pay?: boolean | null;
+  daily_pay_effective_date?: string | null;
+  daily_pay_rate?: string | number | null;
   scanner_serial?: string | null;
+  fuel_card?: string | null;
+  pin_id_no?: string | null;
 };
 
 export type ApiEventRow = {
@@ -47,9 +51,13 @@ export type PersonRecord = {
   compliance_summary: string;
   onboarding_completed_at: string | null;
 
+  fx_id: string | null;
   dswid: string | null;
   dot_expiration_date: string | null;
   qual_cert_expiration_date: string | null;
-  daily_pay: boolean | null;
+  daily_pay_effective_date: string | null;
+  daily_pay_rate: string | number | null;
   scanner_serial: string | null;
+  fuel_card: string | null;
+  pin_id_no: string | null;
 };

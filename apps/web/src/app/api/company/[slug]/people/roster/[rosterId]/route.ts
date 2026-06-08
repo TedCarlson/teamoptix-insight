@@ -42,7 +42,24 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       );
     }
 
-    return NextResponse.json({ roster }, { status: 200 });
+    const { data: operations } = await supabase
+      .schema("core")
+      .from("company_roster_operations_fact")
+      .select("*")
+      .eq("roster_id", rosterId)
+      .maybeSingle();
+
+    return NextResponse.json({
+      roster: {
+        ...roster,
+        scanner_serial: operations?.scanner_serial ?? null,
+        dot_expiration_date: operations?.dot_exp ?? null,
+        qual_cert_expiration_date: operations?.qual_cert_exp ?? null,
+        daily_pay_effective_date: operations?.daily_pay_effective_date ?? null,
+        fuel_card: operations?.fuel_card ?? null,
+        pin_id_no: operations?.pin_id_no ?? null,
+      },
+    }, { status: 200 });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to load roster record.";

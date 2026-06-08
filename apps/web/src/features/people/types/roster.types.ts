@@ -41,8 +41,11 @@ export type RosterRow = {
   dswid?: string | null;
   dot_expiration_date?: string | null;
   qual_cert_expiration_date?: string | null;
-  daily_pay?: boolean | null;
+  daily_pay_effective_date?: string | null;
+  daily_pay_rate?: string | number | null;
   scanner_serial?: string | null;
+  fuel_card?: string | null;
+  pin_id_no?: string | null;
 
   candidate_progress?: {
     required_total: number;

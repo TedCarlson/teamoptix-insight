@@ -60,11 +60,15 @@ export function useFormerPersonDetailData(slug: string, rosterId: string) {
           compliance_summary: found.compliance_summary ?? "Missing",
           onboarding_completed_at: found.onboarding_completed_at ?? null,
 
+          fx_id: found.fx_id ?? null,
           dswid: found.dswid ?? null,
           dot_expiration_date: found.dot_expiration_date ?? null,
           qual_cert_expiration_date: found.qual_cert_expiration_date ?? null,
-          daily_pay: found.daily_pay ?? null,
+          daily_pay_effective_date: found.daily_pay_effective_date ?? null,
+          daily_pay_rate: found.daily_pay_rate ?? null,
           scanner_serial: found.scanner_serial ?? null,
+          fuel_card: found.fuel_card ?? null,
+          pin_id_no: found.pin_id_no ?? null,
         });
       } catch {
         if (!active) return;

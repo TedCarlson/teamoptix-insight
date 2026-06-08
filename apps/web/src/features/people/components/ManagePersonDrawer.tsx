@@ -17,10 +17,13 @@ type CoreDraft = {
 type OperationsDraft = {
   fx_id: string;
   dswid: string;
+  scanner_serial: string;
   dot_expiration_date: string;
   qual_cert_expiration_date: string;
-  daily_pay: boolean;
-  scanner_serial: string;
+  daily_pay_effective_date: string;
+  daily_pay_rate: string;
+  fuel_card: string;
+  pin_id_no: string;
 };
 
 type StatusDraft = {

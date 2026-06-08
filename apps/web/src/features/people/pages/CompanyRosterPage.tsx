@@ -28,8 +28,11 @@ type ApiRosterRow = {
   dswid?: string | null;
   dot_expiration_date?: string | null;
   qual_cert_expiration_date?: string | null;
-  daily_pay?: boolean | null;
+  daily_pay_effective_date?: string | null;
+  daily_pay_rate?: string | number | null;
   scanner_serial?: string | null;
+  fuel_card?: string | null;
+  pin_id_no?: string | null;
 };
 
 function normalizeRosterRow(row: ApiRosterRow): RosterRow {
@@ -51,8 +54,11 @@ function normalizeRosterRow(row: ApiRosterRow): RosterRow {
     dswid: row.dswid ?? null,
     dot_expiration_date: row.dot_expiration_date ?? null,
     qual_cert_expiration_date: row.qual_cert_expiration_date ?? null,
-    daily_pay: row.daily_pay ?? null,
+    daily_pay_effective_date: row.daily_pay_effective_date ?? null,
+    daily_pay_rate: row.daily_pay_rate ?? null,
     scanner_serial: row.scanner_serial ?? null,
+    fuel_card: row.fuel_card ?? null,
+    pin_id_no: row.pin_id_no ?? null,
   };
 }
 
@@ -221,11 +227,15 @@ export default function CompanyRosterPage() {
 
 
   async function saveOperations(draft: {
+    fx_id: string;
     dswid: string;
+    scanner_serial: string;
     dot_expiration_date: string;
     qual_cert_expiration_date: string;
-    daily_pay: boolean;
-    scanner_serial: string;
+    daily_pay_effective_date: string;
+  daily_pay_rate: string;
+    fuel_card: string;
+    pin_id_no: string;
   }) {
     if (!managedPerson) return;
 
@@ -254,11 +264,22 @@ export default function CompanyRosterPage() {
           row.roster_member_id === managedPerson.roster_member_id
             ? {
                 ...row,
-                dswid: draft.dswid,
-                dot_expiration_date: draft.dot_expiration_date,
-                qual_cert_expiration_date: draft.qual_cert_expiration_date,
-                daily_pay: draft.daily_pay,
-                scanner_serial: draft.scanner_serial,
+                fx_id: data?.roster?.fx_id ?? draft.fx_id,
+                dswid: data?.roster?.dswid ?? draft.dswid,
+                scanner_serial:
+                  data?.roster?.scanner_serial ?? draft.scanner_serial,
+                dot_expiration_date:
+                  data?.roster?.dot_expiration_date ??
+                  draft.dot_expiration_date,
+                qual_cert_expiration_date:
+                  data?.roster?.qual_cert_expiration_date ??
+                  draft.qual_cert_expiration_date,
+                daily_pay_effective_date:
+                  data?.roster?.daily_pay_effective_date ??
+                  draft.daily_pay_effective_date,
+                daily_pay_rate: data?.roster?.daily_pay_rate ?? draft.daily_pay_rate,
+                fuel_card: data?.roster?.fuel_card ?? draft.fuel_card,
+                pin_id_no: data?.roster?.pin_id_no ?? draft.pin_id_no,
               }
             : row
         )
@@ -268,11 +289,21 @@ export default function CompanyRosterPage() {
         current
           ? {
               ...current,
-              dswid: draft.dswid,
-              dot_expiration_date: draft.dot_expiration_date,
-              qual_cert_expiration_date: draft.qual_cert_expiration_date,
-              daily_pay: draft.daily_pay,
-              scanner_serial: draft.scanner_serial,
+              fx_id: data?.roster?.fx_id ?? draft.fx_id,
+              dswid: data?.roster?.dswid ?? draft.dswid,
+              scanner_serial:
+                data?.roster?.scanner_serial ?? draft.scanner_serial,
+              dot_expiration_date:
+                data?.roster?.dot_expiration_date ??
+                draft.dot_expiration_date,
+              qual_cert_expiration_date:
+                data?.roster?.qual_cert_expiration_date ??
+                draft.qual_cert_expiration_date,
+              daily_pay_effective_date:
+                data?.roster?.daily_pay_effective_date ??
+                draft.daily_pay_effective_date,
+              fuel_card: data?.roster?.fuel_card ?? draft.fuel_card,
+              pin_id_no: data?.roster?.pin_id_no ?? draft.pin_id_no,
             }
           : current
       );

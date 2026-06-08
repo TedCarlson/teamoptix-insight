@@ -4,19 +4,22 @@ import { useState } from "react";
 import type { RosterRow } from "@/features/people/types/roster.types";
 import { DrawerSection, FactRow, compactInput } from "./PersonDrawerRows";
 
-type Draft = {
+export type OperationsDraft = {
   fx_id: string;
   dswid: string;
+  scanner_serial: string;
   dot_expiration_date: string;
   qual_cert_expiration_date: string;
-  daily_pay: boolean;
-  scanner_serial: string;
+  daily_pay_effective_date: string;
+  daily_pay_rate: string;
+  fuel_card: string;
+  pin_id_no: string;
 };
 
 type Props = {
   person: RosterRow;
   saving: boolean;
-  onSave: (draft: Draft) => Promise<void>;
+  onSave: (draft: OperationsDraft) => Promise<void>;
 };
 
 function toInputDate(value: string | null | undefined) {
@@ -24,14 +27,17 @@ function toInputDate(value: string | null | undefined) {
   return value.slice(0, 10);
 }
 
-function buildDraft(person: RosterRow): Draft {
+function buildDraft(person: RosterRow): OperationsDraft {
   return {
     fx_id: person.fx_id ?? "",
     dswid: person.dswid ?? "",
+    scanner_serial: person.scanner_serial ?? "",
     dot_expiration_date: toInputDate(person.dot_expiration_date),
     qual_cert_expiration_date: toInputDate(person.qual_cert_expiration_date),
-    daily_pay: person.daily_pay ?? false,
-    scanner_serial: person.scanner_serial ?? "",
+    daily_pay_effective_date: toInputDate(person.daily_pay_effective_date),
+    daily_pay_rate: person.daily_pay_rate == null ? "" : String(person.daily_pay_rate),
+    fuel_card: person.fuel_card ?? "",
+    pin_id_no: person.pin_id_no ?? "",
   };
 }
 
@@ -41,7 +47,7 @@ export default function PersonOperationsSection({
   onSave,
 }: Props) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<Draft>(() => buildDraft(person));
+  const [draft, setDraft] = useState<OperationsDraft>(() => buildDraft(person));
 
   function beginEdit() {
     setDraft(buildDraft(person));
@@ -68,7 +74,13 @@ export default function PersonOperationsSection({
           <FactRow label="Scanner" value={person.scanner_serial} />
           <FactRow label="DOT Exp" value={person.dot_expiration_date} />
           <FactRow label="Qual Cert" value={person.qual_cert_expiration_date} />
-          <FactRow label="Daily Pay" value={person.daily_pay} />
+          <FactRow
+            label="Daily Pay Effective"
+            value={person.daily_pay_effective_date}
+          />
+          <FactRow label="Daily Pay Rate" value={person.daily_pay_rate == null ? null : `$${person.daily_pay_rate}`} />
+          <FactRow label="Fuel Card" value={person.fuel_card} />
+          <FactRow label="ID No / PIN" value={person.pin_id_no} />
         </div>
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
@@ -81,6 +93,7 @@ export default function PersonOperationsSection({
               style={compactInput}
             />
           </label>
+
           <label style={{ display: "grid", gap: 5 }}>
             <span className="hero-stat__label">DSWID</span>
             <input
@@ -90,6 +103,7 @@ export default function PersonOperationsSection({
               style={compactInput}
             />
           </label>
+
           <label style={{ display: "grid", gap: 5 }}>
             <span className="hero-stat__label">Scanner</span>
             <input
@@ -101,6 +115,7 @@ export default function PersonOperationsSection({
               style={compactInput}
             />
           </label>
+
           <label style={{ display: "grid", gap: 5 }}>
             <span className="hero-stat__label">DOT Exp</span>
             <input
@@ -112,6 +127,7 @@ export default function PersonOperationsSection({
               style={compactInput}
             />
           </label>
+
           <label style={{ display: "grid", gap: 5 }}>
             <span className="hero-stat__label">Qual Cert</span>
             <input
@@ -126,15 +142,62 @@ export default function PersonOperationsSection({
               style={compactInput}
             />
           </label>
-          <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
+
+          <label style={{ display: "grid", gap: 5 }}>
+            <span className="hero-stat__label">Daily Pay Effective</span>
             <input
-              type="checkbox"
-              checked={draft.daily_pay}
+              type="date"
+              value={draft.daily_pay_effective_date}
               onChange={(e) =>
-                setDraft((d) => ({ ...d, daily_pay: e.target.checked }))
+                setDraft((d) => ({
+                  ...d,
+                  daily_pay_effective_date: e.target.value,
+                }))
               }
+              style={compactInput}
             />
-            <span>Daily pay enabled</span>
+          </label>
+
+          <label style={{ display: "grid", gap: 5 }}>
+            <span className="hero-stat__label">Daily Pay Rate</span>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={draft.daily_pay_rate}
+              onChange={(e) =>
+                setDraft((d) => ({
+                  ...d,
+                  daily_pay_rate: e.target.value,
+                }))
+              }
+              placeholder="Daily Pay Rate"
+              style={compactInput}
+            />
+          </label>
+
+          <label style={{ display: "grid", gap: 5 }}>
+            <span className="hero-stat__label">Fuel Card</span>
+            <input
+              value={draft.fuel_card}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, fuel_card: e.target.value }))
+              }
+              placeholder="Fuel Card"
+              style={compactInput}
+            />
+          </label>
+
+          <label style={{ display: "grid", gap: 5 }}>
+            <span className="hero-stat__label">ID No / PIN</span>
+            <input
+              value={draft.pin_id_no}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, pin_id_no: e.target.value }))
+              }
+              placeholder="ID No / PIN"
+              style={compactInput}
+            />
           </label>
 
           <button

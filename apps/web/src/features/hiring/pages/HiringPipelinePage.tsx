@@ -229,7 +229,7 @@ function toRosterRow(row: PipelineCandidateRow): RosterRow {
     dswid: null,
     dot_expiration_date: null,
     qual_cert_expiration_date: null,
-    daily_pay: null,
+    daily_pay_effective_date: null,
     separation_date: row.separation_date ?? null,
     scanner_serial: row.scanner_serial ?? null,
     candidate_progress: row.progress ?? null,
