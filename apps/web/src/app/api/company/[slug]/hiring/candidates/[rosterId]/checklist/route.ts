@@ -30,7 +30,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     }
 
     const { data: configRows, error: configError } = await supabase
-      .from("company_candidate_checklist_config_v")
+      .from("company_candidate_checklist_readiness_v")
       .select("*")
       .eq("company_id", company.id)
       .eq("is_enabled", true)
@@ -71,6 +71,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
         is_required: Boolean(row.is_required),
         sort_order: row.sort_order ?? 100,
         is_complete: Boolean(fact?.is_complete),
+        readiness_weight: Number(row.readiness_weight ?? 1),
         completed_at: fact?.completed_at ?? null,
         note: fact?.note ?? null,
       };
@@ -78,6 +79,14 @@ export async function GET(_req: NextRequest, context: RouteContext) {
 
     const required = checklist.filter((item) => item.is_required);
     const completedRequired = required.filter((item) => item.is_complete);
+    const requiredWeightTotal = required.reduce(
+      (sum, item) => sum + Number(item.readiness_weight ?? 1),
+      0
+    );
+    const requiredWeightComplete = completedRequired.reduce(
+      (sum, item) => sum + Number(item.readiness_weight ?? 1),
+      0
+    );
 
     return NextResponse.json({
       company_id: company.id,
@@ -86,10 +95,12 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       progress: {
         required_total: required.length,
         required_complete: completedRequired.length,
+        required_weight_total: requiredWeightTotal,
+        required_weight_complete: requiredWeightComplete,
         percent:
-          required.length === 0
+          requiredWeightTotal === 0
             ? 100
-            : Math.round((completedRequired.length / required.length) * 100),
+            : Math.round((requiredWeightComplete / requiredWeightTotal) * 100),
       },
     });
   } catch (error) {

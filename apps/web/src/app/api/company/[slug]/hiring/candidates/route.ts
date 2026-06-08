@@ -21,10 +21,10 @@ type ChecklistFactRow = {
 
 function buildCandidateProgress(
   rosterId: string,
-  requiredItemIds: Set<string>,
+  requiredWeightsByItemId: Map<string, number>,
   checklistFacts: ChecklistFactRow[]
 ) {
-  const requiredTotal = requiredItemIds.size;
+  const requiredTotal = requiredWeightsByItemId.size;
 
   if (requiredTotal === 0) {
     return {
@@ -37,14 +37,36 @@ function buildCandidateProgress(
   const requiredComplete = checklistFacts.filter(
     (fact) =>
       fact.roster_id === rosterId &&
-      requiredItemIds.has(fact.item_type_id) &&
+      requiredWeightsByItemId.has(fact.item_type_id) &&
       fact.is_complete
   ).length;
+
+  const requiredWeightTotal = Array.from(requiredWeightsByItemId.values()).reduce(
+    (sum, weight) => sum + weight,
+    0
+  );
+
+  const requiredWeightComplete = checklistFacts
+    .filter(
+      (fact) =>
+        fact.roster_id === rosterId &&
+        requiredWeightsByItemId.has(fact.item_type_id) &&
+        fact.is_complete
+    )
+    .reduce(
+      (sum, fact) => sum + (requiredWeightsByItemId.get(fact.item_type_id) ?? 1),
+      0
+    );
 
   return {
     required_total: requiredTotal,
     required_complete: requiredComplete,
-    percent: Math.round((requiredComplete / requiredTotal) * 100),
+    required_weight_total: requiredWeightTotal,
+    required_weight_complete: requiredWeightComplete,
+    percent:
+      requiredWeightTotal === 0
+        ? 100
+        : Math.round((requiredWeightComplete / requiredWeightTotal) * 100),
   };
 }
 
@@ -111,18 +133,22 @@ export async function GET(
     const rosterIds = (rosterRows ?? []).map((row) => row.roster_member_id);
 
     const { data: checklistConfigRows } = await supabase
-      .from("company_candidate_checklist_config_v")
-      .select("item_type_id, is_required")
+      .from("company_candidate_checklist_readiness_v")
+      .select("item_type_id, is_required, readiness_weight")
       .eq("company_id", company.id)
       .eq("is_enabled", true);
 
-    const requiredItemIds = new Set(
+    const requiredWeightsByItemId = new Map(
       ((checklistConfigRows ?? []) as Array<{
         item_type_id: string;
         is_required: boolean;
+        readiness_weight?: number | string | null;
       }>)
         .filter((item) => item.is_required)
-        .map((item) => item.item_type_id)
+        .map((item) => [
+          item.item_type_id,
+          Number(item.readiness_weight ?? 1),
+        ])
     );
 
     let checklistFacts: ChecklistFactRow[] = [];
@@ -175,7 +201,7 @@ export async function GET(
         updated_at: fact?.updated_at ?? null,
         progress: buildCandidateProgress(
           row.roster_member_id,
-          requiredItemIds,
+          requiredWeightsByItemId,
           checklistFacts
         ),
       };
@@ -231,10 +257,11 @@ export async function POST(
     }
 
     const { data: stage, error: stageError } = await supabase
-      .schema("core")
-      .from("candidate_stage_type")
-      .select("id")
+      .from("company_candidate_stage_config_v")
+      .select("stage_type_id")
+      .eq("company_id", company.id)
       .eq("stage_key", "candidate_created")
+      .eq("is_enabled", true)
       .single();
 
     if (stageError || !stage) {
@@ -271,7 +298,7 @@ export async function POST(
     await supabase.schema("core").from("roster_candidate_stage").insert({
       company_id: company.id,
       roster_id: inserted.id,
-      stage_type_id: stage.id,
+      stage_type_id: stage.stage_type_id,
       note: cleanText(body.note),
     });
 

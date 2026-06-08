@@ -140,7 +140,11 @@ function ReadinessBlocks(props: { progress?: CandidateProgress | null }) {
   };
 
   const tone = readinessTone(progress.percent);
-  const filled = Math.min(5, Math.max(0, Math.ceil(progress.percent / 20)));
+  const totalBlocks = Math.max(1, progress.required_total || 1);
+  const filled = Math.min(
+    totalBlocks,
+    Math.max(0, Math.round((progress.percent / 100) * totalBlocks))
+  );
 
   return (
     <div
@@ -163,7 +167,7 @@ function ReadinessBlocks(props: { progress?: CandidateProgress | null }) {
           boxShadow: "inset 0 1px 0 rgba(255,255,255,.75)",
         }}
       >
-        {[0, 1, 2, 3, 4].map((index) => {
+        {Array.from({ length: totalBlocks }).map((_, index) => {
           const active = index < filled;
 
           return (

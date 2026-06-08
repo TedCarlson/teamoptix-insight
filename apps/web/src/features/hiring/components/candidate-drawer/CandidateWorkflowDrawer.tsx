@@ -83,7 +83,11 @@ function ReadinessSignal(props: {
   };
 
   const tone = readinessTone(progress.percent);
-  const filled = Math.min(5, Math.max(0, Math.ceil(progress.percent / 20)));
+  const totalBlocks = Math.max(1, progress.required_total || 1);
+  const filled = Math.min(
+    totalBlocks,
+    Math.max(0, Math.round((progress.percent / 100) * totalBlocks))
+  );
 
   return (
     <section
@@ -125,7 +129,7 @@ function ReadinessSignal(props: {
               boxShadow: "0 12px 28px rgba(15,23,42,.08)",
             }}
           >
-            {[0, 1, 2, 3, 4].map((index) => {
+            {Array.from({ length: totalBlocks }).map((_, index) => {
               const active = index < filled;
 
               return (
