@@ -163,6 +163,19 @@ export async function GET(
       checklistFacts = (checklistFactRows ?? []) as ChecklistFactRow[];
     }
 
+    let opsByRosterId = new Map<string, any>();
+
+    if (rosterIds.length > 0) {
+      const { data: opsRows } = await supabase
+        .from("company_roster_operations_fact_v")
+        .select("*")
+        .in("roster_id", rosterIds);
+
+      opsByRosterId = new Map(
+        (opsRows ?? []).map((ops: any) => [ops.roster_id, ops])
+      );
+    }
+
     let factRows: any[] = [];
 
     if (rosterIds.length > 0) {
@@ -181,6 +194,7 @@ export async function GET(
 
     const candidates = (rosterRows ?? []).map((row) => {
       const fact = factByRosterId.get(row.roster_member_id);
+      const ops = opsByRosterId.get(row.roster_member_id);
       const stageKey = fact?.stage_key ?? fallbackStageKey(row);
       const stage = stageByKey.get(stageKey);
 
@@ -198,6 +212,15 @@ export async function GET(
         invite_status: row.invite_status ?? "Not Invited",
         compliance: row.compliance_summary ?? "Missing",
         onboarding_completed_at: row.onboarding_completed_at ?? null,
+        fx_id: row.fx_id ?? null,
+        dswid: row.dswid ?? null,
+        scanner_serial: ops?.scanner_serial ?? null,
+        dot_expiration_date: ops?.dot_exp ?? null,
+        qual_cert_expiration_date: ops?.qual_cert_exp ?? null,
+        daily_pay_effective_date: ops?.daily_pay_effective_date ?? null,
+        daily_pay_rate: ops?.daily_pay_rate ?? null,
+        fuel_card: ops?.fuel_card ?? null,
+        pin_id_no: ops?.pin_id_no ?? null,
         updated_at: fact?.updated_at ?? null,
         progress: buildCandidateProgress(
           row.roster_member_id,
