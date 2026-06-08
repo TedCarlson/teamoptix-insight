@@ -10,6 +10,16 @@ import RosterControlsBar, {
 import RosterTable from "@/features/people/components/RosterTable";
 import type { RosterRow } from "@/features/people/types/roster.types";
 
+type TimelineEvent = {
+  id: string;
+  event_category: string;
+  event_type: string;
+  event_detail: string | null;
+  event_metadata: Record<string, unknown> | null;
+  occurred_at: string;
+  created_at: string;
+};
+
 type ApiRosterRow = {
   roster_member_id: string;
   profile_id?: string | null;
@@ -33,6 +43,9 @@ type ApiRosterRow = {
   scanner_serial?: string | null;
   fuel_card?: string | null;
   pin_id_no?: string | null;
+  candidate_stage_key?: string | null;
+  candidate_stage_label?: string | null;
+  candidate_stage_is_terminal?: boolean | null;
 };
 
 function normalizeRosterRow(row: ApiRosterRow): RosterRow {
@@ -59,6 +72,9 @@ function normalizeRosterRow(row: ApiRosterRow): RosterRow {
     scanner_serial: row.scanner_serial ?? null,
     fuel_card: row.fuel_card ?? null,
     pin_id_no: row.pin_id_no ?? null,
+    candidate_stage_key: row.candidate_stage_key ?? null,
+    candidate_stage_label: row.candidate_stage_label ?? null,
+    candidate_stage_is_terminal: row.candidate_stage_is_terminal ?? null,
   };
 }
 
@@ -88,6 +104,8 @@ export default function CompanyRosterPage() {
   const [savingDetails, setSavingDetails] = useState(false);
   const [savingOperations, setSavingOperations] = useState(false);
   const [savingStatus, setSavingStatus] = useState(false);
+  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
+  const [loadingTimeline, setLoadingTimeline] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -130,13 +148,46 @@ export default function CompanyRosterPage() {
     };
   }, [slug]);
 
+  async function refreshRoster() {
+    if (!slug) return;
+
+    const res = await fetch(`/api/company/${slug}/people/roster`, {
+      credentials: "include",
+      cache: "no-store",
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      setError(data?.error ?? "Failed to refresh roster.");
+      return;
+    }
+
+    const nextRows = ((data?.roster ?? []) as ApiRosterRow[]).map(normalizeRosterRow);
+    setRows(nextRows);
+
+    setCandidateWorkflowPerson((current) => {
+      if (!current) return current;
+
+      return (
+        nextRows.find((row) => row.roster_member_id === current.roster_member_id) ??
+        null
+      );
+    });
+  }
+
   const filteredRows = useMemo(() => {
     const byTab =
       tab === "all"
         ? rows
         : rows.filter((row) => {
             if (tab === "active") return row.employment_status === "Active";
-            if (tab === "candidates") return row.employment_status === "Candidate";
+            if (tab === "candidates") {
+              return (
+                row.employment_status === "Candidate" &&
+                row.candidate_stage_is_terminal !== true
+              );
+            }
             if (tab === "former") return row.employment_status === "Former";
             return true;
           });
@@ -177,6 +228,29 @@ export default function CompanyRosterPage() {
 
     setManagedPerson(row);
     setCandidateWorkflowPerson(null);
+  }
+
+  async function loadTimeline(rosterId: string) {
+    try {
+      setLoadingTimeline(true);
+
+      const res = await fetch(`/api/company/${slug}/people/roster/${rosterId}/events`, {
+        credentials: "include",
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setTimelineEvents([]);
+        return;
+      }
+
+      setTimelineEvents((data?.events ?? []) as TimelineEvent[]);
+    } catch {
+      setTimelineEvents([]);
+    } finally {
+      setLoadingTimeline(false);
+    }
   }
 
   async function savePersonDetails(draft: {
@@ -432,6 +506,22 @@ export default function CompanyRosterPage() {
           open={Boolean(candidateWorkflowPerson)}
           slug={slug}
           person={candidateWorkflowPerson}
+          onSaved={(updated) => {
+            setRows((current) =>
+              current.map((row) =>
+                row.roster_member_id === updated.roster_member_id ? updated : row
+              )
+            );
+
+            if (updated.candidate_stage_is_terminal === true) {
+              setCandidateWorkflowPerson(null);
+              void refreshRoster();
+              return;
+            }
+
+            setCandidateWorkflowPerson(updated);
+          }}
+          onRefresh={refreshRoster}
           onClose={() => setCandidateWorkflowPerson(null)}
         />
 
@@ -444,7 +534,12 @@ export default function CompanyRosterPage() {
           onSaveDetails={savePersonDetails}
           onSaveOperations={saveOperations}
           onSaveStatus={saveStatus}
-          onClose={() => setManagedPerson(null)}
+          timelineEvents={timelineEvents}
+          loadingTimeline={loadingTimeline}
+          onClose={() => {
+            setManagedPerson(null);
+            setTimelineEvents([]);
+          }}
         />
       </section>
     </main>

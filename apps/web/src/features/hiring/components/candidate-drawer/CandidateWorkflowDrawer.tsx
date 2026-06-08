@@ -32,6 +32,22 @@ type StatusDraft = {
   note: string;
 };
 
+type CandidateStageOption = {
+  stage_key: string;
+  label: string;
+  is_terminal: boolean;
+};
+
+const DEFAULT_STAGE_OPTIONS: CandidateStageOption[] = [
+  { stage_key: "candidate_created", label: "New", is_terminal: false },
+  { stage_key: "invited", label: "Invited", is_terminal: false },
+  { stage_key: "onboarding", label: "Onboarding", is_terminal: false },
+  { stage_key: "ready_for_activation", label: "Ready", is_terminal: false },
+  { stage_key: "withdrawn", label: "Withdrawn", is_terminal: true },
+  { stage_key: "ineligible", label: "Ineligible", is_terminal: true },
+  { stage_key: "dnf", label: "DNF", is_terminal: true },
+];
+
 type Props = {
   open: boolean;
   slug: string;
@@ -184,9 +200,61 @@ export default function CandidateWorkflowDrawer({
   const [savingDetails, setSavingDetails] = useState(false);
   const [savingOperations, setSavingOperations] = useState(false);
   const [savingStatus, setSavingStatus] = useState(false);
+  const [savingStage, setSavingStage] = useState(false);
+  const [stageKey, setStageKey] = useState(person?.candidate_stage_key ?? "candidate_created");
+  const [stageNote, setStageNote] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   if (!open || !person) return null;
+
+  async function saveCandidateStage() {
+    if (!person) return;
+
+    setSavingStage(true);
+    setError(null);
+
+    try {
+      const res = await fetch(
+        `/api/company/${slug}/hiring/candidates/${person.roster_member_id}/stage`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            stage_key: stageKey,
+            note: stageNote,
+          }),
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data?.detail ?? data?.error ?? "Failed to update candidate stage.");
+        return;
+      }
+
+      const nextStage = DEFAULT_STAGE_OPTIONS.find(
+        (stage) => stage.stage_key === stageKey
+      );
+
+      onSaved?.({
+        ...person,
+        candidate_stage_key: data?.stage?.stage_key ?? stageKey,
+        candidate_stage_label:
+          data?.stage?.stage_label ?? nextStage?.label ?? stageKey,
+        candidate_stage_is_terminal:
+          data?.stage?.is_terminal ?? nextStage?.is_terminal ?? false,
+      });
+
+      await onRefresh?.();
+      setStageNote("");
+    } catch {
+      setError("Failed to update candidate stage.");
+    } finally {
+      setSavingStage(false);
+    }
+  }
 
   async function saveDetails(draft: CoreDraft) {
     if (!person) return;
@@ -383,6 +451,69 @@ export default function CandidateWorkflowDrawer({
           saving={savingStatus}
           onSave={saveStatus}
         />
+
+        <section
+          style={{
+            borderTop: "1px solid #e6edf5",
+            paddingTop: 14,
+            display: "grid",
+            gap: 10,
+          }}
+        >
+          <p className="workspace-eyebrow">Hiring disposition</p>
+          <h3 className="workspace-card-title">Candidate stage</h3>
+
+          <label style={{ display: "grid", gap: 6 }}>
+            <span className="hero-stat__label">Stage</span>
+            <select
+              value={stageKey}
+              onChange={(event) => setStageKey(event.target.value)}
+              style={{
+                minHeight: 42,
+                borderRadius: 12,
+                border: "1px solid #d6dfeb",
+                padding: "0 12px",
+                background: "#fff",
+                color: "#17213a",
+                fontWeight: 800,
+              }}
+            >
+              {DEFAULT_STAGE_OPTIONS.map((stage) => (
+                <option key={stage.stage_key} value={stage.stage_key}>
+                  {stage.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ display: "grid", gap: 6 }}>
+            <span className="hero-stat__label">Note</span>
+            <textarea
+              value={stageNote}
+              onChange={(event) => setStageNote(event.target.value)}
+              placeholder="Optional reason or disposition note"
+              style={{
+                minHeight: 72,
+                borderRadius: 12,
+                border: "1px solid #d6dfeb",
+                padding: 12,
+                background: "#fff",
+                color: "#17213a",
+                fontWeight: 700,
+                resize: "vertical",
+              }}
+            />
+          </label>
+
+          <button
+            className="button button-primary"
+            type="button"
+            disabled={savingStage}
+            onClick={saveCandidateStage}
+          >
+            {savingStage ? "Saving..." : "Update candidate stage"}
+          </button>
+        </section>
 
         <CandidateChecklistPanel
           slug={slug}

@@ -168,6 +168,7 @@ export async function GET(
           stage?.label ?? fact?.default_label ?? "New",
         stage_sort_order:
           stage?.sort_order ?? fact?.stage_sort_order ?? 100,
+        stage_is_terminal: Boolean(stage?.is_terminal ?? fact?.is_terminal ?? false),
         invite_status: row.invite_status ?? "Not Invited",
         compliance: row.compliance_summary ?? "Missing",
         onboarding_completed_at: row.onboarding_completed_at ?? null,

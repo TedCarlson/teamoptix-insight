@@ -47,6 +47,10 @@ export type RosterRow = {
   fuel_card?: string | null;
   pin_id_no?: string | null;
 
+  candidate_stage_key?: string | null;
+  candidate_stage_label?: string | null;
+  candidate_stage_is_terminal?: boolean | null;
+
   candidate_progress?: {
     required_total: number;
     required_complete: number;

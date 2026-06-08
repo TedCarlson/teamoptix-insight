@@ -32,12 +32,24 @@ type StatusDraft = {
   note: string;
 };
 
+type TimelineEvent = {
+  id: string;
+  event_category: string;
+  event_type: string;
+  event_detail: string | null;
+  event_metadata: Record<string, unknown> | null;
+  occurred_at: string;
+  created_at: string;
+};
+
 type Props = {
   open: boolean;
   person: RosterRow | null;
   savingDetails: boolean;
   savingOperations: boolean;
   savingStatus: boolean;
+  timelineEvents: TimelineEvent[];
+  loadingTimeline: boolean;
   onClose: () => void;
   onSaveDetails: (draft: CoreDraft) => Promise<void>;
   onSaveOperations: (draft: OperationsDraft) => Promise<void>;
@@ -50,6 +62,8 @@ export default function ManagePersonDrawer({
   savingDetails,
   savingOperations,
   savingStatus,
+  timelineEvents,
+  loadingTimeline,
   onClose,
   onSaveDetails,
   onSaveOperations,
@@ -127,7 +141,7 @@ export default function ManagePersonDrawer({
           onSave={onSaveStatus}
         />
 
-        <PersonTimelineSection />
+        <PersonTimelineSection events={timelineEvents} loading={loadingTimeline} />
       </aside>
     </div>
   );

@@ -41,8 +41,11 @@ type PipelineCandidateRow = {
   dswid?: string | null;
   dot_expiration_date?: string | null;
   qual_cert_expiration_date?: string | null;
-  daily_pay?: boolean | null;
+  daily_pay_effective_date?: string | null;
+  daily_pay_rate?: string | number | null;
   scanner_serial?: string | null;
+  fuel_card?: string | null;
+  pin_id_no?: string | null;
 };
 
 function FilterButton(props: {
@@ -232,6 +235,9 @@ function toRosterRow(row: PipelineCandidateRow): RosterRow {
     daily_pay_effective_date: null,
     separation_date: row.separation_date ?? null,
     scanner_serial: row.scanner_serial ?? null,
+    candidate_stage_key: row.stage_key ?? null,
+    candidate_stage_label: row.stage_label ?? null,
+    candidate_stage_is_terminal: false,
     candidate_progress: row.progress ?? null,
   };
 }
