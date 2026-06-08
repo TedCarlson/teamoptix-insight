@@ -388,10 +388,6 @@ export default function CompanyRosterPage() {
                 Use Manage to update details, status, invite posture, compliance, and lifecycle history.
               </p>
             </div>
-
-            <button className="button button-primary" type="button">
-              Add person
-            </button>
           </div>
 
           {loading ? (

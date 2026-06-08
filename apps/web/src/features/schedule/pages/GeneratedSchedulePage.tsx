@@ -253,6 +253,10 @@ export default function GeneratedSchedulePage() {
     const grouped = new Map<string, WorkerWeekRow>();
 
     for (const row of rowsInWeek) {
+      if (!row.full_name?.trim()) {
+        continue;
+      }
+
       const workerId = row.roster_member_id;
       const existing = grouped.get(workerId);
 
@@ -263,7 +267,7 @@ export default function GeneratedSchedulePage() {
 
       grouped.set(workerId, {
         roster_member_id: workerId,
-        full_name: row.full_name?.trim() || "Unnamed worker",
+        full_name: row.full_name.trim(),
         worker_type: row.worker_type,
         employment_status: row.employment_status,
         market_code: row.market_code,
