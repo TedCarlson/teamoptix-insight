@@ -351,13 +351,16 @@ export default function CompanyRosterPage() {
                 daily_pay_effective_date:
                   data?.roster?.daily_pay_effective_date ??
                   draft.daily_pay_effective_date,
-                daily_pay_rate: data?.roster?.daily_pay_rate ?? draft.daily_pay_rate,
-                fuel_card: data?.roster?.fuel_card ?? draft.fuel_card,
-                pin_id_no: data?.roster?.pin_id_no ?? draft.pin_id_no,
+                daily_pay_rate:
+                data?.roster?.daily_pay_rate ?? draft.daily_pay_rate,
+              fuel_card: data?.roster?.fuel_card ?? draft.fuel_card,
+              pin_id_no: data?.roster?.pin_id_no ?? draft.pin_id_no,
               }
             : row
         )
       );
+
+      await refreshRoster();
 
       setManagedPerson((current) =>
         current
@@ -426,6 +429,8 @@ export default function CompanyRosterPage() {
             : row
         )
       );
+
+      await refreshRoster();
 
       setManagedPerson((current) =>
         current

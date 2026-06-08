@@ -22,6 +22,7 @@ type OperationsDraft = {
   dot_expiration_date: string;
   qual_cert_expiration_date: string;
   daily_pay_effective_date: string;
+  daily_pay_rate: string;
   fuel_card: string;
   pin_id_no: string;
 };
@@ -323,17 +324,25 @@ export default function CandidateWorkflowDrawer({
         return;
       }
 
+      const saved = data?.roster ?? {};
+
       onSaved?.({
         ...person,
-        fx_id: draft.fx_id,
-        dswid: draft.dswid,
-        dot_expiration_date: draft.dot_expiration_date,
-        qual_cert_expiration_date: draft.qual_cert_expiration_date,
-        daily_pay_effective_date: draft.daily_pay_effective_date,
-        scanner_serial: draft.scanner_serial,
-        fuel_card: draft.fuel_card,
-        pin_id_no: draft.pin_id_no,
+        fx_id: saved.fx_id ?? draft.fx_id,
+        dswid: saved.dswid ?? draft.dswid,
+        scanner_serial: saved.scanner_serial ?? draft.scanner_serial,
+        dot_expiration_date:
+          saved.dot_expiration_date ?? draft.dot_expiration_date,
+        qual_cert_expiration_date:
+          saved.qual_cert_expiration_date ?? draft.qual_cert_expiration_date,
+        daily_pay_effective_date:
+          saved.daily_pay_effective_date ?? draft.daily_pay_effective_date,
+        daily_pay_rate: saved.daily_pay_rate ?? draft.daily_pay_rate,
+        fuel_card: saved.fuel_card ?? draft.fuel_card,
+        pin_id_no: saved.pin_id_no ?? draft.pin_id_no,
       });
+
+      await onRefresh?.();
     } catch {
       setError("Failed to save candidate operations.");
     } finally {
