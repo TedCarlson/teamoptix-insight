@@ -293,6 +293,8 @@ export default function CandidateWorkflowDrawer({
         worker_type: draft.worker_type,
         market_code: draft.market_code,
       });
+
+      await onRefresh?.();
     } catch {
       setError("Failed to save candidate details.");
     } finally {
@@ -380,6 +382,8 @@ export default function CandidateWorkflowDrawer({
           data?.roster?.employment_status ?? draft.employment_status,
         separation_date: data?.roster?.separation_date ?? person.separation_date,
       });
+
+      await onRefresh?.();
     } catch {
       setError("Failed to update candidate status.");
     } finally {
