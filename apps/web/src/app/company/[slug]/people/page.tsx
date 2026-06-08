@@ -1,3 +1,8 @@
-import CompanyPeoplePage from "@/features/company/pages/CompanyPeoplePage";
+import { redirect } from "next/navigation";
 
-export default CompanyPeoplePage;
+export default async function PeoplePage(props: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await props.params;
+  redirect(`/company/${slug}/people/roster`);
+}

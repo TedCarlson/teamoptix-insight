@@ -19,26 +19,59 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const pathname = usePathname() ?? "";
 
   const base = `/company/${slug}`;
+  const peopleBase = `${base}/people`;
   const scheduleBase = `${base}/schedule`;
+  const operationsBase = `${base}/operations`;
 
   const mainItems: NavItem[] = [
     { label: "Overview", href: base, match: (path) => path === base },
-    { label: "People", href: `${base}/people`, match: (path) => path.startsWith(`${base}/people`) },
-    { label: "Hiring", href: `${base}/hiring`, match: (path) => path.startsWith(`${base}/hiring`) },
-    { label: "Schedule", href: `${base}/schedule`, match: (path) => path.startsWith(`${base}/schedule`) },
-    { label: "Dispatch", href: `${base}/dispatch`, match: (path) => path.startsWith(`${base}/dispatch`) },
+    { label: "People", href: peopleBase, match: (path) => path.startsWith(peopleBase) || path.startsWith(`${base}/hiring`) },
+    { label: "Schedule", href: scheduleBase, match: (path) => path.startsWith(scheduleBase) },
+    { label: "Operations", href: operationsBase, match: (path) => path.startsWith(operationsBase) || path.startsWith(`${base}/dispatch`) },
     { label: "Routes", href: `${base}/routes`, match: (path) => path.startsWith(`${base}/routes`) },
   ];
+
+  const peopleSubItems: NavItem[] = [
+    { label: "Roster", href: peopleBase, match: (path) => path === peopleBase || path.startsWith(`${peopleBase}/roster`) || path.startsWith(`${peopleBase}/active`) || path.startsWith(`${peopleBase}/former`) || path.startsWith(`${peopleBase}/import`) },
+    { label: "Hiring", href: `${base}/hiring`, match: (path) => path.startsWith(`${base}/hiring`) },
+    { label: "Payroll", href: `${peopleBase}/payroll`, match: (path) => path.startsWith(`${peopleBase}/payroll`) },
+    { label: "Compliance", href: `${peopleBase}/compliance`, match: (path) => path.startsWith(`${peopleBase}/compliance`) },
+    { label: "Reports", href: `${peopleBase}/reports`, match: (path) => path.startsWith(`${peopleBase}/reports`) },
+  ];
+
+  const scheduleSubItems: NavItem[] = [
+    { label: "Calendar", href: scheduleBase, match: (path) => path === scheduleBase },
+    { label: "Workbench", href: `${scheduleBase}/generated`, match: (path) => path === `${scheduleBase}/generated` },
+    { label: "Overrides", href: `${scheduleBase}/overrides`, match: (path) => path.startsWith(`${scheduleBase}/overrides`) },
+    { label: "Presets", href: `${scheduleBase}/presets`, match: (path) => path.startsWith(`${scheduleBase}/presets`) },
+  ];
+
+  const operationsSubItems: NavItem[] = [
+    { label: "Planning", href: `${operationsBase}/planning`, match: (path) => path.startsWith(`${operationsBase}/planning`) },
+    { label: "Dispatch", href: `${operationsBase}/dispatch`, match: (path) => path === operationsBase || path.startsWith(`${operationsBase}/dispatch`) || path.startsWith(`${base}/dispatch`) },
+    { label: "Delivery Window", href: `${operationsBase}/delivery-window`, match: (path) => path.startsWith(`${operationsBase}/delivery-window`) },
+  ];
+
+  const inPeopleBranch =
+    pathname === peopleBase ||
+    pathname.startsWith(`${peopleBase}/`) ||
+    pathname.startsWith(`${base}/hiring`);
 
   const inScheduleBranch =
     pathname === scheduleBase || pathname.startsWith(`${scheduleBase}/`);
 
-  const scheduleSubItems: NavItem[] = [
-    { label: "Calendar", href: `${base}/schedule`, match: (path) => path === `${base}/schedule` },
-    { label: "Workbench", href: `${base}/schedule/generated`, match: (path) => path === `${base}/schedule/generated` },
-    { label: "Overrides", href: `${base}/schedule/overrides`, match: (path) => path.startsWith(`${base}/schedule/overrides`) },
-    { label: "Presets", href: `${base}/schedule/presets`, match: (path) => path.startsWith(`${base}/schedule/presets`) },
-  ];
+  const inOperationsBranch =
+    pathname === operationsBase ||
+    pathname.startsWith(`${operationsBase}/`) ||
+    pathname.startsWith(`${base}/dispatch`);
+
+  const subItems = inPeopleBranch
+    ? peopleSubItems
+    : inScheduleBranch
+      ? scheduleSubItems
+      : inOperationsBranch
+        ? operationsSubItems
+        : [];
 
   return (
     <nav className="app-nav-shell" aria-label="Company workspace">
@@ -71,9 +104,9 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
         <IdentityPill />
       </div>
 
-      {inScheduleBranch ? (
+      {subItems.length > 0 ? (
         <div className="company-subnav">
-          {scheduleSubItems.map((item) => {
+          {subItems.map((item) => {
             const active = item.match(pathname);
 
             return (
