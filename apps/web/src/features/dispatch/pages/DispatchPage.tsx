@@ -409,8 +409,21 @@ export default function DispatchPage() {
       byId.set(person.roster_member_id, person);
     }
 
+    for (const event of dispatchEvents) {
+      if (event.event_code !== "CALL_OUT" && event.event_code !== "NO_SHOW") continue;
+
+      const person = dispatchPersonFromEvent(event);
+      if (!person) continue;
+
+      byId.set(person.roster_member_id, {
+        ...person,
+        source_kind: "DISPATCH_EVENT",
+        override_type: event.event_code,
+      });
+    }
+
     return Array.from(byId.values()).sort(personSort);
-  }, [scheduleRows, serviceDate]);
+  }, [dispatchEvents, scheduleRows, serviceDate]);
 
   const calloutIds = useMemo(
     () => new Set(callouts.map((person) => person.roster_member_id)),
@@ -490,6 +503,57 @@ export default function DispatchPage() {
       trainees,
     };
   }, [allPeople, assignedIds, calloutIds]);
+
+  const unscheduledDrivers = useMemo(() => {
+    const scheduledOrAdded = new Set(allPeople.map((person) => person.roster_member_id));
+
+    return rosterRows
+      .filter((row) => !scheduledRosterIds.has(row.roster_member_id))
+      .filter((row) => !scheduledOrAdded.has(row.roster_member_id))
+      .filter((row) => {
+        const status = (row.employment_status ?? "").toLowerCase();
+        if (status && status !== "active") return false;
+
+        const worker = `${row.worker_type ?? ""} ${row.full_name ?? ""}`.toLowerCase();
+        return !worker.includes("helper") && !worker.includes("trainee");
+      })
+      .map((row) => ({
+        roster_member_id: row.roster_member_id,
+        full_name: row.full_name?.trim() || "Unnamed driver",
+        worker_type: row.worker_type,
+        source_kind: "ROSTER_UNSCHEDULED",
+        override_type: null,
+      }))
+      .sort(personSort);
+  }, [allPeople, rosterRows, scheduledRosterIds]);
+
+  const availableRoutes = useMemo(() => {
+    const assignedKeys = new Set(dispatchRoutes.map((route) => route.route_key));
+
+    return routes
+      .map((route) => {
+        const key = cleanRouteKey(route.current_wa_num || route.route_name);
+
+        return {
+          route_key: key,
+          route_name: route.route_name?.trim() || key,
+          current_wa_num: route.current_wa_num,
+          route_location: route.route_location,
+          route_type: route.route_type,
+          driver: null,
+          helpers: [],
+          trainees: [],
+          extras: [],
+        };
+      })
+      .filter((route) => !assignedKeys.has(route.route_key))
+      .sort((a, b) =>
+        routeLabel(a).localeCompare(routeLabel(b), undefined, {
+          numeric: true,
+          sensitivity: "base",
+        })
+      );
+  }, [dispatchRoutes, routes]);
 
   const summary = useMemo(() => {
     const total = dispatchRoutes.length;
@@ -862,6 +926,9 @@ export default function DispatchPage() {
     note: string;
     person_roster_member_id: string | null;
     person_name: string | null;
+    route_key?: string | null;
+    route_label?: string | null;
+    event_payload?: Record<string, unknown>;
   }) {
     try {
       setSavingEvent(true);
@@ -1028,8 +1095,6 @@ export default function DispatchPage() {
           events={dispatchEvents}
           locking={locking}
           onAddEvent={() => setEventOverlayOpen(true)}
-          onAddRoute={handleAddRoute}
-          onAddDriver={handleAddDriver}
           onLockDispatch={lockDispatch}
         />
         </section>
@@ -1039,7 +1104,9 @@ export default function DispatchPage() {
         open={eventOverlayOpen}
         saving={savingEvent}
         eventTypes={eventTypes}
-        workforce={allPeople}
+        scheduledWorkforce={allPeople}
+        unscheduledDrivers={unscheduledDrivers}
+        availableRoutes={availableRoutes}
         onClose={() => setEventOverlayOpen(false)}
         onSubmit={addManualDispatchEvent}
       />
