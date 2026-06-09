@@ -3,7 +3,14 @@ import type {
   DispatchEventRow,
   DispatchRoute,
 } from "../lib/dispatchSupport";
-import { compactButton, eyebrow, panel, panelHeader } from "../lib/dispatchSupport";
+import {
+  compactButton,
+  eyebrow,
+  getReversedDispatchEventIds,
+  isUndoableDispatchEvent,
+  panel,
+  panelHeader,
+} from "../lib/dispatchSupport";
 import { AssignmentRailSection, Stat } from "./DispatchRails";
 
 type DispatchSummary = {
@@ -22,6 +29,7 @@ type DispatchRightRailProps = {
   events: DispatchEventRow[];
   locking: boolean;
   onAddEvent: () => void;
+  onUndoEvent: (event: DispatchEventRow) => void;
   onLockDispatch: () => void;
 };
 
@@ -36,6 +44,10 @@ function formatTime(value: string) {
   }
 }
 
+function eventTargetLine(event: DispatchEventRow) {
+  return [event.person_name, event.route_label].filter(Boolean).join(" · ");
+}
+
 export function DispatchRightRail(props: DispatchRightRailProps) {
   const {
     summary,
@@ -44,10 +56,12 @@ export function DispatchRightRail(props: DispatchRightRailProps) {
     events,
     locking,
     onAddEvent,
+    onUndoEvent,
     onLockDispatch,
   } = props;
 
   const locked = dispatchDay?.status === "LOCKED";
+  const reversedEventIds = getReversedDispatchEventIds(events);
 
   return (
     <aside style={panel}>
@@ -103,35 +117,73 @@ export function DispatchRightRail(props: DispatchRightRailProps) {
             </p>
           ) : (
             <div style={{ display: "grid", gap: 8 }}>
-              {events.slice(-6).reverse().map((event) => (
-                <div
-                  key={event.id}
-                  style={{
-                    borderTop: "1px solid #eef2f7",
-                    paddingTop: 8,
-                    display: "grid",
-                    gap: 2,
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                    <strong style={{ fontSize: 13 }}>{event.event_label}</strong>
-                    <span style={{ color: "#64748b", fontSize: 12 }}>
-                      {formatTime(event.created_at)}
-                    </span>
+              {events.slice(-6).reverse().map((event) => {
+                const targetLine = eventTargetLine(event);
+                const reversed = reversedEventIds.has(event.id);
+                const canUndo = isUndoableDispatchEvent(event) && !reversed;
+
+                return (
+                  <div
+                    key={event.id}
+                    style={{
+                      borderTop: "1px solid #eef2f7",
+                      paddingTop: 8,
+                      display: "grid",
+                      gap: 3,
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                      <strong style={{ fontSize: 13, lineHeight: 1.25 }}>{event.event_label}</strong>
+
+                      <div style={{ display: "grid", gap: 2, justifyItems: "end", flex: "0 0 auto" }}>
+                        <span style={{ color: "#64748b", fontSize: 12 }}>
+                          {formatTime(event.created_at)}
+                        </span>
+
+                        {canUndo ? (
+                          <button
+                            type="button"
+                            onClick={() => onUndoEvent(event)}
+                            disabled={locked}
+                            style={{
+                              minHeight: 18,
+                              padding: "0 6px",
+                              borderRadius: 7,
+                              border: "1px solid #d6dfeb",
+                              background: "#fff",
+                              color: "#64748b",
+                              fontSize: 10,
+                              fontWeight: 900,
+                              lineHeight: 1,
+                              cursor: locked ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            Undo
+                          </button>
+                        ) : null}
+
+                        {reversed ? (
+                          <span style={{ color: "#94a3b8", fontSize: 10, fontWeight: 900 }}>
+                            Reversed
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {targetLine ? (
+                      <span style={{ color: "#64748b", fontSize: 12 }}>
+                        {targetLine}
+                      </span>
+                    ) : null}
+
+                    {event.note ? (
+                      <p style={{ margin: "2px 0 0", color: "#334155", fontSize: 12 }}>
+                        {event.note}
+                      </p>
+                    ) : null}
                   </div>
-
-                  <span style={{ color: "#64748b", fontSize: 12 }}>
-                    {[event.person_name, event.route_label].filter(Boolean).join(" · ") ||
-                      event.event_category}
-                  </span>
-
-                  {event.note ? (
-                    <p style={{ margin: "4px 0 0", color: "#334155", fontSize: 12 }}>
-                      {event.note}
-                    </p>
-                  ) : null}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

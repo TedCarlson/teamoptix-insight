@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   type AssignmentIntent,
@@ -17,6 +17,7 @@ import {
   cleanRouteKey,
   compactButton,
   eyebrow,
+  getReversedDispatchEventIds,
   panel,
   panelHeader,
   personFromRow,
@@ -346,7 +347,12 @@ export default function DispatchPage() {
       a.created_at.localeCompare(b.created_at)
     );
 
+    const reversedEventIds = getReversedDispatchEventIds(orderedEvents);
+
     for (const event of orderedEvents) {
+      if (reversedEventIds.has(event.id)) continue;
+      if (event.event_code.startsWith("UNDO_")) continue;
+
       next = applyDispatchEvent(next, event);
     }
 
@@ -385,8 +391,13 @@ export default function DispatchPage() {
       byId.set(person.roster_member_id, person);
     }
 
+    const reversedEventIds = getReversedDispatchEventIds(dispatchEvents);
+
     for (const event of dispatchEvents) {
+      if (reversedEventIds.has(event.id)) continue;
+      if (event.event_code.startsWith("UNDO_")) continue;
       if (event.event_code !== "ADD_DRIVER") continue;
+
       const person = dispatchPersonFromEvent(event);
       if (!person) continue;
       byId.set(person.roster_member_id, {
@@ -409,7 +420,11 @@ export default function DispatchPage() {
       byId.set(person.roster_member_id, person);
     }
 
+    const reversedEventIds = getReversedDispatchEventIds(dispatchEvents);
+
     for (const event of dispatchEvents) {
+      if (reversedEventIds.has(event.id)) continue;
+      if (event.event_code.startsWith("UNDO_")) continue;
       if (event.event_code !== "CALL_OUT" && event.event_code !== "NO_SHOW") continue;
 
       const person = dispatchPersonFromEvent(event);
@@ -429,34 +444,6 @@ export default function DispatchPage() {
     () => new Set(callouts.map((person) => person.roster_member_id)),
     [callouts]
   );
-
-  useEffect(() => {
-    if (!slug || dispatchLocked || callouts.length === 0) return;
-
-    const existingCalloutIds = new Set(
-      dispatchEvents
-        .filter((event) => event.event_code === "CALL_OUT")
-        .map((event) => event.person_roster_member_id)
-        .filter(Boolean)
-    );
-
-    for (const person of callouts) {
-      const key = `${serviceDate}:${person.roster_member_id}`;
-      if (existingCalloutIds.has(person.roster_member_id)) continue;
-      if (persistedCalloutKeys.current.has(key)) continue;
-
-      persistedCalloutKeys.current.add(key);
-
-      void addManualDispatchEvent({
-        event_code: "CALL_OUT",
-        event_label: "Driver call-out",
-        event_category: "ATTENDANCE",
-        note: "Imported from schedule call-out override.",
-        person_roster_member_id: person.roster_member_id,
-        person_name: person.full_name,
-      });
-    }
-  }, [callouts, dispatchEvents, dispatchLocked, serviceDate, slug]);
 
   const assignedIds = useMemo(() => {
     const ids = new Set<string>();
@@ -919,7 +906,7 @@ export default function DispatchPage() {
     }
   }
 
-  async function addManualDispatchEvent(payload: {
+  const addManualDispatchEvent = useCallback(async (payload: {
     event_code: string;
     event_label: string;
     event_category: string;
@@ -929,7 +916,7 @@ export default function DispatchPage() {
     route_key?: string | null;
     route_label?: string | null;
     event_payload?: Record<string, unknown>;
-  }) {
+  }) => {
     try {
       setSavingEvent(true);
       setError(null);
@@ -941,6 +928,9 @@ export default function DispatchPage() {
         body: JSON.stringify({
           dispatch_date: serviceDate,
           ...payload,
+          route_key: payload.route_key ?? null,
+          route_label: payload.route_label ?? null,
+          event_payload: payload.event_payload ?? {},
         }),
       });
 
@@ -965,7 +955,66 @@ export default function DispatchPage() {
     } finally {
       setSavingEvent(false);
     }
+  }, [serviceDate, slug]);
+
+  useEffect(() => {
+    if (!slug || dispatchLocked || callouts.length === 0) return;
+
+    const existingCalloutIds = new Set(
+      dispatchEvents
+        .filter((event) => event.event_code === "CALL_OUT")
+        .map((event) => event.person_roster_member_id)
+        .filter(Boolean)
+    );
+
+    for (const person of callouts) {
+      const key = `${serviceDate}:${person.roster_member_id}`;
+      if (existingCalloutIds.has(person.roster_member_id)) continue;
+      if (persistedCalloutKeys.current.has(key)) continue;
+
+      persistedCalloutKeys.current.add(key);
+
+      void addManualDispatchEvent({
+        event_code: "CALL_OUT",
+        event_label: "Driver call-out",
+        event_category: "ATTENDANCE",
+        note: "Imported from schedule call-out override.",
+        person_roster_member_id: person.roster_member_id,
+        person_name: person.full_name,
+      });
+    }
+  }, [addManualDispatchEvent, callouts, dispatchEvents, dispatchLocked, serviceDate, slug]);
+
+
+  async function undoDispatchEvent(event: DispatchEventRow) {
+    if (dispatchLocked) return;
+
+    try {
+      setSavingEvent(true);
+      setError(null);
+
+      await addManualDispatchEvent({
+        event_code: `UNDO_${event.event_code}`,
+        event_label: `Undo ${event.event_label}`,
+        event_category: event.event_category,
+        note: `Reversed dispatch action: ${event.event_label}.`,
+        person_roster_member_id: event.person_roster_member_id,
+        person_name: event.person_name,
+        route_key: event.route_key,
+        route_label: event.route_label,
+        event_payload: {
+          source: "dispatch_action_undo",
+          reverses_event_id: event.id,
+          reverses_event_code: event.event_code,
+        },
+      });
+    } catch {
+      setError("Failed to undo dispatch action.");
+    } finally {
+      setSavingEvent(false);
+    }
   }
+
 
   async function lockDispatch() {
     try {
@@ -1095,6 +1144,7 @@ export default function DispatchPage() {
           events={dispatchEvents}
           locking={locking}
           onAddEvent={() => setEventOverlayOpen(true)}
+          onUndoEvent={undoDispatchEvent}
           onLockDispatch={lockDispatch}
         />
         </section>

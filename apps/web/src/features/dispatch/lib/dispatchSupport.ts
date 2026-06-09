@@ -253,3 +253,27 @@ export type DispatchEventTypeRow = {
   requires_note: boolean;
   sort_order: number;
 };
+
+
+export function isUndoableDispatchEvent(event: DispatchEventRow) {
+  if (event.event_code.startsWith("UNDO_")) return false;
+
+  const payload = event.event_payload ?? {};
+  if (typeof payload.reverses_event_id === "string") return false;
+
+  return true;
+}
+
+export function getReversedDispatchEventIds(events: DispatchEventRow[]) {
+  const ids = new Set<string>();
+
+  for (const event of events) {
+    const reversesEventId = event.event_payload?.reverses_event_id;
+
+    if (typeof reversesEventId === "string" && reversesEventId.trim()) {
+      ids.add(reversesEventId);
+    }
+  }
+
+  return ids;
+}
