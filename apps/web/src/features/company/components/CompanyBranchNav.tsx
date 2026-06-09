@@ -33,10 +33,10 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
 
   const overviewSubItems: NavItem[] = [
     { label: "Profile", href: base, match: (path) => path === base },
-    { label: "Today", href: `${base}#today`, match: () => false },
-    { label: "Prior Day", href: `${base}#prior-day`, match: () => false },
-    { label: "Readiness", href: `${base}#readiness`, match: () => false },
-    { label: "Config", href: `${base}#config`, match: () => false },
+    { label: "Today", href: `${base}/today`, match: (path) => path === `${base}/today` },
+    { label: "Prior Day", href: `${base}/prior-day`, match: (path) => path === `${base}/prior-day` },
+    { label: "Readiness", href: `${base}/readiness`, match: (path) => path === `${base}/readiness` },
+    { label: "Config", href: `${base}/config`, match: (path) => path === `${base}/config` },
   ];
 
   const peopleSubItems: NavItem[] = [
@@ -73,7 +73,11 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     pathname.startsWith(`${operationsBase}/`) ||
     pathname.startsWith(`${base}/dispatch`);
 
-  const subItems = pathname === base
+  const subItems = pathname === base ||
+  pathname === `${base}/today` ||
+  pathname === `${base}/prior-day` ||
+  pathname === `${base}/readiness` ||
+  pathname === `${base}/config`
     ? overviewSubItems
     : inPeopleBranch
       ? peopleSubItems

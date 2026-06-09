@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, usePathname } from "next/navigation";
 import { useAccess } from "@/features/access/AccessProvider";
 import { useLob } from "@/features/lob/hooks/useLob";
 
@@ -19,33 +19,33 @@ type CompanyRecord = {
   created_at: string | null;
 };
 
+type OverviewSurface = "profile" | "today" | "prior-day" | "readiness" | "config";
+
 const SIZE_OPTIONS = ["1-9", "10-49", "50-199", "200-999", "1000+"];
 
-function SectionCard(props: {
-  eyebrow: string;
-  title: string;
-  children: React.ReactNode;
-}) {
-  const { eyebrow, title, children } = props;
+function getSurfaceFromPath(pathname: string): OverviewSurface {
+  if (pathname.endsWith("/today")) return "today";
+  if (pathname.endsWith("/prior-day")) return "prior-day";
+  if (pathname.endsWith("/readiness")) return "readiness";
+  if (pathname.endsWith("/config")) return "config";
+  return "profile";
+}
 
+function SectionCard(props: { eyebrow: string; title: string; children: React.ReactNode }) {
   return (
     <article className="app-card" style={{ padding: 14 }}>
-      <p className="value-card__eyebrow">{eyebrow}</p>
-      <h3 className="app-card__title" style={{ fontSize: 18 }}>
-        {title}
-      </h3>
-      <div style={{ marginTop: 10 }}>{children}</div>
+      <p className="value-card__eyebrow">{props.eyebrow}</p>
+      <h3 className="app-card__title" style={{ fontSize: 18 }}>{props.title}</h3>
+      <div style={{ marginTop: 10 }}>{props.children}</div>
     </article>
   );
 }
 
 function MiniStat(props: { label: string; value: string }) {
-  const { label, value } = props;
-
   return (
     <div className="context-stat" style={{ padding: "9px 10px" }}>
-      <span className="context-stat__label">{label}</span>
-      <strong>{value}</strong>
+      <span className="context-stat__label">{props.label}</span>
+      <strong>{props.value}</strong>
     </div>
   );
 }
@@ -54,8 +54,10 @@ export default function CompanyPage() {
   const params = useParams();
   const access = useAccess();
   const lob = useLob();
+  const pathname = usePathname() ?? "";
   const slug = String(params?.slug ?? "");
 
+  const [activeSurface, setActiveSurface] = useState<OverviewSurface>("profile");
   const [company, setCompany] = useState<CompanyRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
@@ -75,8 +77,11 @@ export default function CompanyPage() {
 
   const canEditCompany =
     Boolean(access.is_platform_owner) ||
-    (membership?.relationship_type === "admin" &&
-      membership?.membership_status === "active");
+    (membership?.relationship_type === "admin" && membership?.membership_status === "active");
+
+  useEffect(() => {
+    setActiveSurface(getSurfaceFromPath(pathname));
+  }, [pathname]);
 
   useEffect(() => {
     let active = true;
@@ -93,7 +98,6 @@ export default function CompanyPage() {
         });
 
         const data = await res.json();
-
         if (!active) return;
 
         if (!res.ok) {
@@ -117,9 +121,8 @@ export default function CompanyPage() {
       }
     }
 
-    if (slug) {
-      loadCompany();
-    } else {
+    if (slug) loadCompany();
+    else {
       setLoading(false);
       setPageError("Missing company slug.");
     }
@@ -162,8 +165,7 @@ export default function CompanyPage() {
               contact_email: data.company?.contact_email ?? contactEmail,
               contact_phone: data.company?.contact_phone ?? contactPhone,
               website_url: data.company?.website_url ?? websiteUrl,
-              company_size_band:
-                data.company?.company_size_band ?? companySizeBand,
+              company_size_band: data.company?.company_size_band ?? companySizeBand,
             }
           : prev
       );
@@ -179,9 +181,7 @@ export default function CompanyPage() {
   const heading = loading ? "Loading company" : company?.company_name ?? slug;
   const industryLabel = company?.industry_label ?? "Not assigned";
   const statusLabel = company?.company_status ?? "Unknown";
-  const createdLabel = company?.created_at
-    ? new Date(company.created_at).toLocaleDateString()
-    : "Unknown";
+  const createdLabel = company?.created_at ? new Date(company.created_at).toLocaleDateString() : "Unknown";
 
   return (
     <main className="workspace-shell">
@@ -192,168 +192,151 @@ export default function CompanyPage() {
           </section>
         ) : null}
 
-        <section
-          id="profile"
-          className="app-card"
-          style={{ padding: 14, marginBottom: 10 }}
-        >
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(0, 1fr) auto",
-              gap: 12,
-              alignItems: "center",
-            }}
-          >
-            <div>
-              <p className="value-card__eyebrow">Operating profile</p>
-              <h2 style={{ margin: "4px 0 0", fontSize: 22 }}>
-                {heading}
-              </h2>
-            </div>
-
-            <div className="cta-row" style={{ margin: 0 }}>
-              <Link className="button" href={`/company/${slug}/operations`}>
-                Operations
-              </Link>
-              <Link className="button" href={`/company/${slug}/schedule`}>
-                Schedule
-              </Link>
-              <Link className="button" href={`/company/${slug}/people`}>
-                People
-              </Link>
-            </div>
-          </div>
-
-          <div
-            className="context-grid"
-            style={{
-              gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-              gap: 8,
-              marginTop: 10,
-            }}
-          >
-            <MiniStat label="LOB" value={lob.lob_label} />
-            <MiniStat label="Industry" value={industryLabel} />
-            <MiniStat label="Status" value={statusLabel} />
-            <MiniStat
-              label="Membership"
-              value={
-                membership
-                  ? `${membership.relationship_type} · ${membership.membership_status}`
-                  : "No match"
-              }
-            />
-          </div>
-        </section>
-
-        <section
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1fr) 360px",
-            gap: 10,
-            alignItems: "start",
-          }}
-        >
+        {activeSurface === "profile" ? (
           <section style={{ display: "grid", gap: 10 }}>
-            <section
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                gap: 10,
-              }}
-            >
-              <SectionCard eyebrow="Current day" title="Today">
-                <div id="today" style={{ display: "grid", gap: 8 }}>
-                  <MiniStat label="Dispatch" value="Not loaded" />
-                  <MiniStat label="Delivery risks" value="Pending data" />
-                  <MiniStat label="Last updated" value="No source yet" />
-                </div>
-              </SectionCard>
+            <SectionCard eyebrow="Operating profile" title={heading}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
+                <MiniStat label="Avg daily routes" value="Pending DSW" />
+                <MiniStat label="Active drivers" value="Pending roster" />
+                <MiniStat label="Company users" value="Pending access" />
+                <MiniStat label="Time in platform" value={createdLabel} />
+                <MiniStat label="Primary terminal" value="Pending config" />
+                <MiniStat label="Active contract" value="Pending config" />
+                <MiniStat label="Service area" value="Pending config" />
+                <MiniStat label="Last report loaded" value="No source yet" />
+              </div>
+            </SectionCard>
 
-              <SectionCard eyebrow="Prior day" title="Snapshot">
-                <div id="prior-day" style={{ display: "grid", gap: 8 }}>
-                  <MiniStat label="DSW" value="Awaiting upload" />
-                  <MiniStat label="FCC" value="Awaiting upload" />
-                  <MiniStat label="Report artifact" value="Not generated" />
-                </div>
-              </SectionCard>
-
-              <SectionCard eyebrow="Future readiness" title="Tomorrow">
-                <div id="readiness" style={{ display: "grid", gap: 8 }}>
-                  <MiniStat label="DRO PM" value="Awaiting upload" />
-                  <MiniStat label="Coverage" value="Pending schedule" />
-                  <MiniStat label="Open gaps" value="Unknown" />
-                </div>
-              </SectionCard>
-            </section>
-
-            <SectionCard eyebrow="Operations config" title="Terminal / Contract / Service Area">
-              <div id="config">
-                <p className="app-card__body">
-                  Configure FedEx operating facts used to validate report uploads before warehouse persistence.
-                </p>
-
-                <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-                  <MiniStat label="Terminal" value="Pending beta files" />
-                  <MiniStat label="Contract" value="Pending beta files" />
-                  <MiniStat label="Service area" value="Pending beta files" />
-                </div>
-
-                <div className="cta-row" style={{ marginTop: 14 }}>
-                  <button type="button" className="button" disabled>
-                    Add config row
-                  </button>
-                </div>
+            <SectionCard eyebrow="Context" title="Company posture">
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
+                <MiniStat label="LOB" value={lob.lob_label} />
+                <MiniStat label="Industry" value={industryLabel} />
+                <MiniStat label="Status" value={statusLabel} />
+                <MiniStat
+                  label="Membership"
+                  value={membership ? `${membership.relationship_type} · ${membership.membership_status}` : "No match"}
+                />
               </div>
             </SectionCard>
           </section>
+        ) : null}
 
-          <aside style={{ display: "grid", gap: 10 }}>
-            <SectionCard eyebrow="Company profile" title="Settings">
+        {activeSurface === "today" ? (
+          <SectionCard eyebrow="Current day" title="Today">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+              <MiniStat label="Dispatch" value="Not loaded" />
+              <MiniStat label="Delivery risks" value="Pending data" />
+              <MiniStat label="Last updated" value="No source yet" />
+            </div>
+          </SectionCard>
+        ) : null}
+
+        {activeSurface === "prior-day" ? (
+          <SectionCard eyebrow="Prior day" title="Snapshot">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+              <MiniStat label="DSW" value="Awaiting upload" />
+              <MiniStat label="FCC" value="Awaiting upload" />
+              <MiniStat label="Report artifact" value="Not generated" />
+            </div>
+          </SectionCard>
+        ) : null}
+
+        {activeSurface === "readiness" ? (
+          <SectionCard eyebrow="Future readiness" title="Tomorrow">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+              <MiniStat label="DRO PM" value="Awaiting upload" />
+              <MiniStat label="Coverage" value="Pending schedule" />
+              <MiniStat label="Open gaps" value="Unknown" />
+            </div>
+          </SectionCard>
+        ) : null}
+
+        {activeSurface === "config" ? (
+          <section style={{ display: "grid", gap: 10 }}>
+            <SectionCard eyebrow="Company config" title="AO profile">
               {canEditCompany ? (
-                <form onSubmit={handleSave} style={{ display: "grid", gap: 10 }}>
+                <form
+                  onSubmit={handleSave}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                    gap: 10,
+                  }}
+                >
                   <input value={company?.company_name ?? ""} disabled style={inputStyleDisabled} />
                   <input value={company?.company_slug ?? ""} disabled style={inputStyleDisabled} />
                   <input value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} placeholder="Website" style={inputStyle} />
-                  <input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="Contact email" style={inputStyle} />
-                  <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="Contact phone" style={inputStyle} />
+                  <input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="AO / company contact email" style={inputStyle} />
+                  <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="AO / company contact phone" style={inputStyle} />
                   <select value={companySizeBand} onChange={(e) => setCompanySizeBand(e.target.value)} style={inputStyle}>
                     <option value="">Company size</option>
-                    {SIZE_OPTIONS.map((size) => (
-                      <option key={size} value={size}>{size}</option>
-                    ))}
+                    {SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}</option>)}
                   </select>
 
-                  {saveError ? <p style={{ color: "#c62828", margin: 0 }}>{saveError}</p> : null}
-                  {saveMessage ? <p style={{ color: "#0f9f6e", margin: 0 }}>{saveMessage}</p> : null}
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    {saveError ? <p style={{ color: "#c62828", margin: 0 }}>{saveError}</p> : null}
+                    {saveMessage ? <p style={{ color: "#0f9f6e", margin: 0 }}>{saveMessage}</p> : null}
+                  </div>
 
-                  <button type="submit" className="button button-primary" disabled={saving}>
-                    {saving ? "Saving..." : "Save company info"}
-                  </button>
+                  <div className="cta-row" style={{ gridColumn: "1 / -1", marginTop: 0 }}>
+                    <button type="submit" className="button button-primary" disabled={saving}>
+                      {saving ? "Saving..." : "Save AO profile"}
+                    </button>
+                  </div>
                 </form>
               ) : (
                 <p className="app-card__body">You do not have permission to edit this company.</p>
               )}
             </SectionCard>
 
-            <SectionCard eyebrow="Leadership" title="Assignments">
-              <div style={{ display: "grid", gap: 8 }}>
-                <MiniStat label="Operations manager" value="Pending roster link" />
-                <MiniStat label="Fleet manager" value="Pending roster link" />
-                <MiniStat label="Dispatch supervisor" value="Pending roster link" />
-                <MiniStat label="Operations supervisor" value="Pending roster link" />
-              </div>
-            </SectionCard>
+            <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 10, alignItems: "start" }}>
+              <section style={{ display: "grid", gap: 10 }}>
+                <SectionCard eyebrow="Operations config" title="Terminal / Contract / Service Area">
+                  <p className="app-card__body">
+                    Configure FedEx operating facts used to validate report uploads before warehouse persistence.
+                  </p>
 
-            <SectionCard eyebrow="Workspace" title="Lifecycle">
-              <div style={{ display: "grid", gap: 8 }}>
-                <MiniStat label="Created" value={createdLabel} />
-                <MiniStat label="Profile status" value={statusLabel} />
-              </div>
-            </SectionCard>
-          </aside>
-        </section>
+                  <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+                    <MiniStat label="Terminal" value="Pending beta files" />
+                    <MiniStat label="Contract" value="Pending beta files" />
+                    <MiniStat label="Service area" value="Pending beta files" />
+                  </div>
+
+                  <div className="cta-row" style={{ marginTop: 14 }}>
+                    <button type="button" className="button" disabled>
+                      Add config row
+                    </button>
+                  </div>
+                </SectionCard>
+
+                <SectionCard eyebrow="Leadership config" title="Assignments">
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                    <MiniStat label="Operations manager" value="Pending roster link" />
+                    <MiniStat label="Fleet manager" value="Pending roster link" />
+                    <MiniStat label="Dispatch supervisor" value="Pending roster link" />
+                    <MiniStat label="Operations supervisor" value="Pending roster link" />
+                  </div>
+                </SectionCard>
+              </section>
+
+              <aside>
+                <SectionCard eyebrow="BC foundation" title="Business contact">
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <MiniStat label="Assignment mode" value="Roster or external" />
+                    <MiniStat label="Primary BC" value="Pending" />
+                    <MiniStat label="Lifecycle" value="Not configured" />
+                  </div>
+
+                  <div className="cta-row" style={{ marginTop: 14 }}>
+                    <button type="button" className="button" disabled>
+                      Add BC assignment
+                    </button>
+                  </div>
+                </SectionCard>
+              </aside>
+            </section>
+          </section>
+        ) : null}
       </section>
     </main>
   );
