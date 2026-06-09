@@ -25,9 +25,9 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
 
   const mainItems: NavItem[] = [
     { label: "Overview", href: base, match: (path) => path === base },
-    { label: "People", href: peopleBase, match: (path) => path.startsWith(peopleBase) || path.startsWith(`${base}/hiring`) },
-    { label: "Schedule", href: scheduleBase, match: (path) => path.startsWith(scheduleBase) },
     { label: "Operations", href: operationsBase, match: (path) => path.startsWith(operationsBase) || path.startsWith(`${base}/dispatch`) },
+    { label: "Schedule", href: scheduleBase, match: (path) => path.startsWith(scheduleBase) },
+    { label: "People", href: peopleBase, match: (path) => path.startsWith(peopleBase) || path.startsWith(`${base}/hiring`) },
     { label: "Routes", href: `${base}/routes`, match: (path) => path.startsWith(`${base}/routes`) },
   ];
 
