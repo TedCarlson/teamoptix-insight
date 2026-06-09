@@ -95,6 +95,14 @@ function applyDispatchEvent(
     };
   }
 
+  if (code === "REMOVE_ROUTE") {
+    if (!routeKey || !current[routeKey]) return current;
+
+    const next = { ...current };
+    delete next[routeKey];
+    return next;
+  }
+
   if (!seat) return current;
 
   if (code.startsWith("ASSIGN_")) {
@@ -1120,6 +1128,7 @@ export default function DispatchPage() {
         scheduledWorkforce={allPeople}
         unscheduledDrivers={unscheduledDrivers}
         availableRoutes={availableRoutes}
+        activeRoutes={dispatchRoutes}
         onClose={() => setEventOverlayOpen(false)}
         onSubmit={addManualDispatchEvent}
       />

@@ -16,7 +16,7 @@ type DispatchActionOption = {
   event_label: string;
   event_category: string;
   requiresNote: boolean;
-  targetMode: "none" | "scheduled_person" | "unscheduled_driver" | "route";
+  targetMode: "none" | "scheduled_person" | "unscheduled_driver" | "route" | "active_route";
 };
 
 type DispatchEventOverlayProps = {
@@ -26,6 +26,7 @@ type DispatchEventOverlayProps = {
   scheduledWorkforce: DispatchPerson[];
   unscheduledDrivers: DispatchPerson[];
   availableRoutes: DispatchRoute[];
+  activeRoutes: DispatchRoute[];
   onClose: () => void;
   onSubmit: (payload: {
     event_code: string;
@@ -58,6 +59,15 @@ const addRouteAction: DispatchActionOption = {
   targetMode: "route",
 };
 
+const removeRouteAction: DispatchActionOption = {
+  kind: "event",
+  event_code: "REMOVE_ROUTE",
+  event_label: "Remove route",
+  event_category: "OPERATIONS",
+  requiresNote: false,
+  targetMode: "active_route",
+};
+
 function categoryLabel(value: string) {
   return value
     .toLowerCase()
@@ -88,6 +98,7 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
     scheduledWorkforce,
     unscheduledDrivers,
     availableRoutes,
+    activeRoutes,
     onClose,
     onSubmit,
   } = props;
@@ -111,6 +122,7 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
   const operationsActions = useMemo(
     () => [
       addRouteAction,
+      removeRouteAction,
       ...manualEventActions.filter(
         (action) =>
           action.event_category === "OPERATIONS" ||
@@ -152,9 +164,10 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
     if (selected.targetMode === "scheduled_person") return scheduledWorkforce;
     if (selected.targetMode === "unscheduled_driver") return unscheduledDrivers;
     if (selected.targetMode === "route") return availableRoutes;
+    if (selected.targetMode === "active_route") return activeRoutes;
 
     return [];
-  }, [availableRoutes, scheduledWorkforce, selected, unscheduledDrivers]);
+  }, [activeRoutes, availableRoutes, scheduledWorkforce, selected, unscheduledDrivers]);
 
   if (!open) return null;
 
@@ -174,7 +187,7 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
         : null;
 
     const selectedRoute =
-      selected.targetMode === "route"
+      selected.targetMode === "route" || selected.targetMode === "active_route"
         ? (targetOptions as DispatchRoute[]).find(
             (route) => route.route_key === selectedTargetId
           ) ?? null
@@ -198,7 +211,17 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
               route_type: selectedRoute.route_type ?? "ADDED",
               source: "dispatch_action_overlay",
             }
-          : selected.kind === "add_driver" && selectedPerson
+          : selected.event_code === "REMOVE_ROUTE" && selectedRoute
+            ? {
+                route_name: selectedRoute.route_name,
+                current_wa_num: selectedRoute.current_wa_num,
+                route_location: selectedRoute.route_location,
+                route_type: selectedRoute.route_type,
+                removed_driver_name: selectedRoute.driver?.full_name ?? null,
+                removed_helpers: selectedRoute.helpers.map((person) => person.full_name),
+                source: "dispatch_action_overlay",
+              }
+            : selected.kind === "add_driver" && selectedPerson
             ? {
                 worker_type: selectedPerson.worker_type,
                 source: "dispatch_action_overlay",
@@ -330,12 +353,14 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
                 <option value="">
                   {selected?.targetMode === "route"
                     ? "Select available route"
-                    : selected?.targetMode === "unscheduled_driver"
+                    : selected?.targetMode === "active_route"
+                      ? "Select route to remove"
+                      : selected?.targetMode === "unscheduled_driver"
                       ? "Select unscheduled driver"
                       : "Select scheduled worker"}
                 </option>
 
-                {selected?.targetMode === "route"
+                {selected?.targetMode === "route" || selected?.targetMode === "active_route"
                   ? (targetOptions as DispatchRoute[]).map((route) => (
                       <option key={route.route_key} value={route.route_key}>
                         {routeDropdownLabel(route) || cleanRouteKey(route.route_name)}
@@ -358,7 +383,9 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
                   ? "This action adds a non-scheduled driver into today's dispatch pool. "
                   : selected.targetMode === "route"
                     ? "This action adds an available route into today's dispatch board. "
-                    : "This action does not require a linked item. "}
+                    : selected.targetMode === "active_route"
+                      ? "This action removes a route from today's dispatch board. "
+                      : "This action does not require a linked item. "}
               {selected.requiresNote ? "A note is required. " : "Note is optional. "}
               Category: {categoryLabel(selected.event_category)}
             </p>
