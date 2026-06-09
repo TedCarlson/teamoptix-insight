@@ -1067,48 +1067,11 @@ export default function DispatchPage() {
 
   return (
     <main className="workspace-shell">
-      <section className="workspace-main">
-        <header className="workspace-header">
-          <div style={{ display: "grid", gap: 8 }}>
-            <p className="eyebrow">Dispatch</p>
-            <h1 className="workspace-title">Today&apos;s Operation</h1>
-            <p className="workspace-subtitle">
-              Assign drivers, helpers, and trainees while preserving the final dispatch shape for reporting.
-            </p>
+      <section className="workspace-main"
+        style={{
+          paddingTop: 0,
+        }}>
 
-            <div className="cta-row" style={{ marginTop: 4 }}>
-              <button
-                type="button"
-                className="button"
-                disabled={loading}
-                onClick={() => setRefreshKey((current) => current + 1)}
-              >
-                {loading ? "Refreshing..." : "Refresh Dispatch"}
-              </button>
-            </div>
-          </div>
-
-          <div className="context-grid">
-            <div className="context-stat">
-              <span className="context-stat__label">Service date</span>
-              <strong>{serviceDate}</strong>
-            </div>
-            <div className="context-stat">
-              <span className="context-stat__label">State</span>
-              <strong>{dispatchLocked ? "Locked" : "Active Draft"}</strong>
-            </div>
-            <div className="context-stat">
-              <span className="context-stat__label">Routes</span>
-              <strong>{summary.total}</strong>
-            </div>
-            <div className="context-stat">
-              <span className="context-stat__label">Needs Driver</span>
-              <strong style={{ color: summary.withoutDriver ? "#b54708" : "#166534" }}>
-                {summary.withoutDriver}
-              </strong>
-            </div>
-          </div>
-        </header>
 
         {error ? (
           <section style={{ ...panel, padding: 12, marginTop: 10 }}>

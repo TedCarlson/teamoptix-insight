@@ -664,7 +664,7 @@ h1 {
 .company-subnav {
   width: 100%;
   max-width: var(--app-page);
-  margin: 8px auto 0;
+  margin: 20px auto;
   display: flex;
   align-items: center;
   gap: 8px;
