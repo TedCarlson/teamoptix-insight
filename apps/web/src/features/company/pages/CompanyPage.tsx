@@ -1,8 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { useAccess } from "@/features/access/AccessProvider";
 import { useLob } from "@/features/lob/hooks/useLob";
 
@@ -21,22 +21,6 @@ type CompanyRecord = {
 
 const SIZE_OPTIONS = ["1-9", "10-49", "50-199", "200-999", "1000+"];
 
-function FieldCard(props: {
-  eyebrow: string;
-  title: string;
-  body: string;
-}) {
-  const { eyebrow, title, body } = props;
-
-  return (
-    <article className="app-card">
-      <p className="value-card__eyebrow">{eyebrow}</p>
-      <h3 className="app-card__title">{title}</h3>
-      <p className="app-card__body">{body}</p>
-    </article>
-  );
-}
-
 function SectionCard(props: {
   eyebrow: string;
   title: string;
@@ -45,11 +29,24 @@ function SectionCard(props: {
   const { eyebrow, title, children } = props;
 
   return (
-    <article className="app-card">
+    <article className="app-card" style={{ padding: 14 }}>
       <p className="value-card__eyebrow">{eyebrow}</p>
-      <h3 className="app-card__title">{title}</h3>
-      <div style={{ marginTop: 12 }}>{children}</div>
+      <h3 className="app-card__title" style={{ fontSize: 18 }}>
+        {title}
+      </h3>
+      <div style={{ marginTop: 10 }}>{children}</div>
     </article>
+  );
+}
+
+function MiniStat(props: { label: string; value: string }) {
+  const { label, value } = props;
+
+  return (
+    <div className="context-stat" style={{ padding: "9px 10px" }}>
+      <span className="context-stat__label">{label}</span>
+      <strong>{value}</strong>
+    </div>
   );
 }
 
@@ -188,206 +185,174 @@ export default function CompanyPage() {
 
   return (
     <main className="workspace-shell">
-      <section className="workspace-main">
-        <header className="workspace-header">
-          <div style={{ display: "grid", gap: 10, alignContent: "center" }}>
-            <p className="eyebrow">Company</p>
-            <h1 className="workspace-title">{heading}</h1>
-            <p className="workspace-subtitle">
-              {loading
-                ? "Resolving company context from the workspace slug."
-                : company
-                  ? "Company workspace for ownership, operations entry, and management."
-                  : "This company workspace could not be resolved."}
-            </p>
+      <section className="workspace-main" style={{ paddingTop: 0, paddingBottom: 24 }}>
+        {pageError ? (
+          <section style={{ marginBottom: 10 }} className="app-card">
+            <p style={{ color: "#c62828", margin: 0 }}>{pageError}</p>
+          </section>
+        ) : null}
 
-            {pageError ? (
-              <p style={{ color: "#c62828", marginTop: 8 }}>{pageError}</p>
-            ) : null}
-
-            {!loading && company ? (
-              <div className="cta-row">
-                <Link className="button" href="/companies">
-                  Back to companies
-                </Link>
-              </div>
-            ) : null}
-          </div>
-
-          <aside className="context-grid">
-            <div className="context-stat">
-              <span className="context-stat__label">LOB</span>
-              <strong>{lob.lob_label}</strong>
-            </div>
-
-            <div className="context-stat">
-              <span className="context-stat__label">Industry</span>
-              <strong>{industryLabel}</strong>
-            </div>
-
-            <div className="context-stat">
-              <span className="context-stat__label">Membership</span>
-              <strong>
-                {membership
-                  ? `${membership.relationship_type} · ${membership.membership_status}`
-                  : "No match"}
-              </strong>
-            </div>
-
-            <div className="context-stat">
-              <span className="context-stat__label">Status</span>
-              <strong>{statusLabel}</strong>
-            </div>
-          </aside>
-        </header>
-
-        <section className="workspace-grid">
-          <SectionCard
-            eyebrow="People"
-            title="People / Employees / Hiring / Roster"
+        <section
+          id="profile"
+          className="app-card"
+          style={{ padding: 14, marginBottom: 10 }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 1fr) auto",
+              gap: 12,
+              alignItems: "center",
+            }}
           >
-            <p className="app-card__body">
-              Manage employee profiles, hiring posture, leadership alignment, and
-              the active roster that drives the company.
-            </p>
-            <div className="cta-row" style={{ marginTop: 14 }}>
-              <Link
-                className="button button-primary"
-                href={`/company/${slug}/people`}
-              >
-                Open People
-              </Link>
+            <div>
+              <p className="value-card__eyebrow">Operating profile</p>
+              <h2 style={{ margin: "4px 0 0", fontSize: 22 }}>
+                {heading}
+              </h2>
             </div>
-          </SectionCard>
 
-          <SectionCard eyebrow="Activity" title="Activity / Routes / Planning">
-            <p className="app-card__body">
-              Manage routes, operating activity, scheduling, planning, and the
-              day-to-day work the company performs.
-            </p>
-            <div className="cta-row" style={{ marginTop: 14 }}>
-              <Link
-                className="button button-primary"
-                href={`/company/${slug}/schedule`}
-              >
+            <div className="cta-row" style={{ margin: 0 }}>
+              <Link className="button" href={`/company/${slug}/operations`}>
+                Operations
+              </Link>
+              <Link className="button" href={`/company/${slug}/schedule`}>
                 Schedule
               </Link>
-              <Link className="button" href={`/company/${slug}/routes`}>
-                Routes
+              <Link className="button" href={`/company/${slug}/people`}>
+                People
               </Link>
             </div>
-          </SectionCard>
+          </div>
 
-          <SectionCard eyebrow="Reporting" title="Insights / Timing / Reporting">
-            <p className="app-card__body">
-              Make sense of people and activity through reporting, schedule
-              posture, performance timing, and operational insight.
-            </p>
-            <div className="cta-row" style={{ marginTop: 14 }}>
-              <Link
-                className="button button-primary"
-                href={`/company/${slug}/reporting`}
-              >
-                Open Reporting
-              </Link>
-            </div>
-          </SectionCard>
+          <div
+            className="context-grid"
+            style={{
+              gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+              gap: 8,
+              marginTop: 10,
+            }}
+          >
+            <MiniStat label="LOB" value={lob.lob_label} />
+            <MiniStat label="Industry" value={industryLabel} />
+            <MiniStat label="Status" value={statusLabel} />
+            <MiniStat
+              label="Membership"
+              value={
+                membership
+                  ? `${membership.relationship_type} · ${membership.membership_status}`
+                  : "No match"
+              }
+            />
+          </div>
+        </section>
 
-          <SectionCard eyebrow="Company profile" title="Editable company settings">
-            {canEditCompany ? (
-              <form onSubmit={handleSave} style={{ display: "grid", gap: 12 }}>
-                <input
-                  value={company?.company_name ?? ""}
-                  disabled
-                  style={inputStyleDisabled}
-                />
-                <input
-                  value={company?.company_slug ?? ""}
-                  disabled
-                  style={inputStyleDisabled}
-                />
-                <input
-                  value={websiteUrl}
-                  onChange={(e) => setWebsiteUrl(e.target.value)}
-                  placeholder="Website"
-                  style={inputStyle}
-                />
-                <input
-                  value={contactEmail}
-                  onChange={(e) => setContactEmail(e.target.value)}
-                  placeholder="Contact email"
-                  style={inputStyle}
-                />
-                <input
-                  value={contactPhone}
-                  onChange={(e) => setContactPhone(e.target.value)}
-                  placeholder="Contact phone"
-                  style={inputStyle}
-                />
-                <select
-                  value={companySizeBand}
-                  onChange={(e) => setCompanySizeBand(e.target.value)}
-                  style={inputStyle}
-                >
-                  <option value="">Company size</option>
-                  {SIZE_OPTIONS.map((size) => (
-                    <option key={size} value={size}>
-                      {size}
-                    </option>
-                  ))}
-                </select>
+        <section
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr) 360px",
+            gap: 10,
+            alignItems: "start",
+          }}
+        >
+          <section style={{ display: "grid", gap: 10 }}>
+            <section
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gap: 10,
+              }}
+            >
+              <SectionCard eyebrow="Current day" title="Today">
+                <div id="today" style={{ display: "grid", gap: 8 }}>
+                  <MiniStat label="Dispatch" value="Not loaded" />
+                  <MiniStat label="Delivery risks" value="Pending data" />
+                  <MiniStat label="Last updated" value="No source yet" />
+                </div>
+              </SectionCard>
 
-                {saveError ? (
-                  <p style={{ color: "#c62828", margin: 0 }}>{saveError}</p>
-                ) : null}
+              <SectionCard eyebrow="Prior day" title="Snapshot">
+                <div id="prior-day" style={{ display: "grid", gap: 8 }}>
+                  <MiniStat label="DSW" value="Awaiting upload" />
+                  <MiniStat label="FCC" value="Awaiting upload" />
+                  <MiniStat label="Report artifact" value="Not generated" />
+                </div>
+              </SectionCard>
 
-                {saveMessage ? (
-                  <p style={{ color: "#0f9f6e", margin: 0 }}>{saveMessage}</p>
-                ) : null}
+              <SectionCard eyebrow="Future readiness" title="Tomorrow">
+                <div id="readiness" style={{ display: "grid", gap: 8 }}>
+                  <MiniStat label="DRO PM" value="Awaiting upload" />
+                  <MiniStat label="Coverage" value="Pending schedule" />
+                  <MiniStat label="Open gaps" value="Unknown" />
+                </div>
+              </SectionCard>
+            </section>
 
-                <div className="cta-row" style={{ marginTop: 4 }}>
-                  <button
-                    type="submit"
-                    className="button button-primary"
-                    disabled={saving}
-                  >
-                    {saving ? "Saving..." : "Save company info"}
+            <SectionCard eyebrow="Operations config" title="Terminal / Contract / Service Area">
+              <div id="config">
+                <p className="app-card__body">
+                  Configure FedEx operating facts used to validate report uploads before warehouse persistence.
+                </p>
+
+                <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                  <MiniStat label="Terminal" value="Pending beta files" />
+                  <MiniStat label="Contract" value="Pending beta files" />
+                  <MiniStat label="Service area" value="Pending beta files" />
+                </div>
+
+                <div className="cta-row" style={{ marginTop: 14 }}>
+                  <button type="button" className="button" disabled>
+                    Add config row
                   </button>
                 </div>
-              </form>
-            ) : (
-              <p className="app-card__body">
-                You do not have permission to edit this company.
-              </p>
-            )}
-          </SectionCard>
+              </div>
+            </SectionCard>
+          </section>
 
-          <SectionCard eyebrow="Leadership" title="Leadership assignments">
-            <div style={{ display: "grid", gap: 10 }}>
-              <div className="context-stat">
-                <span className="context-stat__label">Operations manager</span>
-                <strong>Select from active roster when People lands</strong>
-              </div>
-              <div className="context-stat">
-                <span className="context-stat__label">Fleet manager</span>
-                <strong>Select from active roster when People lands</strong>
-              </div>
-              <div className="context-stat">
-                <span className="context-stat__label">Dispatch supervisor</span>
-                <strong>Select from active roster when People lands</strong>
-              </div>
-              <div className="context-stat">
-                <span className="context-stat__label">Operations supervisor</span>
-                <strong>Select from active roster when People lands</strong>
-              </div>
-            </div>
-          </SectionCard>
+          <aside style={{ display: "grid", gap: 10 }}>
+            <SectionCard eyebrow="Company profile" title="Settings">
+              {canEditCompany ? (
+                <form onSubmit={handleSave} style={{ display: "grid", gap: 10 }}>
+                  <input value={company?.company_name ?? ""} disabled style={inputStyleDisabled} />
+                  <input value={company?.company_slug ?? ""} disabled style={inputStyleDisabled} />
+                  <input value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} placeholder="Website" style={inputStyle} />
+                  <input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="Contact email" style={inputStyle} />
+                  <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="Contact phone" style={inputStyle} />
+                  <select value={companySizeBand} onChange={(e) => setCompanySizeBand(e.target.value)} style={inputStyle}>
+                    <option value="">Company size</option>
+                    {SIZE_OPTIONS.map((size) => (
+                      <option key={size} value={size}>{size}</option>
+                    ))}
+                  </select>
 
-          <FieldCard
-            eyebrow="Workspace"
-            title={statusLabel}
-            body={`Created ${createdLabel}`}
-          />
+                  {saveError ? <p style={{ color: "#c62828", margin: 0 }}>{saveError}</p> : null}
+                  {saveMessage ? <p style={{ color: "#0f9f6e", margin: 0 }}>{saveMessage}</p> : null}
+
+                  <button type="submit" className="button button-primary" disabled={saving}>
+                    {saving ? "Saving..." : "Save company info"}
+                  </button>
+                </form>
+              ) : (
+                <p className="app-card__body">You do not have permission to edit this company.</p>
+              )}
+            </SectionCard>
+
+            <SectionCard eyebrow="Leadership" title="Assignments">
+              <div style={{ display: "grid", gap: 8 }}>
+                <MiniStat label="Operations manager" value="Pending roster link" />
+                <MiniStat label="Fleet manager" value="Pending roster link" />
+                <MiniStat label="Dispatch supervisor" value="Pending roster link" />
+                <MiniStat label="Operations supervisor" value="Pending roster link" />
+              </div>
+            </SectionCard>
+
+            <SectionCard eyebrow="Workspace" title="Lifecycle">
+              <div style={{ display: "grid", gap: 8 }}>
+                <MiniStat label="Created" value={createdLabel} />
+                <MiniStat label="Profile status" value={statusLabel} />
+              </div>
+            </SectionCard>
+          </aside>
         </section>
       </section>
     </main>

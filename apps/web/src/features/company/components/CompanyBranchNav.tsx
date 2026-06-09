@@ -31,6 +31,14 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     { label: "Routes", href: `${base}/routes`, match: (path) => path.startsWith(`${base}/routes`) },
   ];
 
+  const overviewSubItems: NavItem[] = [
+    { label: "Profile", href: base, match: (path) => path === base },
+    { label: "Today", href: `${base}#today`, match: () => false },
+    { label: "Prior Day", href: `${base}#prior-day`, match: () => false },
+    { label: "Readiness", href: `${base}#readiness`, match: () => false },
+    { label: "Config", href: `${base}#config`, match: () => false },
+  ];
+
   const peopleSubItems: NavItem[] = [
     { label: "Roster", href: peopleBase, match: (path) => path === peopleBase || path.startsWith(`${peopleBase}/roster`) || path.startsWith(`${peopleBase}/active`) || path.startsWith(`${peopleBase}/former`) || path.startsWith(`${peopleBase}/import`) },
     { label: "Hiring", href: `${base}/hiring`, match: (path) => path.startsWith(`${base}/hiring`) },
@@ -65,13 +73,15 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     pathname.startsWith(`${operationsBase}/`) ||
     pathname.startsWith(`${base}/dispatch`);
 
-  const subItems = inPeopleBranch
-    ? peopleSubItems
-    : inScheduleBranch
-      ? scheduleSubItems
-      : inOperationsBranch
-        ? operationsSubItems
-        : [];
+  const subItems = pathname === base
+    ? overviewSubItems
+    : inPeopleBranch
+      ? peopleSubItems
+      : inScheduleBranch
+        ? scheduleSubItems
+        : inOperationsBranch
+          ? operationsSubItems
+          : [];
 
   return (
     <nav className="app-nav-shell" aria-label="Company workspace">
