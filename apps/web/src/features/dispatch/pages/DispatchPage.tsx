@@ -30,6 +30,8 @@ import {
   runFlagForDate,
   todayIso,
 } from "../lib/dispatchSupport";
+import OperationsReportUploadOverlay from "@/features/operations/components/OperationsReportUploadOverlay";
+import OperationsWorkspaceToolbar from "@/features/operations/components/OperationsWorkspaceToolbar";
 import { DispatchEventOverlay } from "../components/DispatchEventOverlay";
 import { DispatchRightRail } from "../components/DispatchRightRail";
 import { DispatchRouteQueue } from "../components/DispatchRouteQueue";
@@ -172,6 +174,8 @@ export default function DispatchPage() {
   const [locking, setLocking] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
+  const [uploadOverlayOpen, setUploadOverlayOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const persistedCalloutKeys = useRef(new Set<string>());
 
@@ -266,6 +270,7 @@ export default function DispatchPage() {
         setDispatchDay((dispatchDayData?.dispatch_day ?? null) as DispatchDayRow | null);
         setDispatchEvents((dispatchDayData?.events ?? []) as DispatchEventRow[]);
         setEventTypes((eventTypesData?.event_types ?? []) as DispatchEventTypeRow[]);
+        setLastUpdatedAt(new Date().toISOString());
       } catch {
         if (!active) return;
         setError("Dispatch hydration failed.");
@@ -1081,6 +1086,13 @@ export default function DispatchPage() {
         }}>
 
 
+        <OperationsWorkspaceToolbar
+          lastUpdatedAt={lastUpdatedAt}
+          refreshing={loading}
+          onRefresh={() => setRefreshKey((current) => current + 1)}
+          onUpload={() => setUploadOverlayOpen(true)}
+        />
+
         {error ? (
           <section style={{ ...panel, padding: 12, marginTop: 10 }}>
             <p style={{ color: "#c62828", margin: 0 }}>{error}</p>
@@ -1120,6 +1132,14 @@ export default function DispatchPage() {
         />
         </section>
       </section>
+
+      <OperationsReportUploadOverlay
+        open={uploadOverlayOpen}
+        onClose={(shouldRefresh) => {
+          setUploadOverlayOpen(false);
+          if (shouldRefresh) setRefreshKey((current) => current + 1);
+        }}
+      />
 
       <DispatchEventOverlay
         open={eventOverlayOpen}

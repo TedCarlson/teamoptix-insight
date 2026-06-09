@@ -1,3 +1,9 @@
+"use client";
+
+import { useState } from "react";
+import OperationsReportUploadOverlay from "@/features/operations/components/OperationsReportUploadOverlay";
+import OperationsWorkspaceToolbar from "@/features/operations/components/OperationsWorkspaceToolbar";
+
 const deliveryRows = [
   {
     route: "426 · BPV 03",
@@ -37,13 +43,28 @@ function statusColor(status: string) {
 }
 
 export default function DeliveryWindowPage() {
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [uploadOverlayOpen, setUploadOverlayOpen] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(new Date().toISOString());
+
+  function refreshWorkspace() {
+    setRefreshKey((current) => current + 1);
+    setLastUpdatedAt(new Date().toISOString());
+  }
+
   return (
     <main className="workspace-shell">
-      <section className="workspace-main"
+      <section key={refreshKey} className="workspace-main"
         style={{
           paddingTop: 12,
         }}>
         
+
+        <OperationsWorkspaceToolbar
+          lastUpdatedAt={lastUpdatedAt}
+          onRefresh={refreshWorkspace}
+          onUpload={() => setUploadOverlayOpen(true)}
+        />
 
         <section
           style={{
@@ -181,6 +202,13 @@ export default function DeliveryWindowPage() {
           </aside>
         </section>
       </section>
+      <OperationsReportUploadOverlay
+        open={uploadOverlayOpen}
+        onClose={(shouldRefresh) => {
+          setUploadOverlayOpen(false);
+          if (shouldRefresh) refreshWorkspace();
+        }}
+      />
     </main>
   );
 }
