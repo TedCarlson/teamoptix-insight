@@ -8,6 +8,7 @@ import {
   type DispatchEventRow,
   type DispatchEventTypeRow,
   type DispatchPerson,
+  type DispatchRosterRow,
   type DispatchRoute,
   type GeneratedScheduleRow,
   type RouteRow,
@@ -64,6 +65,34 @@ function applyDispatchEvent(
   const routeKey = event.route_key ?? event.to_route_key ?? null;
   const seat = event.seat as Seat | null;
   const person = dispatchPersonFromEvent(event);
+
+  if (code === "ADD_ROUTE") {
+    if (!routeKey) return current;
+    if (current[routeKey]) return current;
+
+    const payload = event.event_payload ?? {};
+
+    return {
+      ...current,
+      [routeKey]: {
+        route_key: routeKey,
+        route_name:
+          typeof payload.route_name === "string"
+            ? payload.route_name
+            : event.route_label ?? routeKey,
+        current_wa_num:
+          typeof payload.current_wa_num === "string" ? payload.current_wa_num : null,
+        route_location:
+          typeof payload.route_location === "string" ? payload.route_location : null,
+        route_type:
+          typeof payload.route_type === "string" ? payload.route_type : "ADDED",
+        driver: null,
+        helpers: [],
+        trainees: [],
+        extras: [],
+      },
+    };
+  }
 
   if (!seat) return current;
 
@@ -123,6 +152,7 @@ export default function DispatchPage() {
 
   const [scheduleRows, setScheduleRows] = useState<GeneratedScheduleRow[]>([]);
   const [routes, setRoutes] = useState<RouteRow[]>([]);
+  const [rosterRows, setRosterRows] = useState<DispatchRosterRow[]>([]);
   const [assignments, setAssignments] = useState<Record<string, DispatchRoute>>({});
   const [intent, setIntent] = useState<AssignmentIntent>(null);
   const [dispatchDay, setDispatchDay] = useState<DispatchDayRow | null>(null);
@@ -147,12 +177,16 @@ export default function DispatchPage() {
         setLoading(true);
         setError(null);
 
-        const [scheduleRes, routesRes, dispatchDayRes, eventTypesRes] = await Promise.all([
+        const [scheduleRes, routesRes, rosterRes, dispatchDayRes, eventTypesRes] = await Promise.all([
           fetch(`/api/company/${slug}/schedule/generated?date=${serviceDate}`, {
             credentials: "include",
             cache: "no-store",
           }),
           fetch(`/api/company/${slug}/routes`, {
+            credentials: "include",
+            cache: "no-store",
+          }),
+          fetch(`/api/company/${slug}/people/roster`, {
             credentials: "include",
             cache: "no-store",
           }),
@@ -166,9 +200,10 @@ export default function DispatchPage() {
           }),
         ]);
 
-        const [scheduleData, routesData, dispatchDayData, eventTypesData] = await Promise.all([
+        const [scheduleData, routesData, rosterData, dispatchDayData, eventTypesData] = await Promise.all([
           scheduleRes.json(),
           routesRes.json(),
+          rosterRes.json(),
           dispatchDayRes.json(),
           eventTypesRes.json(),
         ]);
@@ -179,6 +214,7 @@ export default function DispatchPage() {
           setError(scheduleData?.error ?? "Failed to load generated schedule.");
           setScheduleRows([]);
           setRoutes([]);
+        setRosterRows([]);
           return;
         }
 
@@ -186,6 +222,16 @@ export default function DispatchPage() {
           setError(routesData?.error ?? "Failed to load routes.");
           setScheduleRows([]);
           setRoutes([]);
+        setRosterRows([]);
+          return;
+        }
+
+        if (!rosterRes.ok) {
+          setError(rosterData?.error ?? "Failed to load roster.");
+          setScheduleRows([]);
+          setRoutes([]);
+        setRosterRows([]);
+          setRosterRows([]);
           return;
         }
 
@@ -193,6 +239,7 @@ export default function DispatchPage() {
           setError(dispatchDayData?.error ?? "Failed to load dispatch day.");
           setScheduleRows([]);
           setRoutes([]);
+        setRosterRows([]);
           return;
         }
 
@@ -200,11 +247,13 @@ export default function DispatchPage() {
           setError(eventTypesData?.error ?? "Failed to load dispatch event types.");
           setScheduleRows([]);
           setRoutes([]);
+        setRosterRows([]);
           return;
         }
 
         setScheduleRows((scheduleData?.rows ?? []) as GeneratedScheduleRow[]);
         setRoutes((routesData?.routes ?? []) as RouteRow[]);
+        setRosterRows((rosterData?.roster ?? []) as DispatchRosterRow[]);
         setDispatchDay((dispatchDayData?.dispatch_day ?? null) as DispatchDayRow | null);
         setDispatchEvents((dispatchDayData?.events ?? []) as DispatchEventRow[]);
         setEventTypes((eventTypesData?.event_types ?? []) as DispatchEventTypeRow[]);
@@ -213,6 +262,7 @@ export default function DispatchPage() {
         setError("Dispatch hydration failed.");
         setScheduleRows([]);
         setRoutes([]);
+        setRosterRows([]);
       } finally {
         if (active) setLoading(false);
       }
@@ -315,6 +365,17 @@ export default function DispatchPage() {
     [assignments]
   );
 
+  const scheduledRosterIds = useMemo(() => {
+    const ids = new Set<string>();
+
+    for (const row of scheduleRows) {
+      if (row.service_date !== serviceDate) continue;
+      ids.add(row.roster_member_id);
+    }
+
+    return ids;
+  }, [scheduleRows, serviceDate]);
+
   const allPeople = useMemo(() => {
     const byId = new Map<string, DispatchPerson>();
 
@@ -324,8 +385,18 @@ export default function DispatchPage() {
       byId.set(person.roster_member_id, person);
     }
 
+    for (const event of dispatchEvents) {
+      if (event.event_code !== "ADD_DRIVER") continue;
+      const person = dispatchPersonFromEvent(event);
+      if (!person) continue;
+      byId.set(person.roster_member_id, {
+        ...person,
+        source_kind: "DISPATCH_ADD_DRIVER",
+      });
+    }
+
     return Array.from(byId.values()).sort(personSort);
-  }, [scheduleRows, serviceDate]);
+  }, [dispatchEvents, scheduleRows, serviceDate]);
 
   const callouts = useMemo(() => {
     const byId = new Map<string, DispatchPerson>();
@@ -621,6 +692,169 @@ export default function DispatchPage() {
     setIntent(null);
   }
 
+  async function recordManualAction(payload: {
+    event_code: string;
+    event_label: string;
+    event_category: string;
+    note?: string;
+    route_key?: string | null;
+    route_label?: string | null;
+    person_roster_member_id?: string | null;
+    person_name?: string | null;
+    event_payload?: Record<string, unknown>;
+  }) {
+    const res = await fetch(`/api/company/${slug}/dispatch/event`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        dispatch_date: serviceDate,
+        route_key: payload.route_key ?? null,
+        route_label: payload.route_label ?? null,
+        event_code: payload.event_code,
+        event_label: payload.event_label,
+        event_category: payload.event_category,
+        note: payload.note ?? "",
+        person_roster_member_id: payload.person_roster_member_id ?? null,
+        person_name: payload.person_name ?? null,
+        event_payload: payload.event_payload ?? {},
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      setError(data?.error ?? "Failed to record dispatch action.");
+      return null;
+    }
+
+    if (data?.event) {
+      setDispatchEvents((current) => [...current, data.event as DispatchEventRow]);
+    }
+
+    if (data?.dispatch_day) {
+      setDispatchDay(data.dispatch_day as DispatchDayRow);
+    }
+
+    return data;
+  }
+
+  async function handleAddRoute() {
+    if (dispatchLocked) return;
+
+    const rawRoute = window.prompt("Route / WA number to add");
+    const routeName = rawRoute?.trim();
+
+    if (!routeName) return;
+
+    const routeKey = cleanRouteKey(routeName);
+
+    if (assignments[routeKey]) {
+      setError("That route is already on the dispatch board.");
+      return;
+    }
+
+    try {
+      setSavingEvent(true);
+      setError(null);
+
+      await recordManualAction({
+        event_code: "ADD_ROUTE",
+        event_label: "Route added",
+        event_category: "ROUTE",
+        route_key: routeKey,
+        route_label: routeName,
+        note: "Route manually added to dispatch day.",
+        event_payload: {
+          route_name: routeName,
+          current_wa_num: routeName,
+          route_type: "ADDED",
+          source: "dispatch_manual_add_route",
+        },
+      });
+    } catch {
+      setError("Failed to add route.");
+    } finally {
+      setSavingEvent(false);
+    }
+  }
+
+  async function handleAddDriver() {
+    if (dispatchLocked) return;
+
+    const scheduledOrAdded = new Set(allPeople.map((person) => person.roster_member_id));
+
+    const candidates = rosterRows
+      .filter((row) => !scheduledRosterIds.has(row.roster_member_id))
+      .filter((row) => !scheduledOrAdded.has(row.roster_member_id))
+      .filter((row) => {
+        const status = (row.employment_status ?? "").toLowerCase();
+        if (status && status !== "active") return false;
+
+        const worker = `${row.worker_type ?? ""} ${row.full_name ?? ""}`.toLowerCase();
+        return !worker.includes("helper") && !worker.includes("trainee");
+      })
+      .sort((a, b) =>
+        (a.full_name ?? "").localeCompare(b.full_name ?? "", undefined, {
+          numeric: true,
+          sensitivity: "base",
+        })
+      );
+
+    if (candidates.length === 0) {
+      setError("No off-schedule roster drivers are available to add.");
+      return;
+    }
+
+    const search = window.prompt(
+      `Search driver to add. Available: ${candidates
+        .slice(0, 8)
+        .map((row) => row.full_name)
+        .filter(Boolean)
+        .join(", ")}${candidates.length > 8 ? ", ..." : ""}`
+    );
+
+    const needle = search?.trim().toLowerCase();
+    if (!needle) return;
+
+    const matches = candidates.filter((row) =>
+      `${row.full_name ?? ""} ${row.worker_type ?? ""}`.toLowerCase().includes(needle)
+    );
+
+    if (matches.length !== 1) {
+      setError(
+        matches.length === 0
+          ? "No matching off-schedule driver found."
+          : "Multiple drivers matched. Use a more specific search."
+      );
+      return;
+    }
+
+    const driver = matches[0];
+
+    try {
+      setSavingEvent(true);
+      setError(null);
+
+      await recordManualAction({
+        event_code: "ADD_DRIVER",
+        event_label: "Driver added",
+        event_category: "WORKFORCE",
+        person_roster_member_id: driver.roster_member_id,
+        person_name: driver.full_name?.trim() || "Unnamed driver",
+        note: "Driver manually added to dispatch day.",
+        event_payload: {
+          worker_type: driver.worker_type,
+          source: "dispatch_manual_add_driver",
+        },
+      });
+    } catch {
+      setError("Failed to add driver.");
+    } finally {
+      setSavingEvent(false);
+    }
+  }
+
   async function addManualDispatchEvent(payload: {
     event_code: string;
     event_label: string;
@@ -794,6 +1028,8 @@ export default function DispatchPage() {
           events={dispatchEvents}
           locking={locking}
           onAddEvent={() => setEventOverlayOpen(true)}
+          onAddRoute={handleAddRoute}
+          onAddDriver={handleAddDriver}
           onLockDispatch={lockDispatch}
         />
         </section>

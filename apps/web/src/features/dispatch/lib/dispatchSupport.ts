@@ -37,6 +37,13 @@ export type DispatchPerson = {
   override_type: string | null;
 };
 
+export type DispatchRosterRow = {
+  roster_member_id: string;
+  full_name: string | null;
+  worker_type: string | null;
+  employment_status: string | null;
+};
+
 export type DispatchRoute = {
   route_key: string;
   route_name: string;
@@ -228,6 +235,7 @@ export type DispatchEventRow = {
   person_roster_member_id: string | null;
   person_name: string | null;
   note: string | null;
+  event_payload?: Record<string, unknown> | null;
   created_at: string;
 };
 

@@ -22,6 +22,8 @@ type DispatchRightRailProps = {
   events: DispatchEventRow[];
   locking: boolean;
   onAddEvent: () => void;
+  onAddRoute: () => void;
+  onAddDriver: () => void;
   onLockDispatch: () => void;
 };
 
@@ -44,6 +46,8 @@ export function DispatchRightRail(props: DispatchRightRailProps) {
     events,
     locking,
     onAddEvent,
+    onAddRoute,
+    onAddDriver,
     onLockDispatch,
   } = props;
 
@@ -76,6 +80,14 @@ export function DispatchRightRail(props: DispatchRightRailProps) {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button type="button" style={compactButton} onClick={onAddEvent} disabled={locked}>
               Add Event
+            </button>
+
+            <button type="button" style={compactButton} onClick={onAddRoute} disabled={locked}>
+              Add Route
+            </button>
+
+            <button type="button" style={compactButton} onClick={onAddDriver} disabled={locked}>
+              Add Driver
             </button>
 
             <button
