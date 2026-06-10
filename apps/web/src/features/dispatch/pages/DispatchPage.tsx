@@ -49,6 +49,21 @@ function dispatchPersonFromEvent(event: DispatchEventRow): DispatchPerson | null
   };
 }
 
+type DispatchSurface = "dispatch" | "delivery-window" | "planning";
+
+type PlanningSnapshot = {
+  planning_date: string;
+  locked_at: string;
+  route_sort_key: "route_name" | "current_wa_num";
+  routes: DispatchRoute[];
+};
+
+function addDaysIso(value: string, days: number) {
+  const date = new Date(`${value}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 function removePersonFromRoute(route: DispatchRoute, rosterMemberId: string): DispatchRoute {
   return {
     ...route,
@@ -180,7 +195,10 @@ export default function DispatchPage() {
   const persistedCalloutKeys = useRef(new Set<string>());
 
   const serviceDate = todayIso();
+  const planningDate = addDaysIso(serviceDate, 1);
   const dispatchLocked = dispatchDay?.status === "LOCKED";
+  const [activeSurface, setActiveSurface] = useState<DispatchSurface>("dispatch");
+  const [planningSnapshot, setPlanningSnapshot] = useState<PlanningSnapshot | null>(null);
   const [routeSortKey, setRouteSortKey] = useState<"route_name" | "current_wa_num">("route_name");
 
   const routeSort = useCallback(
@@ -348,6 +366,29 @@ export default function DispatchPage() {
       active = false;
     };
   }, [refreshKey, serviceDate, slug]);
+
+  useEffect(() => {
+    if (!slug) return;
+
+    const key = `teamoptix:planning-snapshot:${slug}:${planningDate}`;
+    const raw = window.localStorage.getItem(key);
+
+    if (!raw) {
+      setPlanningSnapshot(null);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as PlanningSnapshot;
+      if (parsed?.planning_date === planningDate) {
+        setPlanningSnapshot(parsed);
+      } else {
+        setPlanningSnapshot(null);
+      }
+    } catch {
+      setPlanningSnapshot(null);
+    }
+  }, [planningDate, slug]);
 
   const hydratedRoutes = useMemo(() => {
     const runFlag = runFlagForDate(serviceDate);
@@ -598,6 +639,59 @@ export default function DispatchPage() {
       .filter((route) => !assignedKeys.has(route.route_key))
       .sort(routeSort);
   }, [dispatchRoutes, routeSort, routes]);
+
+  const planningRoutes = useMemo(() => {
+    const runFlag = runFlagForDate(planningDate);
+
+    return routes
+      .filter((route) => Boolean(route[runFlag as keyof RouteRow]))
+      .map((route) => {
+        const key = cleanRouteKey(route.current_wa_num || route.route_name);
+
+        return {
+          route_key: key,
+          route_name: route.route_name?.trim() || key,
+          current_wa_num: route.current_wa_num,
+          route_location: route.route_location,
+          route_type: route.route_type,
+          driver: null,
+          helpers: [],
+          trainees: [],
+          extras: [],
+        };
+      })
+      .sort(routeSort);
+  }, [planningDate, routeSort, routes]);
+
+  const displayedPlanningRoutes = planningSnapshot?.routes ?? planningRoutes;
+
+  function lockPlanningSnapshot() {
+    if (!slug) return;
+
+    const snapshot: PlanningSnapshot = {
+      planning_date: planningDate,
+      locked_at: new Date().toISOString(),
+      route_sort_key: routeSortKey,
+      routes: planningRoutes,
+    };
+
+    window.localStorage.setItem(
+      `teamoptix:planning-snapshot:${slug}:${planningDate}`,
+      JSON.stringify(snapshot)
+    );
+
+    setPlanningSnapshot(snapshot);
+  }
+
+  function resetPlanningSnapshot() {
+    if (!slug) return;
+
+    window.localStorage.removeItem(
+      `teamoptix:planning-snapshot:${slug}:${planningDate}`
+    );
+
+    setPlanningSnapshot(null);
+  }
 
   const summary = useMemo(() => {
     const total = dispatchRoutes.length;
@@ -1143,6 +1237,44 @@ export default function DispatchPage() {
           </section>
         ) : null}
 
+        <section
+          style={{
+            ...panel,
+            padding: 10,
+            marginTop: 10,
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          {[
+            ["dispatch", "Dispatch"],
+            ["delivery-window", "Delivery Window"],
+            ["planning", "Planning"],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              className="button"
+              onClick={() => setActiveSurface(key as DispatchSurface)}
+              style={
+                activeSurface === key
+                  ? {
+                      borderColor: "#2563eb",
+                      background: "#eff6ff",
+                      color: "#1d4ed8",
+                      fontWeight: 900,
+                    }
+                  : undefined
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </section>
+
+        {activeSurface === "dispatch" ? (
         <section className="dispatch-grid">
         <DispatchWorkforceRail
           allPeopleCount={allPeople.length}
@@ -1176,6 +1308,173 @@ export default function DispatchPage() {
           onLockDispatch={lockDispatch}
         />
         </section>
+        ) : null}
+
+        {activeSurface === "delivery-window" ? (
+          <section
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 1fr) 360px",
+              gap: 12,
+              marginTop: 10,
+              alignItems: "start",
+            }}
+          >
+            <section style={{ ...panel, padding: 14, display: "grid", gap: 10 }}>
+              <p style={eyebrow}>Delivery Window</p>
+              <h2 style={{ margin: 0, fontSize: 18 }}>Route window review</h2>
+              <p style={{ margin: 0, color: "#64748b", fontWeight: 700 }}>
+                This surface will review the PM snapshot after planning is locked and before dispatch execution begins.
+              </p>
+
+              <div style={{ display: "grid", gap: 8 }}>
+                {displayedPlanningRoutes.map((route) => (
+                  <div
+                    key={route.route_key}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      padding: "10px 12px",
+                      borderRadius: 14,
+                      border: "1px solid #e6edf5",
+                      background: "#fff",
+                    }}
+                  >
+                    <strong>{orderedRouteLabel(route)}</strong>
+                    <span style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>
+                      {route.route_location ?? "No location"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <aside style={{ ...panel, padding: 14, display: "grid", gap: 10 }}>
+              <p style={eyebrow}>Window posture</p>
+              <strong>{displayedPlanningRoutes.length} planned routes</strong>
+              <p style={{ margin: 0, color: "#64748b", fontWeight: 700 }}>
+                Exception/risk rail lands here next.
+              </p>
+            </aside>
+          </section>
+        ) : null}
+
+        {activeSurface === "planning" ? (
+          <section style={{ ...panel, padding: 14, marginTop: 10, display: "grid", gap: 12 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                alignItems: "flex-start",
+                flexWrap: "wrap",
+              }}
+            >
+              <div>
+                <p style={eyebrow}>Planning</p>
+                <h2 style={{ margin: 0, fontSize: 18 }}>Tomorrow PM route snapshot</h2>
+                <p style={{ margin: "4px 0 0", color: "#64748b", fontWeight: 700 }}>
+                  Planning projects tomorrow route set. Lock the PM snapshot to hold this plan through delivery-window review.
+                </p>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="button button-primary"
+                  onClick={lockPlanningSnapshot}
+                  disabled={planningRoutes.length === 0}
+                >
+                  {planningSnapshot ? "Re-lock PM snapshot" : "Lock PM snapshot"}
+                </button>
+
+                <button
+                  type="button"
+                  className="button"
+                  onClick={resetPlanningSnapshot}
+                  disabled={!planningSnapshot}
+                >
+                  Reset planning
+                </button>
+              </div>
+            </div>
+
+            <section
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                gap: 10,
+              }}
+            >
+              <div style={{ ...panel, padding: 12 }}>
+                <p style={eyebrow}>Planning date</p>
+                <strong>{planningDate}</strong>
+              </div>
+              <div style={{ ...panel, padding: 12 }}>
+                <p style={eyebrow}>Routes</p>
+                <strong>{displayedPlanningRoutes.length}</strong>
+              </div>
+              <div style={{ ...panel, padding: 12 }}>
+                <p style={eyebrow}>Order</p>
+                <strong>
+                  {routeSortKey === "current_wa_num" ? "Work area" : "Route name"}
+                </strong>
+              </div>
+              <div style={{ ...panel, padding: 12 }}>
+                <p style={eyebrow}>Snapshot</p>
+                <strong>{planningSnapshot ? "Locked" : "Live projection"}</strong>
+              </div>
+            </section>
+
+            {planningSnapshot ? (
+              <section
+                style={{
+                  padding: 12,
+                  borderRadius: 16,
+                  border: "1px solid #bbf7d0",
+                  background: "#ecfdf3",
+                  color: "#166534",
+                  fontWeight: 800,
+                }}
+              >
+                PM snapshot locked {new Date(planningSnapshot.locked_at).toLocaleString()}.
+              </section>
+            ) : null}
+
+            <div style={{ display: "grid", gap: 8 }}>
+              {displayedPlanningRoutes.length === 0 ? (
+                <p style={{ margin: 0, color: "#64748b", fontWeight: 700 }}>
+                  No routes projected for tomorrow.
+                </p>
+              ) : (
+                displayedPlanningRoutes.map((route) => (
+                  <div
+                    key={route.route_key}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(0, 1fr) 180px 140px",
+                      gap: 10,
+                      alignItems: "center",
+                      padding: "10px 12px",
+                      borderRadius: 14,
+                      border: "1px solid #e6edf5",
+                      background: "#fff",
+                    }}
+                  >
+                    <strong>{orderedRouteLabel(route)}</strong>
+                    <span style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>
+                      {route.route_location ?? "No location"}
+                    </span>
+                    <span style={{ color: "#64748b", fontSize: 12, fontWeight: 900 }}>
+                      {route.route_type ?? "Route"}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+        ) : null}
       </section>
 
       <OperationsReportUploadOverlay
