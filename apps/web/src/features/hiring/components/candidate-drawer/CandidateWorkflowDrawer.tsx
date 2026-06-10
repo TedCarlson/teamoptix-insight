@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { RosterRow } from "@/features/people/types/roster.types";
 import CandidateChecklistPanel from "@/features/hiring/components/candidate-detail/CandidateChecklistPanel";
 import PersonCoreSection from "@/features/people/components/person-drawer/PersonCoreSection";
 import PersonOperationsSection from "@/features/people/components/person-drawer/PersonOperationsSection";
 import PersonLifecycleSection from "@/features/people/components/person-drawer/PersonLifecycleSection";
+import PersonTimelineSection from "@/features/people/components/person-drawer/PersonTimelineSection";
 
 type CoreDraft = {
   full_name: string;
@@ -52,6 +53,16 @@ type CandidateStageOption = {
   is_terminal: boolean;
 };
 
+type TimelineEvent = {
+  id: string;
+  event_category: string;
+  event_type: string;
+  event_detail: string | null;
+  event_metadata: Record<string, unknown> | null;
+  occurred_at: string;
+  created_at: string;
+};
+
 const DEFAULT_STAGE_OPTIONS: CandidateStageOption[] = [
   { stage_key: "candidate_created", label: "New", is_terminal: false },
   { stage_key: "invited", label: "Invited", is_terminal: false },
@@ -61,6 +72,29 @@ const DEFAULT_STAGE_OPTIONS: CandidateStageOption[] = [
   { stage_key: "ineligible", label: "Ineligible", is_terminal: true },
   { stage_key: "dnf", label: "DNF", is_terminal: true },
 ];
+
+const sectionFrameStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 12,
+  padding: 14,
+  border: "1px solid #e1e8f2",
+  borderRadius: 20,
+  background: "#fbfdff",
+  boxShadow: "inset 0 1px 0 rgba(255,255,255,.82)",
+};
+
+const candidateFrameStyle: React.CSSProperties = {
+  ...sectionFrameStyle,
+  borderColor: "#c7d2fe",
+  background: "linear-gradient(180deg, #f8fbff 0%, #ffffff 100%)",
+};
+
+const sectionDividerStyle: React.CSSProperties = {
+  height: 1,
+  background: "#e6edf5",
+  margin: "2px 0",
+};
+
 
 type Props = {
   open: boolean;
@@ -221,7 +255,50 @@ export default function CandidateWorkflowDrawer({
   const [savingStage, setSavingStage] = useState(false);
   const [stageKey, setStageKey] = useState(person?.candidate_stage_key ?? "candidate_created");
   const [stageNote, setStageNote] = useState("");
+  const [showChecklist, setShowChecklist] = useState(false);
+  const [showStageNote, setShowStageNote] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
+  const [loadingTimeline, setLoadingTimeline] = useState(false);
+
+  useEffect(() => {
+    const rosterId = person?.roster_member_id;
+    if (!open || !rosterId) return;
+
+    let active = true;
+
+    async function loadTimeline() {
+      try {
+        setLoadingTimeline(true);
+
+        const res = await fetch(
+          `/api/company/${slug}/people/roster/${rosterId}/events`,
+          { credentials: "include" }
+        );
+
+        const data = await res.json();
+
+        if (!active) return;
+
+        if (!res.ok) {
+          setTimelineEvents([]);
+          return;
+        }
+
+        setTimelineEvents((data?.events ?? []) as TimelineEvent[]);
+      } catch {
+        if (active) setTimelineEvents([]);
+      } finally {
+        if (active) setLoadingTimeline(false);
+      }
+    }
+
+    void loadTimeline();
+
+    return () => {
+      active = false;
+    };
+  }, [open, person?.roster_member_id, slug]);
 
   if (!open || !person) return null;
 
@@ -426,20 +503,22 @@ export default function CandidateWorkflowDrawer({
         inset: 0,
         zIndex: 90,
         background: "rgba(15,23,42,.28)",
-        display: "flex",
-        justifyContent: "flex-end",
+        display: "grid",
+        placeItems: "center",
+        padding: 16,
       }}
     >
       <aside
         onMouseDown={(event) => event.stopPropagation()}
         style={{
-          width: "min(760px, 100%)",
-          height: "100%",
+          width: "min(960px, 100%)",
+          maxHeight: "calc(100vh - 32px)",
           overflow: "auto",
-          background: "#fff",
-          borderLeft: "1px solid #d6dfeb",
-          boxShadow: "-24px 0 60px rgba(15,23,42,.18)",
-          padding: "12px 14px 18px",
+          background: "#f4f7fb",
+          border: "1px solid #d6dfeb",
+          borderRadius: 24,
+          boxShadow: "0 24px 60px rgba(15,23,42,.18)",
+          padding: "14px",
           display: "grid",
           gap: 14,
           alignContent: "start",
@@ -473,27 +552,18 @@ export default function CandidateWorkflowDrawer({
           </p>
         ) : null}
 
-        <ReadinessSignal progress={person.candidate_progress} />
+        <section style={candidateFrameStyle}>
+          <div>
+            <p className="workspace-eyebrow">Candidate controls</p>
+            <h3 className="workspace-card-title">Hiring readiness</h3>
+            <p className="workspace-card-body" style={{ marginTop: 4 }}>
+              Candidate-only workflow items stay here so the person record stays clean below.
+            </p>
+          </div>
 
-        <PersonCoreSection
-          person={person}
-          saving={savingDetails}
-          onSave={saveDetails}
-        />
+          <ReadinessSignal progress={person.candidate_progress} />
 
-        <PersonOperationsSection
-          person={person}
-          saving={savingOperations}
-          onSave={saveOperations}
-        />
-
-        <PersonLifecycleSection
-          person={person}
-          saving={savingStatus}
-          onSave={saveStatus}
-        />
-
-        <section
+<section
           style={{
             borderTop: "1px solid #e6edf5",
             paddingTop: 14,
@@ -527,24 +597,34 @@ export default function CandidateWorkflowDrawer({
             </select>
           </label>
 
-          <label style={{ display: "grid", gap: 6 }}>
-            <span className="hero-stat__label">Note</span>
-            <textarea
-              value={stageNote}
-              onChange={(event) => setStageNote(event.target.value)}
-              placeholder="Optional reason or disposition note"
-              style={{
-                minHeight: 72,
-                borderRadius: 12,
-                border: "1px solid #d6dfeb",
-                padding: 12,
-                background: "#fff",
-                color: "#17213a",
-                fontWeight: 700,
-                resize: "vertical",
-              }}
-            />
-          </label>
+          <button
+            type="button"
+            className="button"
+            onClick={() => setShowStageNote((v) => !v)}
+          >
+            {showStageNote ? "Hide note" : "Add disposition note"}
+          </button>
+
+          {showStageNote ? (
+            <label style={{ display: "grid", gap: 6 }}>
+              <span className="hero-stat__label">Note</span>
+              <textarea
+                value={stageNote}
+                onChange={(event) => setStageNote(event.target.value)}
+                placeholder="Optional reason or disposition note"
+                style={{
+                  minHeight: 72,
+                  borderRadius: 12,
+                  border: "1px solid #d6dfeb",
+                  padding: 12,
+                  background: "#fff",
+                  color: "#17213a",
+                  fontWeight: 700,
+                  resize: "vertical",
+                }}
+              />
+            </label>
+          ) : null}
 
           <button
             className="button button-primary"
@@ -556,25 +636,45 @@ export default function CandidateWorkflowDrawer({
           </button>
         </section>
 
-        <CandidateChecklistPanel
+<CandidateChecklistPanel
           slug={slug}
           rosterId={person.roster_member_id}
           onChanged={onRefresh}
         />
+        </section>
 
-        <section
-          style={{
-            borderTop: "1px solid #e6edf5",
-            paddingTop: 14,
-            display: "grid",
-            gap: 6,
-          }}
-        >
-          <p className="workspace-eyebrow">Timeline</p>
-          <h3 className="workspace-card-title">Candidate journey</h3>
-          <p className="workspace-card-body">
-            Candidate timeline wiring will consume roster events next.
-          </p>
+        <section style={sectionFrameStyle}>
+          <div>
+            <p className="workspace-eyebrow">Person record</p>
+            <h3 className="workspace-card-title">Shared profile and work facts</h3>
+            <p className="workspace-card-body" style={{ marginTop: 4 }}>
+              These fields follow the person across candidate, active, and former states.
+            </p>
+          </div>
+
+          <div style={sectionDividerStyle} />
+
+          <PersonCoreSection
+            person={person}
+            saving={savingDetails}
+            onSave={saveDetails}
+          />
+
+          <PersonOperationsSection
+            person={person}
+            saving={savingOperations}
+            onSave={saveOperations}
+          />
+
+          <PersonLifecycleSection
+            person={person}
+            saving={savingStatus}
+            onSave={saveStatus}
+          />
+        </section>
+
+        <section style={sectionFrameStyle}>
+          <PersonTimelineSection events={timelineEvents} loading={loadingTimeline} />
         </section>
       </aside>
     </div>

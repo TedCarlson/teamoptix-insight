@@ -59,7 +59,37 @@ export async function PATCH(
       );
     }
 
-    return NextResponse.json({ ok: true, roster: data }, { status: 200 });
+    const note = textOrNull(body.notes);
+    const { data: noteData, error: noteError } = await supabase.rpc(
+      "update_company_roster_note",
+      {
+        p_company_slug: slug,
+        p_roster_id: rosterId,
+        p_note: note,
+      }
+    );
+
+    if (noteError) {
+      return NextResponse.json(
+        {
+          error: "Details saved, but note failed to persist.",
+          detail: noteError.message,
+          code: noteError.code ?? null,
+        },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        ok: true,
+        roster: {
+          ...(data ?? {}),
+          notes: noteData?.notes ?? note,
+        },
+      },
+      { status: 200 }
+    );
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to update details.";

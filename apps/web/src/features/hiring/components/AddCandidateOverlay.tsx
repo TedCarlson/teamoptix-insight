@@ -59,6 +59,15 @@ const textareaStyle: React.CSSProperties = {
   resize: "vertical",
 };
 
+const bucketStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 10,
+  padding: 12,
+  border: "1px solid #e6edf5",
+  borderRadius: 16,
+  background: "#fbfdff",
+};
+
 function Field(props: {
   label: string;
   value: string;
@@ -246,8 +255,8 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
         </div>
 
         <form onSubmit={handleSubmit} style={{ marginTop: 16, display: "grid", gap: 14 }}>
-          <section style={{ display: "grid", gap: 10 }}>
-            <p className="workspace-eyebrow" style={{ margin: 0 }}>Identity</p>
+          <section style={bucketStyle}>
+            <p className="workspace-eyebrow" style={{ margin: 0 }}>Required to save</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
               <Field label="Full name" value={fullName} onChange={setFullName} required />
               <Field label="Email" value={email} onChange={setEmail} type="email" required />
@@ -258,8 +267,8 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
             </div>
           </section>
 
-          <section style={{ display: "grid", gap: 10 }}>
-            <p className="workspace-eyebrow" style={{ margin: 0 }}>Driver license</p>
+          <section style={bucketStyle}>
+            <p className="workspace-eyebrow" style={{ margin: 0 }}>Driver license · Required</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
               <Field label="Driver's License" value={licenseNumber} onChange={setLicenseNumber} required />
               <Field label="Issuing State" value={issuingState} onChange={setIssuingState} required />
@@ -268,8 +277,8 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
             </div>
           </section>
 
-          <section style={{ display: "grid", gap: 10 }}>
-            <p className="workspace-eyebrow" style={{ margin: 0 }}>Address</p>
+          <section style={bucketStyle}>
+            <p className="workspace-eyebrow" style={{ margin: 0 }}>Optional profile details</p>
             <Field label="Address Line 1" value={addressLine1} onChange={setAddressLine1} />
             <Field label="Address Line 2" value={addressLine2} onChange={setAddressLine2} />
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 10 }}>
@@ -279,8 +288,8 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
             </div>
           </section>
 
-          <section style={{ display: "grid", gap: 10 }}>
-            <p className="workspace-eyebrow" style={{ margin: 0 }}>Operations</p>
+          <section style={bucketStyle}>
+            <p className="workspace-eyebrow" style={{ margin: 0 }}>Operations readiness</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
               <Field label="FX ID" value={fxId} onChange={setFxId} />
               <Field label="DSWID" value={dswid} onChange={setDswid} />
@@ -292,8 +301,8 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
             </div>
           </section>
 
-          <section style={{ display: "grid", gap: 10 }}>
-            <p className="workspace-eyebrow" style={{ margin: 0 }}>Invitation</p>
+          <section style={bucketStyle}>
+            <p className="workspace-eyebrow" style={{ margin: 0 }}>Invitation decision</p>
             <select
               value={inviteAction}
               onChange={(event) =>

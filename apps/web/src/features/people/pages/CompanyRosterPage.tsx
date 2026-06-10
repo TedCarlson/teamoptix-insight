@@ -259,6 +259,19 @@ export default function CompanyRosterPage() {
     phone: string;
     worker_type: string;
     market_code: string;
+    notes: string;
+
+    date_of_birth: string;
+    address_line_1: string;
+    address_line_2: string;
+    city: string;
+    state_region: string;
+    postal_code: string;
+
+    license_number: string;
+    issuing_state: string;
+    license_issue_date: string;
+    license_expiration_date: string;
   }) {
     if (!managedPerson) return;
 

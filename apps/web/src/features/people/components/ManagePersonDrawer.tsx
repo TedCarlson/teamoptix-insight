@@ -95,20 +95,22 @@ export default function ManagePersonDrawer({
         inset: 0,
         zIndex: 80,
         background: "rgba(15,23,42,.28)",
-        display: "flex",
-        justifyContent: "flex-end",
+        display: "grid",
+        placeItems: "center",
+        padding: 16,
       }}
     >
       <aside
         onMouseDown={(event) => event.stopPropagation()}
         style={{
-          width: "min(760px,100%)",
-          height: "100%",
+          width: "min(1180px, 100%)",
+          maxHeight: "calc(100vh - 32px)",
           overflow: "auto",
-          background: "#fff",
-          borderLeft: "1px solid #d6dfeb",
-          boxShadow: "-24px 0 60px rgba(15,23,42,.18)",
-          padding: "12px 14px 18px",
+          background: "#f4f7fb",
+          border: "1px solid #d6dfeb",
+          borderRadius: 24,
+          boxShadow: "0 24px 60px rgba(15,23,42,.18)",
+          padding: "14px",
           display: "grid",
           gap: 14,
           alignContent: "start",
