@@ -13,6 +13,19 @@ type CoreDraft = {
   phone: string;
   worker_type: string;
   market_code: string;
+  notes: string;
+
+  date_of_birth: string;
+  address_line_1: string;
+  address_line_2: string;
+  city: string;
+  state_region: string;
+  postal_code: string;
+
+  license_number: string;
+  issuing_state: string;
+  license_issue_date: string;
+  license_expiration_date: string;
 };
 
 type OperationsDraft = {
@@ -292,6 +305,17 @@ export default function CandidateWorkflowDrawer({
         phone: draft.phone,
         worker_type: draft.worker_type,
         market_code: draft.market_code,
+        notes: draft.notes,
+        date_of_birth: draft.date_of_birth,
+        address_line_1: draft.address_line_1,
+        address_line_2: draft.address_line_2,
+        city: draft.city,
+        state_region: draft.state_region,
+        postal_code: draft.postal_code,
+        license_number: draft.license_number,
+        issuing_state: draft.issuing_state,
+        license_issue_date: draft.license_issue_date,
+        license_expiration_date: draft.license_expiration_date,
       });
 
       await onRefresh?.();

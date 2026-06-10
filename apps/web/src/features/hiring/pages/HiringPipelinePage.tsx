@@ -4,6 +4,7 @@ import ComplianceSignal from "@/features/compliance/components/ComplianceSignal"
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import AddCandidateOverlay from "@/features/hiring/components/AddCandidateOverlay";
+import type { AddCandidatePayload } from "@/features/hiring/components/AddCandidateOverlay";
 import CandidateWorkflowDrawer from "@/features/hiring/components/candidate-drawer/CandidateWorkflowDrawer";
 import type { RosterRow } from "@/features/people/types/roster.types";
 
@@ -303,14 +304,7 @@ export default function HiringPipelinePage() {
     if (slug) void loadCandidates();
   }, [slug, loadCandidates]);
 
-  async function saveCandidate(payload: {
-    full_name: string;
-    email: string;
-    phone: string;
-    worker_type: string;
-    market_code: string;
-    note: string;
-  }) {
+  async function saveCandidate(payload: AddCandidatePayload) {
     try {
       setSavingCandidate(true);
       setCandidateError(null);
@@ -327,6 +321,26 @@ export default function HiringPipelinePage() {
       if (!res.ok) {
         setCandidateError(data?.error ?? "Failed to save candidate.");
         return;
+      }
+
+      if (payload.invite_action === "SEND_INVITE" && data?.roster_id) {
+        const inviteRes = await fetch(
+          `/api/company/${slug}/people/roster/${data.roster_id}/invite`,
+          {
+            method: "POST",
+            credentials: "include",
+          }
+        );
+
+        if (!inviteRes.ok) {
+          const inviteData = await inviteRes.json().catch(() => ({}));
+          setCandidateError(
+            inviteData?.error ??
+              "Candidate saved, but invite could not be sent."
+          );
+          await loadCandidates();
+          return;
+        }
       }
 
       setCandidateOverlayOpen(false);

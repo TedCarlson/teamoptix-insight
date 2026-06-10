@@ -2,19 +2,44 @@
 
 import { useEffect, useState } from "react";
 
+export type AddCandidatePayload = {
+  full_name: string;
+  email: string;
+  phone: string;
+  worker_type: string;
+  market_code: string;
+  note: string;
+
+  date_of_birth: string;
+  fx_id: string;
+  dswid: string;
+
+  license_number: string;
+  issuing_state: string;
+  license_issue_date: string;
+  license_expiration_date: string;
+
+  address_line_1: string;
+  address_line_2: string;
+  city: string;
+  state_region: string;
+  postal_code: string;
+
+  start_date: string;
+  end_date: string;
+  dot_expiration_date: string;
+  qual_cert_expiration_date: string;
+
+  daily_pay_rate: string;
+  invite_action: "SAVE_ONLY" | "SEND_INVITE";
+};
+
 type AddCandidateOverlayProps = {
   open: boolean;
   saving: boolean;
   error: string | null;
   onClose: () => void;
-  onSubmit: (payload: {
-    full_name: string;
-    email: string;
-    phone: string;
-    worker_type: string;
-    market_code: string;
-    note: string;
-  }) => Promise<void>;
+  onSubmit: (payload: AddCandidatePayload) => Promise<void>;
 };
 
 const inputStyle: React.CSSProperties = {
@@ -65,6 +90,61 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
   const [marketCode, setMarketCode] = useState("");
   const [note, setNote] = useState("");
 
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [fxId, setFxId] = useState("");
+  const [dswid, setDswid] = useState("");
+
+  const [licenseNumber, setLicenseNumber] = useState("");
+  const [issuingState, setIssuingState] = useState("");
+  const [licenseIssueDate, setLicenseIssueDate] = useState("");
+  const [licenseExpirationDate, setLicenseExpirationDate] = useState("");
+
+  const [addressLine1, setAddressLine1] = useState("");
+  const [addressLine2, setAddressLine2] = useState("");
+  const [city, setCity] = useState("");
+  const [stateRegion, setStateRegion] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [dotExpirationDate, setDotExpirationDate] = useState("");
+  const [qualCertExpirationDate, setQualCertExpirationDate] = useState("");
+  const [dailyPayRate, setDailyPayRate] = useState("130");
+
+  const [inviteAction, setInviteAction] =
+    useState<"SAVE_ONLY" | "SEND_INVITE">("SAVE_ONLY");
+
+  function reset() {
+    setFullName("");
+    setEmail("");
+    setPhone("");
+    setWorkerType("Driver");
+    setMarketCode("");
+    setNote("");
+
+    setDateOfBirth("");
+    setFxId("");
+    setDswid("");
+
+    setLicenseNumber("");
+    setIssuingState("");
+    setLicenseIssueDate("");
+    setLicenseExpirationDate("");
+
+    setAddressLine1("");
+    setAddressLine2("");
+    setCity("");
+    setStateRegion("");
+    setPostalCode("");
+
+    setStartDate("");
+    setEndDate("");
+    setDotExpirationDate("");
+    setQualCertExpirationDate("");
+    setDailyPayRate("130");
+    setInviteAction("SAVE_ONLY");
+  }
+
   useEffect(() => {
     if (!open) return;
 
@@ -73,7 +153,6 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
     }
 
     window.addEventListener("keydown", handleKey);
-
     return () => window.removeEventListener("keydown", handleKey);
   }, [open, onClose]);
 
@@ -89,6 +168,29 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
       worker_type: workerType,
       market_code: marketCode,
       note,
+
+      date_of_birth: dateOfBirth,
+      fx_id: fxId,
+      dswid,
+
+      license_number: licenseNumber,
+      issuing_state: issuingState,
+      license_issue_date: licenseIssueDate,
+      license_expiration_date: licenseExpirationDate,
+
+      address_line_1: addressLine1,
+      address_line_2: addressLine2,
+      city,
+      state_region: stateRegion,
+      postal_code: postalCode,
+
+      start_date: startDate,
+      end_date: endDate,
+      dot_expiration_date: dotExpirationDate,
+      qual_cert_expiration_date: qualCertExpirationDate,
+
+      daily_pay_rate: dailyPayRate,
+      invite_action: inviteAction,
     });
   }
 
@@ -111,7 +213,7 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
       <section
         onMouseDown={(event) => event.stopPropagation()}
         style={{
-          width: "min(640px, 100%)",
+          width: "min(860px, 100%)",
           maxHeight: "calc(100vh - 32px)",
           overflow: "auto",
           border: "1px solid #d6dfeb",
@@ -124,9 +226,9 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
           <div>
             <p className="eyebrow">Hiring</p>
-            <h2 className="app-card__title">Add or update candidate</h2>
+            <h2 className="app-card__title">Add candidate</h2>
             <p className="app-card__body">
-              Email match updates an existing candidate/person record. New email creates a candidate row.
+              Minimum save requires name, email, phone, and driver license details.
             </p>
           </div>
 
@@ -135,12 +237,7 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
             type="button"
             disabled={saving}
             onClick={() => {
-              setFullName("");
-              setEmail("");
-              setPhone("");
-              setWorkerType("Driver");
-              setMarketCode("");
-              setNote("");
+              reset();
               onClose();
             }}
           >
@@ -148,15 +245,69 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ marginTop: 16, display: "grid", gap: 12 }}>
-          <Field label="Full name" value={fullName} onChange={setFullName} required />
-          <Field label="Email" value={email} onChange={setEmail} type="email" />
-          <Field label="Phone" value={phone} onChange={setPhone} />
-          <Field label="Role / worker type" value={workerType} onChange={setWorkerType} />
-          <Field label="Market / terminal code" value={marketCode} onChange={setMarketCode} />
+        <form onSubmit={handleSubmit} style={{ marginTop: 16, display: "grid", gap: 14 }}>
+          <section style={{ display: "grid", gap: 10 }}>
+            <p className="workspace-eyebrow" style={{ margin: 0 }}>Identity</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+              <Field label="Full name" value={fullName} onChange={setFullName} required />
+              <Field label="Email" value={email} onChange={setEmail} type="email" required />
+              <Field label="Phone" value={phone} onChange={setPhone} required />
+              <Field label="DOB" value={dateOfBirth} onChange={setDateOfBirth} type="date" />
+              <Field label="Role / worker type" value={workerType} onChange={setWorkerType} />
+              <Field label="Market / terminal code" value={marketCode} onChange={setMarketCode} />
+            </div>
+          </section>
+
+          <section style={{ display: "grid", gap: 10 }}>
+            <p className="workspace-eyebrow" style={{ margin: 0 }}>Driver license</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
+              <Field label="Driver's License" value={licenseNumber} onChange={setLicenseNumber} required />
+              <Field label="Issuing State" value={issuingState} onChange={setIssuingState} required />
+              <Field label="Issue Date" value={licenseIssueDate} onChange={setLicenseIssueDate} type="date" required />
+              <Field label="Expiration Date" value={licenseExpirationDate} onChange={setLicenseExpirationDate} type="date" required />
+            </div>
+          </section>
+
+          <section style={{ display: "grid", gap: 10 }}>
+            <p className="workspace-eyebrow" style={{ margin: 0 }}>Address</p>
+            <Field label="Address Line 1" value={addressLine1} onChange={setAddressLine1} />
+            <Field label="Address Line 2" value={addressLine2} onChange={setAddressLine2} />
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 10 }}>
+              <Field label="City" value={city} onChange={setCity} />
+              <Field label="State / Territory" value={stateRegion} onChange={setStateRegion} />
+              <Field label="Zip Code" value={postalCode} onChange={setPostalCode} />
+            </div>
+          </section>
+
+          <section style={{ display: "grid", gap: 10 }}>
+            <p className="workspace-eyebrow" style={{ margin: 0 }}>Operations</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+              <Field label="FX ID" value={fxId} onChange={setFxId} />
+              <Field label="DSWID" value={dswid} onChange={setDswid} />
+              <Field label="Daily Pay" value={dailyPayRate} onChange={setDailyPayRate} type="number" />
+              <Field label="Start Date" value={startDate} onChange={setStartDate} type="date" />
+              <Field label="End Date" value={endDate} onChange={setEndDate} type="date" />
+              <Field label="DOT Exp Date" value={dotExpirationDate} onChange={setDotExpirationDate} type="date" />
+              <Field label="Qual Cert Exp Date" value={qualCertExpirationDate} onChange={setQualCertExpirationDate} type="date" />
+            </div>
+          </section>
+
+          <section style={{ display: "grid", gap: 10 }}>
+            <p className="workspace-eyebrow" style={{ margin: 0 }}>Invitation</p>
+            <select
+              value={inviteAction}
+              onChange={(event) =>
+                setInviteAction(event.target.value as "SAVE_ONLY" | "SEND_INVITE")
+              }
+              style={inputStyle}
+            >
+              <option value="SAVE_ONLY">Save only</option>
+              <option value="SEND_INVITE">Save and send invite</option>
+            </select>
+          </section>
 
           <label style={{ display: "grid", gap: 5 }}>
-            <span className="hero-stat__label">Optional onboarding note</span>
+            <span className="hero-stat__label">Notes</span>
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -169,19 +320,14 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
 
           <div className="cta-row" style={{ marginTop: 4 }}>
             <button className="button button-primary" type="submit" disabled={saving}>
-              {saving ? "Saving..." : "Save candidate"}
+              {saving ? "Saving..." : inviteAction === "SEND_INVITE" ? "Save + send invite" : "Save candidate"}
             </button>
             <button
               className="button"
               type="button"
               disabled={saving}
               onClick={() => {
-                setFullName("");
-                setEmail("");
-                setPhone("");
-                setWorkerType("Driver");
-                setMarketCode("");
-                setNote("");
+                reset();
                 onClose();
               }}
             >

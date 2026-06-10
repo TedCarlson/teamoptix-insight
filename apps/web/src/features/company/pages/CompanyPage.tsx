@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, usePathname } from "next/navigation";
 import { useAccess } from "@/features/access/AccessProvider";
 import { useLob } from "@/features/lob/hooks/useLob";
+import CompanyContractConfigManager from "@/features/company/components/CompanyContractConfigManager";
 
 type CompanyRecord = {
   id: string;
@@ -291,22 +292,8 @@ export default function CompanyPage() {
 
             <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 10, alignItems: "start" }}>
               <section style={{ display: "grid", gap: 10 }}>
-                <SectionCard eyebrow="Operations config" title="Terminal / Contract / Service Area">
-                  <p className="app-card__body">
-                    Configure FedEx operating facts used to validate report uploads before warehouse persistence.
-                  </p>
-
-                  <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
-                    <MiniStat label="Terminal" value="Pending beta files" />
-                    <MiniStat label="Contract" value="Pending beta files" />
-                    <MiniStat label="Service area" value="Pending beta files" />
-                  </div>
-
-                  <div className="cta-row" style={{ marginTop: 14 }}>
-                    <button type="button" className="button" disabled>
-                      Add config row
-                    </button>
-                  </div>
+                <SectionCard eyebrow="Operations config" title="Contract / Terminal Identity / Service Area">
+                  <CompanyContractConfigManager slug={slug} canEdit={canEditCompany} />
                 </SectionCard>
 
                 <SectionCard eyebrow="Leadership config" title="Assignments">

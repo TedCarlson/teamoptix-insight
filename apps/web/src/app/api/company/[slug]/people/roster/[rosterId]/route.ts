@@ -49,17 +49,64 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       .eq("roster_id", rosterId)
       .maybeSingle();
 
-    return NextResponse.json({
-      roster: {
-        ...roster,
-        scanner_serial: operations?.scanner_serial ?? null,
-        dot_expiration_date: operations?.dot_exp ?? null,
-        qual_cert_expiration_date: operations?.qual_cert_exp ?? null,
-        daily_pay_effective_date: operations?.daily_pay_effective_date ?? null,
-        fuel_card: operations?.fuel_card ?? null,
-        pin_id_no: operations?.pin_id_no ?? null,
+    const profileId = roster.profile_id ?? null;
+
+    let privateFact: any = null;
+    let license: any = null;
+
+    if (profileId) {
+      const { data: privateRow } = await supabase
+        .schema("core")
+        .from("profile_private_fact")
+        .select("*")
+        .eq("profile_id", profileId)
+        .maybeSingle();
+
+      privateFact = privateRow ?? null;
+
+      const { data: licenseRows } = await supabase
+        .schema("core")
+        .from("profile_driver_license")
+        .select("*")
+        .eq("profile_id", profileId)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      license = licenseRows?.[0] ?? null;
+    }
+
+    return NextResponse.json(
+      {
+        roster: {
+          ...roster,
+          notes: roster.notes ?? null,
+
+          scanner_serial: operations?.scanner_serial ?? null,
+          fx_id: operations?.fx_id ?? null,
+          dswid: operations?.dswid ?? null,
+          dot_expiration_date: operations?.dot_exp ?? null,
+          qual_cert_expiration_date: operations?.qual_cert_exp ?? null,
+          daily_pay_effective_date:
+            operations?.daily_pay_effective_date ?? null,
+          daily_pay_rate: operations?.daily_pay_rate ?? null,
+          fuel_card: operations?.fuel_card ?? null,
+          pin_id_no: operations?.pin_id_no ?? null,
+
+          date_of_birth: privateFact?.date_of_birth ?? null,
+          address_line_1: privateFact?.address_line_1 ?? null,
+          address_line_2: privateFact?.address_line_2 ?? null,
+          city: privateFact?.city ?? null,
+          state_region: privateFact?.state_region ?? null,
+          postal_code: privateFact?.postal_code ?? null,
+
+          license_number: license?.license_number ?? null,
+          issuing_state: license?.issuing_state ?? null,
+          license_issue_date: license?.issue_date ?? null,
+          license_expiration_date: license?.expiration_date ?? null,
+        },
       },
-    }, { status: 200 });
+      { status: 200 }
+    );
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to load roster record.";
@@ -161,7 +208,8 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       return NextResponse.json(
         {
           ok: true,
-          message: "Contact info updated, but refreshed roster view could not be loaded.",
+          message:
+            "Contact info updated, but refreshed roster view could not be loaded.",
         },
         { status: 200 }
       );
@@ -176,7 +224,9 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     );
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to update roster contact info.";
+      error instanceof Error
+        ? error.message
+        : "Failed to update roster contact info.";
 
     return NextResponse.json({ error: message }, { status: 500 });
   }

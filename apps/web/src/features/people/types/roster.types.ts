@@ -16,6 +16,7 @@ export type RosterComplianceSummary =
 
 export type RosterRow = {
   roster_member_id: string;
+
   person_id?: string | null;
   profile_id?: string | null;
 
@@ -37,12 +38,30 @@ export type RosterRow = {
   invite_status: RosterInviteStatus;
   compliance_summary: RosterComplianceSummary;
 
+  notes?: string | null;
+
+  date_of_birth?: string | null;
+
+  address_line_1?: string | null;
+  address_line_2?: string | null;
+  city?: string | null;
+  state_region?: string | null;
+  postal_code?: string | null;
+
+  license_number?: string | null;
+  issuing_state?: string | null;
+  license_issue_date?: string | null;
+  license_expiration_date?: string | null;
+
   fx_id?: string | null;
   dswid?: string | null;
+
   dot_expiration_date?: string | null;
   qual_cert_expiration_date?: string | null;
+
   daily_pay_effective_date?: string | null;
   daily_pay_rate?: string | number | null;
+
   scanner_serial?: string | null;
   fuel_card?: string | null;
   pin_id_no?: string | null;
