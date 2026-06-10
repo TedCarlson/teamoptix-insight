@@ -24,6 +24,21 @@ export async function GET(
       );
     }
 
+    const { data: sortConfig } = await sb.rpc("get_company_operations_config", {
+      p_company_slug: slug,
+    });
+
+    const routeSortKey =
+      typeof sortConfig?.route_sort_key === "string" &&
+      ["route_name", "current_wa_num", "route_location"].includes(
+        sortConfig.route_sort_key
+      )
+        ? sortConfig.route_sort_key
+        : "route_name";
+
+    const routeSortDirection =
+      sortConfig?.route_sort_direction === "desc" ? "desc" : "asc";
+
     const { data: routes, error } = await sb
       .from("route_baseline")
       .select(`
@@ -48,7 +63,8 @@ export async function GET(
       .eq("company_id", company.id)
       .is("effective_end", null)
       .eq("is_active", true)
-      .order("route_name");
+      .order(routeSortKey, { ascending: routeSortDirection === "asc" })
+      .order("route_name", { ascending: true });
 
     if (error) {
       return NextResponse.json(

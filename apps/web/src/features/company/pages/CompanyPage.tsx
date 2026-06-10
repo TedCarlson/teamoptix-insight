@@ -6,6 +6,7 @@ import { useParams, usePathname } from "next/navigation";
 import { useAccess } from "@/features/access/AccessProvider";
 import { useLob } from "@/features/lob/hooks/useLob";
 import CompanyContractConfigManager from "@/features/company/components/CompanyContractConfigManager";
+import CompanyRouteSortConfig from "@/features/company/components/CompanyRouteSortConfig";
 
 type CompanyRecord = {
   id: string;
@@ -292,6 +293,10 @@ export default function CompanyPage() {
 
             <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 10, alignItems: "start" }}>
               <section style={{ display: "grid", gap: 10 }}>
+                <SectionCard eyebrow="Operations behavior" title="Route ordering">
+                  <CompanyRouteSortConfig slug={slug} canEdit={canEditCompany} />
+                </SectionCard>
+
                 <SectionCard eyebrow="Operations config" title="Contract / Terminal Identity / Service Area">
                   <CompanyContractConfigManager slug={slug} canEdit={canEditCompany} />
                 </SectionCard>

@@ -15,6 +15,7 @@ import {
 } from "../lib/dispatchSupport";
 
 type DispatchRouteQueueProps = {
+  routeLabelForDisplay?: (route: DispatchRoute) => string;
   routes: DispatchRoute[];
   totalRoutes: number;
   loading: boolean;
@@ -26,6 +27,7 @@ type DispatchRouteQueueProps = {
 
 export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
   const {
+    routeLabelForDisplay,
     routes,
     totalRoutes,
     loading,
@@ -149,7 +151,7 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {routeLabel(route)}
+                        {routeLabelForDisplay ? routeLabelForDisplay(route) : routeLabel(route)}
                       </span>
                     </span>
                   </strong>

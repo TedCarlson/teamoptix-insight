@@ -181,6 +181,41 @@ export default function DispatchPage() {
 
   const serviceDate = todayIso();
   const dispatchLocked = dispatchDay?.status === "LOCKED";
+  const [routeSortKey, setRouteSortKey] = useState<"route_name" | "current_wa_num">("route_name");
+
+  const routeSort = useCallback(
+    (a: DispatchRoute, b: DispatchRoute) => {
+      const valueA =
+        routeSortKey === "current_wa_num"
+          ? a.current_wa_num || a.route_name || a.route_key
+          : a.route_name || a.current_wa_num || a.route_key;
+
+      const valueB =
+        routeSortKey === "current_wa_num"
+          ? b.current_wa_num || b.route_name || b.route_key
+          : b.route_name || b.current_wa_num || b.route_key;
+
+      return valueA.localeCompare(valueB, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+    },
+    [routeSortKey]
+  );
+
+  const orderedRouteLabel = useCallback(
+    (route: DispatchRoute) => {
+      const routeName = route.route_name?.trim() ?? "";
+      const workArea = route.current_wa_num?.trim() ?? "";
+
+      if (routeSortKey === "current_wa_num") {
+        return [workArea, routeName].filter(Boolean).join(" · ") || route.route_key;
+      }
+
+      return [routeName, workArea].filter(Boolean).join(" · ") || route.route_key;
+    },
+    [routeSortKey]
+  );
 
   useEffect(() => {
     let active = true;
@@ -190,7 +225,14 @@ export default function DispatchPage() {
         setLoading(true);
         setError(null);
 
-        const [scheduleRes, routesRes, rosterRes, dispatchDayRes, eventTypesRes] = await Promise.all([
+        const [
+          scheduleRes,
+          routesRes,
+          rosterRes,
+          dispatchDayRes,
+          eventTypesRes,
+          operationsConfigRes,
+        ] = await Promise.all([
           fetch(`/api/company/${slug}/schedule/generated?date=${serviceDate}`, {
             credentials: "include",
             cache: "no-store",
@@ -211,14 +253,26 @@ export default function DispatchPage() {
             credentials: "include",
             cache: "no-store",
           }),
+          fetch(`/api/company/${slug}/config/operations`, {
+            credentials: "include",
+            cache: "no-store",
+          }),
         ]);
 
-        const [scheduleData, routesData, rosterData, dispatchDayData, eventTypesData] = await Promise.all([
+        const [
+          scheduleData,
+          routesData,
+          rosterData,
+          dispatchDayData,
+          eventTypesData,
+          operationsConfigData,
+        ] = await Promise.all([
           scheduleRes.json(),
           routesRes.json(),
           rosterRes.json(),
           dispatchDayRes.json(),
           eventTypesRes.json(),
+          operationsConfigRes.json(),
         ]);
 
         if (!active) return;
@@ -263,6 +317,12 @@ export default function DispatchPage() {
         setRosterRows([]);
           return;
         }
+
+        setRouteSortKey(
+          operationsConfigData?.config?.route_sort_key === "current_wa_num"
+            ? "current_wa_num"
+            : "route_name"
+        );
 
         setScheduleRows((scheduleData?.rows ?? []) as GeneratedScheduleRow[]);
         setRoutes((routesData?.routes ?? []) as RouteRow[]);
@@ -336,13 +396,8 @@ export default function DispatchPage() {
       }
     }
 
-    return Array.from(routeMap.values()).sort((a, b) =>
-      routeLabel(a).localeCompare(routeLabel(b), undefined, {
-        numeric: true,
-        sensitivity: "base",
-      })
-    );
-  }, [routes, scheduleRows, serviceDate]);
+    return Array.from(routeMap.values()).sort(routeSort);
+  }, [routes, routeSort, scheduleRows, serviceDate]);
 
   useEffect(() => {
     let next: Record<string, DispatchRoute> = {};
@@ -374,14 +429,8 @@ export default function DispatchPage() {
   }, [hydratedRoutes, dispatchEvents]);
 
   const dispatchRoutes = useMemo(
-    () =>
-      Object.values(assignments).sort((a, b) =>
-        routeLabel(a).localeCompare(routeLabel(b), undefined, {
-          numeric: true,
-          sensitivity: "base",
-        })
-      ),
-    [assignments]
+    () => Object.values(assignments).sort(routeSort),
+    [assignments, routeSort]
   );
 
   const scheduledRosterIds = useMemo(() => {
@@ -547,13 +596,8 @@ export default function DispatchPage() {
         };
       })
       .filter((route) => !assignedKeys.has(route.route_key))
-      .sort((a, b) =>
-        routeLabel(a).localeCompare(routeLabel(b), undefined, {
-          numeric: true,
-          sensitivity: "base",
-        })
-      );
-  }, [dispatchRoutes, routes]);
+      .sort(routeSort);
+  }, [dispatchRoutes, routeSort, routes]);
 
   const summary = useMemo(() => {
     const total = dispatchRoutes.length;
@@ -578,7 +622,7 @@ export default function DispatchPage() {
 
     setIntent({
       route_key: route.route_key,
-      route_label: routeLabel(route),
+      route_label: orderedRouteLabel(route),
       seat,
     });
   }
@@ -748,7 +792,7 @@ export default function DispatchPage() {
             ? "Helper unassigned"
             : "Trainee unassigned",
       route_key: routeKey,
-      route_label: route ? routeLabel(route) : routeKey,
+      route_label: route ? orderedRouteLabel(route) : routeKey,
       seat,
       person: removedPerson,
     });
@@ -1111,6 +1155,7 @@ export default function DispatchPage() {
         />
 
         <DispatchRouteQueue
+            routeLabelForDisplay={orderedRouteLabel}
           routes={dispatchRoutes}
           totalRoutes={summary.total}
           loading={loading}
