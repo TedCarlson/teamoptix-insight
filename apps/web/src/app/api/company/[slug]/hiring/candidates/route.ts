@@ -251,6 +251,16 @@ function cleanText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function dateOrNull(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function numericOrDefault(value: unknown, fallback: number) {
+  if (value === "" || value == null) return fallback;
+  const next = Number(value);
+  return Number.isFinite(next) ? next : fallback;
+}
+
 export async function POST(
   req: NextRequest,
   context: { params: Promise<{ slug: string }> }
@@ -261,10 +271,38 @@ export async function POST(
     const body = await req.json().catch(() => ({}));
 
     const fullName = cleanText(body.full_name);
+    const email = cleanText(body.email)?.toLowerCase() ?? null;
+    const phone = cleanText(body.phone);
+
+    const licenseNumber = cleanText(body.license_number);
+    const issuingState = cleanText(body.issuing_state);
+    const licenseIssueDate = dateOrNull(body.license_issue_date);
+    const licenseExpirationDate = dateOrNull(body.license_expiration_date);
 
     if (!fullName) {
       return NextResponse.json(
         { error: "Candidate name is required." },
+        { status: 400 }
+      );
+    }
+
+    if (!email) {
+      return NextResponse.json(
+        { error: "Candidate email is required." },
+        { status: 400 }
+      );
+    }
+
+    if (!phone) {
+      return NextResponse.json(
+        { error: "Candidate phone is required." },
+        { status: 400 }
+      );
+    }
+
+    if (!licenseNumber || !issuingState || !licenseIssueDate || !licenseExpirationDate) {
+      return NextResponse.json(
+        { error: "Driver license number, issuing state, issue date, and expiration date are required." },
         { status: 400 }
       );
     }
@@ -300,13 +338,16 @@ export async function POST(
       .insert({
         company_id: company.id,
         full_name: fullName,
-        email: cleanText(body.email)?.toLowerCase() ?? null,
-        phone: cleanText(body.phone),
+        email,
+        phone,
         worker_type: cleanText(body.worker_type),
         market_code: cleanText(body.market_code),
+        hire_date: dateOrNull(body.start_date),
+        separation_date: dateOrNull(body.end_date),
         employment_status: "Candidate",
         invite_status: "Not Invited",
         compliance_summary: "Missing",
+        notes: cleanText(body.note),
       })
       .select("id")
       .single();
@@ -314,6 +355,69 @@ export async function POST(
     if (insertError || !inserted) {
       return NextResponse.json(
         { error: insertError?.message ?? "Failed to create candidate." },
+        { status: 500 }
+      );
+    }
+
+    const { error: detailError } = await supabase.rpc("update_company_roster_details", {
+      p_company_slug: slug,
+      p_roster_id: inserted.id,
+
+      p_full_name: fullName,
+      p_email: email,
+      p_phone: phone,
+      p_worker_type: cleanText(body.worker_type),
+      p_market_code: cleanText(body.market_code),
+      p_notes: cleanText(body.note),
+
+      p_date_of_birth: dateOrNull(body.date_of_birth),
+      p_address_line_1: cleanText(body.address_line_1),
+      p_address_line_2: cleanText(body.address_line_2),
+      p_city: cleanText(body.city),
+      p_state_region: cleanText(body.state_region),
+      p_postal_code: cleanText(body.postal_code),
+
+      p_license_number: licenseNumber,
+      p_issuing_state: issuingState,
+      p_license_issue_date: licenseIssueDate,
+      p_license_expiration_date: licenseExpirationDate,
+    });
+
+    if (detailError) {
+      return NextResponse.json(
+        {
+          error: "Candidate row created, but profile/private/license details failed.",
+          detail: detailError.message,
+          roster_id: inserted.id,
+        },
+        { status: 500 }
+      );
+    }
+
+    const payEffectiveDate =
+      dateOrNull(body.start_date) ?? new Date().toISOString().slice(0, 10);
+
+    const { error: opsError } = await supabase.rpc("update_company_roster_operations", {
+      p_company_slug: slug,
+      p_roster_id: inserted.id,
+      p_fx_id: cleanText(body.fx_id),
+      p_dswid: cleanText(body.dswid),
+      p_scanner_serial: null,
+      p_dot_exp: dateOrNull(body.dot_expiration_date),
+      p_qual_cert_exp: dateOrNull(body.qual_cert_expiration_date),
+      p_daily_pay_effective_date: payEffectiveDate,
+      p_daily_pay_rate: numericOrDefault(body.daily_pay_rate, 130),
+      p_fuel_card: null,
+      p_pin_id_no: null,
+    });
+
+    if (opsError) {
+      return NextResponse.json(
+        {
+          error: "Candidate row created, but operations facts failed.",
+          detail: opsError.message,
+          roster_id: inserted.id,
+        },
         { status: 500 }
       );
     }
@@ -333,6 +437,10 @@ export async function POST(
       event_detail: "Candidate record created.",
       event_metadata: {
         source: "add_candidate_overlay",
+        profile_seeded: true,
+        operations_seeded: true,
+        license_seeded: true,
+        invite_action: cleanText(body.invite_action) ?? "SAVE_ONLY",
       },
       occurred_at: new Date().toISOString(),
     });
