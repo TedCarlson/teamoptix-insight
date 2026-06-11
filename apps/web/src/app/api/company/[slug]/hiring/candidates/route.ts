@@ -333,7 +333,6 @@ export async function POST(
     }
 
     const { data: inserted, error: insertError } = await supabase
-      .schema("core")
       .from("company_roster")
       .insert({
         company_id: company.id,
@@ -422,14 +421,14 @@ export async function POST(
       );
     }
 
-    await supabase.schema("core").from("roster_candidate_stage").insert({
+    await supabase.from("roster_candidate_stage").insert({
       company_id: company.id,
       roster_id: inserted.id,
       stage_type_id: stage.stage_type_id,
       note: cleanText(body.note),
     });
 
-    await supabase.schema("core").from("company_roster_event").insert({
+    await supabase.from("company_roster_event").insert({
       company_id: company.id,
       roster_id: inserted.id,
       event_category: "hiring",
