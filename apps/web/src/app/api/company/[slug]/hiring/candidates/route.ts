@@ -274,178 +274,44 @@ export async function POST(
     const email = cleanText(body.email)?.toLowerCase() ?? null;
     const phone = cleanText(body.phone);
 
-    const licenseNumber = cleanText(body.license_number);
-    const issuingState = cleanText(body.issuing_state);
-    const licenseIssueDate = dateOrNull(body.license_issue_date);
-    const licenseExpirationDate = dateOrNull(body.license_expiration_date);
+    if (!fullName) return NextResponse.json({ error: "Candidate name is required." }, { status: 400 });
+    if (!email) return NextResponse.json({ error: "Candidate email is required." }, { status: 400 });
+    if (!phone) return NextResponse.json({ error: "Candidate phone is required." }, { status: 400 });
 
-    if (!fullName) {
-      return NextResponse.json(
-        { error: "Candidate name is required." },
-        { status: 400 }
-      );
-    }
-
-    if (!email) {
-      return NextResponse.json(
-        { error: "Candidate email is required." },
-        { status: 400 }
-      );
-    }
-
-    if (!phone) {
-      return NextResponse.json(
-        { error: "Candidate phone is required." },
-        { status: 400 }
-      );
-    }
-
-    if (!licenseNumber || !issuingState || !licenseIssueDate || !licenseExpirationDate) {
-      return NextResponse.json(
-        { error: "Driver license number, issuing state, issue date, and expiration date are required." },
-        { status: 400 }
-      );
-    }
-
-    const { data: company, error: companyError } = await supabase
-      .from("companies")
-      .select("id")
-      .eq("company_slug", slug)
-      .single();
-
-    if (companyError || !company) {
-      return NextResponse.json({ error: "Company not found." }, { status: 404 });
-    }
-
-    const { data: stage, error: stageError } = await supabase
-      .from("company_candidate_stage_config_v")
-      .select("stage_type_id")
-      .eq("company_id", company.id)
-      .eq("stage_key", "candidate_created")
-      .eq("is_enabled", true)
-      .single();
-
-    if (stageError || !stage) {
-      return NextResponse.json(
-        { error: "Candidate stage seed missing." },
-        { status: 500 }
-      );
-    }
-
-    const { data: inserted, error: insertError } = await supabase
-      .from("company_roster")
-      .insert({
-        company_id: company.id,
-        full_name: fullName,
-        email,
-        phone,
-        worker_type: cleanText(body.worker_type),
-        market_code: cleanText(body.market_code),
-        hire_date: dateOrNull(body.start_date),
-        separation_date: dateOrNull(body.end_date),
-        employment_status: "Candidate",
-        invite_status: "Not Invited",
-        compliance_summary: "Missing",
-        notes: cleanText(body.note),
-      })
-      .select("id")
-      .single();
-
-    if (insertError || !inserted) {
-      return NextResponse.json(
-        { error: insertError?.message ?? "Failed to create candidate." },
-        { status: 500 }
-      );
-    }
-
-    const { error: detailError } = await supabase.rpc("update_company_roster_details", {
+    const { data, error } = await supabase.rpc("create_company_candidate_from_overlay", {
       p_company_slug: slug,
-      p_roster_id: inserted.id,
-
       p_full_name: fullName,
       p_email: email,
       p_phone: phone,
       p_worker_type: cleanText(body.worker_type),
       p_market_code: cleanText(body.market_code),
-      p_notes: cleanText(body.note),
-
+      p_note: cleanText(body.note),
       p_date_of_birth: dateOrNull(body.date_of_birth),
+      p_license_number: cleanText(body.license_number),
+      p_issuing_state: cleanText(body.issuing_state),
+      p_license_issue_date: dateOrNull(body.license_issue_date),
+      p_license_expiration_date: dateOrNull(body.license_expiration_date),
       p_address_line_1: cleanText(body.address_line_1),
       p_address_line_2: cleanText(body.address_line_2),
       p_city: cleanText(body.city),
       p_state_region: cleanText(body.state_region),
       p_postal_code: cleanText(body.postal_code),
-
-      p_license_number: licenseNumber,
-      p_issuing_state: issuingState,
-      p_license_issue_date: licenseIssueDate,
-      p_license_expiration_date: licenseExpirationDate,
-    });
-
-    if (detailError) {
-      return NextResponse.json(
-        {
-          error: "Candidate row created, but profile/private/license details failed.",
-          detail: detailError.message,
-          roster_id: inserted.id,
-        },
-        { status: 500 }
-      );
-    }
-
-    const payEffectiveDate =
-      dateOrNull(body.start_date) ?? new Date().toISOString().slice(0, 10);
-
-    const { error: opsError } = await supabase.rpc("update_company_roster_operations", {
-      p_company_slug: slug,
-      p_roster_id: inserted.id,
+      p_start_date: dateOrNull(body.start_date),
+      p_end_date: dateOrNull(body.end_date),
       p_fx_id: cleanText(body.fx_id),
       p_dswid: cleanText(body.dswid),
-      p_scanner_serial: null,
-      p_dot_exp: dateOrNull(body.dot_expiration_date),
-      p_qual_cert_exp: dateOrNull(body.qual_cert_expiration_date),
-      p_daily_pay_effective_date: payEffectiveDate,
+      p_dot_expiration_date: dateOrNull(body.dot_expiration_date),
+      p_qual_cert_expiration_date: dateOrNull(body.qual_cert_expiration_date),
       p_daily_pay_rate: numericOrDefault(body.daily_pay_rate, 130),
-      p_fuel_card: null,
-      p_pin_id_no: null,
+      p_invite_action: cleanText(body.invite_action) ?? "SAVE_ONLY",
     });
 
-    if (opsError) {
-      return NextResponse.json(
-        {
-          error: "Candidate row created, but operations facts failed.",
-          detail: opsError.message,
-          roster_id: inserted.id,
-        },
-        { status: 500 }
-      );
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    await supabase.from("roster_candidate_stage").insert({
-      company_id: company.id,
-      roster_id: inserted.id,
-      stage_type_id: stage.stage_type_id,
-      note: cleanText(body.note),
-    });
-
-    await supabase.from("company_roster_event").insert({
-      company_id: company.id,
-      roster_id: inserted.id,
-      event_category: "hiring",
-      event_type: "candidate_created",
-      event_detail: "Candidate record created.",
-      event_metadata: {
-        source: "add_candidate_overlay",
-        profile_seeded: true,
-        operations_seeded: true,
-        license_seeded: true,
-        invite_action: cleanText(body.invite_action) ?? "SAVE_ONLY",
-      },
-      occurred_at: new Date().toISOString(),
-    });
-
     return NextResponse.json(
-      { ok: true, roster_id: inserted.id },
+      { ok: true, roster_id: data?.roster_id },
       { status: 201 }
     );
   } catch (error) {
