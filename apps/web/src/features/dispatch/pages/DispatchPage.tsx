@@ -36,6 +36,7 @@ import OperationsWorkspaceToolbar from "@/features/operations/components/Operati
 import { DispatchEventOverlay } from "../components/DispatchEventOverlay";
 import { DispatchRightRail } from "../components/DispatchRightRail";
 import { DeliveryWindowSnapshot } from "../components/DeliveryWindowSnapshot";
+import PlanningWorkspace from "../components/planning/PlanningWorkspace";
 import { DispatchRouteQueue } from "../components/DispatchRouteQueue";
 import { DispatchWorkforceRail } from "../components/DispatchWorkforceRail";
 
@@ -53,12 +54,6 @@ function dispatchPersonFromEvent(event: DispatchEventRow): DispatchPerson | null
 
 type DispatchSurface = "dispatch" | "delivery-window" | "planning";
 
-type PlanningSnapshot = {
-  planning_date: string;
-  locked_at: string;
-  route_sort_key: "route_name" | "current_wa_num";
-  routes: DispatchRoute[];
-};
 
 function addDaysIso(value: string, days: number) {
   const date = new Date(`${value}T00:00:00`);
@@ -183,34 +178,6 @@ function isoDateOffset(dateText: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
-function formatDroPlanSignal(row: DroPlanRow | null | undefined) {
-  if (!row) return "—";
-
-  const parts = [
-    `${row.stops} stp`,
-    `${row.packages} pkg`,
-    `${row.time_commits} TC`,
-  ];
-
-  return parts.join(" · ");
-}
-
-function droPlanTitle(row: DroPlanRow | null | undefined) {
-  if (!row) return "No DRO plan row matched.";
-
-  const details = [
-    "PM DRO",
-    `${row.stops} stops`,
-    `${row.packages} packages`,
-    `${row.time_commits} time critical`,
-  ];
-
-  if (row.miles !== null) details.push(`${Number(row.miles).toFixed(1)} miles`);
-  if (row.miles_per_stop !== null) details.push(`${Number(row.miles_per_stop).toFixed(2)} mi/stp`);
-  if (row.minutes_per_stop !== null) details.push(`${Number(row.minutes_per_stop).toFixed(1)} min/stp`);
-
-  return details.join(" · ");
-}
 
 export default function DispatchPage() {
   const params = useParams();
@@ -239,10 +206,10 @@ export default function DispatchPage() {
   const serviceDate = todayIso();
   const planningDate = addDaysIso(serviceDate, 1);
   const dispatchLocked = dispatchDay?.status === "LOCKED";
-  const [activeSurface, setActiveSurface] = useState<DispatchSurface>("dispatch");
-  const [planningSnapshot, setPlanningSnapshot] = useState<PlanningSnapshot | null>(null);
-  const [routeSortKey, setRouteSortKey] = useState<"route_name" | "current_wa_num">("route_name");
-
+  const [activeSurface, setActiveSurface] =
+    useState<DispatchSurface>("dispatch");
+  const [routeSortKey, setRouteSortKey] =
+    useState<"route_name" | "current_wa_num">("route_name");
   const routeSort = useCallback(
     (a: DispatchRoute, b: DispatchRoute) => {
       const valueA =
@@ -275,15 +242,7 @@ export default function DispatchPage() {
     return map;
   }, [droPlanRows]);
 
-  function droPlanForRoute(route: DispatchRoute) {
-    const wa = route.current_wa_num?.trim();
-    const name = route.route_name?.trim().toLowerCase();
 
-    if (wa && droPlanByWa.has(wa)) return droPlanByWa.get(wa);
-    if (name && droPlanByWa.has(name)) return droPlanByWa.get(name);
-
-    return null;
-  }
 
 const orderedRouteLabel = useCallback(
     (route: DispatchRoute) => {
@@ -372,7 +331,7 @@ const orderedRouteLabel = useCallback(
           setError(scheduleData?.error ?? "Failed to load generated schedule.");
           setScheduleRows([]);
           setRoutes([]);
-        setRosterRows([]);
+          setRosterRows([]);
           return;
         }
 
@@ -380,7 +339,7 @@ const orderedRouteLabel = useCallback(
           setError(routesData?.error ?? "Failed to load routes.");
           setScheduleRows([]);
           setRoutes([]);
-        setRosterRows([]);
+          setRosterRows([]);
           return;
         }
 
@@ -388,7 +347,6 @@ const orderedRouteLabel = useCallback(
           setError(rosterData?.error ?? "Failed to load roster.");
           setScheduleRows([]);
           setRoutes([]);
-        setRosterRows([]);
           setRosterRows([]);
           return;
         }
@@ -397,7 +355,7 @@ const orderedRouteLabel = useCallback(
           setError(dispatchDayData?.error ?? "Failed to load dispatch day.");
           setScheduleRows([]);
           setRoutes([]);
-        setRosterRows([]);
+          setRosterRows([]);
           return;
         }
 
@@ -405,7 +363,7 @@ const orderedRouteLabel = useCallback(
           setError(eventTypesData?.error ?? "Failed to load dispatch event types.");
           setScheduleRows([]);
           setRoutes([]);
-        setRosterRows([]);
+          setRosterRows([]);
           return;
         }
 
@@ -441,29 +399,6 @@ const orderedRouteLabel = useCallback(
       active = false;
     };
   }, [refreshKey, serviceDate, slug]);
-
-  useEffect(() => {
-    if (!slug) return;
-
-    const key = `teamoptix:planning-snapshot:${slug}:${planningDate}`;
-    const raw = window.localStorage.getItem(key);
-
-    if (!raw) {
-      setPlanningSnapshot(null);
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(raw) as PlanningSnapshot;
-      if (parsed?.planning_date === planningDate) {
-        setPlanningSnapshot(parsed);
-      } else {
-        setPlanningSnapshot(null);
-      }
-    } catch {
-      setPlanningSnapshot(null);
-    }
-  }, [planningDate, slug]);
 
   const hydratedRoutes = useMemo(() => {
     const runFlag = runFlagForDate(serviceDate);
@@ -721,6 +656,28 @@ const orderedRouteLabel = useCallback(
   }, [dispatchRoutes, routeSort, routes]);
 
   const planningRoutes = useMemo(() => {
+    if (droPlanRows.length > 0) {
+      return droPlanRows
+        .map((row) => {
+          const key = cleanRouteKey(row.wa_number || row.route_name);
+
+          return {
+            route_key: key,
+            route_name: row.route_name?.trim() || key,
+            current_wa_num: row.wa_number,
+            route_location: `${row.stops ?? 0} stops • ${row.packages ?? 0} pkgs`,
+            route_type: row.time_commits
+              ? `${row.time_commits} commits`
+              : "DRO forecast",
+            driver: null,
+            helpers: [],
+            trainees: [],
+            extras: [],
+          };
+        })
+        .sort(routeSort);
+    }
+
     const runFlag = runFlagForDate(planningDate);
 
     return routes
@@ -741,37 +698,7 @@ const orderedRouteLabel = useCallback(
         };
       })
       .sort(routeSort);
-  }, [planningDate, routeSort, routes]);
-
-  const displayedPlanningRoutes = planningSnapshot?.routes ?? planningRoutes;
-
-  function lockPlanningSnapshot() {
-    if (!slug) return;
-
-    const snapshot: PlanningSnapshot = {
-      planning_date: planningDate,
-      locked_at: new Date().toISOString(),
-      route_sort_key: routeSortKey,
-      routes: planningRoutes,
-    };
-
-    window.localStorage.setItem(
-      `teamoptix:planning-snapshot:${slug}:${planningDate}`,
-      JSON.stringify(snapshot)
-    );
-
-    setPlanningSnapshot(snapshot);
-  }
-
-  function resetPlanningSnapshot() {
-    if (!slug) return;
-
-    window.localStorage.removeItem(
-      `teamoptix:planning-snapshot:${slug}:${planningDate}`
-    );
-
-    setPlanningSnapshot(null);
-  }
+  }, [droPlanRows, planningDate, routeSort, routes]);
 
   const summary = useMemo(() => {
     const total = dispatchRoutes.length;
@@ -1354,170 +1281,69 @@ const orderedRouteLabel = useCallback(
           ))}
         </section>
 
+
         {activeSurface === "dispatch" ? (
-        <section className="dispatch-grid">
-        <DispatchWorkforceRail
-          allPeopleCount={allPeople.length}
-          availableCount={summary.available}
-          intent={intent}
-          availablePeople={workforce.available}
-          callouts={callouts}
-          onCancelAssign={() => setIntent(null)}
-          onSelectPerson={assignPerson}
-        />
+          <section className="dispatch-grid">
+            <DispatchWorkforceRail
+              allPeopleCount={allPeople.length}
+              availableCount={summary.available}
+              intent={intent}
+              availablePeople={workforce.available}
+              callouts={callouts}
+              onCancelAssign={() => setIntent(null)}
+              onSelectPerson={assignPerson}
+            />
 
-        <DispatchRouteQueue
-            routeLabelForDisplay={orderedRouteLabel}
-          routes={dispatchRoutes}
-          totalRoutes={summary.total}
-          loading={loading}
-          intent={intent}
-          onOpenSeat={openSeat}
-          onClearSeat={clearSeat}
-          onCancelIntent={() => setIntent(null)}
-          planSignalsByRouteKey={planSignalsByRouteKey}
-          planTotals={planTotals}
-          planSourceLabel={droPlanSourceFrame ? `${droPlanSourceFrame} DRO` : null}
-        />
+            <DispatchRouteQueue
+              routeLabelForDisplay={orderedRouteLabel}
+              routes={dispatchRoutes}
+              totalRoutes={summary.total}
+              loading={loading}
+              intent={intent}
+              onOpenSeat={openSeat}
+              onClearSeat={clearSeat}
+              onCancelIntent={() => setIntent(null)}
+              planSignalsByRouteKey={planSignalsByRouteKey}
+              planTotals={planTotals}
+              planSourceLabel={droPlanSourceFrame ? `${droPlanSourceFrame} DRO` : null}
+            />
 
-        <DispatchRightRail
-          summary={summary}
-          dispatchRoutes={dispatchRoutes}
-          dispatchDay={dispatchDay}
-          events={dispatchEvents}
-          locking={locking}
-          onAddEvent={() => setEventOverlayOpen(true)}
-          onUndoEvent={undoDispatchEvent}
-          onLockDispatch={lockDispatch}
-        />
-        </section>
+            <DispatchRightRail
+              summary={summary}
+              dispatchRoutes={dispatchRoutes}
+              dispatchDay={dispatchDay}
+              events={dispatchEvents}
+              locking={locking}
+              onAddEvent={() => setEventOverlayOpen(true)}
+              onUndoEvent={undoDispatchEvent}
+              onLockDispatch={lockDispatch}
+            />
+          </section>
         ) : null}
 
         {activeSurface === "delivery-window" ? (
           <DeliveryWindowSnapshot
             slug={slug}
             serviceDate={serviceDate}
-            routes={displayedPlanningRoutes}
+            routes={dispatchRoutes}
             routeLabelForDisplay={orderedRouteLabel}
+            routeSortKey={routeSortKey}
           />
         ) : null}
 
         {activeSurface === "planning" ? (
-          <section style={{ ...panel, padding: 14, marginTop: 10, display: "grid", gap: 12 }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 12,
-                alignItems: "flex-start",
-                flexWrap: "wrap",
-              }}
-            >
-              <div>
-                <p style={eyebrow}>Planning</p>
-                <h2 style={{ margin: 0, fontSize: 18 }}>Tomorrow PM route snapshot</h2>
-                <p style={{ margin: "4px 0 0", color: "#64748b", fontWeight: 700 }}>
-                  Planning projects tomorrow route set. Lock the PM snapshot to hold this plan through delivery-window review.
-                </p>
-              </div>
-
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  className="button button-primary"
-                  onClick={lockPlanningSnapshot}
-                  disabled={planningRoutes.length === 0}
-                >
-                  {planningSnapshot ? "Re-lock PM snapshot" : "Lock PM snapshot"}
-                </button>
-
-                <button
-                  type="button"
-                  className="button"
-                  onClick={resetPlanningSnapshot}
-                  disabled={!planningSnapshot}
-                >
-                  Reset planning
-                </button>
-              </div>
-            </div>
-
-            <section
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-                gap: 10,
-              }}
-            >
-              <div style={{ ...panel, padding: 12 }}>
-                <p style={eyebrow}>Planning date</p>
-                <strong>{planningDate}</strong>
-              </div>
-              <div style={{ ...panel, padding: 12 }}>
-                <p style={eyebrow}>Routes</p>
-                <strong>{displayedPlanningRoutes.length}</strong>
-              </div>
-              <div style={{ ...panel, padding: 12 }}>
-                <p style={eyebrow}>Order</p>
-                <strong>
-                  {routeSortKey === "current_wa_num" ? "Work area" : "Route name"}
-                </strong>
-              </div>
-              <div style={{ ...panel, padding: 12 }}>
-                <p style={eyebrow}>Snapshot</p>
-                <strong>{planningSnapshot ? "Locked" : "Live projection"}</strong>
-              </div>
-            </section>
-
-            {planningSnapshot ? (
-              <section
-                style={{
-                  padding: 12,
-                  borderRadius: 16,
-                  border: "1px solid #bbf7d0",
-                  background: "#ecfdf3",
-                  color: "#166534",
-                  fontWeight: 800,
-                }}
-              >
-                PM snapshot locked {new Date(planningSnapshot.locked_at).toLocaleString()}.
-              </section>
-            ) : null}
-
-            <div style={{ display: "grid", gap: 8 }}>
-              {displayedPlanningRoutes.length === 0 ? (
-                <p style={{ margin: 0, color: "#64748b", fontWeight: 700 }}>
-                  No routes projected for tomorrow.
-                </p>
-              ) : (
-                displayedPlanningRoutes.map((route) => (
-                  <div
-                    key={route.route_key}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "minmax(0, 1fr) 180px 140px",
-                      gap: 10,
-                      alignItems: "center",
-                      padding: "10px 12px",
-                      borderRadius: 14,
-                      border: "1px solid #e6edf5",
-                      background: "#fff",
-                    }}
-                  >
-                    <strong>{orderedRouteLabel(route)}</strong>
-                    <span style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>
-                      {route.route_location ?? "No location"}
-                    </span>
-                    <span style={{ color: "#64748b", fontSize: 12, fontWeight: 900 }}>
-                      {route.route_type ?? "Route"}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
+          <PlanningWorkspace
+            slug={slug}
+            planningDate={planningDate}
+            routeSortKey={routeSortKey}
+            planningRoutes={planningRoutes}
+            droPlanRows={droPlanRows}
+            droPlanSourceFrame={droPlanSourceFrame}
+          />
         ) : null}
+
       </section>
+
 
       <OperationsReportUploadOverlay
         open={uploadOverlayOpen}
