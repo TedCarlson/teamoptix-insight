@@ -12,12 +12,16 @@ function cellText(value: unknown) {
 }
 
 function normalizeHeader(value: unknown) {
-  return cellText(value).toLowerCase().replace(/\s+/g, " ");
+  return cellText(value)
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/\s+#/g, "#")
+    .trim();
 }
 
 function rowHasHeaders(row: unknown[], headers: string[]) {
   const normalized = new Set(row.map(normalizeHeader).filter(Boolean));
-  return headers.every((header) => normalized.has(header.toLowerCase()));
+  return headers.every((header) => normalized.has(normalizeHeader(header)));
 }
 
 function findHeaderRow(rows: unknown[][], headers: string[]) {
@@ -97,7 +101,7 @@ function inspectDsw(rows: unknown[][]) {
     report_family_key: "DSW",
     report_shape_key: "DSW_DAILY_SERVICE_WORKSHEET",
     report_family_label: "Daily Service Worksheet",
-    confidence: headerIndex >= 0 ? 0.98 : 0.65,
+    confidence: headerIndex >= 0 ? 0.98 : 0,
     detected_header_row: headerIndex >= 0 ? headerIndex + 1 : null,
     service_date: match?.[3] ?? null,
     terminal_code: match?.[1] ?? null,
@@ -111,16 +115,20 @@ function inspectDsw(rows: unknown[][]) {
 
 function inspectDro(rows: unknown[][]) {
   const headerIndex = findHeaderRow(rows, [
-    "SERVICE AREA",
     "WA NAME",
     "WA #",
     "ROUTE TYPE",
-    "CAPACITY",
+    "Distance",
     "TIME",
-    "DISTANCE",
-    "TOTAL STOPS",
-    "TIME CRITICAL",
-    "MISSED TIME CRT.",
+    "TIME COMMITS",
+    "LP STOPS",
+    "LP PACKAGES",
+    "BULK STOPS",
+    "BULK PKGS",
+    "SMALL STOPS",
+    "SMALL PKGS",
+    "REG STOPS",
+    "REG PKGS",
   ]);
 
   return {

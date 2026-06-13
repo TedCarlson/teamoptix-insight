@@ -1,8 +1,10 @@
+import { useEffect, useRef, useState } from "react";
 import type {
   AssignmentIntent,
   DispatchRoute,
   Seat,
 } from "../lib/dispatchSupport";
+import { timeCriticalColor, type DroPlanTotals } from "../lib/droPlanSignals";
 import {
   compactButton,
   eyebrow,
@@ -23,6 +25,17 @@ type DispatchRouteQueueProps = {
   onOpenSeat: (route: DispatchRoute, seat: Seat) => void;
   onClearSeat: (routeKey: string, seat: Seat) => void;
   onCancelIntent: () => void;
+  planSignalsByRouteKey?: Record<string, {
+    stops: number;
+    packages: number;
+    timeCritical: number;
+    milesLabel: string;
+    milesPerStopLabel: string;
+    minutesPerStopLabel: string;
+    title: string;
+  }>;
+  planTotals?: DroPlanTotals;
+  planSourceLabel?: string | null;
 };
 
 export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
@@ -35,7 +48,29 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
     onOpenSeat,
     onClearSeat,
     onCancelIntent,
+    planSignalsByRouteKey = {},
+    planTotals,
+    planSourceLabel = null,
   } = props;
+
+  const [legendOpen, setLegendOpen] = useState(false);
+  const legendRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!legendOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!legendRef.current) return;
+      if (legendRef.current.contains(event.target as Node)) return;
+      setLegendOpen(false);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [legendOpen]);
 
   function SeatButton(props: {
     route: DispatchRoute;
@@ -70,7 +105,32 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
       <div style={panelHeader}>
         <div>
           <p style={eyebrow}>Route Queue</p>
-          <strong>{totalRoutes} routes</strong>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 18, flexWrap: "wrap" }}>
+            <strong>{totalRoutes} routes</strong>
+          {planTotals && planTotals.matchedRoutes > 0 ? (
+            <span
+              title="DRO PM total"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 16,
+                marginTop: 6,
+                paddingTop: 2,
+                color: "#64748b",
+                fontSize: 11,
+                fontWeight: 900,
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span style={{ color: "#475569", paddingRight: 8 }}>{planSourceLabel ?? "DRO"}</span>
+              <span>📍 {planTotals.stops}</span>
+              <span>📦 {planTotals.packages}</span>
+              <span style={{ color: timeCriticalColor(planTotals.timeCritical) }}>
+                🕒 {planTotals.timeCritical}
+              </span>
+            </span>
+          ) : null}
+          </div>
         </div>
         <span style={{ fontSize: 12, color: "#64748b", fontWeight: 800 }}>
           Tap driver seat. Helper / trainee actions live in right rail.
@@ -93,7 +153,65 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
       >
         <div>Route</div>
         <div>Driver</div>
-        <div>Plan</div>
+        <div ref={legendRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: 8 }}>
+          <span>Plan</span>
+          <button
+            type="button"
+            onClick={() => setLegendOpen((current) => !current)}
+            style={{
+              minHeight: 22,
+              padding: "0 8px",
+              borderRadius: 999,
+              border: "1px solid #d6dfeb",
+              background: legendOpen ? "#eff6ff" : "#fff",
+              color: legendOpen ? "#1d4ed8" : "#64748b",
+              fontSize: 10,
+              fontWeight: 900,
+              cursor: "pointer",
+              textTransform: "none",
+              letterSpacing: 0,
+            }}
+          >
+            Legend
+          </button>
+
+          {legendOpen ? (
+            <div
+              style={{
+                position: "absolute",
+                left: 0,
+                top: 28,
+                zIndex: 20,
+                width: 260,
+                border: "1px solid #d6dfeb",
+                borderRadius: 14,
+                background: "#fff",
+                boxShadow: "0 18px 40px rgba(15, 23, 42, 0.16)",
+                padding: 12,
+                display: "grid",
+                gap: 8,
+                textTransform: "none",
+                letterSpacing: 0,
+              }}
+            >
+              <strong style={{ color: "#0f172a", fontSize: 13 }}>Route Signals</strong>
+
+              <div style={{ display: "grid", gap: 6, color: "#334155", fontSize: 12 }}>
+                <div><strong>Workload</strong></div>
+                <div>📍 Stops</div>
+                <div>📦 Packages</div>
+                <div>🕒 Time critical</div>
+
+                <div style={{ height: 1, background: "#e6edf5", margin: "4px 0" }} />
+
+                <div><strong>Route shape</strong></div>
+                <div>🚚 Route miles</div>
+                <div>⚡ Miles per stop</div>
+                <div>⏱ Minutes per stop</div>
+              </div>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <div style={{ maxHeight: "calc(100vh - 236px)", overflow: "auto" }}>
@@ -216,13 +334,81 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
                 </div>
 
                 <div
+                  title={planSignalsByRouteKey[route.route_key]?.title ?? "No DRO plan signal matched."}
                   style={{
-                    color: "#94a3b8",
-                    fontSize: 12,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "flex-start",
+                    gap: 8,
+                    minWidth: 0,
+                    color: planSignalsByRouteKey[route.route_key] ? "#334155" : "#94a3b8",
+                    fontSize: 13,
                     fontWeight: 900,
+                    lineHeight: 1.2,
                   }}
                 >
-                  —
+                  {planSignalsByRouteKey[route.route_key] ? (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        minWidth: 0,
+                        overflow: "hidden",
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 7,
+                          minHeight: 32,
+                          padding: "0 10px",
+                          borderRadius: 12,
+                          border: "1px solid #dbe4ef",
+                          background: "#fff",
+                          boxShadow: "0 1px 0 rgba(15, 23, 42, 0.03)",
+                          whiteSpace: "nowrap",
+                          color: "#334155",
+                          fontWeight: 900,
+                        }}
+                      >
+                        <span>📍 {planSignalsByRouteKey[route.route_key].stops}</span>
+                        <span>📦 {planSignalsByRouteKey[route.route_key].packages}</span>
+                        <span
+                          style={{
+                            color: timeCriticalColor(planSignalsByRouteKey[route.route_key].timeCritical),
+                          }}
+                        >
+                          🕒 {planSignalsByRouteKey[route.route_key].timeCritical}
+                        </span>
+                      </span>
+
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 7,
+                          minHeight: 32,
+                          padding: "0 10px",
+                          borderRadius: 12,
+                          border: "1px solid #e6edf5",
+                          background: "#f8fafc",
+                          whiteSpace: "nowrap",
+                          color: "#64748b",
+                          fontWeight: 850,
+                        }}
+                      >
+                        <span>
+                          <span style={{ color: "#4d148c" }}>🚚</span> {planSignalsByRouteKey[route.route_key].milesLabel}
+                        </span>
+                        <span>⚡ {planSignalsByRouteKey[route.route_key].milesPerStopLabel}</span>
+                        <span>⏱ {planSignalsByRouteKey[route.route_key].minutesPerStopLabel}</span>
+                      </span>
+                    </div>
+                  ) : (
+                    <span>—</span>
+                  )}
                 </div>
 
                 {intent?.route_key === route.route_key ? (

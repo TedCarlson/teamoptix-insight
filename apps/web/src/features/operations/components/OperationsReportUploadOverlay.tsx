@@ -30,8 +30,13 @@ function familyLabel(family: DetectedReportFamily) {
 export default function OperationsReportUploadOverlay(props: OperationsReportUploadOverlayProps) {
   const { open, onClose } = props;
 
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState("");
   const [fileSize, setFileSize] = useState<number | null>(null);
+  const [serviceDate, setServiceDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [staging, setStaging] = useState(false);
+  const [stageError, setStageError] = useState<string | null>(null);
+  const [stageResult, setStageResult] = useState<any | null>(null);
   const [reportFrame, setReportFrame] = useState<"AM" | "PM" | "">("");
   const [snapshotKind, setSnapshotKind] = useState<"IN_DAY" | "FINAL">("IN_DAY");
   const params = useParams();
@@ -47,8 +52,13 @@ export default function OperationsReportUploadOverlay(props: OperationsReportUpl
   if (!open) return null;
 
   function reset() {
+    setSelectedFile(null);
     setFileName("");
     setFileSize(null);
+    setServiceDate(new Date().toISOString().slice(0, 10));
+    setStaging(false);
+    setStageError(null);
+    setStageResult(null);
     setReportFrame("");
     setSnapshotKind("IN_DAY");
     setInspected(false);
@@ -66,8 +76,11 @@ export default function OperationsReportUploadOverlay(props: OperationsReportUpl
   async function handleFileChange(file: File | null) {
     if (!file) return;
 
+    setSelectedFile(file);
     setFileName(file.name);
     setFileSize(file.size);
+    setStageError(null);
+    setStageResult(null);
     setInspecting(true);
     setInspectError(null);
     setInspection(null);
@@ -99,6 +112,62 @@ export default function OperationsReportUploadOverlay(props: OperationsReportUpl
       setInspecting(false);
     }
   }
+
+
+  async function handleStageReport() {
+    if (!selectedFile) {
+      setStageError("Select a report file first.");
+      return;
+    }
+
+    if (!serviceDate) {
+      setStageError("Report date is required.");
+      return;
+    }
+
+    if (detectedFamily === "DRO" && !reportFrame) {
+      setStageError("Select AM or PM before staging DRO.");
+      return;
+    }
+
+    setStaging(true);
+    setStageError(null);
+    setStageResult(null);
+
+    try {
+      const form = new FormData();
+      form.append("file", selectedFile);
+      form.append("service_date", serviceDate);
+      form.append("report_frame", reportFrame);
+      form.append("snapshot_kind", snapshotKind);
+
+      const familyKey = inspection?.detected?.report_family_key;
+      const endpoint =
+        familyKey === "DSW"
+          ? `/api/company/${slug}/operations/reports/dsw-upload`
+          : `/api/company/${slug}/operations/reports/upload`;
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        credentials: "include",
+        body: form,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setStageError(data?.error ?? "Upload failed.");
+        return;
+      }
+
+      setStageResult(data);
+    } catch {
+      setStageError("Upload failed.");
+    } finally {
+      setStaging(false);
+    }
+  }
+
 
   return (
     <div
@@ -204,7 +273,21 @@ export default function OperationsReportUploadOverlay(props: OperationsReportUpl
                 </span>
                 <span>Sheet: {inspection?.sheet_name ?? "Pending"}</span>
                 <span>Header row: {inspection?.detected?.detected_header_row ?? "Not found"}</span>
-                <span>Report date: {inspection?.detected?.service_date ?? "Not detected"}</span>
+                <label style={{ display: "grid", gap: 4 }}>
+                  <span>Report date</span>
+                  <input
+                    type="date"
+                    value={serviceDate}
+                    onChange={(event) => setServiceDate(event.target.value)}
+                    style={{
+                      height: 38,
+                      border: "1px solid #d6dfeb",
+                      borderRadius: 10,
+                      padding: "0 10px",
+                      maxWidth: 180,
+                    }}
+                  />
+                </label>
                 <span>Terminal: {inspection?.detected?.terminal_code ?? "Not detected"}</span>
                 <span>Contract: {inspection?.detected?.contract_filter ?? "Not detected"}</span>
                 <span>Generated: {inspection?.detected?.generated_at_text ?? "Not detected"}</span>
@@ -256,14 +339,26 @@ export default function OperationsReportUploadOverlay(props: OperationsReportUpl
               ) : null}
 
               <p className="app-card__body">
-                Endpoint wiring comes next. Close will refresh the current workspace when a file has been inspected.
+                Stage writes the batch and route rows into the existing operations report tables.
               </p>
+
+              {stageError ? <p style={{ color: "#b42318", margin: 0 }}>{stageError}</p> : null}
+              {stageResult ? (
+                <p style={{ color: "#166534", margin: 0 }}>
+                  Staged batch {stageResult.batch_id}. Inserted {stageResult.inserted_row_count} rows.
+                </p>
+              ) : null}
             </section>
           ) : null}
 
           <div className="cta-row" style={{ marginTop: 0 }}>
-            <button type="button" className="button button-primary" disabled={!inspected}>
-              Stage Report
+            <button
+              type="button"
+              className="button button-primary"
+              disabled={!inspected || staging || !selectedFile || (detectedFamily === "DRO" && !reportFrame)}
+              onClick={handleStageReport}
+            >
+              {staging ? "Staging..." : "Stage Report"}
             </button>
             <button type="button" className="button" onClick={handleClose}>
               Close

@@ -30,10 +30,12 @@ import {
   runFlagForDate,
   todayIso,
 } from "../lib/dispatchSupport";
+import { buildDroPlanSignals, type DroPlanRow } from "../lib/droPlanSignals";
 import OperationsReportUploadOverlay from "@/features/operations/components/OperationsReportUploadOverlay";
 import OperationsWorkspaceToolbar from "@/features/operations/components/OperationsWorkspaceToolbar";
 import { DispatchEventOverlay } from "../components/DispatchEventOverlay";
 import { DispatchRightRail } from "../components/DispatchRightRail";
+import { DeliveryWindowSnapshot } from "../components/DeliveryWindowSnapshot";
 import { DispatchRouteQueue } from "../components/DispatchRouteQueue";
 import { DispatchWorkforceRail } from "../components/DispatchWorkforceRail";
 
@@ -172,6 +174,44 @@ function applyDispatchEvent(
   return current;
 }
 
+
+
+function isoDateOffset(dateText: string, days: number) {
+  const [year, month, day] = dateText.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function formatDroPlanSignal(row: DroPlanRow | null | undefined) {
+  if (!row) return "—";
+
+  const parts = [
+    `${row.stops} stp`,
+    `${row.packages} pkg`,
+    `${row.time_commits} TC`,
+  ];
+
+  return parts.join(" · ");
+}
+
+function droPlanTitle(row: DroPlanRow | null | undefined) {
+  if (!row) return "No DRO plan row matched.";
+
+  const details = [
+    "PM DRO",
+    `${row.stops} stops`,
+    `${row.packages} packages`,
+    `${row.time_commits} time critical`,
+  ];
+
+  if (row.miles !== null) details.push(`${Number(row.miles).toFixed(1)} miles`);
+  if (row.miles_per_stop !== null) details.push(`${Number(row.miles_per_stop).toFixed(2)} mi/stp`);
+  if (row.minutes_per_stop !== null) details.push(`${Number(row.minutes_per_stop).toFixed(1)} min/stp`);
+
+  return details.join(" · ");
+}
+
 export default function DispatchPage() {
   const params = useParams();
   const slug = String(params?.slug ?? "");
@@ -192,6 +232,8 @@ export default function DispatchPage() {
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [uploadOverlayOpen, setUploadOverlayOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [droPlanRows, setDroPlanRows] = useState<DroPlanRow[]>([]);
+  const [droPlanSourceFrame, setDroPlanSourceFrame] = useState<"AM" | "PM" | null>(null);
   const persistedCalloutKeys = useRef(new Set<string>());
 
   const serviceDate = todayIso();
@@ -221,7 +263,29 @@ export default function DispatchPage() {
     [routeSortKey]
   );
 
-  const orderedRouteLabel = useCallback(
+  
+  const droPlanByWa = useMemo(() => {
+    const map = new Map<string, DroPlanRow>();
+
+    for (const row of droPlanRows) {
+      if (row.wa_number) map.set(row.wa_number, row);
+      if (row.route_name) map.set(row.route_name.toLowerCase(), row);
+    }
+
+    return map;
+  }, [droPlanRows]);
+
+  function droPlanForRoute(route: DispatchRoute) {
+    const wa = route.current_wa_num?.trim();
+    const name = route.route_name?.trim().toLowerCase();
+
+    if (wa && droPlanByWa.has(wa)) return droPlanByWa.get(wa);
+    if (name && droPlanByWa.has(name)) return droPlanByWa.get(name);
+
+    return null;
+  }
+
+const orderedRouteLabel = useCallback(
     (route: DispatchRoute) => {
       const routeName = route.route_name?.trim() ?? "";
       const workArea = route.current_wa_num?.trim() ?? "";
@@ -243,6 +307,8 @@ export default function DispatchPage() {
         setLoading(true);
         setError(null);
 
+        const droPlanServiceDate = isoDateOffset(serviceDate, -1);
+
         const [
           scheduleRes,
           routesRes,
@@ -250,6 +316,7 @@ export default function DispatchPage() {
           dispatchDayRes,
           eventTypesRes,
           operationsConfigRes,
+          droPlanRes,
         ] = await Promise.all([
           fetch(`/api/company/${slug}/schedule/generated?date=${serviceDate}`, {
             credentials: "include",
@@ -275,6 +342,10 @@ export default function DispatchPage() {
             credentials: "include",
             cache: "no-store",
           }),
+          fetch(`/api/company/${slug}/operations/reports/dro-plan?date=${droPlanServiceDate}&frame=PM`, {
+            credentials: "include",
+            cache: "no-store",
+          }),
         ]);
 
         const [
@@ -284,6 +355,7 @@ export default function DispatchPage() {
           dispatchDayData,
           eventTypesData,
           operationsConfigData,
+          droPlanData,
         ] = await Promise.all([
           scheduleRes.json(),
           routesRes.json(),
@@ -291,6 +363,7 @@ export default function DispatchPage() {
           dispatchDayRes.json(),
           eventTypesRes.json(),
           operationsConfigRes.json(),
+          droPlanRes.json(),
         ]);
 
         if (!active) return;
@@ -335,6 +408,8 @@ export default function DispatchPage() {
         setRosterRows([]);
           return;
         }
+
+        setDroPlanRows(droPlanRes.ok ? droPlanData?.rows ?? [] : []);
 
         setRouteSortKey(
           operationsConfigData?.config?.route_sort_key === "current_wa_num"
@@ -472,6 +547,11 @@ export default function DispatchPage() {
   const dispatchRoutes = useMemo(
     () => Object.values(assignments).sort(routeSort),
     [assignments, routeSort]
+  );
+
+  const { planSignalsByRouteKey, planTotals } = useMemo(
+    () => buildDroPlanSignals(dispatchRoutes, droPlanRows),
+    [dispatchRoutes, droPlanRows]
   );
 
   const scheduledRosterIds = useMemo(() => {
@@ -1295,6 +1375,9 @@ export default function DispatchPage() {
           onOpenSeat={openSeat}
           onClearSeat={clearSeat}
           onCancelIntent={() => setIntent(null)}
+          planSignalsByRouteKey={planSignalsByRouteKey}
+          planTotals={planTotals}
+          planSourceLabel={droPlanSourceFrame ? `${droPlanSourceFrame} DRO` : null}
         />
 
         <DispatchRightRail
@@ -1311,53 +1394,12 @@ export default function DispatchPage() {
         ) : null}
 
         {activeSurface === "delivery-window" ? (
-          <section
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(0, 1fr) 360px",
-              gap: 12,
-              marginTop: 10,
-              alignItems: "start",
-            }}
-          >
-            <section style={{ ...panel, padding: 14, display: "grid", gap: 10 }}>
-              <p style={eyebrow}>Delivery Window</p>
-              <h2 style={{ margin: 0, fontSize: 18 }}>Route window review</h2>
-              <p style={{ margin: 0, color: "#64748b", fontWeight: 700 }}>
-                This surface will review the PM snapshot after planning is locked and before dispatch execution begins.
-              </p>
-
-              <div style={{ display: "grid", gap: 8 }}>
-                {displayedPlanningRoutes.map((route) => (
-                  <div
-                    key={route.route_key}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      padding: "10px 12px",
-                      borderRadius: 14,
-                      border: "1px solid #e6edf5",
-                      background: "#fff",
-                    }}
-                  >
-                    <strong>{orderedRouteLabel(route)}</strong>
-                    <span style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>
-                      {route.route_location ?? "No location"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <aside style={{ ...panel, padding: 14, display: "grid", gap: 10 }}>
-              <p style={eyebrow}>Window posture</p>
-              <strong>{displayedPlanningRoutes.length} planned routes</strong>
-              <p style={{ margin: 0, color: "#64748b", fontWeight: 700 }}>
-                Exception/risk rail lands here next.
-              </p>
-            </aside>
-          </section>
+          <DeliveryWindowSnapshot
+            slug={slug}
+            serviceDate={serviceDate}
+            routes={displayedPlanningRoutes}
+            routeLabelForDisplay={orderedRouteLabel}
+          />
         ) : null}
 
         {activeSurface === "planning" ? (
