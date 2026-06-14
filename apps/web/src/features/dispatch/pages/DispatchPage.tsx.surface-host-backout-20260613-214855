@@ -35,6 +35,8 @@ import OperationsReportUploadOverlay from "@/features/operations/components/Oper
 import OperationsWorkspaceToolbar from "@/features/operations/components/OperationsWorkspaceToolbar";
 import { DispatchEventOverlay } from "../components/DispatchEventOverlay";
 import { DispatchRightRail } from "../components/DispatchRightRail";
+import { DeliveryWindowSnapshot } from "../surfaces/DeliveryWindowSnapshot";
+import PlanningWorkspace from "../components/planning/PlanningWorkspace";
 import { DispatchRouteQueue } from "../components/DispatchRouteQueue";
 import { DispatchWorkforceRail } from "../components/DispatchWorkforceRail";
 
@@ -49,6 +51,9 @@ function dispatchPersonFromEvent(event: DispatchEventRow): DispatchPerson | null
     override_type: null,
   };
 }
+
+type DispatchSurface = "dispatch" | "delivery-window" | "planning";
+
 
 function addDaysIso(value: string, days: number) {
   const date = new Date(`${value}T00:00:00`);
@@ -201,6 +206,8 @@ export default function DispatchPage() {
   const serviceDate = todayIso();
   const planningDate = addDaysIso(serviceDate, 1);
   const dispatchLocked = dispatchDay?.status === "LOCKED";
+  const [activeSurface, setActiveSurface] =
+    useState<DispatchSurface>("dispatch");
   const [routeSortKey, setRouteSortKey] =
     useState<"route_name" | "current_wa_num">("route_name");
   const routeSort = useCallback(
@@ -1237,7 +1244,46 @@ const orderedRouteLabel = useCallback(
           </section>
         ) : null}
 
-        <section className="dispatch-grid">
+        <section
+          style={{
+            ...panel,
+            padding: 10,
+            marginTop: 10,
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          {[
+            ["dispatch", "Dispatch"],
+            ["delivery-window", "Delivery Window"],
+            ["planning", "Planning"],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              className="button"
+              onClick={() => setActiveSurface(key as DispatchSurface)}
+              style={
+                activeSurface === key
+                  ? {
+                      borderColor: "#2563eb",
+                      background: "#eff6ff",
+                      color: "#1d4ed8",
+                      fontWeight: 900,
+                    }
+                  : undefined
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </section>
+
+
+        {activeSurface === "dispatch" ? (
+          <section className="dispatch-grid">
             <DispatchWorkforceRail
               allPeopleCount={allPeople.length}
               availableCount={summary.available}
@@ -1273,6 +1319,28 @@ const orderedRouteLabel = useCallback(
               onLockDispatch={lockDispatch}
             />
           </section>
+        ) : null}
+
+        {activeSurface === "delivery-window" ? (
+          <DeliveryWindowSnapshot
+            slug={slug}
+            serviceDate={serviceDate}
+            routes={dispatchRoutes}
+            routeLabelForDisplay={orderedRouteLabel}
+          />
+        ) : null}
+
+        {activeSurface === "planning" ? (
+          <PlanningWorkspace
+            slug={slug}
+            planningDate={planningDate}
+            routeSortKey={routeSortKey}
+            planningRoutes={planningRoutes}
+            droPlanRows={droPlanRows}
+            droPlanSourceFrame={droPlanSourceFrame}
+          />
+        ) : null}
+
       </section>
 
 

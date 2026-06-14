@@ -173,14 +173,17 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
         ) : null}
 
         <div style={{ display: "grid", gap: 8 }}>
-          {routes.map((route) => {
+          {routes.map((route, index) => {
             const row =
               byRoute.get(route.current_wa_num ?? "") ??
               byRoute.get(route.route_name ?? "") ??
               byRoute.get(routeKey(route));
 
+            const routeKey =
+              route.route_key || route.current_wa_num || route.route_name || `route-${index}`;
+
             return (
-              <div
+              <div key={routeKey}
                 key={route.route_key}
                 style={{
                   display: "grid",
