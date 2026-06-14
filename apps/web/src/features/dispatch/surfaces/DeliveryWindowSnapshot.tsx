@@ -42,17 +42,96 @@ type DeliveryWindowSnapshotProps = {
   routeLabelForDisplay: (route: DispatchRoute) => string;
 };
 
+function normalizeKey(value: string | null | undefined) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^wa\s+/i, "")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function normalizeName(value: string | null | undefined) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
 function routeKey(route: DispatchRoute) {
   return route.current_wa_num ?? route.route_name ?? route.route_key;
 }
 
-function rowKey(row: DswCurrentRow) {
-  return row.route_baseline_id ?? row.wa_number ?? row.route_name ?? "";
+function dswRowIdentity(row: DswCurrentRow, index: number) {
+  return [
+    row.batch_id,
+    row.route_baseline_id,
+    row.wa_number,
+    row.route_name,
+    index,
+  ]
+    .filter(Boolean)
+    .join(":");
 }
 
-function pct(value: number, total: number) {
-  if (!total) return "—";
-  return `${Math.round((value / total) * 100)}%`;
+function isActiveDswRow(row: DswCurrentRow) {
+  return (
+    Number(row.vscan_packages ?? 0) > 0 ||
+    Number(row.planned_delivery_stops ?? 0) > 0 ||
+    Number(row.planned_pickup_stops ?? 0) > 0 ||
+    Number(row.actual_delivery_stops ?? 0) > 0 ||
+    Number(row.actual_delivery_packages ?? 0) > 0 ||
+    Number(row.actual_pickup_stops ?? 0) > 0 ||
+    Number(row.actual_pickup_packages ?? 0) > 0
+  );
+}
+
+function pct(actual: number, planned: number) {
+  if (!planned) return 0;
+  return Math.min(100, Math.round((actual / planned) * 100));
+}
+
+function completionPct(row: DswCurrentRow | null | undefined) {
+  if (!row) return 0;
+
+  const plannedStops = Number(row.planned_delivery_stops ?? 0);
+  const actualStops = Number(row.actual_delivery_stops ?? 0);
+  const plannedPackages = Number(row.vscan_packages ?? 0);
+  const actualPackages = Number(row.actual_delivery_packages ?? 0);
+
+  if (plannedStops > 0) return pct(actualStops, plannedStops);
+  if (plannedPackages > 0) return pct(actualPackages, plannedPackages);
+  return 0;
+}
+
+function driverSignal(
+  rowDriver: string | null | undefined,
+  dispatchDriver: string | null | undefined,
+  completion: number
+) {
+  const dsw = String(rowDriver ?? "").trim();
+  const dispatch = String(dispatchDriver ?? "").trim();
+
+  if (completion >= 100) {
+    return { label: "Complete", tone: "#166534", icon: "✅", key: "complete" };
+  }
+
+  if (!dispatch && !dsw) {
+    return { label: "No Dispatch Driver", tone: "#64748b", icon: "⚪", key: "no_dispatch_driver" };
+  }
+
+  if (dispatch && !dsw) {
+    return { label: "Awaiting Login", tone: "#92400e", icon: "🟡", key: "awaiting_login" };
+  }
+
+  if (!dispatch && dsw) {
+    return { label: "Logged In / Unassigned", tone: "#7c2d12", icon: "🟠", key: "logged_in_unassigned" };
+  }
+
+  if (normalizeName(dispatch) === normalizeName(dsw)) {
+    return { label: "Logged In", tone: "#166534", icon: "🟢", key: "logged_in" };
+  }
+
+  return { label: "Driver Mismatch", tone: "#991b1b", icon: "🟠", key: "driver_mismatch" };
 }
 
 export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
@@ -101,40 +180,101 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
     };
   }, [serviceDate, slug]);
 
-  const byRoute = useMemo(() => {
+  const dswIndex = useMemo(() => {
     const map = new Map<string, DswCurrentRow>();
 
     for (const row of payload?.rows ?? []) {
-      const key = rowKey(row);
-      if (key) map.set(key, row);
+      for (const key of [
+        row.route_baseline_id,
+        row.wa_number,
+        row.route_name,
+      ]) {
+        const normalized = normalizeKey(key);
+        if (normalized) map.set(normalized, row);
+      }
     }
 
     return map;
   }, [payload?.rows]);
 
-  const totals = useMemo(() => {
-    const rows = payload?.rows ?? [];
+  const routeRows = useMemo(() => {
+    return routes.map((route, index) => {
+      const row =
+        dswIndex.get(normalizeKey(route.current_wa_num)) ??
+        dswIndex.get(normalizeKey(route.route_name)) ??
+        dswIndex.get(normalizeKey(route.route_key)) ??
+        dswIndex.get(normalizeKey(routeKey(route))) ??
+        null;
 
-    return rows.reduce(
-      (acc, row) => {
-        acc.routes += 1;
-        acc.vscanPackages += Number(row.vscan_packages ?? 0);
-        acc.plannedStops += Number(row.planned_delivery_stops ?? 0);
-        acc.pickupStops += Number(row.planned_pickup_stops ?? 0);
-        acc.actualStops += Number(row.actual_delivery_stops ?? 0);
-        acc.actualPackages += Number(row.actual_delivery_packages ?? 0);
-        return acc;
-      },
-      {
-        routes: 0,
-        vscanPackages: 0,
-        plannedStops: 0,
-        pickupStops: 0,
-        actualStops: 0,
-        actualPackages: 0,
-      }
+      const completion = completionPct(row);
+      const signal = driverSignal(row?.driver_name, route.driver?.full_name, completion);
+
+      return {
+        key: route.route_key || route.current_wa_num || route.route_name || `route-${index}`,
+        route,
+        row,
+        completion,
+        signal,
+      };
+    });
+  }, [dswIndex, routes]);
+
+  const matchedDswIds = useMemo(() => {
+    const ids = new Set<DswCurrentRow>();
+
+    for (const item of routeRows) {
+      if (item.row) ids.add(item.row);
+    }
+
+    return ids;
+  }, [routeRows]);
+
+  const dswRows = payload?.rows ?? [];
+  const activeDswRows = dswRows.filter(isActiveDswRow);
+  const hiddenEmptyDswRows = dswRows.filter((row) => !isActiveDswRow(row));
+  const unplannedActiveRows = activeDswRows.filter((row) => !matchedDswIds.has(row));
+
+  const driverStats = routeRows.reduce(
+    (acc, item) => {
+      if (item.signal.key === "awaiting_login") acc.awaitingLogin += 1;
+      if (item.signal.key === "logged_in") acc.loggedIn += 1;
+      if (item.signal.key === "driver_mismatch") acc.mismatch += 1;
+      if (item.signal.key === "no_dispatch_driver") acc.noDriver += 1;
+      if (item.signal.key === "complete") acc.complete += 1;
+      return acc;
+    },
+    {
+      awaitingLogin: 0,
+      loggedIn: 0,
+      mismatch: 0,
+      noDriver: 0,
+      complete: 0,
+    }
+  );
+
+  const fleetCompletion = useMemo(() => {
+    const plannedStops = routeRows.reduce(
+      (sum, item) => sum + Number(item.row?.planned_delivery_stops ?? 0),
+      0
     );
-  }, [payload?.rows]);
+    const actualStops = routeRows.reduce(
+      (sum, item) => sum + Number(item.row?.actual_delivery_stops ?? 0),
+      0
+    );
+
+    if (plannedStops > 0) return pct(actualStops, plannedStops);
+
+    const plannedPackages = routeRows.reduce(
+      (sum, item) => sum + Number(item.row?.vscan_packages ?? 0),
+      0
+    );
+    const actualPackages = routeRows.reduce(
+      (sum, item) => sum + Number(item.row?.actual_delivery_packages ?? 0),
+      0
+    );
+
+    return pct(actualPackages, plannedPackages);
+  }, [routeRows]);
 
   return (
     <section
@@ -150,9 +290,9 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
             <p style={eyebrow}>Delivery Window</p>
-            <h2 style={{ margin: 0, fontSize: 18 }}>DSW launch snapshot</h2>
+            <h2 style={{ margin: 0, fontSize: 18 }}>Launch + execution control tower</h2>
             <p style={{ margin: "4px 0 0", color: "#64748b", fontWeight: 700 }}>
-              Current in-day DSW snapshot rendered against today&apos;s route set.
+              Planned dispatch routes enriched with active DSW launch data.
             </p>
           </div>
 
@@ -173,21 +313,16 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
         ) : null}
 
         <div style={{ display: "grid", gap: 8 }}>
-          {routes.map((route, index) => {
-            const row =
-              byRoute.get(route.current_wa_num ?? "") ??
-              byRoute.get(route.route_name ?? "") ??
-              byRoute.get(routeKey(route));
-
-            const rowKey =
-              route.route_key || route.current_wa_num || route.route_name || `route-${index}`;
+          {routeRows.map((item) => {
+            const { route, row, signal, completion } = item;
 
             return (
-              <div key={rowKey}
+              <div
+                key={item.key}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "minmax(180px, 1.2fr) repeat(4, minmax(90px, 0.6fr))",
-                  gap: 10,
+                  gridTemplateColumns: "minmax(200px, 1.15fr) minmax(360px, 1.5fr) 82px",
+                  gap: 12,
                   alignItems: "center",
                   padding: "10px 12px",
                   borderRadius: 14,
@@ -200,67 +335,175 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
                     {routeLabelForDisplay(route)}
                   </strong>
                   <span style={{ display: "block", color: "#64748b", fontSize: 12, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {row?.driver_name || route.driver?.full_name || "No driver"} {row?.vehicle_text ? `· Veh ${row.vehicle_text}` : ""}
+                    {route.driver?.full_name || row?.driver_name || "No driver"}
+                    {row?.vehicle_text ? ` · Veh ${row.vehicle_text}` : ""}
+                  </span>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      marginTop: 4,
+                      color: signal.tone,
+                      fontSize: 11,
+                      fontWeight: 900,
+                    }}
+                  >
+                    {signal.icon} {signal.label}
                   </span>
                 </div>
 
                 {row ? (
-                  <>
-                    <Metric label="Scanned" value={`📦 ${row.vscan_packages ?? 0}`} />
-                    <Metric label="Stops" value={`📍 ${row.planned_delivery_stops ?? 0}`} />
-                    <Metric label="Pickups" value={`PU ${row.planned_pickup_stops ?? 0}`} />
-                    <Metric label="Actual" value={`${row.actual_delivery_stops ?? 0} / ${row.actual_delivery_packages ?? 0}`} />
-                  </>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      flexWrap: "wrap",
+                      color: "#334155",
+                      fontSize: 13,
+                      fontWeight: 900,
+                    }}
+                  >
+                    <ProgressPill
+                      icon="📦"
+                      actual={row.actual_delivery_packages ?? 0}
+                      planned={row.vscan_packages ?? 0}
+                      label="packages"
+                    />
+                    <ProgressPill
+                      icon="📍"
+                      actual={row.actual_delivery_stops ?? 0}
+                      planned={row.planned_delivery_stops ?? 0}
+                      label="stops"
+                    />
+                    <ProgressPill
+                      icon="🕒"
+                      actual={0}
+                      planned={0}
+                      label="commits"
+                    />
+                  </div>
                 ) : (
-                  <div style={{ gridColumn: "2 / -1", color: "#94a3b8", fontSize: 12, fontWeight: 900 }}>
-                    No DSW route row matched
+                  <div style={{ color: "#94a3b8", fontSize: 12, fontWeight: 900 }}>
+                    No active DSW row matched
                   </div>
                 )}
+
+                <div
+                  style={{
+                    justifySelf: "end",
+                    minWidth: 64,
+                    textAlign: "center",
+                    borderRadius: 13,
+                    padding: "8px 10px",
+                    border: "1px solid #e6edf5",
+                    background: completion >= 100 ? "#ecfdf5" : "#f8fafc",
+                    color: completion >= 100 ? "#166534" : "#0f172a",
+                    fontWeight: 950,
+                  }}
+                >
+                  {completion}%
+                </div>
               </div>
             );
           })}
         </div>
+
+        {unplannedActiveRows.length > 0 ? (
+          <section style={{ marginTop: 8, display: "grid", gap: 8 }}>
+            <p style={{ ...eyebrow, marginTop: 6 }}>Unplanned Active Routes</p>
+            {unplannedActiveRows.map((row, index) => (
+              <div
+                key={dswRowIdentity(row, index)}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(180px, 1fr) minmax(300px, 1.4fr)",
+                  gap: 10,
+                  alignItems: "center",
+                  padding: "10px 12px",
+                  borderRadius: 14,
+                  border: "1px solid #fed7aa",
+                  background: "#fff7ed",
+                }}
+              >
+                <div>
+                  <strong>{row.route_name ?? row.wa_number ?? "Unplanned route"}</strong>
+                  <span style={{ display: "block", color: "#9a3412", fontSize: 12, fontWeight: 900 }}>
+                    WA {row.wa_number ?? "—"} · {row.route_match_method ?? "No match"}
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 13, fontWeight: 900 }}>
+                  <ProgressPill icon="📦" actual={row.actual_delivery_packages ?? 0} planned={row.vscan_packages ?? 0} label="packages" />
+                  <ProgressPill icon="📍" actual={row.actual_delivery_stops ?? 0} planned={row.planned_delivery_stops ?? 0} label="stops" />
+                  <ProgressPill icon="🕒" actual={0} planned={0} label="commits" />
+                </div>
+              </div>
+            ))}
+          </section>
+        ) : null}
       </section>
 
       <aside style={{ ...panel, padding: 14, display: "grid", gap: 10 }}>
-        <p style={eyebrow}>DSW posture</p>
-        <strong>{payload?.rows?.length ?? 0} DSW routes</strong>
+        <p style={eyebrow}>Delivery posture</p>
+        <strong style={{ fontSize: 24 }}>{fleetCompletion}%</strong>
+        <span style={{ marginTop: -8, color: "#64748b", fontSize: 12, fontWeight: 900 }}>
+          Fleet completion
+        </span>
 
-        <RailStat label="DRO routes" value={routes.length} />
-        <RailStat label="DSW routes" value={totals.routes} />
-        <RailStat label="Route coverage" value={pct(totals.routes, routes.length)} />
-        <RailStat label="Scanned packages" value={totals.vscanPackages} />
-        <RailStat label="Planned stops" value={totals.plannedStops} />
-        <RailStat label="Pickups" value={totals.pickupStops} />
+        <RailStat label="Planned routes" value={routes.length} />
+        <RailStat label="Active DSW routes" value={activeDswRows.length} />
+        <RailStat label="Unplanned active" value={unplannedActiveRows.length} />
+        <RailStat label="Hidden empty DSW rows" value={hiddenEmptyDswRows.length} />
+
+        <div style={{ height: 1, background: "#e6edf5", margin: "4px 0" }} />
+
+        <RailStat label="Awaiting login" value={driverStats.awaitingLogin} />
+        <RailStat label="Logged in" value={driverStats.loggedIn} />
+        <RailStat label="Driver mismatch" value={driverStats.mismatch} />
+        <RailStat label="No dispatch driver" value={driverStats.noDriver} />
       </aside>
     </section>
   );
 }
 
-function Metric(props: { label: string; value: string }) {
+function ProgressPill(props: {
+  icon: string;
+  actual: number;
+  planned: number;
+  label: string;
+}) {
   return (
-    <div
+    <span
       style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
         border: "1px solid #edf2f7",
-        borderRadius: 11,
-        padding: "7px 9px",
-        minHeight: 44,
-        display: "grid",
-        gap: 2,
+        borderRadius: 999,
+        padding: "7px 10px",
+        background: "#f8fafc",
+        whiteSpace: "nowrap",
       }}
     >
-      <span style={{ color: "#64748b", fontSize: 10, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-        {props.label}
-      </span>
-      <strong style={{ fontSize: 13 }}>{props.value}</strong>
-    </div>
+      {props.icon} {props.actual} of {props.planned} {props.label}
+    </span>
   );
 }
 
 function RailStat(props: { label: string; value: string | number }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, borderTop: "1px solid #eef2f7", paddingTop: 8 }}>
-      <span style={{ color: "#64748b", fontSize: 12, fontWeight: 900 }}>{props.label}</span>
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        gap: 12,
+        border: "1px solid #edf2f7",
+        borderRadius: 12,
+        padding: "9px 10px",
+        alignItems: "center",
+      }}
+    >
+      <span style={{ color: "#64748b", fontSize: 12, fontWeight: 900 }}>
+        {props.label}
+      </span>
       <strong>{props.value}</strong>
     </div>
   );

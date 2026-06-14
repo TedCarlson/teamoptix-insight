@@ -20,10 +20,12 @@ function routeLabelForDisplay(route: DispatchRoute) {
 
 export default function DeliveryWindowPage({ slug, serviceDate }: Props) {
   const [uploadOverlayOpen, setUploadOverlayOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(new Date().toISOString());
 
-  const { routes, loading, error } = useDeliveryWindowData(slug, serviceDate);
+  const { routes, loading, error } = useDeliveryWindowData(slug, serviceDate, refreshKey);
   function refreshWorkspace() {
+    setRefreshKey((current) => current + 1);
     setLastUpdatedAt(new Date().toISOString());
   }
 
@@ -48,6 +50,7 @@ export default function DeliveryWindowPage({ slug, serviceDate }: Props) {
           </section>
         ) : (
           <DeliveryWindowSnapshot
+            key={refreshKey}
             slug={slug}
             serviceDate={serviceDate}
             routes={routes}
