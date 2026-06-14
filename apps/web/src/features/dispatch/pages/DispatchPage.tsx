@@ -1327,7 +1327,6 @@ const orderedRouteLabel = useCallback(
             serviceDate={serviceDate}
             routes={dispatchRoutes}
             routeLabelForDisplay={orderedRouteLabel}
-            routeSortKey={routeSortKey}
           />
         ) : null}
 
