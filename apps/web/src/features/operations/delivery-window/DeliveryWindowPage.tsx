@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { DeliveryWindowSnapshot } from "@/features/dispatch/components/DeliveryWindowSnapshot";
+import { DeliveryWindowSnapshot } from "@/features/dispatch/surfaces/DeliveryWindowSnapshot";
 import { useDeliveryWindowData } from "./hooks/useDeliveryWindowData";
 import { cleanRouteKey, type DispatchRoute } from "@/features/dispatch/lib/dispatchSupport";
 import { DroPlanRow } from "@/features/dispatch/lib/droPlanSignals";
