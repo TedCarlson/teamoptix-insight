@@ -1,0 +1,17 @@
+# TeamOptix Insight Repo Snapshot
+# Generated: Sat Jun 13 21:24:58 EDT 2026
+# Root: /Users/tedcarlson/Developer/TeamOptix/insight
+
+## Git
+```
+ M apps/web/next-env.d.ts
+ M apps/web/src/features/dispatch/pages/DispatchPage.tsx
+ M apps/web/tsconfig.tsbuildinfo
+?? apps/web/src/features/operations/delivery-window/
+?? repo-snapshots/teamoptix-insight-snapshot-20260613-212458.txt
+fix/dispatch-phase1-surface-purge
+308e932 v1.6.13.00 Upload Handling
+```
+
+## Repo Tree
+```
