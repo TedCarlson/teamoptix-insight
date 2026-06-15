@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import OperationsReportUploadOverlay from "@/features/operations/components/OperationsReportUploadOverlay";
 import OperationsWorkspaceToolbar from "@/features/operations/components/OperationsWorkspaceToolbar";
+import OperationsIntelligenceFeed from "@/features/operations/components/OperationsIntelligenceFeed";
 import { DeliveryWindowSnapshot } from "@/features/dispatch/surfaces/DeliveryWindowSnapshot";
 import type { DispatchRoute } from "@/features/dispatch/lib/dispatchSupport";
 import { useDeliveryWindowData } from "./hooks/useDeliveryWindowData";
@@ -12,18 +13,81 @@ type Props = {
   serviceDate: string;
 };
 
-function routeLabelForDisplay(route: DispatchRoute) {
-  const wa = route.current_wa_num ? `WA ${route.current_wa_num}` : null;
-  const name = route.route_name ?? route.route_key;
-  return [name, wa].filter(Boolean).join(" · ");
+type RouteSortKey = "route_name" | "current_wa_num";
+
+function routeLabelForDisplay(route: DispatchRoute, routeSortKey: RouteSortKey) {
+  const routeName = route.route_name?.trim() ?? "";
+  const workArea = route.current_wa_num?.trim() ?? "";
+
+  if (routeSortKey === "current_wa_num") {
+    return [workArea, routeName].filter(Boolean).join(" · ") || route.route_key;
+  }
+
+  return [routeName, workArea].filter(Boolean).join(" · ") || route.route_key;
+}
+
+function sortRoutes(routes: DispatchRoute[], routeSortKey: RouteSortKey) {
+  return [...routes].sort((a, b) => {
+    const valueA =
+      routeSortKey === "current_wa_num"
+        ? a.current_wa_num || a.route_name || a.route_key
+        : a.route_name || a.current_wa_num || a.route_key;
+
+    const valueB =
+      routeSortKey === "current_wa_num"
+        ? b.current_wa_num || b.route_name || b.route_key
+        : b.route_name || b.current_wa_num || b.route_key;
+
+    return valueA.localeCompare(valueB, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+  });
 }
 
 export default function DeliveryWindowPage({ slug, serviceDate }: Props) {
   const [uploadOverlayOpen, setUploadOverlayOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(new Date().toISOString());
+  const [routeSortKey, setRouteSortKey] = useState<RouteSortKey>("route_name");
 
   const { routes, loading, error } = useDeliveryWindowData(slug, serviceDate, refreshKey);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadOperationsConfig() {
+      try {
+        const res = await fetch(`/api/company/${slug}/config/operations`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        const data = await res.json();
+
+        if (!active || !res.ok) return;
+
+        setRouteSortKey(
+          data?.config?.route_sort_key === "current_wa_num"
+            ? "current_wa_num"
+            : "route_name"
+        );
+      } catch {
+        if (active) setRouteSortKey("route_name");
+      }
+    }
+
+    if (slug) void loadOperationsConfig();
+
+    return () => {
+      active = false;
+    };
+  }, [slug, refreshKey]);
+
+  const sortedRoutes = useMemo(
+    () => sortRoutes(routes, routeSortKey),
+    [routes, routeSortKey]
+  );
   function refreshWorkspace() {
     setRefreshKey((current) => current + 1);
     setLastUpdatedAt(new Date().toISOString());
@@ -53,8 +117,8 @@ export default function DeliveryWindowPage({ slug, serviceDate }: Props) {
             key={refreshKey}
             slug={slug}
             serviceDate={serviceDate}
-            routes={routes}
-            routeLabelForDisplay={routeLabelForDisplay}
+            routes={sortedRoutes}
+            routeLabelForDisplay={(route) => routeLabelForDisplay(route, routeSortKey)}
           />
         )}
       </section>

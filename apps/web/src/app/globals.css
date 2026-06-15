@@ -767,3 +767,17 @@ h1 {
   transform: translateY(1px);
 }
 
+
+.delivery-window-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 12px;
+  margin-top: 10px;
+  align-items: start;
+}
+
+@media (max-width: 1200px) {
+  .delivery-window-grid {
+    grid-template-columns: 1fr;
+  }
+}

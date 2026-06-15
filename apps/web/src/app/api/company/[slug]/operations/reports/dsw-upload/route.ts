@@ -129,6 +129,74 @@ function normalizeDsw(raw: ParsedRow, routeMatch: { id: string | null; method: s
   };
 }
 
+function footerNumber(raw: ParsedRow, header: string) {
+  return toNumber(raw[header]);
+}
+
+function footerInteger(raw: ParsedRow, header: string) {
+  return toInteger(raw[header]);
+}
+
+function normalizeDswSummary(raw: ParsedRow, meta: ReturnType<typeof extractMeta>) {
+  return {
+    source_contract: "DSW_DAILY_SERVICE_WORKSHEET",
+    terminal_identity: meta.terminal_identity,
+    contract_filter: meta.contract_filter,
+    generated_at_text: meta.generated_at_text,
+
+    service_area: cellText(raw["Svc Area #"]),
+    wa_name: cellText(raw["WA Name"]),
+    vehicle_text: cellText(raw["Veh #"]),
+    driver_name: cellText(raw["Driver Name"]),
+    wa_number: cellText(raw["WA#"]),
+
+    // DSW footer rows place totals under shifted visible columns.
+    // These mappings are semantic footer mappings, not route-row mappings.
+    vscan_packages: footerInteger(raw, "Del Stps"),
+    planned_delivery_stops: footerInteger(raw, "PU Stps"),
+    planned_pickup_stops: footerInteger(raw, "DIFF"),
+    diff: footerInteger(raw, "Act Del Stps"),
+    actual_delivery_stops: footerInteger(raw, "Act Del Pkgs"),
+    actual_delivery_packages: footerInteger(raw, "Act PU Stps"),
+    actual_pickup_stops: footerInteger(raw, "Act PU Pkgs"),
+    actual_pickup_packages: footerInteger(raw, "ILS%"),
+
+    ils_percent: footerNumber(raw, "ILS Impact Pkgs"),
+    ils_impact_packages: footerInteger(raw, "Non Delvd Stps"),
+    non_delivered_stops: footerInteger(raw, "Code 85"),
+    code_85: footerInteger(raw, "All Status Code Pkgs"),
+    all_status_code_packages: footerInteger(raw, "P'L M'L"),
+    pl_ml: footerInteger(raw, "DNA"),
+    dna: footerInteger(raw, "Snd Agn"),
+    send_again: footerInteger(raw, "Exc's"),
+    exceptions: footerInteger(raw, "VSA vs STAR (DIFF)"),
+    vsa_star_diff: footerInteger(raw, "% Returns Scans"),
+    return_scans_percent: footerNumber(raw, "Miles"),
+    miles: footerNumber(raw, "On Road Hours"),
+    on_road_hours: footerNumber(raw, "On Duty Hours"),
+    on_duty_hours: footerNumber(raw, "Pot. DOT Hrs Viols"),
+    potential_dot_hours_violations: footerInteger(raw, "Next Avail On Duty"),
+    next_available_on_duty: cellText(raw["Pot. Miss PUs"]) || null,
+    potential_missed_pickups: footerInteger(raw, "E/L PUs"),
+    early_late_pickups: footerInteger(raw, "Req. Sig."),
+    required_signature: footerInteger(raw, "Date Certain"),
+    date_certain: footerInteger(raw, "Evening"),
+    evening: footerInteger(raw, "Appt"),
+    appointment: null,
+  };
+}
+
+function summaryScope(label: string) {
+  if (/^contract\s+/i.test(label) && /\stotal$/i.test(label)) return "CONTRACT";
+  if (/^colocation total$/i.test(label)) return "COLOCATION";
+  return null;
+}
+
+function contractCodeFromLabel(label: string) {
+  const match = label.match(/^Contract\s+(.+?)\s+Total$/i);
+  return match?.[1] ?? null;
+}
+
 function excelDateToIso(value: string) {
   const parsed = new Date(value);
   if (!Number.isNaN(parsed.getTime())) {
@@ -241,15 +309,23 @@ export async function POST(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: routeError.message }, { status: 500 });
     }
 
-    const parsedRows = objectRows(rows, headerIndex).filter(({ raw }) => {
+    const allParsedRows = objectRows(rows, headerIndex).filter(({ raw }) => {
       const first = cellText(raw["Svc Area #"]);
       if (!first) return false;
-      if (first.includes("Contract") && first.includes("Total")) return false;
-      if (first === "Colocation Total") return false;
       if (first.startsWith("Access is restricted")) return false;
       if (first.startsWith("Due to stop rate")) return false;
+      return cellText(raw["WA Name"]) || cellText(raw["WA#"]) || Boolean(summaryScope(first));
+    });
+
+    const parsedRows = allParsedRows.filter(({ raw }) => {
+      const first = cellText(raw["Svc Area #"]);
+      if (summaryScope(first)) return false;
       return cellText(raw["WA Name"]) || cellText(raw["WA#"]);
     });
+
+    const summaryRows = allParsedRows.filter(({ raw }) =>
+      Boolean(summaryScope(cellText(raw["Svc Area #"])))
+    );
 
     const stagedRows = parsedRows.map(({ raw, source_row_index }) => {
       const routeMatch = findRouteMatch(raw, routes ?? [], serviceDate);
@@ -265,6 +341,22 @@ export async function POST(req: NextRequest, context: RouteContext) {
         source_wa_number: cellText(raw["WA#"]) || null,
         source_driver_name: cellText(raw["Driver Name"]) || null,
         source_dswid: null,
+      };
+    });
+
+    const stagedSummaryRows = summaryRows.map(({ raw, source_row_index }) => {
+      const label = cellText(raw["Svc Area #"]);
+      const scope = summaryScope(label) ?? "SUMMARY";
+
+      return {
+        service_date: serviceDate,
+        summary_scope: scope,
+        summary_label: label,
+        contract_code: contractCodeFromLabel(label),
+        terminal_code: meta.terminal_identity,
+        source_row_index,
+        raw_row_json: raw,
+        normalized_row_json: normalizeDswSummary(raw, meta),
       };
     });
 
@@ -313,14 +405,33 @@ export async function POST(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: rpcError.message }, { status: 500 });
     }
 
+    const batchId =
+      typeof rpcResult?.batch_id === "string" ? rpcResult.batch_id : null;
+
+    if (batchId && stagedSummaryRows.length > 0) {
+      const { error: summaryError } = await supabase.rpc(
+        "stage_operations_dsw_summary_rows",
+        {
+          p_batch_id: batchId,
+          p_company_id: company.id,
+          p_rows: stagedSummaryRows,
+        }
+      );
+
+      if (summaryError) {
+        return NextResponse.json({ error: summaryError.message }, { status: 500 });
+      }
+    }
+
     return NextResponse.json({
       ok: true,
-      batch_id: rpcResult?.batch_id ?? null,
+      batch_id: batchId,
       report_family_key: "DSW",
       report_shape_key: "DSW_DAILY_SERVICE_WORKSHEET",
       snapshot_kind: "IN_DAY",
       service_date: serviceDate,
       inserted_row_count: stagedRows.length,
+      inserted_summary_row_count: stagedSummaryRows.length,
       matched_route_count: matchedCount,
       unmatched_route_count: stagedRows.length - matchedCount,
     });

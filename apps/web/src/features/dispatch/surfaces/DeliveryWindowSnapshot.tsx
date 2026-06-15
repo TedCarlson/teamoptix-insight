@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { DispatchRoute } from "../lib/dispatchSupport";
 import { eyebrow, panel } from "../lib/dispatchSupport";
+import OperationsIntelligenceFeed from "@/features/operations/components/OperationsIntelligenceFeed";
+import ServiceSnapshotCard from "@/features/operations/components/ServiceSnapshotCard";
 
 type DswCurrentRow = {
   batch_id: string;
@@ -277,22 +279,14 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
   }, [routeRows]);
 
   return (
-    <section
-      style={{
-        display: "grid",
-        gridTemplateColumns: "minmax(0, 1fr) 320px",
-        gap: 12,
-        marginTop: 10,
-        alignItems: "start",
-      }}
-    >
+    <section className="delivery-window-grid">
       <section style={{ ...panel, padding: 14, display: "grid", gap: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
             <p style={eyebrow}>Delivery Window</p>
-            <h2 style={{ margin: 0, fontSize: 18 }}>Launch + execution control tower</h2>
+            <h2 style={{ margin: 0, fontSize: 18 }}>DSW/FCC sourced execution overview</h2>
             <p style={{ margin: "4px 0 0", color: "#64748b", fontWeight: 700 }}>
-              Planned dispatch routes enriched with active DSW launch data.
+              Live operational snapshot of route progress, service completion, and delivery health.
             </p>
           </div>
 
@@ -321,7 +315,7 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
                 key={item.key}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "minmax(200px, 1.15fr) minmax(360px, 1.5fr) 82px",
+                  gridTemplateColumns: "minmax(180px, 1.1fr) minmax(280px, 1.5fr) 72px",
                   gap: 12,
                   alignItems: "center",
                   padding: "10px 12px",
@@ -378,7 +372,7 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
                       icon="🕒"
                       actual={0}
                       planned={0}
-                      label="commits"
+                      label="completed"
                     />
                   </div>
                 ) : (
@@ -433,7 +427,7 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 13, fontWeight: 900 }}>
                   <ProgressPill icon="📦" actual={row.actual_delivery_packages ?? 0} planned={row.vscan_packages ?? 0} label="packages" />
                   <ProgressPill icon="📍" actual={row.actual_delivery_stops ?? 0} planned={row.planned_delivery_stops ?? 0} label="stops" />
-                  <ProgressPill icon="🕒" actual={0} planned={0} label="commits" />
+                  <ProgressPill icon="🕒" actual={0} planned={0} label="completed" />
                 </div>
               </div>
             ))}
@@ -441,24 +435,14 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
         ) : null}
       </section>
 
-      <aside style={{ ...panel, padding: 14, display: "grid", gap: 10 }}>
-        <p style={eyebrow}>Delivery posture</p>
-        <strong style={{ fontSize: 24 }}>{fleetCompletion}%</strong>
-        <span style={{ marginTop: -8, color: "#64748b", fontSize: 12, fontWeight: 900 }}>
-          Fleet completion
-        </span>
+      <aside style={{ display: "grid", gap: 12 }}>
+        <OperationsIntelligenceFeed
+          slug={slug}
+          serviceDate={serviceDate}
+          surface="delivery-window"
+        />
 
-        <RailStat label="Planned routes" value={routes.length} />
-        <RailStat label="Active DSW routes" value={activeDswRows.length} />
-        <RailStat label="Unplanned active" value={unplannedActiveRows.length} />
-        <RailStat label="Hidden empty DSW rows" value={hiddenEmptyDswRows.length} />
-
-        <div style={{ height: 1, background: "#e6edf5", margin: "4px 0" }} />
-
-        <RailStat label="Awaiting login" value={driverStats.awaitingLogin} />
-        <RailStat label="Logged in" value={driverStats.loggedIn} />
-        <RailStat label="Driver mismatch" value={driverStats.mismatch} />
-        <RailStat label="No dispatch driver" value={driverStats.noDriver} />
+        <ServiceSnapshotCard slug={slug} serviceDate={serviceDate} />
       </aside>
     </section>
   );

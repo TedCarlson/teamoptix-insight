@@ -37,6 +37,7 @@ import {
 } from "../lib/dswDispatchSignals";
 import OperationsReportUploadOverlay from "@/features/operations/components/OperationsReportUploadOverlay";
 import OperationsWorkspaceToolbar from "@/features/operations/components/OperationsWorkspaceToolbar";
+import OperationsIntelligenceFeed from "@/features/operations/components/OperationsIntelligenceFeed";
 import { DispatchEventOverlay } from "../components/DispatchEventOverlay";
 import { DispatchRightRail } from "../components/DispatchRightRail";
 import { DispatchRouteQueue } from "../components/DispatchRouteQueue";
@@ -1299,16 +1300,24 @@ const orderedRouteLabel = useCallback(
               planSourceLabel={droPlanSourceFrame ? `${droPlanSourceFrame} DRO` : null}
             />
 
-            <DispatchRightRail
-              summary={summary}
-              dispatchRoutes={dispatchRoutes}
-              dispatchDay={dispatchDay}
-              events={dispatchEvents}
-              locking={locking}
-              onAddEvent={() => setEventOverlayOpen(true)}
-              onUndoEvent={undoDispatchEvent}
-              onLockDispatch={lockDispatch}
-            />
+            <div style={{ display: "grid", gap: 12 }}>
+              <DispatchRightRail
+                summary={summary}
+                dispatchRoutes={dispatchRoutes}
+                dispatchDay={dispatchDay}
+                events={dispatchEvents}
+                locking={locking}
+                onAddEvent={() => setEventOverlayOpen(true)}
+                onUndoEvent={undoDispatchEvent}
+                onLockDispatch={lockDispatch}
+              />
+              <OperationsIntelligenceFeed
+                slug={slug}
+                serviceDate={serviceDate}
+                surface="dispatch"
+                frozen={dispatchLocked}
+              />
+            </div>
           </section>
       </section>
 
