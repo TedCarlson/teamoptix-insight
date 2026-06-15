@@ -30,12 +30,11 @@ import {
   runFlagForDate,
   todayIso,
 } from "../lib/dispatchSupport";
-import { type DroPlanRow } from "../lib/droPlanSignals";
+import { buildDroPlanSignals, type DroPlanRow } from "../lib/droPlanSignals";
 import {
-  buildDispatchDroSignals,
-  emptyDroPlanSnapshot,
-  type DispatchDroSnapshot,
-} from "../lib/droPlanSnapshot";
+  buildDswDispatchSignals,
+  type DswCurrentRow,
+} from "../lib/dswDispatchSignals";
 import OperationsReportUploadOverlay from "@/features/operations/components/OperationsReportUploadOverlay";
 import OperationsWorkspaceToolbar from "@/features/operations/components/OperationsWorkspaceToolbar";
 import { DispatchEventOverlay } from "../components/DispatchEventOverlay";
@@ -200,8 +199,7 @@ export default function DispatchPage() {
   const [uploadOverlayOpen, setUploadOverlayOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [droPlanRows, setDroPlanRows] = useState<DroPlanRow[]>([]);
-  const [droPlanSnapshot, setDroPlanSnapshot] =
-    useState<DispatchDroSnapshot>(emptyDroPlanSnapshot);
+  const [dswRows, setDswRows] = useState<DswCurrentRow[]>([]);
   const [droPlanSourceFrame, setDroPlanSourceFrame] = useState<"AM" | "PM" | null>(null);
   const persistedCalloutKeys = useRef(new Set<string>());
 
@@ -277,6 +275,7 @@ const orderedRouteLabel = useCallback(
           operationsConfigRes,
           amDroPlanRes,
           pmDroPlanRes,
+          dswCurrentRes,
         ] = await Promise.all([
           fetch(`/api/company/${slug}/schedule/generated?date=${serviceDate}`, {
             credentials: "include",
@@ -310,6 +309,10 @@ const orderedRouteLabel = useCallback(
             credentials: "include",
             cache: "no-store",
           }),
+          fetch(`/api/company/${slug}/operations/reports/dsw-current?date=${serviceDate}`, {
+            credentials: "include",
+            cache: "no-store",
+          }),
         ]);
 
         const [
@@ -321,6 +324,7 @@ const orderedRouteLabel = useCallback(
           operationsConfigData,
           amDroPlanData,
           pmDroPlanData,
+          dswCurrentData,
         ] = await Promise.all([
           scheduleRes.json(),
           routesRes.json(),
@@ -330,6 +334,7 @@ const orderedRouteLabel = useCallback(
           operationsConfigRes.json(),
           amDroPlanRes.json(),
           pmDroPlanRes.json(),
+          dswCurrentRes.json(),
         ]);
 
         if (!active) return;
@@ -377,12 +382,8 @@ const orderedRouteLabel = useCallback(
         const amDroRows = amDroPlanRes.ok ? amDroPlanData?.rows ?? [] : [];
         const pmDroRows = pmDroPlanRes.ok ? pmDroPlanData?.rows ?? [] : [];
 
-        setDroPlanSnapshot({
-          am: amDroRows,
-          pm: pmDroRows,
-        });
-
         setDroPlanRows(amDroRows.length > 0 ? amDroRows : pmDroRows);
+        setDswRows(dswCurrentRes.ok ? dswCurrentData?.rows ?? [] : []);
         setDroPlanSourceFrame(
           amDroRows.length > 0
             ? "AM"
@@ -506,9 +507,14 @@ const orderedRouteLabel = useCallback(
     [assignments, routeSort]
   );
 
-  const { planSignalsByRouteKey, amTotals, pmTotals } = useMemo(
-    () => buildDispatchDroSignals(dispatchRoutes, droPlanSnapshot),
-    [dispatchRoutes, droPlanSnapshot]
+  const { planSignalsByRouteKey, planTotals } = useMemo(
+    () => buildDroPlanSignals(dispatchRoutes, droPlanRows),
+    [dispatchRoutes, droPlanRows]
+  );
+
+  const { dswSignalsByRouteKey, dswTotals } = useMemo(
+    () => buildDswDispatchSignals(dispatchRoutes, dswRows),
+    [dispatchRoutes, dswRows]
   );
 
   const scheduledRosterIds = useMemo(() => {
@@ -1287,8 +1293,10 @@ const orderedRouteLabel = useCallback(
               onClearSeat={clearSeat}
               onCancelIntent={() => setIntent(null)}
               planSignalsByRouteKey={planSignalsByRouteKey}
-              amPlanTotals={amTotals}
-              pmPlanTotals={pmTotals}
+              dswSignalsByRouteKey={dswSignalsByRouteKey}
+              planTotals={planTotals}
+              dswTotals={dswTotals}
+              planSourceLabel={droPlanSourceFrame ? `${droPlanSourceFrame} DRO` : null}
             />
 
             <DispatchRightRail

@@ -4,8 +4,8 @@ import type {
   DispatchRoute,
   Seat,
 } from "../lib/dispatchSupport";
-import { timeCriticalColor, type DroPlanTotals } from "../lib/droPlanSignals";
-import type { DispatchDroPlanByRoute } from "../lib/droPlanSnapshot";
+import { timeCriticalColor, type DispatchPlanSignal, type DroPlanTotals } from "../lib/droPlanSignals";
+import type { DswDispatchSignal, DswDispatchTotals } from "../lib/dswDispatchSignals";
 import {
   compactButton,
   eyebrow,
@@ -26,36 +26,43 @@ type DispatchRouteQueueProps = {
   onOpenSeat: (route: DispatchRoute, seat: Seat) => void;
   onClearSeat: (routeKey: string, seat: Seat) => void;
   onCancelIntent: () => void;
-  planSignalsByRouteKey?: Record<string, DispatchDroPlanByRoute>;
-  amPlanTotals?: DroPlanTotals;
-  pmPlanTotals?: DroPlanTotals;
+  planSignalsByRouteKey?: Record<string, DispatchPlanSignal>;
+  dswSignalsByRouteKey?: Record<string, DswDispatchSignal>;
+  planTotals?: DroPlanTotals;
+  dswTotals?: DswDispatchTotals;
+  planSourceLabel?: string | null;
 };
 
 
-function PlanTotalLine(props: { label: "AM" | "PM"; totals: DroPlanTotals }) {
+function PlanTotalLine(props: { label: string; children: React.ReactNode }) {
   return (
-    <span title={`${props.label} DRO total`} style={{ display: "inline-flex", alignItems: "center", gap: 12 }}>
-      <span style={{ color: "#475569", paddingRight: 4 }}>{props.label} DRO</span>
-      <span>📍 {props.totals.stops}</span>
-      <span>📦 {props.totals.packages}</span>
-      <span style={{ color: timeCriticalColor(props.totals.timeCritical) }}>🕒 {props.totals.timeCritical}</span>
+    <span title={`${props.label} total`} style={{ display: "inline-flex", alignItems: "center", gap: 12 }}>
+      <span style={{ color: "#475569", paddingRight: 4 }}>{props.label}</span>
+      {props.children}
     </span>
   );
 }
 
-function PlanSignalLine(props: {
-  label: "AM" | "PM";
-  signal: NonNullable<DispatchDroPlanByRoute["am"]>;
-}) {
+function DroSignalLine(props: { label: string; signal: DispatchPlanSignal }) {
   return (
-    <span title={`${props.label} DRO · ${props.signal.title}`} style={{ display: "inline-flex", alignItems: "center", gap: 7, minHeight: 22, whiteSpace: "nowrap" }}>
-      <strong style={{ color: "#475569", fontSize: 10, minWidth: 18 }}>{props.label}</strong>
+    <span title={`${props.label} · ${props.signal.title}`} style={{ display: "inline-flex", alignItems: "center", gap: 7, minHeight: 22, whiteSpace: "nowrap" }}>
+      <strong style={{ color: "#475569", fontSize: 10, minWidth: 26 }}>{props.label}</strong>
       <span>📍 {props.signal.stops}</span>
       <span>📦 {props.signal.packages}</span>
       <span style={{ color: timeCriticalColor(props.signal.timeCritical) }}>🕒 {props.signal.timeCritical}</span>
       <span style={{ color: "#4d148c" }}>🚚 {props.signal.milesLabel}</span>
-      <span>⚡ {props.signal.milesPerStopLabel}</span>
-      <span>⏱ {props.signal.minutesPerStopLabel}</span>
+    </span>
+  );
+}
+
+function DswSignalLine(props: { signal: DswDispatchSignal }) {
+  return (
+    <span title={`DSW · ${props.signal.title}`} style={{ display: "inline-flex", alignItems: "center", gap: 7, minHeight: 22, whiteSpace: "nowrap" }}>
+      <strong style={{ color: "#475569", fontSize: 10, minWidth: 26 }}>DSW</strong>
+      <span>📍 {props.signal.deliveryStops}</span>
+      <span>📦 {props.signal.packages}</span>
+      <span style={{ color: timeCriticalColor(props.signal.timeCritical) }}>🕒 {props.signal.timeCritical}</span>
+      <span>📥 {props.signal.pickupStops}</span>
     </span>
   );
 }
@@ -71,8 +78,10 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
     onClearSeat,
     onCancelIntent,
     planSignalsByRouteKey = {},
-    amPlanTotals,
-    pmPlanTotals,
+    dswSignalsByRouteKey = {},
+    planTotals,
+    dswTotals,
+    planSourceLabel = null,
   } = props;
 
   const [legendOpen, setLegendOpen] = useState(false);
@@ -140,11 +149,20 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
               whiteSpace: "nowrap",
             }}
           >
-            {pmPlanTotals && pmPlanTotals.matchedRoutes > 0 ? (
-              <PlanTotalLine label="PM" totals={pmPlanTotals} />
+            {planTotals && planTotals.matchedRoutes > 0 ? (
+              <PlanTotalLine label={planSourceLabel ?? "DRO"}>
+                <span>📍 {planTotals.stops}</span>
+                <span>📦 {planTotals.packages}</span>
+                <span style={{ color: timeCriticalColor(planTotals.timeCritical) }}>🕒 {planTotals.timeCritical}</span>
+              </PlanTotalLine>
             ) : null}
-            {amPlanTotals && amPlanTotals.matchedRoutes > 0 ? (
-              <PlanTotalLine label="AM" totals={amPlanTotals} />
+            {dswTotals && dswTotals.matchedRoutes > 0 ? (
+              <PlanTotalLine label="DSW">
+                <span>📍 {dswTotals.deliveryStops}</span>
+                <span>📦 {dswTotals.packages}</span>
+                <span style={{ color: timeCriticalColor(dswTotals.timeCritical) }}>🕒 {dswTotals.timeCritical}</span>
+                <span>📥 {dswTotals.pickupStops}</span>
+              </PlanTotalLine>
             ) : null}
           </div>
           </div>
@@ -352,8 +370,8 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
 
                 <div
                   title={
-                    planSignalsByRouteKey[route.route_key]?.am?.title ??
-                    planSignalsByRouteKey[route.route_key]?.pm?.title ??
+                    planSignalsByRouteKey[route.route_key]?.title ??
+                    dswSignalsByRouteKey[route.route_key]?.title ??
                     "No DRO plan signal matched."
                   }
                   style={{
@@ -362,13 +380,13 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
                     justifyContent: "flex-start",
                     gap: 8,
                     minWidth: 0,
-                    color: planSignalsByRouteKey[route.route_key] ? "#334155" : "#94a3b8",
+                    color: planSignalsByRouteKey[route.route_key] || dswSignalsByRouteKey[route.route_key] ? "#334155" : "#94a3b8",
                     fontSize: 12,
                     fontWeight: 900,
                     lineHeight: 1.2,
                   }}
                 >
-                  {planSignalsByRouteKey[route.route_key] ? (
+                  {planSignalsByRouteKey[route.route_key] || dswSignalsByRouteKey[route.route_key] ? (
                     <span
                       style={{
                         display: "inline-grid",
@@ -384,20 +402,15 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
                         overflow: "hidden",
                       }}
                     >
-                      {(() => {
-                        const planSignal = planSignalsByRouteKey[route.route_key];
-
-                        return (
-                          <>
-                            {planSignal?.pm ? (
-                              <PlanSignalLine label="PM" signal={planSignal.pm} />
-                            ) : null}
-                            {planSignal?.am ? (
-                              <PlanSignalLine label="AM" signal={planSignal.am} />
-                            ) : null}
-                          </>
-                        );
-                      })()}
+                      {planSignalsByRouteKey[route.route_key] ? (
+                        <DroSignalLine
+                          label="DRO"
+                          signal={planSignalsByRouteKey[route.route_key]}
+                        />
+                      ) : null}
+                      {dswSignalsByRouteKey[route.route_key] ? (
+                        <DswSignalLine signal={dswSignalsByRouteKey[route.route_key]} />
+                      ) : null}
                     </span>
                   ) : (
                     <span>—</span>
