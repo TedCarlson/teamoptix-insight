@@ -50,22 +50,44 @@ function toInteger(value: unknown) {
   return parsed === null ? null : Math.trunc(parsed);
 }
 
-function normalizeDro(raw: ParsedRow) {
+function normalizeDro(raw: ParsedRow, frame: "AM" | "PM") {
+  if (frame === "AM") {
+    const stops = toInteger(raw["TOTAL STOPS"]) ?? 0;
+    const packages = toInteger(raw["Delivery - PKGS."]) ?? 0;
+
+    return {
+      wa_name: cellText(raw["WA NAME"]),
+      wa_number: cellText(raw["WA #"]),
+      route_type: cellText(raw["ROUTE TYPE"]),
+      distance: toNumber(raw["DISTANCE"]),
+      planned_time: toNumber(raw["TIME"]),
+      time_commits: toInteger(raw["TIME CRITICAL"]) ?? 0,
+      lp_stops: stops,
+      lp_packages: packages,
+      bulk_stops: 0,
+      bulk_packages: 0,
+      small_stops: 0,
+      small_packages: 0,
+      reg_stops: 0,
+      reg_packages: 0,
+    };
+  }
+
   return {
     wa_name: cellText(raw["WA NAME"]),
     wa_number: cellText(raw["WA #"]),
     route_type: cellText(raw["ROUTE TYPE"]),
     distance: toNumber(raw["Distance"]),
     planned_time: toNumber(raw["TIME"]),
-    time_commits: toInteger(raw["TIME COMMITS"]),
-    lp_stops: toInteger(raw["LP STOPS"]),
-    lp_packages: toInteger(raw["LP PACKAGES"]),
-    bulk_stops: toInteger(raw["BULK STOPS"]),
-    bulk_packages: toInteger(raw["BULK PKGS"]),
-    small_stops: toInteger(raw["SMALL STOPS"]),
-    small_packages: toInteger(raw["SMALL PKGS"]),
-    reg_stops: toInteger(raw["REG STOPS"]),
-    reg_packages: toInteger(raw["REG PKGS"]),
+    time_commits: toInteger(raw["TIME COMMITS"]) ?? 0,
+    lp_stops: toInteger(raw["LP STOPS"]) ?? 0,
+    lp_packages: toInteger(raw["LP PACKAGES"]) ?? 0,
+    bulk_stops: toInteger(raw["BULK STOPS"]) ?? 0,
+    bulk_packages: toInteger(raw["BULK PKGS"]) ?? 0,
+    small_stops: toInteger(raw["SMALL STOPS"]) ?? 0,
+    small_packages: toInteger(raw["SMALL PKGS"]) ?? 0,
+    reg_stops: toInteger(raw["REG STOPS"]) ?? 0,
+    reg_packages: toInteger(raw["REG PKGS"]) ?? 0,
   };
 }
 
@@ -226,7 +248,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     );
 
     const stagedRows = parsedRows.map(({ raw, source_row_index }) => {
-      const dro = normalizeDro(raw);
+      const dro = normalizeDro(raw, reportFrame);
       const routeMatch = findRouteMatch(raw);
 
       return {

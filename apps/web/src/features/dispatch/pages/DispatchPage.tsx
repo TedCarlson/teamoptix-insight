@@ -268,7 +268,8 @@ const orderedRouteLabel = useCallback(
           dispatchDayRes,
           eventTypesRes,
           operationsConfigRes,
-          droPlanRes,
+          amDroPlanRes,
+          pmDroPlanRes,
         ] = await Promise.all([
           fetch(`/api/company/${slug}/schedule/generated?date=${serviceDate}`, {
             credentials: "include",
@@ -294,6 +295,10 @@ const orderedRouteLabel = useCallback(
             credentials: "include",
             cache: "no-store",
           }),
+          fetch(`/api/company/${slug}/operations/reports/dro-plan?date=${serviceDate}&frame=AM`, {
+            credentials: "include",
+            cache: "no-store",
+          }),
           fetch(`/api/company/${slug}/operations/reports/dro-plan?date=${droPlanServiceDate}&frame=PM`, {
             credentials: "include",
             cache: "no-store",
@@ -307,7 +312,8 @@ const orderedRouteLabel = useCallback(
           dispatchDayData,
           eventTypesData,
           operationsConfigData,
-          droPlanData,
+          amDroPlanData,
+          pmDroPlanData,
         ] = await Promise.all([
           scheduleRes.json(),
           routesRes.json(),
@@ -315,7 +321,8 @@ const orderedRouteLabel = useCallback(
           dispatchDayRes.json(),
           eventTypesRes.json(),
           operationsConfigRes.json(),
-          droPlanRes.json(),
+          amDroPlanRes.json(),
+          pmDroPlanRes.json(),
         ]);
 
         if (!active) return;
@@ -360,7 +367,13 @@ const orderedRouteLabel = useCallback(
           return;
         }
 
-        setDroPlanRows(droPlanRes.ok ? droPlanData?.rows ?? [] : []);
+        const amDroRows = amDroPlanRes.ok ? amDroPlanData?.rows ?? [] : [];
+        const pmDroRows = pmDroPlanRes.ok ? pmDroPlanData?.rows ?? [] : [];
+        const selectedDroData = amDroRows.length > 0 ? amDroPlanData : pmDroPlanData;
+        const selectedDroRows = amDroRows.length > 0 ? amDroRows : pmDroRows;
+
+        setDroPlanRows(selectedDroRows);
+        setDroPlanSourceFrame(selectedDroData?.source_frame ?? null);
 
         setRouteSortKey(
           operationsConfigData?.config?.route_sort_key === "current_wa_num"
