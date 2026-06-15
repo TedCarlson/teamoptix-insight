@@ -23,7 +23,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
 
     const { data: company, error: companyError } = await supabase
       .from("companies")
-      .select("id")
+      .select("id, company_name")
       .eq("company_slug", slug)
       .single();
 
@@ -40,7 +40,21 @@ export async function GET(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: error.message, rows: [] }, { status: 500 });
     }
 
-    return NextResponse.json({ source: "DSW", rows: data ?? [] });
+    const terminalIdentity = data?.[0]?.terminal_code ?? null;
+    const terminalParts = String(terminalIdentity ?? "").split("/").filter(Boolean);
+    const stationCode = terminalParts[0] ?? null;
+    const terminalNumber = terminalParts[1] ?? null;
+
+    return NextResponse.json({
+      source: "DSW",
+      company: {
+        name: company.company_name ?? null,
+        station_code: stationCode,
+        terminal_number: terminalNumber,
+        terminal_identity: terminalIdentity,
+      },
+      rows: data ?? [],
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to load service snapshot.";
     return NextResponse.json({ error: message, rows: [] }, { status: 500 });

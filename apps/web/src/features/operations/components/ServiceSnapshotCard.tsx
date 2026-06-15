@@ -13,6 +13,12 @@ type SnapshotRow = {
 
 type Payload = {
   source: "DSW";
+  company?: {
+    name: string | null;
+    station_code: string | null;
+    terminal_number: string | null;
+    terminal_identity: string | null;
+  };
   rows: SnapshotRow[];
 };
 
@@ -212,14 +218,17 @@ export default function ServiceSnapshotCard({ slug, serviceDate }: Props) {
     <section style={{ ...panel, padding: 14, display: "grid", gap: 10 }}>
       <div>
         <p style={eyebrow}>Service Snapshot</p>
-        {contractRow?.contract_code ? (
+        {payload?.company?.terminal_number || payload?.company?.station_code ? (
           <p style={{ margin: "2px 0 0", color: "#64748b", fontSize: 12, fontWeight: 850 }}>
-            Contract {contractRow.contract_code}
+            {[
+              payload.company.terminal_number ? `Terminal ${payload.company.terminal_number}` : null,
+              payload.company.station_code,
+            ].filter(Boolean).join(" · ")}
           </p>
         ) : null}
-        {colocationRow ? (
+        {payload?.company?.name ? (
           <p style={{ margin: "2px 0 0", color: "#94a3b8", fontSize: 11, fontWeight: 800 }}>
-            Terminal aggregate available
+            {payload.company.name}
           </p>
         ) : null}
       </div>
