@@ -30,7 +30,12 @@ import {
   runFlagForDate,
   todayIso,
 } from "../lib/dispatchSupport";
-import { buildDroPlanSignals, type DroPlanRow } from "../lib/droPlanSignals";
+import { type DroPlanRow } from "../lib/droPlanSignals";
+import {
+  buildDispatchDroSignals,
+  emptyDroPlanSnapshot,
+  type DispatchDroSnapshot,
+} from "../lib/droPlanSnapshot";
 import OperationsReportUploadOverlay from "@/features/operations/components/OperationsReportUploadOverlay";
 import OperationsWorkspaceToolbar from "@/features/operations/components/OperationsWorkspaceToolbar";
 import { DispatchEventOverlay } from "../components/DispatchEventOverlay";
@@ -195,6 +200,8 @@ export default function DispatchPage() {
   const [uploadOverlayOpen, setUploadOverlayOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [droPlanRows, setDroPlanRows] = useState<DroPlanRow[]>([]);
+  const [droPlanSnapshot, setDroPlanSnapshot] =
+    useState<DispatchDroSnapshot>(emptyDroPlanSnapshot);
   const [droPlanSourceFrame, setDroPlanSourceFrame] = useState<"AM" | "PM" | null>(null);
   const persistedCalloutKeys = useRef(new Set<string>());
 
@@ -369,11 +376,20 @@ const orderedRouteLabel = useCallback(
 
         const amDroRows = amDroPlanRes.ok ? amDroPlanData?.rows ?? [] : [];
         const pmDroRows = pmDroPlanRes.ok ? pmDroPlanData?.rows ?? [] : [];
-        const selectedDroData = amDroRows.length > 0 ? amDroPlanData : pmDroPlanData;
-        const selectedDroRows = amDroRows.length > 0 ? amDroRows : pmDroRows;
 
-        setDroPlanRows(selectedDroRows);
-        setDroPlanSourceFrame(selectedDroData?.source_frame ?? null);
+        setDroPlanSnapshot({
+          am: amDroRows,
+          pm: pmDroRows,
+        });
+
+        setDroPlanRows(amDroRows.length > 0 ? amDroRows : pmDroRows);
+        setDroPlanSourceFrame(
+          amDroRows.length > 0
+            ? "AM"
+            : pmDroRows.length > 0
+              ? "PM"
+              : null
+        );
 
         setRouteSortKey(
           operationsConfigData?.config?.route_sort_key === "current_wa_num"
@@ -490,9 +506,9 @@ const orderedRouteLabel = useCallback(
     [assignments, routeSort]
   );
 
-  const { planSignalsByRouteKey, planTotals } = useMemo(
-    () => buildDroPlanSignals(dispatchRoutes, droPlanRows),
-    [dispatchRoutes, droPlanRows]
+  const { planSignalsByRouteKey, amTotals, pmTotals } = useMemo(
+    () => buildDispatchDroSignals(dispatchRoutes, droPlanSnapshot),
+    [dispatchRoutes, droPlanSnapshot]
   );
 
   const scheduledRosterIds = useMemo(() => {
@@ -1271,8 +1287,8 @@ const orderedRouteLabel = useCallback(
               onClearSeat={clearSeat}
               onCancelIntent={() => setIntent(null)}
               planSignalsByRouteKey={planSignalsByRouteKey}
-              planTotals={planTotals}
-              planSourceLabel={droPlanSourceFrame ? `${droPlanSourceFrame} DRO` : null}
+              amPlanTotals={amTotals}
+              pmPlanTotals={pmTotals}
             />
 
             <DispatchRightRail

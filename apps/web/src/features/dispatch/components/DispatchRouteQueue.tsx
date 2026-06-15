@@ -5,6 +5,7 @@ import type {
   Seat,
 } from "../lib/dispatchSupport";
 import { timeCriticalColor, type DroPlanTotals } from "../lib/droPlanSignals";
+import type { DispatchDroPlanByRoute } from "../lib/droPlanSnapshot";
 import {
   compactButton,
   eyebrow,
@@ -25,18 +26,39 @@ type DispatchRouteQueueProps = {
   onOpenSeat: (route: DispatchRoute, seat: Seat) => void;
   onClearSeat: (routeKey: string, seat: Seat) => void;
   onCancelIntent: () => void;
-  planSignalsByRouteKey?: Record<string, {
-    stops: number;
-    packages: number;
-    timeCritical: number;
-    milesLabel: string;
-    milesPerStopLabel: string;
-    minutesPerStopLabel: string;
-    title: string;
-  }>;
-  planTotals?: DroPlanTotals;
-  planSourceLabel?: string | null;
+  planSignalsByRouteKey?: Record<string, DispatchDroPlanByRoute>;
+  amPlanTotals?: DroPlanTotals;
+  pmPlanTotals?: DroPlanTotals;
 };
+
+
+function PlanTotalLine(props: { label: "AM" | "PM"; totals: DroPlanTotals }) {
+  return (
+    <span title={`${props.label} DRO total`} style={{ display: "inline-flex", alignItems: "center", gap: 12 }}>
+      <span style={{ color: "#475569", paddingRight: 4 }}>{props.label} DRO</span>
+      <span>📍 {props.totals.stops}</span>
+      <span>📦 {props.totals.packages}</span>
+      <span style={{ color: timeCriticalColor(props.totals.timeCritical) }}>🕒 {props.totals.timeCritical}</span>
+    </span>
+  );
+}
+
+function PlanSignalLine(props: {
+  label: "AM" | "PM";
+  signal: NonNullable<DispatchDroPlanByRoute["am"]>;
+}) {
+  return (
+    <span title={`${props.label} DRO · ${props.signal.title}`} style={{ display: "inline-flex", alignItems: "center", gap: 7, minHeight: 22, whiteSpace: "nowrap" }}>
+      <strong style={{ color: "#475569", fontSize: 10, minWidth: 18 }}>{props.label}</strong>
+      <span>📍 {props.signal.stops}</span>
+      <span>📦 {props.signal.packages}</span>
+      <span style={{ color: timeCriticalColor(props.signal.timeCritical) }}>🕒 {props.signal.timeCritical}</span>
+      <span style={{ color: "#4d148c" }}>🚚 {props.signal.milesLabel}</span>
+      <span>⚡ {props.signal.milesPerStopLabel}</span>
+      <span>⏱ {props.signal.minutesPerStopLabel}</span>
+    </span>
+  );
+}
 
 export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
   const {
@@ -49,8 +71,8 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
     onClearSeat,
     onCancelIntent,
     planSignalsByRouteKey = {},
-    planTotals,
-    planSourceLabel = null,
+    amPlanTotals,
+    pmPlanTotals,
   } = props;
 
   const [legendOpen, setLegendOpen] = useState(false);
@@ -107,29 +129,24 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
           <p style={eyebrow}>Route Queue</p>
           <div style={{ display: "flex", alignItems: "baseline", gap: 18, flexWrap: "wrap" }}>
             <strong>{totalRoutes} routes</strong>
-          {planTotals && planTotals.matchedRoutes > 0 ? (
-            <span
-              title="DRO PM total"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 16,
-                marginTop: 6,
-                paddingTop: 2,
-                color: "#64748b",
-                fontSize: 11,
-                fontWeight: 900,
-                whiteSpace: "nowrap",
-              }}
-            >
-              <span style={{ color: "#475569", paddingRight: 8 }}>{planSourceLabel ?? "DRO"}</span>
-              <span>📍 {planTotals.stops}</span>
-              <span>📦 {planTotals.packages}</span>
-              <span style={{ color: timeCriticalColor(planTotals.timeCritical) }}>
-                🕒 {planTotals.timeCritical}
-              </span>
-            </span>
-          ) : null}
+          <div
+            style={{
+              display: "inline-grid",
+              gap: 2,
+              marginTop: 4,
+              color: "#64748b",
+              fontSize: 11,
+              fontWeight: 900,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {pmPlanTotals && pmPlanTotals.matchedRoutes > 0 ? (
+              <PlanTotalLine label="PM" totals={pmPlanTotals} />
+            ) : null}
+            {amPlanTotals && amPlanTotals.matchedRoutes > 0 ? (
+              <PlanTotalLine label="AM" totals={amPlanTotals} />
+            ) : null}
+          </div>
           </div>
         </div>
         <span style={{ fontSize: 12, color: "#64748b", fontWeight: 800 }}>
@@ -334,7 +351,11 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
                 </div>
 
                 <div
-                  title={planSignalsByRouteKey[route.route_key]?.title ?? "No DRO plan signal matched."}
+                  title={
+                    planSignalsByRouteKey[route.route_key]?.am?.title ??
+                    planSignalsByRouteKey[route.route_key]?.pm?.title ??
+                    "No DRO plan signal matched."
+                  }
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -342,70 +363,42 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
                     gap: 8,
                     minWidth: 0,
                     color: planSignalsByRouteKey[route.route_key] ? "#334155" : "#94a3b8",
-                    fontSize: 13,
+                    fontSize: 12,
                     fontWeight: 900,
                     lineHeight: 1.2,
                   }}
                 >
                   {planSignalsByRouteKey[route.route_key] ? (
-                    <div
+                    <span
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
-                        minWidth: 0,
+                        display: "inline-grid",
+                        gap: 2,
+                        minHeight: 34,
+                        padding: "3px 10px",
+                        borderRadius: 12,
+                        border: "1px solid #dbe4ef",
+                        background: "#fff",
+                        boxShadow: "0 1px 0 rgba(15, 23, 42, 0.03)",
+                        whiteSpace: "nowrap",
+                        color: "#334155",
                         overflow: "hidden",
                       }}
                     >
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 7,
-                          minHeight: 32,
-                          padding: "0 10px",
-                          borderRadius: 12,
-                          border: "1px solid #dbe4ef",
-                          background: "#fff",
-                          boxShadow: "0 1px 0 rgba(15, 23, 42, 0.03)",
-                          whiteSpace: "nowrap",
-                          color: "#334155",
-                          fontWeight: 900,
-                        }}
-                      >
-                        <span>📍 {planSignalsByRouteKey[route.route_key].stops}</span>
-                        <span>📦 {planSignalsByRouteKey[route.route_key].packages}</span>
-                        <span
-                          style={{
-                            color: timeCriticalColor(planSignalsByRouteKey[route.route_key].timeCritical),
-                          }}
-                        >
-                          🕒 {planSignalsByRouteKey[route.route_key].timeCritical}
-                        </span>
-                      </span>
+                      {(() => {
+                        const planSignal = planSignalsByRouteKey[route.route_key];
 
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 7,
-                          minHeight: 32,
-                          padding: "0 10px",
-                          borderRadius: 12,
-                          border: "1px solid #e6edf5",
-                          background: "#f8fafc",
-                          whiteSpace: "nowrap",
-                          color: "#64748b",
-                          fontWeight: 850,
-                        }}
-                      >
-                        <span>
-                          <span style={{ color: "#4d148c" }}>🚚</span> {planSignalsByRouteKey[route.route_key].milesLabel}
-                        </span>
-                        <span>⚡ {planSignalsByRouteKey[route.route_key].milesPerStopLabel}</span>
-                        <span>⏱ {planSignalsByRouteKey[route.route_key].minutesPerStopLabel}</span>
-                      </span>
-                    </div>
+                        return (
+                          <>
+                            {planSignal?.pm ? (
+                              <PlanSignalLine label="PM" signal={planSignal.pm} />
+                            ) : null}
+                            {planSignal?.am ? (
+                              <PlanSignalLine label="AM" signal={planSignal.am} />
+                            ) : null}
+                          </>
+                        );
+                      })()}
+                    </span>
                   ) : (
                     <span>—</span>
                   )}
