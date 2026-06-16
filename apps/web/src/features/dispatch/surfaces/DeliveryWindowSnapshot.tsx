@@ -175,6 +175,17 @@ function formatPercent(value: number | string | null | undefined) {
   return `${pctValue.toFixed(1).replace(/\.0$/, "")}%`;
 }
 
+function ilsExceptionLabel(value: number | string | null | undefined) {
+  const formatted = formatPercent(value);
+  if (!formatted) return null;
+
+  const raw = typeof value === "number" ? value : Number(String(value).replace("%", "").trim());
+  if (!Number.isFinite(raw)) return null;
+
+  const pctValue = raw <= 1 ? raw * 100 : raw;
+  return pctValue < 99.5 ? ` · ILS ${formatted}` : null;
+}
+
 function pct(actual: number, planned: number) {
   if (!planned) return 0;
   return Math.min(100, Math.round((actual / planned) * 100));
@@ -627,7 +638,7 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
                     }}
                   >
                     {signal.icon} {signal.label}
-                    {formatPercent(row?.ils_percent) ? ` · ILS ${formatPercent(row?.ils_percent)}` : ""}
+                    {ilsExceptionLabel(row?.ils_percent) ?? ""}
                   </span>
                 </div>
 
