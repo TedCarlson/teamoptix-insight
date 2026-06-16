@@ -5,6 +5,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
+
 type RouteContext = { params: Promise<{ slug: string }> };
 type ParsedRow = Record<string, unknown>;
 
@@ -340,7 +341,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
         source_route_key: cellText(raw["WA Name"]) || cellText(raw["WA#"]) || null,
         source_wa_number: cellText(raw["WA#"]) || null,
         source_driver_name: cellText(raw["Driver Name"]) || null,
-        source_dswid: null,
+        source_dswid: cellText(raw["Driver Name"]) || null,
       };
     });
 

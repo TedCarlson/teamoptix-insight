@@ -1301,6 +1301,13 @@ const orderedRouteLabel = useCallback(
             />
 
             <div style={{ display: "grid", gap: 12 }}>
+              <OperationsIntelligenceFeed
+                key={`dispatch-feed-${refreshKey}-${dispatchLocked ? "locked" : "open"}`}
+                slug={slug}
+                serviceDate={serviceDate}
+                surface="dispatch"
+                frozen={dispatchLocked}
+              />
               <DispatchRightRail
                 summary={summary}
                 dispatchRoutes={dispatchRoutes}
@@ -1310,12 +1317,6 @@ const orderedRouteLabel = useCallback(
                 onAddEvent={() => setEventOverlayOpen(true)}
                 onUndoEvent={undoDispatchEvent}
                 onLockDispatch={lockDispatch}
-              />
-              <OperationsIntelligenceFeed
-                slug={slug}
-                serviceDate={serviceDate}
-                surface="dispatch"
-                frozen={dispatchLocked}
               />
             </div>
           </section>

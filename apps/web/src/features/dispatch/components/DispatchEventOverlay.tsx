@@ -361,8 +361,11 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
                 </option>
 
                 {selected?.targetMode === "route" || selected?.targetMode === "active_route"
-                  ? (targetOptions as DispatchRoute[]).map((route) => (
-                      <option key={route.route_key} value={route.route_key}>
+                  ? (targetOptions as DispatchRoute[]).map((route, index) => (
+                      <option
+                        key={`${route.route_key}:${route.current_wa_num ?? ""}:${route.route_name ?? ""}:${index}`}
+                        value={route.route_key}
+                      >
                         {routeDropdownLabel(route) || cleanRouteKey(route.route_name)}
                       </option>
                     ))

@@ -71,19 +71,32 @@ export async function GET(req: NextRequest, context: RouteContext) {
     if (surface === "dispatch") {
       const priorDate = addDaysIso(serviceDate, -1);
 
-      const { data, error } = await fetchBatches(
-        supabase,
-        company.id,
-        "DRO",
-        [serviceDate, priorDate],
-        8
-      );
+      const [dro, dsw] = await Promise.all([
+        fetchBatches(
+          supabase,
+          company.id,
+          "DRO",
+          [serviceDate, priorDate],
+          8
+        ),
+        fetchBatches(
+          supabase,
+          company.id,
+          "DSW",
+          [serviceDate],
+          1
+        ),
+      ]);
 
-      if (error) {
-        return NextResponse.json({ error: error.message, sources: [] }, { status: 500 });
+      if (dro.error) {
+        return NextResponse.json({ error: dro.error.message, sources: [] }, { status: 500 });
       }
 
-      const rows = data ?? [];
+      if (dsw.error) {
+        return NextResponse.json({ error: dsw.error.message, sources: [] }, { status: 500 });
+      }
+
+      const rows = dro.data ?? [];
       const am = rows.find((row: any) => row.report_frame === "AM" && row.service_date === serviceDate);
       const pm = rows.find((row: any) => row.report_frame === "PM" && row.service_date === priorDate);
 
@@ -102,7 +115,17 @@ export async function GET(req: NextRequest, context: RouteContext) {
               status: row.status,
             })),
           },
-        ],
+          {
+            source: "DSW",
+            entries: (dsw.data ?? []).map((row: any) => ({
+              id: row.id,
+              timestamp: entryTime(row),
+              label: "Latest Upload",
+              service_date: row.service_date,
+              status: row.status,
+            })),
+          },
+        ].filter((source) => source.entries.length > 0),
       });
     }
 

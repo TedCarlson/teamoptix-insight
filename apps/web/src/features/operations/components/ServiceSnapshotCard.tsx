@@ -78,6 +78,8 @@ function SnapshotStat(props: {
   contractValue: string;
   terminalValue: string | null;
   shareValue: string | null;
+  shareLabel?: string;
+  shareTone?: string;
 }) {
   return (
     <div
@@ -120,9 +122,9 @@ function SnapshotStat(props: {
         {props.shareValue ? (
           <div style={{ textAlign: "right" }}>
             <span style={{ display: "block", color: "#94a3b8", fontSize: 10, fontWeight: 900 }}>
-              Share
+              {props.shareLabel ?? "Share"}
             </span>
-            <strong>{props.shareValue}</strong>
+            <strong style={{ color: props.shareTone ?? "inherit" }}>{props.shareValue}</strong>
           </div>
         ) : null}
       </div>
@@ -190,10 +192,15 @@ export default function ServiceSnapshotCard({ slug, serviceDate }: Props) {
       if (contractValue === null || contractValue === 0) return null;
 
       const terminalValue = toNumber(terminalJson[metric.key]);
+      const isIls = metric.key === "ils_percent";
+      const delta = terminalValue !== null ? contractValue - terminalValue : null;
+
       const share =
-        terminalValue && terminalValue > 0
-          ? `${((contractValue / terminalValue) * 100).toFixed(1)}%`
-          : null;
+        isIls && delta !== null
+          ? `${delta >= 0 ? "+" : ""}${delta.toFixed(1).replace(/\\.0$/, "")} pts`
+          : terminalValue && terminalValue > 0
+            ? `${((contractValue / terminalValue) * 100).toFixed(1)}%`
+            : null;
 
       return {
         key: metric.key,
@@ -204,6 +211,14 @@ export default function ServiceSnapshotCard({ slug, serviceDate }: Props) {
             ? formatValue(terminalValue, metric.kind)
             : null,
         shareValue: share,
+        shareLabel: isIls ? "Delta" : "Share",
+        shareTone: isIls
+          ? delta === null || delta === 0
+            ? "#64748b"
+            : delta > 0
+              ? "#166534"
+              : "#991b1b"
+          : undefined,
       };
     }).filter(Boolean) as Array<{
       key: string;
@@ -211,6 +226,8 @@ export default function ServiceSnapshotCard({ slug, serviceDate }: Props) {
       contractValue: string;
       terminalValue: string | null;
       shareValue: string | null;
+      shareLabel?: string;
+      shareTone?: string;
     }>;
   }, [colocationRow?.normalized_row_json, contractRow?.normalized_row_json]);
 
@@ -247,12 +264,14 @@ export default function ServiceSnapshotCard({ slug, serviceDate }: Props) {
 
       {metrics.map((metric) => (
         <SnapshotStat
-          key={metric.key}
-          label={metric.label}
-          contractValue={metric.contractValue}
-          terminalValue={metric.terminalValue}
-          shareValue={metric.shareValue}
-        />
+            key={metric.key}
+            label={metric.label}
+            contractValue={metric.contractValue}
+            terminalValue={metric.terminalValue}
+            shareValue={metric.shareValue}
+            shareLabel={metric.shareLabel}
+            shareTone={metric.shareTone}
+          />
       ))}
     </section>
   );

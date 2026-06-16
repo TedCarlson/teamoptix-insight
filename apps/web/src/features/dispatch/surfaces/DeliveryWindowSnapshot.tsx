@@ -25,7 +25,11 @@ type DswCurrentRow = {
   actual_pickup_stops: number;
   actual_pickup_packages: number;
   miles: number | null;
+  ils_percent?: number | string | null;
   route_match_method: string | null;
+  matched_roster_member_id?: string | null;
+  matched_roster_full_name?: string | null;
+  matched_roster_dswid?: string | null;
 };
 
 type DswPayload = {
@@ -52,6 +56,14 @@ function normalizeKey(value: string | null | undefined) {
     .replace(/[^a-z0-9]+/g, "");
 }
 
+function normalizedRouteName(value: string | null | undefined) {
+  const raw = String(value ?? "").trim().toLowerCase();
+  const peak = raw.includes("peak") ? "peak" : "";
+  const match = raw.match(/bpv\s*0*(\d+)/i);
+  if (!match) return normalizeKey(value);
+  return `${peak}bpv${Number(match[1])}`;
+}
+
 function normalizeName(value: string | null | undefined) {
   return String(value ?? "")
     .trim()
@@ -59,8 +71,41 @@ function normalizeName(value: string | null | undefined) {
     .replace(/[^a-z0-9]+/g, "");
 }
 
+function dswIdentityKey(value: string | null | undefined) {
+  const normalized = String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z,\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalized) return "";
+
+  if (normalized.includes(",")) {
+    const [lastRaw, restRaw = ""] = normalized.split(",");
+    const last = lastRaw.trim();
+    const first = restRaw.trim().split(" ")[0] ?? "";
+    return last && first ? `${last}|${first}` : "";
+  }
+
+  const parts = normalized.split(" ").filter(Boolean);
+  if (parts.length < 2) return "";
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+  return last && first ? `${last}|${first}` : "";
+}
+
 function routeKey(route: DispatchRoute) {
   return route.current_wa_num ?? route.route_name ?? route.route_key;
+}
+
+function routeSortToken(value: string | null | undefined) {
+  const text = String(value ?? "");
+  const number = text.match(/\d+/)?.[0];
+  return number ? Number(number) : Number.MAX_SAFE_INTEGER;
+}
+
+function dswDisplayKey(row: DswCurrentRow, index: number) {
+  return row.route_name || row.wa_number || `dsw-${index}`;
 }
 
 function dswRowIdentity(row: DswCurrentRow, index: number) {
@@ -87,6 +132,49 @@ function isActiveDswRow(row: DswCurrentRow) {
   );
 }
 
+function dswActivityScore(row: DswCurrentRow) {
+  return (
+    Number(row.actual_delivery_packages ?? 0) * 1000 +
+    Number(row.actual_delivery_stops ?? 0) * 100 +
+    Number(row.actual_pickup_packages ?? 0) * 50 +
+    Number(row.actual_pickup_stops ?? 0) * 25 +
+    Number(row.vscan_packages ?? 0) +
+    Number(row.planned_delivery_stops ?? 0) +
+    Number(row.planned_pickup_stops ?? 0)
+  );
+}
+
+function findContractIlsPercent(payload: any) {
+  const rows = Array.isArray(payload?.rows)
+    ? payload.rows
+    : Array.isArray(payload?.summary_rows)
+      ? payload.summary_rows
+      : [];
+
+  const contractRow =
+    rows.find((row: any) => String(row?.summary_scope ?? "").toUpperCase() === "CONTRACT") ??
+    rows.find((row: any) => String(row?.summary_label ?? "").toLowerCase().includes("contract")) ??
+    null;
+
+  const value =
+    contractRow?.normalized_row_json?.ils_percent ??
+    contractRow?.ils_percent ??
+    payload?.contract?.ils_percent ??
+    null;
+
+  return formatPercent(value);
+}
+
+function formatPercent(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === "") return null;
+
+  const raw = typeof value === "number" ? value : Number(String(value).replace("%", "").trim());
+  if (!Number.isFinite(raw)) return null;
+
+  const pctValue = raw <= 1 ? raw * 100 : raw;
+  return `${pctValue.toFixed(1).replace(/\.0$/, "")}%`;
+}
+
 function pct(actual: number, planned: number) {
   if (!planned) return 0;
   return Math.min(100, Math.round((actual / planned) * 100));
@@ -108,10 +196,12 @@ function completionPct(row: DswCurrentRow | null | undefined) {
 function driverSignal(
   rowDriver: string | null | undefined,
   dispatchDriver: string | null | undefined,
+  matchedRosterName: string | null | undefined,
   completion: number
 ) {
   const dsw = String(rowDriver ?? "").trim();
   const dispatch = String(dispatchDriver ?? "").trim();
+  const matchedName = String(matchedRosterName ?? "").trim();
 
   if (completion >= 100) {
     return { label: "Complete", tone: "#166534", icon: "✅", key: "complete" };
@@ -129,6 +219,10 @@ function driverSignal(
     return { label: "Logged In / Unassigned", tone: "#7c2d12", icon: "🟠", key: "logged_in_unassigned" };
   }
 
+  if (matchedName && normalizeName(dispatch) === normalizeName(matchedName)) {
+    return { label: "Logged In", tone: "#166534", icon: "🟢", key: "logged_in" };
+  }
+
   if (normalizeName(dispatch) === normalizeName(dsw)) {
     return { label: "Logged In", tone: "#166534", icon: "🟢", key: "logged_in" };
   }
@@ -139,6 +233,7 @@ function driverSignal(
 export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
   const { slug, serviceDate, routes, routeLabelForDisplay } = props;
   const [payload, setPayload] = useState<DswPayload | null>(null);
+  const [serviceSnapshotPayload, setServiceSnapshotPayload] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -182,34 +277,95 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
     };
   }, [serviceDate, slug]);
 
+  useEffect(() => {
+    let active = true;
+
+    async function loadServiceSnapshot() {
+      try {
+        const res = await fetch(
+          `/api/company/${slug}/operations/reports/dsw-service-snapshot?date=${serviceDate}`,
+          { credentials: "include", cache: "no-store" }
+        );
+
+        const data = await res.json().catch(() => null);
+        if (!active) return;
+
+        setServiceSnapshotPayload(res.ok ? data : null);
+      } catch {
+        if (active) setServiceSnapshotPayload(null);
+      }
+    }
+
+    if (slug && serviceDate) void loadServiceSnapshot();
+
+    return () => {
+      active = false;
+    };
+  }, [serviceDate, slug]);
+
   const dswIndex = useMemo(() => {
     const map = new Map<string, DswCurrentRow>();
 
-    for (const row of payload?.rows ?? []) {
-      for (const key of [
-        row.route_baseline_id,
-        row.wa_number,
-        row.route_name,
-      ]) {
-        const normalized = normalizeKey(key);
-        if (normalized) map.set(normalized, row);
+    function setBest(key: string | null | undefined, row: DswCurrentRow) {
+      const normalized = normalizeKey(key);
+      if (!normalized) return;
+
+      const existing = map.get(normalized);
+      if (!existing || dswActivityScore(row) > dswActivityScore(existing)) {
+        map.set(normalized, row);
       }
+    }
+
+    for (const row of payload?.rows ?? []) {
+      setBest(row.route_baseline_id, row);
+      setBest(row.wa_number, row);
+      setBest(row.route_name, row);
+      setBest(normalizedRouteName(row.route_name), row);
     }
 
     return map;
   }, [payload?.rows]);
 
   const routeRows = useMemo(() => {
-    return routes.map((route, index) => {
+    const matchedKeys = new Set<string>();
+
+    function markMatched(row: DswCurrentRow | null) {
+      if (!row) return;
+      for (const key of [row.route_baseline_id, row.wa_number, row.route_name]) {
+        const normalized = normalizeKey(key);
+        if (normalized) matchedKeys.add(normalized);
+      }
+      const routeNameKey = normalizedRouteName(row.route_name);
+      if (routeNameKey) matchedKeys.add(routeNameKey);
+    }
+
+    function isMatched(row: DswCurrentRow) {
+      return (
+        [row.route_baseline_id, row.wa_number, row.route_name].some((key) =>
+          matchedKeys.has(normalizeKey(key))
+        ) || matchedKeys.has(normalizedRouteName(row.route_name))
+      );
+    }
+
+    const configuredRows = routes.map((route, index) => {
       const row =
+        dswIndex.get(normalizedRouteName(route.route_name)) ??
+        dswIndex.get(normalizedRouteName(route.route_key)) ??
         dswIndex.get(normalizeKey(route.current_wa_num)) ??
         dswIndex.get(normalizeKey(route.route_name)) ??
         dswIndex.get(normalizeKey(route.route_key)) ??
         dswIndex.get(normalizeKey(routeKey(route))) ??
         null;
 
+      markMatched(row);
+
       const completion = completionPct(row);
-      const signal = driverSignal(row?.driver_name, route.driver?.full_name, completion);
+      const signal = driverSignal(
+        row?.driver_name,
+        route.driver?.full_name,
+        row?.matched_roster_full_name,
+        completion
+      );
 
       return {
         key: route.route_key || route.current_wa_num || route.route_name || `route-${index}`,
@@ -217,9 +373,40 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
         row,
         completion,
         signal,
+        sortOrder: index,
+        configOrder: index,
+        isConfigRoute: true,
       };
     });
-  }, [dswIndex, routes]);
+
+    const extraActiveRows = (payload?.rows ?? [])
+      .filter(isActiveDswRow)
+      .filter((row) => !isMatched(row))
+      .map((row, index) => {
+        const completion = completionPct(row);
+
+        return {
+          key: `dsw-active-${dswRowIdentity(row, index) || index}`,
+          route: null,
+          row,
+          completion,
+          signal: driverSignal(
+            row.driver_name,
+            null,
+            row.matched_roster_full_name,
+            completion
+          ),
+          sortOrder: routes.length + routeSortToken(row.route_name ?? row.wa_number),
+          configOrder: routes.length + index,
+          isConfigRoute: false,
+        };
+      });
+
+    return [...configuredRows, ...extraActiveRows].sort((a, b) => {
+      if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+      return a.configOrder - b.configOrder;
+    });
+  }, [dswIndex, payload?.rows, routes]);
 
   const matchedDswIds = useMemo(() => {
     const ids = new Set<DswCurrentRow>();
@@ -278,6 +465,59 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
     return pct(actualPackages, plannedPackages);
   }, [routeRows]);
 
+
+  const executionTotals = useMemo(() => {
+    return routeRows.reduce(
+      (acc, item) => {
+        const row = item.row;
+        if (!row || !isActiveDswRow(row)) return acc;
+
+        acc.activeRoutes += 1;
+        acc.plannedPackages += Number(row.vscan_packages ?? 0);
+        acc.actualPackages += Number(row.actual_delivery_packages ?? 0);
+        acc.plannedStops += Number(row.planned_delivery_stops ?? 0);
+        acc.actualStops += Number(row.actual_delivery_stops ?? 0);
+        acc.plannedPickupStops += Number(row.planned_pickup_stops ?? 0);
+        acc.actualPickupStops += Number(row.actual_pickup_stops ?? 0);
+
+        const ilsRaw = row.ils_percent;
+        const ilsNumber =
+          typeof ilsRaw === "number"
+            ? ilsRaw
+            : ilsRaw == null || ilsRaw === ""
+              ? null
+              : Number(String(ilsRaw).replace("%", "").trim());
+
+        if (ilsNumber !== null && Number.isFinite(ilsNumber)) {
+          const normalizedIls = ilsNumber <= 1 ? ilsNumber * 100 : ilsNumber;
+          const weight = Number(row.vscan_packages ?? 0) || 1;
+          acc.ilsWeightedTotal += normalizedIls * weight;
+          acc.ilsWeight += weight;
+        }
+
+        if (item.signal.key === "logged_in" || item.signal.key === "complete") {
+          acc.loggedIn += 1;
+        }
+
+        return acc;
+      },
+      {
+        activeRoutes: 0,
+        loggedIn: 0,
+        plannedPackages: 0,
+        actualPackages: 0,
+        plannedStops: 0,
+        actualStops: 0,
+        plannedPickupStops: 0,
+        actualPickupStops: 0,
+        ilsWeightedTotal: 0,
+        ilsWeight: 0,
+      }
+    );
+  }, [routeRows]);
+
+  const companyIlsPercent = findContractIlsPercent(serviceSnapshotPayload) ?? "—";
+
   return (
     <section className="delivery-window-grid">
       <section style={{ ...panel, padding: 14, display: "grid", gap: 10 }}>
@@ -294,6 +534,51 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
             <div>{payload?.terminal_identity ?? "No terminal"}</div>
             <div>{payload?.generated_at_text ?? "No DSW loaded"}</div>
           </div>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+            gap: 8,
+            borderTop: "1px solid #e5ecf6",
+            paddingTop: 10,
+          }}
+        >
+          {[
+            ["Routes / Logged In", `${executionTotals.activeRoutes} / ${executionTotals.loggedIn}`],
+            ["📍 Del Stops", `${executionTotals.actualStops.toLocaleString()} / ${executionTotals.plannedStops.toLocaleString()}`],
+            ["📦 Del Packages", `${executionTotals.actualPackages.toLocaleString()} / ${executionTotals.plannedPackages.toLocaleString()}`],
+            ["🛻 Pickups", `${executionTotals.actualPickupStops.toLocaleString()} / ${executionTotals.plannedPickupStops.toLocaleString()}`],
+            ["🕒 Express", "—"],
+            ["ILS %", companyIlsPercent],
+            ["Completion", `${fleetCompletion}%`],
+          ].map(([label, value]) => (
+            <div
+              key={label}
+              style={{
+                border: "1px solid #e5ecf6",
+                borderRadius: 14,
+                padding: "8px 10px",
+                background: "#f8fbff",
+                display: "grid",
+                gap: 2,
+              }}
+            >
+              <span
+                style={{
+                  color: "#64748b",
+                  fontSize: 10,
+                  fontWeight: 900,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                }}
+              >
+                {label}
+              </span>
+              <strong>{value}</strong>
+            </div>
+          ))}
         </div>
 
         {error ? (
@@ -326,10 +611,10 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
               >
                 <div style={{ minWidth: 0 }}>
                   <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {routeLabelForDisplay(route)}
+                    {item.route ? routeLabelForDisplay(item.route) : dswDisplayKey(row!, item.sortOrder)}
                   </strong>
                   <span style={{ display: "block", color: "#64748b", fontSize: 12, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {route.driver?.full_name || row?.driver_name || "No driver"}
+                    {item.route?.driver?.full_name || row?.driver_name || "No driver"}
                     {row?.vehicle_text ? ` · Veh ${row.vehicle_text}` : ""}
                   </span>
                   <span
@@ -342,6 +627,7 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
                     }}
                   >
                     {signal.icon} {signal.label}
+                    {formatPercent(row?.ils_percent) ? ` · ILS ${formatPercent(row?.ils_percent)}` : ""}
                   </span>
                 </div>
 
@@ -357,22 +643,22 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
                     }}
                   >
                     <ProgressPill
-                      icon="📦"
-                      actual={row.actual_delivery_packages ?? 0}
-                      planned={row.vscan_packages ?? 0}
-                      label="packages"
-                    />
-                    <ProgressPill
                       icon="📍"
                       actual={row.actual_delivery_stops ?? 0}
                       planned={row.planned_delivery_stops ?? 0}
                       label="stops"
                     />
                     <ProgressPill
-                      icon="🕒"
-                      actual={0}
-                      planned={0}
-                      label="completed"
+                      icon="📦"
+                      actual={row.actual_delivery_packages ?? 0}
+                      planned={row.vscan_packages ?? 0}
+                      label="packages"
+                    />
+                    <ProgressPill
+                      icon="🛻"
+                      actual={row.actual_pickup_stops ?? 0}
+                      planned={row.planned_pickup_stops ?? 0}
+                      label="pickups"
                     />
                   </div>
                 ) : (
@@ -401,38 +687,6 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
           })}
         </div>
 
-        {unplannedActiveRows.length > 0 ? (
-          <section style={{ marginTop: 8, display: "grid", gap: 8 }}>
-            <p style={{ ...eyebrow, marginTop: 6 }}>Unplanned Active Routes</p>
-            {unplannedActiveRows.map((row, index) => (
-              <div
-                key={dswRowIdentity(row, index)}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "minmax(180px, 1fr) minmax(300px, 1.4fr)",
-                  gap: 10,
-                  alignItems: "center",
-                  padding: "10px 12px",
-                  borderRadius: 14,
-                  border: "1px solid #fed7aa",
-                  background: "#fff7ed",
-                }}
-              >
-                <div>
-                  <strong>{row.route_name ?? row.wa_number ?? "Unplanned route"}</strong>
-                  <span style={{ display: "block", color: "#9a3412", fontSize: 12, fontWeight: 900 }}>
-                    WA {row.wa_number ?? "—"} · {row.route_match_method ?? "No match"}
-                  </span>
-                </div>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 13, fontWeight: 900 }}>
-                  <ProgressPill icon="📦" actual={row.actual_delivery_packages ?? 0} planned={row.vscan_packages ?? 0} label="packages" />
-                  <ProgressPill icon="📍" actual={row.actual_delivery_stops ?? 0} planned={row.planned_delivery_stops ?? 0} label="stops" />
-                  <ProgressPill icon="🕒" actual={0} planned={0} label="completed" />
-                </div>
-              </div>
-            ))}
-          </section>
-        ) : null}
       </section>
 
       <aside style={{ display: "grid", gap: 12 }}>
