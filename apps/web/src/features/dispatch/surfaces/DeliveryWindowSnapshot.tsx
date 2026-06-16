@@ -26,6 +26,7 @@ type DswCurrentRow = {
   actual_pickup_packages: number;
   miles: number | null;
   ils_percent?: number | string | null;
+  normalized_row_json?: Record<string, unknown> | null;
   route_match_method: string | null;
   matched_roster_member_id?: string | null;
   matched_roster_full_name?: string | null;
@@ -175,7 +176,7 @@ function formatPercent(value: number | string | null | undefined) {
   return `${pctValue.toFixed(1).replace(/\.0$/, "")}%`;
 }
 
-function ilsExceptionLabel(value: number | string | null | undefined) {
+function ilsRouteLabel(value: number | string | null | undefined) {
   const formatted = formatPercent(value);
   if (!formatted) return null;
 
@@ -183,8 +184,12 @@ function ilsExceptionLabel(value: number | string | null | undefined) {
   if (!Number.isFinite(raw)) return null;
 
   const pctValue = raw <= 1 ? raw * 100 : raw;
-  return pctValue < 99.5 ? ` · ILS ${formatted}` : null;
+  return {
+    label: `ILS ${formatted}`,
+    belowTarget: pctValue < 99.5,
+  };
 }
+
 
 function pct(actual: number, planned: number) {
   if (!planned) return 0;
@@ -204,6 +209,21 @@ function completionPct(row: DswCurrentRow | null | undefined) {
   return 0;
 }
 
+function isOnRoadRow(item: { row: DswCurrentRow | null; signal: { key: string } }) {
+  if (!item.row) return false;
+  if (item.signal.key !== "logged_in" && item.signal.key !== "driver_mismatch" && item.signal.key !== "logged_in_unassigned") {
+    return false;
+  }
+
+  const plannedPickups = Number(item.row.planned_pickup_stops ?? 0);
+  const actualPickups = Number(item.row.actual_pickup_stops ?? 0);
+
+  if (plannedPickups > actualPickups) return true;
+
+  // Until we carry a true logout/closed signal, logged-in + DSW activity means still on road.
+  return true;
+}
+
 function driverSignal(
   rowDriver: string | null | undefined,
   dispatchDriver: string | null | undefined,
@@ -213,10 +233,6 @@ function driverSignal(
   const dsw = String(rowDriver ?? "").trim();
   const dispatch = String(dispatchDriver ?? "").trim();
   const matchedName = String(matchedRosterName ?? "").trim();
-
-  if (completion >= 100) {
-    return { label: "Complete", tone: "#166534", icon: "✅", key: "complete" };
-  }
 
   if (!dispatch && !dsw) {
     return { label: "No Dispatch Driver", tone: "#64748b", icon: "⚪", key: "no_dispatch_driver" };
@@ -245,6 +261,7 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
   const { slug, serviceDate, routes, routeLabelForDisplay } = props;
   const [payload, setPayload] = useState<DswPayload | null>(null);
   const [serviceSnapshotPayload, setServiceSnapshotPayload] = useState<any>(null);
+  const [routeView, setRouteView] = useState<"all" | "on_road" | "returned">("all");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -371,12 +388,29 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
       markMatched(row);
 
       const completion = completionPct(row);
-      const signal = driverSignal(
-        row?.driver_name,
-        route.driver?.full_name,
-        row?.matched_roster_full_name,
-        completion
-      );
+
+      const roadHours = row?.normalized_row_json?.on_road_hours ?? null;
+      const dutyHours = row?.normalized_row_json?.on_duty_hours ?? null;
+      const miles = row?.normalized_row_json?.miles ?? null;
+
+      const returned =
+        miles !== null &&
+        roadHours !== null &&
+        dutyHours !== null;
+
+      const signal = returned
+        ? {
+            label: "Returned",
+            tone: "#166534",
+            icon: "🏁",
+            key: "returned",
+          }
+        : driverSignal(
+            row?.driver_name,
+            route.driver?.full_name,
+            row?.matched_roster_full_name,
+            completion
+          );
 
       return {
         key: route.route_key || route.current_wa_num || route.route_name || `route-${index}`,
@@ -384,6 +418,10 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
         row,
         completion,
         signal,
+        returned,
+        roadHours,
+        dutyHours,
+        miles,
         sortOrder: index,
         configOrder: index,
         isConfigRoute: true,
@@ -396,11 +434,21 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
       .map((row, index) => {
         const completion = completionPct(row);
 
+        const roadHours = row?.normalized_row_json?.on_road_hours ?? null;
+        const dutyHours = row?.normalized_row_json?.on_duty_hours ?? null;
+        const miles = row?.normalized_row_json?.miles ?? null;
+
+        const returned = Boolean(miles && roadHours && dutyHours);
+
         return {
           key: `dsw-active-${dswRowIdentity(row, index) || index}`,
           route: null,
           row,
           completion,
+          returned,
+          roadHours,
+          dutyHours,
+          miles,
           signal: driverSignal(
             row.driver_name,
             null,
@@ -430,9 +478,46 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
   }, [routeRows]);
 
   const dswRows = payload?.rows ?? [];
+
+  
+console.log(
+  "DSW return-state inspect",
+  dswRows
+    .filter((row) => row.route_name)
+    .slice(0, 25)
+    .map((row) => ({
+      route: row.route_name,
+      driver: row.driver_name,
+      ils_percent: row.ils_percent,
+      miles: row.normalized_row_json?.miles,
+      on_road_hours: row.normalized_row_json?.on_road_hours,
+      on_duty_hours: row.normalized_row_json?.on_duty_hours,
+    }))
+);
+
+  console.log("DSW row ILS inspect", dswRows.slice(0, 5).map((row) => ({
+    route_name: row.route_name,
+    wa_number: row.wa_number,
+    driver_name: row.driver_name,
+    ils_percent: row.ils_percent,
+    keys: Object.keys(row),
+  })));
   const activeDswRows = dswRows.filter(isActiveDswRow);
   const hiddenEmptyDswRows = dswRows.filter((row) => !isActiveDswRow(row));
   const unplannedActiveRows = activeDswRows.filter((row) => !matchedDswIds.has(row));
+
+  const visibleRouteRows = useMemo(() => {
+    switch (routeView) {
+      case "on_road":
+        return routeRows.filter((row) => !row.returned);
+
+      case "returned":
+        return routeRows.filter((row) => row.returned);
+
+      default:
+        return routeRows;
+    }
+  }, [routeRows, routeView]);
 
   const driverStats = routeRows.reduce(
     (acc, item) => {
@@ -602,8 +687,33 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
           <div style={{ padding: 12, color: "#64748b", fontWeight: 800 }}>Loading DSW snapshot...</div>
         ) : null}
 
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center" }}>
+          {[
+            ["all", "All Routes"],
+            ["on_road", "On Road"],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setRouteView(key as "all" | "on_road")}
+              style={{
+                border: routeView === key ? "1px solid #2563eb" : "1px solid #d7e1ee",
+                background: routeView === key ? "#eff6ff" : "#fff",
+                color: routeView === key ? "#1d4ed8" : "#334155",
+                borderRadius: 999,
+                padding: "7px 10px",
+                fontSize: 12,
+                fontWeight: 900,
+                cursor: "pointer",
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         <div style={{ display: "grid", gap: 8 }}>
-          {routeRows.map((item) => {
+          {visibleRouteRows.map((item) => {
             const { route, row, signal, completion } = item;
 
             return (
@@ -617,7 +727,12 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
                   padding: "10px 12px",
                   borderRadius: 14,
                   border: "1px solid #e6edf5",
-                  background: "#fff",
+                  borderLeft: item.returned
+                    ? "4px solid #22c55e"
+                    : "1px solid #e6edf5",
+                  background: item.returned
+                    ? "#f8fffa"
+                    : "#fff",
                 }}
               >
                 <div style={{ minWidth: 0 }}>
@@ -631,6 +746,7 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
                   <span
                     style={{
                       display: "inline-flex",
+                      alignItems: "center",
                       marginTop: 4,
                       color: signal.tone,
                       fontSize: 11,
@@ -638,7 +754,16 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
                     }}
                   >
                     {signal.icon} {signal.label}
-                    {ilsExceptionLabel(row?.ils_percent) ?? ""}
+                    {ilsRouteLabel(row?.ils_percent) ? (
+                      <span
+                        style={{
+                          marginLeft: 6,
+                          color: ilsRouteLabel(row?.ils_percent)?.belowTarget ? "#991b1b" : signal.tone,
+                        }}
+                      >
+                        · {ilsRouteLabel(row?.ils_percent)?.label}
+                      </span>
+                    ) : null}
                   </span>
                 </div>
 
@@ -657,19 +782,16 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
                       icon="📍"
                       actual={row.actual_delivery_stops ?? 0}
                       planned={row.planned_delivery_stops ?? 0}
-                      label="stops"
                     />
                     <ProgressPill
                       icon="📦"
                       actual={row.actual_delivery_packages ?? 0}
                       planned={row.vscan_packages ?? 0}
-                      label="packages"
                     />
                     <ProgressPill
                       icon="🛻"
                       actual={row.actual_pickup_stops ?? 0}
                       planned={row.planned_pickup_stops ?? 0}
-                      label="pickups"
                     />
                   </div>
                 ) : (
@@ -717,7 +839,6 @@ function ProgressPill(props: {
   icon: string;
   actual: number;
   planned: number;
-  label: string;
 }) {
   return (
     <span
@@ -732,7 +853,7 @@ function ProgressPill(props: {
         whiteSpace: "nowrap",
       }}
     >
-      {props.icon} {props.actual} of {props.planned} {props.label}
+      {props.icon} {props.actual} of {props.planned}
     </span>
   );
 }

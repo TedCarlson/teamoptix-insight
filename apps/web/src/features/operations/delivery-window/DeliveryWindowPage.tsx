@@ -48,15 +48,10 @@ function sortRoutes(routes: DispatchRoute[], routeSortKey: RouteSortKey) {
 export default function DeliveryWindowPage({ slug, serviceDate }: Props) {
   const [uploadOverlayOpen, setUploadOverlayOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<string>(() => new Date().toISOString());
   const [routeSortKey, setRouteSortKey] = useState<RouteSortKey>("route_name");
 
   const { routes, loading, error } = useDeliveryWindowData(slug, serviceDate, refreshKey);
-
-  useEffect(() => {
-    setLastUpdatedAt(new Date().toISOString());
-  }, []);
-
 
   useEffect(() => {
     let active = true;
