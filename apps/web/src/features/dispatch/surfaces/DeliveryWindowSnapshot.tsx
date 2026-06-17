@@ -5,6 +5,11 @@ import type { DispatchRoute } from "../lib/dispatchSupport";
 import { eyebrow, panel } from "../lib/dispatchSupport";
 import OperationsIntelligenceFeed from "@/features/operations/components/OperationsIntelligenceFeed";
 import ServiceSnapshotCard from "@/features/operations/components/ServiceSnapshotCard";
+import RouteHealthSignal from "@/features/operations/delivery-window/components/RouteHealthSignal";
+import {
+  computeFccRouteHealth,
+  type FccRouteSignalRow,
+} from "@/features/operations/delivery-window/lib/fccRouteHealth";
 
 type DswCurrentRow = {
   batch_id: string;
@@ -42,12 +47,28 @@ type DswPayload = {
   rows: DswCurrentRow[];
 };
 
+type FccPayload = {
+  source: "FCC";
+  snapshot_kind: "IN_DAY";
+  batch_id: string | null;
+  created_at: string | null;
+  generated_at_text: string | null;
+  report_date_text: string | null;
+  rows: FccRouteSignalRow[];
+};
+
 type DeliveryWindowSnapshotProps = {
   slug: string;
   serviceDate: string;
   routes: DispatchRoute[];
   routeLabelForDisplay: (route: DispatchRoute) => string;
 };
+
+function normalizeWaNumber(value: string | null | undefined) {
+  const raw = String(value ?? "").trim();
+  const trimmed = raw.replace(/^0+/, "");
+  return trimmed || raw;
+}
 
 function normalizeKey(value: string | null | undefined) {
   return String(value ?? "")
@@ -260,6 +281,7 @@ function driverSignal(
 export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
   const { slug, serviceDate, routes, routeLabelForDisplay } = props;
   const [payload, setPayload] = useState<DswPayload | null>(null);
+  const [fccPayload, setFccPayload] = useState<FccPayload | null>(null);
   const [serviceSnapshotPayload, setServiceSnapshotPayload] = useState<any>(null);
   const [routeView, setRouteView] = useState<"all" | "on_road" | "returned">("all");
   const [loading, setLoading] = useState(false);
@@ -299,6 +321,32 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
     }
 
     loadSnapshot();
+
+    return () => {
+      active = false;
+    };
+  }, [serviceDate, slug]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadFccSnapshot() {
+      try {
+        const res = await fetch(
+          `/api/company/${slug}/operations/reports/fcc-current?date=${serviceDate}`,
+          { credentials: "include", cache: "no-store" }
+        );
+
+        const data = await res.json().catch(() => null);
+        if (!active) return;
+
+        setFccPayload(res.ok ? data : null);
+      } catch {
+        if (active) setFccPayload(null);
+      }
+    }
+
+    if (slug && serviceDate) void loadFccSnapshot();
 
     return () => {
       active = false;
@@ -354,6 +402,17 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
     return map;
   }, [payload?.rows]);
 
+  const fccIndex = useMemo(() => {
+    const map = new Map<string, FccRouteSignalRow>();
+
+    for (const row of fccPayload?.rows ?? []) {
+      const key = normalizeWaNumber(row.wa_number_normalized ?? row.wa_number);
+      if (key) map.set(key, row);
+    }
+
+    return map;
+  }, [fccPayload?.rows]);
+
   const routeRows = useMemo(() => {
     const matchedKeys = new Set<string>();
 
@@ -388,6 +447,8 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
       markMatched(row);
 
       const completion = completionPct(row);
+      const fccRow = fccIndex.get(normalizeWaNumber(route.current_wa_num ?? route.route_key)) ?? null;
+      const fccHealth = computeFccRouteHealth(fccRow);
 
       const roadHours = row?.normalized_row_json?.on_road_hours ?? null;
       const dutyHours = row?.normalized_row_json?.on_duty_hours ?? null;
@@ -418,6 +479,8 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
         row,
         completion,
         signal,
+        fccRow,
+        fccHealth,
         returned,
         roadHours,
         dutyHours,
@@ -433,6 +496,8 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
       .filter((row) => !isMatched(row))
       .map((row, index) => {
         const completion = completionPct(row);
+        const fccRow = fccIndex.get(normalizeWaNumber(row.wa_number ?? row.route_name)) ?? null;
+        const fccHealth = computeFccRouteHealth(fccRow);
 
         const roadHours = row?.normalized_row_json?.on_road_hours ?? null;
         const dutyHours = row?.normalized_row_json?.on_duty_hours ?? null;
@@ -445,6 +510,8 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
           route: null,
           row,
           completion,
+          fccRow,
+          fccHealth,
           returned,
           roadHours,
           dutyHours,
@@ -465,7 +532,7 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
       if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
       return a.configOrder - b.configOrder;
     });
-  }, [dswIndex, payload?.rows, routes]);
+  }, [dswIndex, fccIndex, payload?.rows, routes]);
 
   const matchedDswIds = useMemo(() => {
     const ids = new Set<DswCurrentRow>();
@@ -714,7 +781,7 @@ console.log(
 
         <div style={{ display: "grid", gap: 8 }}>
           {visibleRouteRows.map((item) => {
-            const { route, row, signal, completion } = item;
+            const { route, row, signal, completion, fccHealth } = item;
 
             return (
               <div
@@ -803,17 +870,26 @@ console.log(
                 <div
                   style={{
                     justifySelf: "end",
-                    minWidth: 64,
-                    textAlign: "center",
-                    borderRadius: 13,
-                    padding: "8px 10px",
-                    border: "1px solid #e6edf5",
-                    background: completion >= 100 ? "#ecfdf5" : "#f8fafc",
-                    color: completion >= 100 ? "#166534" : "#0f172a",
-                    fontWeight: 950,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
                   }}
                 >
-                  {completion}%
+                  <RouteHealthSignal health={fccHealth} />
+                  <div
+                    style={{
+                      minWidth: 64,
+                      textAlign: "center",
+                      borderRadius: 13,
+                      padding: "8px 10px",
+                      border: "1px solid #e6edf5",
+                      background: completion >= 100 ? "#ecfdf5" : "#f8fafc",
+                      color: completion >= 100 ? "#166534" : "#0f172a",
+                      fontWeight: 950,
+                    }}
+                  >
+                    {completion}%
+                  </div>
                 </div>
               </div>
             );
