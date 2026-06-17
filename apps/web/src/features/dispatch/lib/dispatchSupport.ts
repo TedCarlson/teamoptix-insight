@@ -187,7 +187,7 @@ export const selectedButton: React.CSSProperties = {
 
 export const routeRowBase: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "minmax(220px, 0.95fr) minmax(210px, 0.95fr) minmax(320px, 1.35fr)",
+  gridTemplateColumns: "32px minmax(185px, 0.7fr) minmax(180px, 0.75fr) minmax(280px, 1.45fr)",
   gap: 8,
   alignItems: "center",
   padding: "8px 10px",

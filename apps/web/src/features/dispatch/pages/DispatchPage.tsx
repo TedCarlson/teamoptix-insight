@@ -207,6 +207,19 @@ export default function DispatchPage() {
   const serviceDate = todayIso();
   const planningDate = addDaysIso(serviceDate, 1);
   const dispatchLocked = dispatchDay?.status === "LOCKED";
+
+  const arrivedPersonIds = useMemo(() => {
+    const ids = new Set<string>();
+
+    for (const event of dispatchEvents) {
+      if (event.event_code.startsWith("UNDO_")) continue;
+      if (event.event_code !== "ARRIVED") continue;
+      if (event.person_roster_member_id) ids.add(event.person_roster_member_id);
+    }
+
+    return ids;
+  }, [dispatchEvents]);
+
   const [routeSortKey, setRouteSortKey] =
     useState<"route_name" | "current_wa_num">("route_name");
   const routeSort = useCallback(
@@ -1144,6 +1157,25 @@ const orderedRouteLabel = useCallback(
     }
   }, [serviceDate, slug]);
 
+  async function toggleArrived(person: DispatchPerson) {
+    if (dispatchLocked) return;
+
+    const arrived = arrivedPersonIds.has(person.roster_member_id);
+
+    await addManualDispatchEvent({
+      event_code: arrived ? "UNDO_ARRIVED" : "ARRIVED",
+      event_label: arrived ? "Undo arrived" : "Arrived",
+      event_category: "WORKFORCE",
+      note: arrived ? "Arrival verification removed." : "Arrival verified.",
+      person_roster_member_id: person.roster_member_id,
+      person_name: person.full_name,
+      event_payload: {
+        source: "manual_arrival_toggle",
+        arrived: !arrived,
+      },
+    });
+  }
+
   useEffect(() => {
     if (!slug || dispatchLocked || callouts.length === 0) return;
 
@@ -1280,6 +1312,8 @@ const orderedRouteLabel = useCallback(
               intent={intent}
               availablePeople={workforce.available}
               callouts={callouts}
+              arrivedPersonIds={arrivedPersonIds}
+              onToggleArrived={toggleArrived}
               onCancelAssign={() => setIntent(null)}
               onSelectPerson={assignPerson}
             />
@@ -1293,6 +1327,8 @@ const orderedRouteLabel = useCallback(
               onOpenSeat={openSeat}
               onClearSeat={clearSeat}
               onCancelIntent={() => setIntent(null)}
+              arrivedPersonIds={arrivedPersonIds}
+              onToggleArrived={toggleArrived}
               planSignalsByRouteKey={planSignalsByRouteKey}
               dswSignalsByRouteKey={dswSignalsByRouteKey}
               planTotals={planTotals}

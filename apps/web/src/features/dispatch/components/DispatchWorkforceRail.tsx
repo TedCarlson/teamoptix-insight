@@ -16,6 +16,8 @@ type DispatchWorkforceRailProps = {
   intent: AssignmentIntent;
   availablePeople: DispatchPerson[];
   callouts: DispatchPerson[];
+  arrivedPersonIds: Set<string>;
+  onToggleArrived: (person: DispatchPerson) => void;
   onCancelAssign: () => void;
   onSelectPerson: (person: DispatchPerson) => void;
 };
@@ -27,6 +29,8 @@ export function DispatchWorkforceRail(props: DispatchWorkforceRailProps) {
     intent,
     availablePeople,
     callouts,
+    arrivedPersonIds,
+    onToggleArrived,
     onCancelAssign,
     onSelectPerson,
   } = props;
@@ -84,6 +88,79 @@ export function DispatchWorkforceRail(props: DispatchWorkforceRailProps) {
           intent={intent}
           onSelect={onSelectPerson}
         />
+
+        <section
+          style={{
+            border: "1px solid #e6edf5",
+            borderRadius: 12,
+            padding: 10,
+            display: "grid",
+            gap: 6,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 8,
+              alignItems: "center",
+            }}
+          >
+            <p style={eyebrow}>Arrival check</p>
+            <strong style={{ color: "#64748b" }}>
+              {arrivedPersonIds.size}
+            </strong>
+          </div>
+
+          {availablePeople.length ? (
+            <div style={{ display: "grid", gap: 6 }}>
+              {availablePeople.map((person) => {
+                const arrived = arrivedPersonIds.has(person.roster_member_id);
+
+                return (
+                  <div
+                    key={`arrival-${person.roster_member_id}`}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 32px",
+                      gap: 8,
+                      alignItems: "center",
+                      border: "1px solid #e6edf5",
+                      borderRadius: 10,
+                      padding: "7px 8px",
+                      fontSize: 12,
+                      fontWeight: 800,
+                    }}
+                  >
+                    <span>{person.full_name}</span>
+                    <button
+                      type="button"
+                      aria-label={arrived ? "Arrived verified" : "Arrival not verified"}
+                      title={arrived ? "Arrived verified" : "Arrival not verified"}
+                      onClick={() => onToggleArrived(person)}
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 999,
+                        border: arrived ? "1px solid #86efac" : "1px solid #cbd5e1",
+                        background: arrived ? "#dcfce7" : "#f8fafc",
+                        color: arrived ? "#166534" : "#64748b",
+                        fontWeight: 950,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {arrived ? "✓" : "?"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ color: "#94a3b8", fontSize: 12 }}>
+              No available drivers to verify.
+            </div>
+          )}
+        </section>
 
         <section
           style={{

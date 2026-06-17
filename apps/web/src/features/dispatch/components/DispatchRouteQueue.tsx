@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type {
   AssignmentIntent,
+  DispatchPerson,
   DispatchRoute,
   Seat,
 } from "../lib/dispatchSupport";
@@ -26,6 +27,8 @@ type DispatchRouteQueueProps = {
   onOpenSeat: (route: DispatchRoute, seat: Seat) => void;
   onClearSeat: (routeKey: string, seat: Seat) => void;
   onCancelIntent: () => void;
+  arrivedPersonIds: Set<string>;
+  onToggleArrived: (person: DispatchPerson) => void;
   planSignalsByRouteKey?: Record<string, DispatchPlanSignal>;
   dswSignalsByRouteKey?: Record<string, DswDispatchSignal>;
   planTotals?: DroPlanTotals;
@@ -77,6 +80,8 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
     onOpenSeat,
     onClearSeat,
     onCancelIntent,
+    arrivedPersonIds,
+    onToggleArrived,
     planSignalsByRouteKey = {},
     dswSignalsByRouteKey = {},
     planTotals,
@@ -186,6 +191,7 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
           letterSpacing: "0.08em",
         }}
       >
+        <div>Arr</div>
         <div>Route</div>
         <div>Driver</div>
         <div ref={legendRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: 8 }}>
@@ -257,9 +263,37 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
         ) : (
           routes.map((route) => {
             const needsDriver = !route.driver;
+            const driverArrived = route.driver
+              ? arrivedPersonIds.has(route.driver.roster_member_id)
+              : false;
 
             return (
               <div key={route.route_key} style={routeRowBase}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {route.driver ? (
+                    <button
+                      type="button"
+                      aria-label={driverArrived ? "Arrived verified" : "Arrival not verified"}
+                      title={driverArrived ? "Arrived verified" : "Arrival not verified"}
+                      onClick={() => onToggleArrived(route.driver!)}
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 999,
+                        border: driverArrived ? "1px solid #86efac" : "1px solid #cbd5e1",
+                        background: driverArrived ? "#dcfce7" : "#f8fafc",
+                        color: driverArrived ? "#166534" : "#64748b",
+                        fontWeight: 950,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {driverArrived ? "✓" : "?"}
+                    </button>
+                  ) : (
+                    <span style={{ color: "#cbd5e1", fontWeight: 900 }}>—</span>
+                  )}
+                </div>
+
                 <div style={{ minWidth: 0 }}>
                   <strong
                     style={{
