@@ -223,6 +223,16 @@ function excelDateToIso(value: string) {
   return value;
 }
 
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function deriveDswSnapshotKind(serviceDate: string) {
+  if (serviceDate < todayIso()) return "FINAL";
+  if (serviceDate === todayIso()) return "IN_DAY";
+  return "FUTURE";
+}
+
 function routeActiveOn(route: any, serviceDate: string) {
   const start = cellText(route.effective_start);
   const end = cellText(route.effective_end);
@@ -300,10 +310,32 @@ export async function POST(req: NextRequest, context: RouteContext) {
     });
 
     const meta = extractMeta(rows);
-    const serviceDate = requestedDate || (meta.service_date_text ? excelDateToIso(meta.service_date_text) : "");
+    const headerServiceDate = meta.service_date_text ? excelDateToIso(meta.service_date_text) : "";
 
-    if (!serviceDate) {
-      return NextResponse.json({ error: "Report date is required." }, { status: 400 });
+    if (!headerServiceDate) {
+      return NextResponse.json(
+        { error: "DSW report date was not detected in the file header." },
+        { status: 400 }
+      );
+    }
+
+    if (requestedDate && requestedDate !== headerServiceDate) {
+      return NextResponse.json(
+        {
+          error: `Submitted report date ${requestedDate} does not match DSW file header date ${headerServiceDate}.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    const serviceDate = headerServiceDate;
+    const snapshotKind = deriveDswSnapshotKind(serviceDate);
+
+    if (snapshotKind === "FUTURE") {
+      return NextResponse.json(
+        { error: "Future-dated DSW uploads are not supported." },
+        { status: 400 }
+      );
     }
 
     const headerIndex = findHeaderRow(rows, DSW_HEADERS);
@@ -381,6 +413,61 @@ export async function POST(req: NextRequest, context: RouteContext) {
       .eq("auth_user_id", auth.user.id)
       .maybeSingle();
 
+    const uploadMetadata = {
+      file_size: file.size,
+      sheet_count: workbook.SheetNames.length,
+      uploaded_by_auth_user_id: auth.user.id,
+      terminal_identity: meta.terminal_identity,
+      contract_filter: meta.contract_filter,
+      generated_at_text: meta.generated_at_text,
+      service_date_source: "DSW_FILE_HEADER",
+      detected_service_date: serviceDate,
+      derived_snapshot_kind: snapshotKind,
+      detected_sheet_name: sheetName,
+      detected_header_row: headerIndex + 1,
+      route_match: {
+        matched: matchedCount,
+        unmatched: stagedRows.length - matchedCount,
+      },
+      summary_row_count: stagedSummaryRows.length,
+    };
+
+    if (snapshotKind === "FINAL") {
+      const { data: finalResult, error: finalError } = await supabase.rpc(
+        "import_operations_dsw_finalized_day",
+        {
+          p_company_id: company.id,
+          p_service_date: serviceDate,
+          p_source_filename: file.name,
+          p_source_hash: sourceHash,
+          p_detected_headers: DSW_HEADERS,
+          p_row_count: parsedRows.length,
+          p_uploaded_by_profile_id: profile?.profile_id ?? null,
+          p_metadata_json: uploadMetadata,
+          p_rows: stagedRows,
+          p_summary_rows: stagedSummaryRows,
+        }
+      );
+
+      if (finalError) {
+        return NextResponse.json({ error: finalError.message }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        ok: true,
+        batch_id: typeof finalResult?.batch_id === "string" ? finalResult.batch_id : null,
+        report_family_key: "DSW",
+        report_shape_key: "DSW_FINALIZED_DAY",
+        snapshot_kind: "FINAL",
+        service_date: serviceDate,
+        inserted_row_count: finalResult?.inserted_row_count ?? stagedRows.length,
+        inserted_summary_row_count: finalResult?.inserted_summary_row_count ?? stagedSummaryRows.length,
+        deleted_batch_count: finalResult?.deleted_batch_count ?? 0,
+        matched_route_count: matchedCount,
+        unmatched_route_count: stagedRows.length - matchedCount,
+      });
+    }
+
     const { data: rpcResult, error: rpcError } = await supabase.rpc(
       "stage_operations_dsw_report",
       {
@@ -396,18 +483,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
         p_participant_row_count: 0,
         p_skipped_row_count: parsedRows.length - stagedRows.length,
         p_uploaded_by_profile_id: profile?.profile_id ?? null,
-        p_metadata_json: {
-          file_size: file.size,
-          sheet_count: workbook.SheetNames.length,
-          uploaded_by_auth_user_id: auth.user.id,
-          terminal_identity: meta.terminal_identity,
-          contract_filter: meta.contract_filter,
-          generated_at_text: meta.generated_at_text,
-          route_match: {
-            matched: matchedCount,
-            unmatched: stagedRows.length - matchedCount,
-          },
-        },
+        p_metadata_json: uploadMetadata,
         p_rows: stagedRows,
       }
     );
@@ -452,7 +528,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
       batch_id: batchId,
       report_family_key: "DSW",
       report_shape_key: "DSW_DAILY_SERVICE_WORKSHEET",
-      snapshot_kind: "IN_DAY",
+      snapshot_kind: snapshotKind,
       service_date: serviceDate,
       inserted_row_count: stagedRows.length,
       inserted_summary_row_count: stagedSummaryRows.length,

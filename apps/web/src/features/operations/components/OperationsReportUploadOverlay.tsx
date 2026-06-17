@@ -27,13 +27,25 @@ function familyLabel(family: DetectedReportFamily) {
   return "Unknown report";
 }
 
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function derivedSnapshotKind(serviceDate: string): "IN_DAY" | "FINAL" {
+  return serviceDate < todayIso() ? "FINAL" : "IN_DAY";
+}
+
+function snapshotKindLabel(kind: "IN_DAY" | "FINAL") {
+  return kind === "FINAL" ? "Final Day Record" : "In-Day Snapshot";
+}
+
 export default function OperationsReportUploadOverlay(props: OperationsReportUploadOverlayProps) {
   const { open, onClose } = props;
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState("");
   const [fileSize, setFileSize] = useState<number | null>(null);
-  const [serviceDate, setServiceDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [serviceDate, setServiceDate] = useState(() => todayIso());
   const [staging, setStaging] = useState(false);
   const [stageError, setStageError] = useState<string | null>(null);
   const [stageResult, setStageResult] = useState<any | null>(null);
@@ -55,7 +67,7 @@ export default function OperationsReportUploadOverlay(props: OperationsReportUpl
     setSelectedFile(null);
     setFileName("");
     setFileSize(null);
-    setServiceDate(new Date().toISOString().slice(0, 10));
+    setServiceDate(todayIso());
     setStaging(false);
     setStageError(null);
     setStageResult(null);
@@ -106,6 +118,9 @@ export default function OperationsReportUploadOverlay(props: OperationsReportUpl
       setInspection(data);
       if (data?.detected?.service_date) {
         setServiceDate(data.detected.service_date);
+        if (data?.detected?.report_family_key === "DSW") {
+          setSnapshotKind(derivedSnapshotKind(data.detected.service_date));
+        }
       }
       setInspected(true);
     } catch {
@@ -281,6 +296,7 @@ export default function OperationsReportUploadOverlay(props: OperationsReportUpl
                   <input
                     type="date"
                     value={serviceDate}
+                    disabled={detectedFamily === "DSW"}
                     onChange={(event) => setServiceDate(event.target.value)}
                     style={{
                       height: 38,
@@ -329,26 +345,22 @@ export default function OperationsReportUploadOverlay(props: OperationsReportUpl
                   </div>
                 </div>
               ) : null}
-
               {detectedFamily === "DSW" ? (
-                <div style={{ display: "grid", gap: 8 }}>
+                <div
+                  style={{
+                    border: "1px solid #e6edf5",
+                    borderRadius: 14,
+                    padding: 10,
+                    background: "#f8fafc",
+                    display: "grid",
+                    gap: 5,
+                  }}
+                >
                   <p className="eyebrow">DSW import mode</p>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button
-                      type="button"
-                      className={snapshotKind === "IN_DAY" ? "button button-primary" : "button"}
-                      onClick={() => setSnapshotKind("IN_DAY")}
-                    >
-                      In-Day Snapshot
-                    </button>
-                    <button
-                      type="button"
-                      className={snapshotKind === "FINAL" ? "button button-primary" : "button"}
-                      onClick={() => setSnapshotKind("FINAL")}
-                    >
-                      Final Day Record
-                    </button>
-                  </div>
+                  <strong>{snapshotKindLabel(snapshotKind)}</strong>
+                  <span style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>
+                    Determined from the DSW file header. Prior service dates are loaded as final authoritative records.
+                  </span>
                 </div>
               ) : null}
 

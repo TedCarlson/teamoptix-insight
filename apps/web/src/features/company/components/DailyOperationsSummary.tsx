@@ -636,10 +636,40 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
               })}
             </div>
 
-            <div style={{ display: "grid", gap: 4, marginTop: 10, color: "#64748b", fontSize: 11, fontWeight: 800 }}>
-              <span>🟢 Final report</span>
-              <span>🟠 In-day only</span>
-              <span>⚪ No record</span>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "end",
+                gap: 8,
+                marginTop: 10,
+              }}
+            >
+              <div style={{ display: "grid", gap: 4, color: "#64748b", fontSize: 11, fontWeight: 800 }}>
+                <span>🟢 Final report</span>
+                <span>🟠 In-day only</span>
+                <span>⚪ No record</span>
+              </div>
+
+              <button
+                type="button"
+                className="button"
+                onClick={() => {
+                  const today = new Date().toISOString().slice(0, 10);
+                  setSelectedDate(today);
+                  setVisibleMonth(today);
+                }}
+                style={{
+                  minHeight: 28,
+                  padding: "0 9px",
+                  borderRadius: 999,
+                  fontSize: 11,
+                  fontWeight: 900,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Today
+              </button>
             </div>
           </section>
       </aside>

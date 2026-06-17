@@ -62,8 +62,11 @@ function FilterButton(props: {
       style={
         props.active
           ? {
+              background: "#0f172a",
+              color: "#ffffff",
               borderColor: "#0f172a",
-              fontWeight: 800,
+              fontWeight: 900,
+              boxShadow: "0 2px 8px rgba(15,23,42,.15)",
             }
           : undefined
       }
@@ -263,7 +266,7 @@ export default function HiringPipelinePage() {
   const [selectedCandidate, setSelectedCandidate] = useState<RosterRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState<string>("onboarding");
 
   const loadCandidates = useCallback(async () => {
     try {
@@ -438,14 +441,16 @@ export default function HiringPipelinePage() {
               onClick={() => setFilter("all")}
             />
 
-            {stages.map((stage) => (
-              <FilterButton
-                key={stage.stage_key}
-                label={`${stage.label} (${countByStage.get(stage.stage_key) ?? 0})`}
-                active={filter === stage.stage_key}
-                onClick={() => setFilter(stage.stage_key)}
-              />
-            ))}
+            {stages
+              .filter((stage) => stage.stage_key !== "invited")
+              .map((stage) => (
+                <FilterButton
+                  key={stage.stage_key}
+                  label={`${stage.label} (${countByStage.get(stage.stage_key) ?? 0})`}
+                  active={filter === stage.stage_key}
+                  onClick={() => setFilter(stage.stage_key)}
+                />
+              ))}
 
             <input
               type="text"
