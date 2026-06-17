@@ -209,15 +209,25 @@ export default function DispatchPage() {
   const dispatchLocked = dispatchDay?.status === "LOCKED";
 
   const arrivedPersonIds = useMemo(() => {
-    const ids = new Set<string>();
+    const latest = new Map<string, boolean>();
 
-    for (const event of dispatchEvents) {
-      if (event.event_code.startsWith("UNDO_")) continue;
-      if (event.event_code !== "ARRIVED") continue;
-      if (event.person_roster_member_id) ids.add(event.person_roster_member_id);
+    const orderedEvents = [...dispatchEvents].sort((a, b) =>
+      a.created_at.localeCompare(b.created_at)
+    );
+
+    for (const event of orderedEvents) {
+      const personId = event.person_roster_member_id;
+      if (!personId) continue;
+
+      if (event.event_code === "ARRIVED") latest.set(personId, true);
+      if (event.event_code === "UNDO_ARRIVED") latest.set(personId, false);
     }
 
-    return ids;
+    return new Set(
+      [...latest.entries()]
+        .filter(([, arrived]) => arrived)
+        .map(([personId]) => personId)
+    );
   }, [dispatchEvents]);
 
   const [routeSortKey, setRouteSortKey] =
