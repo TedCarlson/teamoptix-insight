@@ -434,6 +434,19 @@ export async function POST(req: NextRequest, context: RouteContext) {
       }
     }
 
+    if (batchId) {
+      const { error: supersedeError } = await supabase.rpc(
+        "supersede_operations_report_batch",
+        {
+          p_new_batch_id: batchId,
+        }
+      );
+
+      if (supersedeError) {
+        return NextResponse.json({ error: supersedeError.message }, { status: 500 });
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       batch_id: batchId,

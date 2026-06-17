@@ -7,6 +7,7 @@ import { useAccess } from "@/features/access/AccessProvider";
 import { useLob } from "@/features/lob/hooks/useLob";
 import CompanyContractConfigManager from "@/features/company/components/CompanyContractConfigManager";
 import CompanyRouteSortConfig from "@/features/company/components/CompanyRouteSortConfig";
+import DailyOperationsSummary from "@/features/company/components/DailyOperationsSummary";
 
 type CompanyRecord = {
   id: string;
@@ -234,12 +235,8 @@ export default function CompanyPage() {
         ) : null}
 
         {activeSurface === "prior-day" ? (
-          <SectionCard eyebrow="Prior day" title="Snapshot">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
-              <MiniStat label="DSW" value="Awaiting upload" />
-              <MiniStat label="FCC" value="Awaiting upload" />
-              <MiniStat label="Report artifact" value="Not generated" />
-            </div>
+          <SectionCard eyebrow="Daily operations" title="Summary">
+            <DailyOperationsSummary slug={slug} />
           </SectionCard>
         ) : null}
 
