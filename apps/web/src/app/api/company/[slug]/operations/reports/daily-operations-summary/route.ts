@@ -49,9 +49,29 @@ export async function GET(req: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  const { data: contractRows } = await supabase
+    .from("company_contract_config")
+    .select("contract_number, terminal_identity, service_area, status, effective_start_date, effective_end_date")
+    .eq("company_id", company.id)
+    .order("effective_start_date", { ascending: false });
+
+  const contractConfig =
+    (contractRows ?? []).find((row) => {
+      const status = String(row.status ?? "").toLowerCase();
+      const start = String(row.effective_start_date ?? "");
+      const end = String(row.effective_end_date ?? "");
+
+      return (
+        status === "active" &&
+        (!start || start <= serviceDate) &&
+        (!end || end >= serviceDate)
+      );
+    }) ?? null;
+
   return NextResponse.json({
     company_name: company.company_name,
     service_date: serviceDate,
+    company_identity: contractConfig ?? null,
     summary: data?.[0] ?? null,
   });
 }

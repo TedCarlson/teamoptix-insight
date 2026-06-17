@@ -225,12 +225,15 @@ export default function CompanyPage() {
         ) : null}
 
         {activeSurface === "today" ? (
-          <SectionCard eyebrow="Current day" title="Today">
+          <SectionCard eyebrow="Payroll" title="Payroll Workspace">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
-              <MiniStat label="Dispatch" value="Not loaded" />
-              <MiniStat label="Delivery risks" value="Pending data" />
-              <MiniStat label="Last updated" value="No source yet" />
+              <MiniStat label="Current period" value="Coming soon" />
+              <MiniStat label="Threshold pay" value="Pending builder" />
+              <MiniStat label="Exports" value="Pending setup" />
             </div>
+            <p className="app-card__body" style={{ marginTop: 12 }}>
+              Weekly payroll review, threshold pay, compensation validation, and export workflows will surface here.
+            </p>
           </SectionCard>
         ) : null}
 
@@ -241,12 +244,15 @@ export default function CompanyPage() {
         ) : null}
 
         {activeSurface === "readiness" ? (
-          <SectionCard eyebrow="Future readiness" title="Tomorrow">
+          <SectionCard eyebrow="Access" title="Access Workspace">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
-              <MiniStat label="DRO PM" value="Awaiting upload" />
-              <MiniStat label="Coverage" value="Pending schedule" />
-              <MiniStat label="Open gaps" value="Unknown" />
+              <MiniStat label="Company users" value="Coming soon" />
+              <MiniStat label="Invitations" value="Pending surface" />
+              <MiniStat label="Delegates" value="Pending setup" />
             </div>
+            <p className="app-card__body" style={{ marginTop: 12 }}>
+              User access, invitations, delegate management, role controls, and audit activity will surface here.
+            </p>
           </SectionCard>
         ) : null}
 

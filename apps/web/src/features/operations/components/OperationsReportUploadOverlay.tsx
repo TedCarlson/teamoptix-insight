@@ -104,6 +104,9 @@ export default function OperationsReportUploadOverlay(props: OperationsReportUpl
       }
 
       setInspection(data);
+      if (data?.detected?.service_date) {
+        setServiceDate(data.detected.service_date);
+      }
       setInspected(true);
     } catch {
       setInspectError("Inspection failed.");
@@ -288,9 +291,20 @@ export default function OperationsReportUploadOverlay(props: OperationsReportUpl
                     }}
                   />
                 </label>
-                <span>Terminal: {inspection?.detected?.terminal_code ?? "Not detected"}</span>
-                <span>Contract: {inspection?.detected?.contract_filter ?? "Not detected"}</span>
-                <span>Generated: {inspection?.detected?.generated_at_text ?? "Not detected"}</span>
+                {detectedFamily === "FCC" ? (
+                  <>
+                    <span>Service Area: {inspection?.detected?.service_area ?? "Not detected"}</span>
+                    <span>Display Work Area: {inspection?.detected?.display_work_area ?? "Not detected"}</span>
+                    <span>Export Generated: {inspection?.detected?.generated_at_text ?? "Not detected"}</span>
+                    <span>Detail Sheet: {inspection?.detected?.detail_sheet_name ?? "Not detected"}</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Terminal: {inspection?.detected?.terminal_code ?? "Not detected"}</span>
+                    <span>Contract: {inspection?.detected?.contract_filter ?? "Not detected"}</span>
+                    <span>Generated: {inspection?.detected?.generated_at_text ?? "Not detected"}</span>
+                  </>
+                )}
                 <span>Scanned Routes: {inspection?.detected?.route_row_count ?? 0}</span>
                 <span>Drivers / Helpers: {inspection?.detected?.participant_row_count ?? 0}</span>
                 <span>Summary Totals: {inspection?.detected?.summary_row_count ?? 0}</span>

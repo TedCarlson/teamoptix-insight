@@ -24,7 +24,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const operationsBase = `${base}/operations`;
 
   const mainItems: NavItem[] = [
-    { label: "Overview", href: base, match: (path) => path === base },
+    { label: "Admin", href: base, match: (path) => path === base },
     { label: "Operations", href: operationsBase, match: (path) => path.startsWith(operationsBase) || path.startsWith(`${base}/dispatch`) },
     { label: "Schedule", href: scheduleBase, match: (path) => path.startsWith(scheduleBase) },
     { label: "People", href: peopleBase, match: (path) => path.startsWith(peopleBase) || path.startsWith(`${base}/hiring`) },
@@ -33,9 +33,9 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
 
   const overviewSubItems: NavItem[] = [
     { label: "Profile", href: base, match: (path) => path === base },
-    { label: "Today", href: `${base}/today`, match: (path) => path === `${base}/today` },
-    { label: "Prior Day", href: `${base}/prior-day`, match: (path) => path === `${base}/prior-day` },
-    { label: "Readiness", href: `${base}/readiness`, match: (path) => path === `${base}/readiness` },
+    { label: "Payroll", href: `${base}/today`, match: (path) => path === `${base}/today` },
+    { label: "Ops Reports", href: `${base}/prior-day`, match: (path) => path === `${base}/prior-day` },
+    { label: "Access", href: `${base}/readiness`, match: (path) => path === `${base}/readiness` },
     { label: "Config", href: `${base}/config`, match: (path) => path === `${base}/config` },
   ];
 

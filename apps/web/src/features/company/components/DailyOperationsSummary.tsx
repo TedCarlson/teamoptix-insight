@@ -13,6 +13,14 @@ type CalendarDay = {
 type SummaryPayload = {
   company_name: string;
   service_date: string;
+  company_identity: {
+    contract_number: string | null;
+    terminal_identity: string | null;
+    service_area: string | null;
+    status: string | null;
+    effective_start_date: string | null;
+    effective_end_date: string | null;
+  } | null;
   summary: {
     batch_id: string;
     source_filename: string | null;
@@ -405,11 +413,20 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
     { label: "EXCEPTIONS", count: fmt(exceptions), rate: pct(exceptionRate), target: "n/a", status: "na" as const },
   ];
 
+  const identity = payload?.company_identity ?? null;
+  const terminalIdentity =
+    summary?.terminal_code ||
+    String(row.terminal_identity ?? "") ||
+    identity?.terminal_identity ||
+    "Pending";
+
+  const serviceArea = identity?.service_area?.trim() || "Pending";
+
   const reportMeta = [
     ["Service date", dateLabel(selectedDate)],
     ["Source", summary ? "DSW FINAL" : "Awaiting FINAL"],
-    ["Terminal", summary?.terminal_code ?? "Pending"],
-    ["Contract", String(summary?.summary_label ?? "").replace("Contract ", "").replace(" Total", "") || "Pending"],
+    ["Terminal", terminalIdentity],
+    ["Service area", serviceArea],
     ["Generated", summary?.created_at ? new Date(summary.created_at).toLocaleString() : "Pending"],
   ];
 

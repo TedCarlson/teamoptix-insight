@@ -7,6 +7,42 @@ type RouteContext = {
   params: Promise<{ slug: string }>;
 };
 
+type InspectResult = {
+  report_family_key: "DSW" | "DRO" | "FCC" | "UNKNOWN";
+  report_shape_key: string;
+  report_family_label: string;
+  confidence: number;
+  detected_header_row: number | null;
+  service_date?: string | null;
+  terminal_code?: string | null;
+  contract_filter?: string | null;
+  generated_at_text?: string | null;
+  service_area?: string | null;
+  display_work_area?: string | null;
+  header_sheet_name?: string | null;
+  detail_sheet_name?: string | null;
+  route_row_count: number;
+  participant_row_count: number;
+  summary_row_count: number;
+};
+
+const FCC_DETAIL_HEADERS = [
+  "Station",
+  "SA#",
+  "WA#",
+  "Driver Name",
+  "User Type",
+  "Last Delivery Time",
+  "Last Delivery Address",
+  "Last Pickup Time",
+  "Last Pickup Address",
+  "1st Stop Close",
+  "Deliveries Complete",
+  "Pickup Complete",
+  "Final Stop Time",
+  "Last Transmission Time",
+];
+
 function cellText(value: unknown) {
   return String(value ?? "").trim();
 }
@@ -36,7 +72,48 @@ function countRowsAfterHeader(rows: unknown[][], headerIndex: number) {
     .filter((row) => row.some((cell) => cellText(cell))).length;
 }
 
-function inspectDsw(rows: unknown[][]) {
+function sheetRows(workbook: XLSX.WorkBook, sheetName: string) {
+  const sheet = workbook.Sheets[sheetName];
+  if (!sheet) return [];
+
+  return XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+    header: 1,
+    blankrows: true,
+    defval: "",
+  });
+}
+
+function parseUsDateToIso(value: unknown) {
+  const text = cellText(value);
+  const match = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (!match) return null;
+
+  const month = match[1].padStart(2, "0");
+  const day = match[2].padStart(2, "0");
+  const year = match[3];
+
+  return `${year}-${month}-${day}`;
+}
+
+function headerValue(rows: unknown[][], labels: string[]) {
+  const targets = labels.map((label) => normalizeHeader(label));
+
+  for (const row of rows) {
+    for (let index = 0; index < row.length; index += 1) {
+      const current = normalizeHeader(row[index]);
+      if (!targets.includes(current)) continue;
+
+      for (let next = index + 1; next < row.length; next += 1) {
+        const value = cellText(row[next]);
+        if (value) return value;
+      }
+    }
+  }
+
+  return null;
+}
+
+function inspectDsw(rows: unknown[][]): InspectResult {
   const metaLine = rows.flat().map(cellText).find((cell) =>
     cell.startsWith("FedEx - ")
   );
@@ -103,7 +180,7 @@ function inspectDsw(rows: unknown[][]) {
     report_family_label: "Daily Service Worksheet",
     confidence: headerIndex >= 0 ? 0.98 : 0,
     detected_header_row: headerIndex >= 0 ? headerIndex + 1 : null,
-    service_date: match?.[3] ?? null,
+    service_date: match?.[3] ? parseUsDateToIso(match[3]) : null,
     terminal_code: match?.[1] ?? null,
     contract_filter: match?.[2] ?? null,
     generated_at_text: generatedLine?.replace("Generated - ", "") ?? null,
@@ -113,7 +190,7 @@ function inspectDsw(rows: unknown[][]) {
   };
 }
 
-function inspectDro(rows: unknown[][]) {
+function inspectDro(rows: unknown[][]): InspectResult {
   const headerIndex = findHeaderRow(rows, [
     "WA NAME",
     "WA #",
@@ -143,28 +220,50 @@ function inspectDro(rows: unknown[][]) {
   };
 }
 
-function inspectFcc(rows: unknown[][]) {
-  const headerIndex = findHeaderRow(rows, [
-    "Station",
-    "SA#",
-    "WA#",
-    "Driver Name",
-    "User Type",
-    "Last Delivery Time",
-    "Last Pickup Time",
-    "1st Stop Close",
-    "Deliveries Complete",
-    "Pickup Complete",
-    "Last Transmission Time",
-  ]);
+function inspectFcc(workbook: XLSX.WorkBook): InspectResult {
+  const headerSheetName =
+    workbook.SheetNames.find((name) => normalizeHeader(name) === "header") ?? null;
+  const detailSheetName =
+    workbook.SheetNames.find((name) => normalizeHeader(name) === "work area details") ?? null;
+
+  if (!headerSheetName || !detailSheetName) {
+    return {
+      report_family_key: "FCC",
+      report_shape_key: "FCC_SERVICE_AREA_STATUS",
+      report_family_label: "FCC Service Area Status",
+      confidence: 0,
+      detected_header_row: null,
+      route_row_count: 0,
+      participant_row_count: 0,
+      summary_row_count: 0,
+    };
+  }
+
+  const headerRows = sheetRows(workbook, headerSheetName);
+  const detailRows = sheetRows(workbook, detailSheetName);
+  const detailHeaderIndex = findHeaderRow(detailRows, FCC_DETAIL_HEADERS);
+
+  const reportName = headerValue(headerRows, ["Page"]);
+  const serviceDate = parseUsDateToIso(headerValue(headerRows, ["Date"]));
+  const serviceArea = headerValue(headerRows, ["SA#", "Service Area", "SA"]);
+  const displayWorkArea = headerValue(headerRows, ["Display Work Area"]);
+  const exportGenerated = headerValue(headerRows, ["Export Generated"]);
+
+  const headerLooksRight = normalizeHeader(reportName) === "service area status";
 
   return {
     report_family_key: "FCC",
-    report_shape_key: "FCC_ROUTE_HEALTH",
-    report_family_label: "FCC Route Health",
-    confidence: headerIndex >= 0 ? 1 : 0.4,
-    detected_header_row: headerIndex >= 0 ? headerIndex + 1 : null,
-    route_row_count: countRowsAfterHeader(rows, headerIndex),
+    report_shape_key: "FCC_SERVICE_AREA_STATUS",
+    report_family_label: "FCC Service Area Status",
+    confidence: headerLooksRight && detailHeaderIndex >= 0 ? 1 : detailHeaderIndex >= 0 ? 0.75 : 0,
+    detected_header_row: detailHeaderIndex >= 0 ? detailHeaderIndex + 1 : null,
+    service_date: serviceDate,
+    service_area: serviceArea,
+    display_work_area: displayWorkArea,
+    generated_at_text: exportGenerated,
+    header_sheet_name: headerSheetName,
+    detail_sheet_name: detailSheetName,
+    route_row_count: countRowsAfterHeader(detailRows, detailHeaderIndex),
     participant_row_count: 0,
     summary_row_count: 0,
   };
@@ -187,24 +286,29 @@ export async function POST(req: NextRequest, _context: RouteContext) {
       return NextResponse.json({ error: "Workbook has no sheets." }, { status: 400 });
     }
 
-    const sheet = workbook.Sheets[firstSheetName];
-    const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-      header: 1,
-      blankrows: true,
-      defval: "",
-    });
+    const firstSheetRows = sheetRows(workbook, firstSheetName);
 
-    const dsw = inspectDsw(rows);
-    const dro = inspectDro(rows);
-    const fcc = inspectFcc(rows);
+    const dsw = inspectDsw(firstSheetRows);
+    const dro = inspectDro(firstSheetRows);
+    const fcc = inspectFcc(workbook);
+    const unknown: InspectResult = {
+      report_family_key: "UNKNOWN",
+      report_shape_key: "UNKNOWN",
+      report_family_label: "Unknown report",
+      confidence: 0,
+      detected_header_row: null,
+      route_row_count: 0,
+      participant_row_count: 0,
+      summary_row_count: 0,
+    };
 
-    const best = [dsw, dro, fcc].sort((a, b) => b.confidence - a.confidence)[0];
+    const best = [dsw, dro, fcc, unknown].sort((a, b) => b.confidence - a.confidence)[0];
 
     return NextResponse.json({
       ok: true,
       file_name: file.name,
       file_size: file.size,
-      sheet_name: firstSheetName,
+      sheet_name: best.detail_sheet_name ?? firstSheetName,
       sheet_count: workbook.SheetNames.length,
       detected: best,
       candidates: [dsw, dro, fcc],
