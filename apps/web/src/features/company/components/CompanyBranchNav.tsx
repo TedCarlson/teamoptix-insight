@@ -42,7 +42,6 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const peopleSubItems: NavItem[] = [
     { label: "Roster", href: peopleBase, match: (path) => path === peopleBase || path.startsWith(`${peopleBase}/roster`) || path.startsWith(`${peopleBase}/active`) || path.startsWith(`${peopleBase}/former`) || path.startsWith(`${peopleBase}/import`) },
     { label: "Hiring", href: `${base}/hiring`, match: (path) => path.startsWith(`${base}/hiring`) },
-    { label: "Payroll", href: `${peopleBase}/payroll`, match: (path) => path.startsWith(`${peopleBase}/payroll`) },
     { label: "Compliance", href: `${peopleBase}/compliance`, match: (path) => path.startsWith(`${peopleBase}/compliance`) },
     { label: "Reports", href: `${peopleBase}/reports`, match: (path) => path.startsWith(`${peopleBase}/reports`) },
   ];

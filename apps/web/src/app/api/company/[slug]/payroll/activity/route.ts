@@ -69,12 +69,13 @@ export async function GET(
     }
 
     const rows = facts ?? [];
-    const people = new Map<string, { name: string; days: Map<string, number>; thresholdPay: number }>();
+    const people = new Map<string, { id: string | null; name: string; days: Map<string, number>; thresholdPay: number }>();
 
     for (const row of rows as any[]) {
       const personKey =
         row.roster_member_id ?? row.person_name ?? `unknown-${row.service_date}`;
       const person = people.get(personKey) ?? {
+        id: row.roster_member_id ?? null,
         name: row.person_name ?? "Unmatched",
         days: new Map<string, number>(),
         thresholdPay: 0,
@@ -104,6 +105,7 @@ export async function GET(
       );
 
       return {
+        roster_member_id: person.id,
         person_name: person.name,
         days_worked: person.days.size,
         worked_days: Array.from(person.days.keys()).sort(),

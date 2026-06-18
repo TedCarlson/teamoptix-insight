@@ -21,6 +21,7 @@ type AttendanceRow = {
 };
 
 type PayrollSummaryRow = {
+  roster_member_id: string | null;
   person_name: string;
   days_worked: number;
   worked_days?: string[];
@@ -106,6 +107,29 @@ function compactDayCode(value: string) {
 function workedDaysLabel(daysWorked: number, workedDays?: string[]) {
   const codes = (workedDays ?? []).map(compactDayCode).join("");
   return codes ? `${daysWorked} · ${codes}` : String(daysWorked);
+}
+
+function normalizedStatus(value: string | null | undefined) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function isActiveStatus(value: string | null | undefined) {
+  return normalizedStatus(value) === "active";
+}
+
+function isDriverType(value: string | null | undefined) {
+  return normalizedStatus(value) === "driver";
+}
+
+function payrollSummaryGroup(row: PayrollSummaryRow, rosterById: Map<string, RosterRow>) {
+  const roster = row.roster_member_id ? rosterById.get(row.roster_member_id) : undefined;
+  const driver = isDriverType(roster?.worker_type);
+  const active = isActiveStatus(roster?.employment_status);
+
+  if (driver && active) return "Drivers · Active";
+  if (driver && !active) return "Drivers · Former";
+  if (!driver && active) return "Other · Active";
+  return "Other · Former / unmatched";
 }
 
 function ReportDayPills(props: { days: string[]; activity: PayrollActivityRow[] }) {
@@ -255,6 +279,7 @@ export default function PayrollAttendanceGrid() {
         setEventsByDay(Object.fromEntries(dispatchPayloads));
         const summary = ((payrollData?.summary ?? []) as PayrollSummaryRow[])
           .map((row) => ({
+            roster_member_id: row.roster_member_id ?? null,
             person_name: row.person_name,
             days_worked: Number(row.days_worked ?? 0),
             worked_days: Array.isArray(row.worked_days) ? row.worked_days : [],
@@ -377,6 +402,26 @@ export default function PayrollAttendanceGrid() {
     (sum, row) => sum + Object.values(row.days).filter((cell) => cell.present).length,
     0
   );
+
+  const rosterById = useMemo(() => {
+    return new Map(roster.map((person) => [person.roster_member_id, person]));
+  }, [roster]);
+
+  const groupedSummaryRows = useMemo(() => {
+    const groups = new Map<string, PayrollSummaryRow[]>();
+
+    for (const row of payrollMetrics?.summary ?? []) {
+      const group = payrollSummaryGroup(row, rosterById);
+      const current = groups.get(group) ?? [];
+      current.push(row);
+      groups.set(group, current);
+    }
+
+    return Array.from(groups.entries()).map(([group, rows]) => ({
+      group,
+      rows: rows.sort((a, b) => a.person_name.localeCompare(b.person_name)),
+    }));
+  }, [payrollMetrics?.summary, rosterById]);
 
   return (
     <section style={{ display: "grid", gap: 14 }}>
@@ -501,30 +546,48 @@ export default function PayrollAttendanceGrid() {
                 <tr>
                   <th style={thStyle}>Employee</th>
                   <th style={{ ...thStyle, textAlign: "right" }}>Days Worked</th>
-                  <th style={{ ...thStyle, textAlign: "right" }}>Daily Pay</th>
+                  <th style={{ ...thStyle, textAlign: "right" }}>Base Pay</th>
                   <th style={{ ...thStyle, textAlign: "right" }}>Threshold Pay</th>
-                  <th style={{ ...thStyle, textAlign: "right" }}>Estimated Total</th>
+                  <th style={{ ...thStyle, textAlign: "right" }}>Total Earnings</th>
                 </tr>
               </thead>
               <tbody>
-                {(payrollMetrics?.summary ?? []).length === 0 ? (
+                {groupedSummaryRows.length === 0 ? (
                   <tr>
                     <td colSpan={5} style={{ padding: 16, color: "#64748b", fontWeight: 800 }}>
                       No payroll activity found for this week.
                     </td>
                   </tr>
                 ) : (
-                  (payrollMetrics?.summary ?? []).map((row) => (
-                    <tr key={row.person_name}>
-                      <td style={tdStyle}>
-                        <strong>{row.person_name}</strong>
+                  groupedSummaryRows.flatMap(({ group, rows }) => [
+                    <tr key={`group-${group}`}>
+                      <td
+                        colSpan={5}
+                        style={{
+                          ...tdStyle,
+                          background: "#f8fafc",
+                          color: "#64748b",
+                          fontSize: 11,
+                          fontWeight: 950,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.05em",
+                        }}
+                      >
+                        {group}
                       </td>
-                      <td style={{ ...tdStyle, textAlign: "right" }}>{workedDaysLabel(row.days_worked, row.worked_days)}</td>
-                      <td style={{ ...tdStyle, textAlign: "right" }}>{money(row.daily_pay_total)}</td>
-                      <td style={{ ...tdStyle, textAlign: "right" }}>{money(row.threshold_pay_total)}</td>
-                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: 950 }}>{money(row.estimated_total)}</td>
-                    </tr>
-                  ))
+                    </tr>,
+                    ...rows.map((row) => (
+                      <tr key={`${group}-${row.roster_member_id ?? row.person_name}`}>
+                        <td style={tdStyle}>
+                          <strong>{row.person_name}</strong>
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: "right" }}>{workedDaysLabel(row.days_worked, row.worked_days)}</td>
+                        <td style={{ ...tdStyle, textAlign: "right" }}>{money(row.daily_pay_total)}</td>
+                        <td style={{ ...tdStyle, textAlign: "right" }}>{money(row.threshold_pay_total)}</td>
+                        <td style={{ ...tdStyle, textAlign: "right", fontWeight: 950 }}>{money(row.estimated_total)}</td>
+                      </tr>
+                    )),
+                  ])
                 )}
               </tbody>
             </table>
