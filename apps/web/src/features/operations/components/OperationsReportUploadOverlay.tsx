@@ -39,6 +39,29 @@ function snapshotKindLabel(kind: "IN_DAY" | "FINAL") {
   return kind === "FINAL" ? "Final Day Record" : "In-Day Snapshot";
 }
 
+function InfoItem(props: { label: string; value: string | number | null | undefined; tone?: string }) {
+  return (
+    <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
+      <span style={{ color: "#64748b", fontSize: 10, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+        {props.label}
+      </span>
+      <strong
+        style={{
+          color: props.tone ?? "#0f172a",
+          fontSize: 13,
+          lineHeight: 1.25,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+        title={String(props.value ?? "—")}
+      >
+        {props.value ?? "—"}
+      </strong>
+    </div>
+  );
+}
+
 export default function OperationsReportUploadOverlay(props: OperationsReportUploadOverlayProps) {
   const { open, onClose } = props;
 
@@ -201,14 +224,14 @@ export default function OperationsReportUploadOverlay(props: OperationsReportUpl
     >
       <section
         style={{
-          width: "min(760px, 100%)",
+          width: "min(720px, 100%)",
           maxHeight: "calc(100vh - 32px)",
           overflow: "auto",
           border: "1px solid #d6dfeb",
           borderRadius: 22,
           background: "#fff",
           boxShadow: "0 24px 60px rgba(15, 23, 42, 0.16)",
-          padding: 18,
+          padding: 16,
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
@@ -239,7 +262,7 @@ export default function OperationsReportUploadOverlay(props: OperationsReportUpl
             style={{
               border: "1px dashed #94a3b8",
               borderRadius: 18,
-              padding: 18,
+              padding: 14,
               display: "grid",
               gap: 8,
               cursor: "pointer",
@@ -268,64 +291,97 @@ export default function OperationsReportUploadOverlay(props: OperationsReportUpl
                 gap: 10,
               }}
             >
-              <div>
-                <p className="eyebrow">Inspection result</p>
-                <strong>{familyLabel(detectedFamily)}</strong>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" }}>
+                <div>
+                  <p className="eyebrow">Detected report</p>
+                  <strong style={{ fontSize: 16 }}>{familyLabel(detectedFamily)}</strong>
+                </div>
+
+                <span
+                  style={{
+                    border: "1px solid #dbe4ef",
+                    borderRadius: 999,
+                    padding: "5px 9px",
+                    background: "#f8fafc",
+                    color: detectedFamily === "UNKNOWN" ? "#b42318" : "#166534",
+                    fontSize: 11,
+                    fontWeight: 950,
+                  }}
+                >
+                  {detectedFamily}
+                </span>
               </div>
 
-              <div style={{ display: "grid", gap: 6, color: "#334155", fontSize: 13 }}>
-                <span>File: {fileName}</span>
-                <span>Size: {fileSize ? `${Math.round(fileSize / 1024)} KB` : "Unknown"}</span>
-                <span>
-                  Family key:{" "}
-                  <strong style={{ color: detectedFamily === "UNKNOWN" ? "#b42318" : "#166534" }}>
-                    {detectedFamily}
-                  </strong>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 10,
+                }}
+              >
+                <InfoItem label="Service date" value={serviceDate} />
+                <InfoItem
+                  label="Upload mode"
+                  value={
+                    detectedFamily === "DSW"
+                      ? snapshotKindLabel(snapshotKind)
+                      : detectedFamily === "DRO"
+                        ? reportFrame || "Select AM / PM"
+                        : "In-Day Snapshot"
+                  }
+                  tone={detectedFamily === "DRO" && !reportFrame ? "#92400e" : undefined}
+                />
+                <InfoItem
+                  label={detectedFamily === "FCC" ? "Service area" : "Terminal"}
+                  value={
+                    detectedFamily === "FCC"
+                      ? inspection?.detected?.service_area
+                      : inspection?.detected?.terminal_code
+                  }
+                />
+                <InfoItem
+                  label={detectedFamily === "FCC" ? "Display work area" : "Contract"}
+                  value={
+                    detectedFamily === "FCC"
+                      ? inspection?.detected?.display_work_area
+                      : inspection?.detected?.contract_filter
+                  }
+                />
+                <InfoItem label="Generated" value={inspection?.detected?.generated_at_text} />
+                <InfoItem label="Routes" value={inspection?.detected?.route_row_count ?? 0} />
+                <InfoItem label="Summary rows" value={inspection?.detected?.summary_row_count ?? 0} />
+                <InfoItem label="File size" value={fileSize ? `${Math.round(fileSize / 1024)} KB` : "Unknown"} />
+              </div>
+
+              <div
+                style={{
+                  border: "1px solid #e6edf5",
+                  borderRadius: 14,
+                  padding: 10,
+                  background: "#f8fafc",
+                  display: "grid",
+                  gap: 5,
+                }}
+              >
+                <p className="eyebrow">System action</p>
+                <strong>
+                  {detectedFamily === "DSW"
+                    ? snapshotKind === "FINAL"
+                      ? "Replace finalized DSW artifact"
+                      : "Store in-day DSW snapshot"
+                    : detectedFamily === "DRO"
+                      ? "Store DRO planning snapshot"
+                      : detectedFamily === "FCC"
+                        ? "Store FCC route health snapshot"
+                        : "Review required"}
+                </strong>
+                <span style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>
+                  {detectedFamily === "DSW"
+                    ? snapshotKind === "FINAL"
+                      ? "Prior service dates are loaded as one authoritative final record for that day."
+                      : "Today's DSW is retained as an operational in-day snapshot."
+                    : "Technical detection details are retained in the warehouse metadata."}
                 </span>
-                <span>Shape: {inspection?.detected?.report_shape_key ?? "Pending"}</span>
-                <span>
-                  Confidence:{" "}
-                  {inspection?.detected?.confidence
-                    ? `${Math.round(inspection.detected.confidence * 100)}%`
-                    : "Pending"}
-                </span>
-                <span>Sheet: {inspection?.sheet_name ?? "Pending"}</span>
-                <span>Header row: {inspection?.detected?.detected_header_row ?? "Not found"}</span>
-                <label style={{ display: "grid", gap: 4 }}>
-                  <span>Report date</span>
-                  <input
-                    type="date"
-                    value={serviceDate}
-                    disabled={detectedFamily === "DSW"}
-                    onChange={(event) => setServiceDate(event.target.value)}
-                    style={{
-                      height: 38,
-                      border: "1px solid #d6dfeb",
-                      borderRadius: 10,
-                      padding: "0 10px",
-                      maxWidth: 180,
-                    }}
-                  />
-                </label>
-                {detectedFamily === "FCC" ? (
-                  <>
-                    <span>Service Area: {inspection?.detected?.service_area ?? "Not detected"}</span>
-                    <span>Display Work Area: {inspection?.detected?.display_work_area ?? "Not detected"}</span>
-                    <span>Export Generated: {inspection?.detected?.generated_at_text ?? "Not detected"}</span>
-                    <span>Detail Sheet: {inspection?.detected?.detail_sheet_name ?? "Not detected"}</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Terminal: {inspection?.detected?.terminal_code ?? "Not detected"}</span>
-                    <span>Contract: {inspection?.detected?.contract_filter ?? "Not detected"}</span>
-                    <span>Generated: {inspection?.detected?.generated_at_text ?? "Not detected"}</span>
-                  </>
-                )}
-                <span>Scanned Routes: {inspection?.detected?.route_row_count ?? 0}</span>
-                <span>Drivers / Helpers: {inspection?.detected?.participant_row_count ?? 0}</span>
-                <span>Summary Totals: {inspection?.detected?.summary_row_count ?? 0}</span>
-                {inspectError ? <span style={{ color: "#b42318" }}>{inspectError}</span> : null}
-                {inspecting ? <span>Inspecting workbook...</span> : null}
               </div>
 
               {detectedFamily === "DRO" ? (
@@ -345,24 +401,6 @@ export default function OperationsReportUploadOverlay(props: OperationsReportUpl
                   </div>
                 </div>
               ) : null}
-              {detectedFamily === "DSW" ? (
-                <div
-                  style={{
-                    border: "1px solid #e6edf5",
-                    borderRadius: 14,
-                    padding: 10,
-                    background: "#f8fafc",
-                    display: "grid",
-                    gap: 5,
-                  }}
-                >
-                  <p className="eyebrow">DSW import mode</p>
-                  <strong>{snapshotKindLabel(snapshotKind)}</strong>
-                  <span style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>
-                    Determined from the DSW file header. Prior service dates are loaded as final authoritative records.
-                  </span>
-                </div>
-              ) : null}
 
               <p className="app-card__body">
                 Stage writes the batch and route rows into the existing operations report tables.
@@ -370,9 +408,30 @@ export default function OperationsReportUploadOverlay(props: OperationsReportUpl
 
               {stageError ? <p style={{ color: "#b42318", margin: 0 }}>{stageError}</p> : null}
               {stageResult ? (
-                <p style={{ color: "#166534", margin: 0 }}>
-                  Staged batch {stageResult.batch_id}. Inserted {stageResult.inserted_row_count} rows.
-                </p>
+                <div
+                  style={{
+                    border: "1px solid #bbf7d0",
+                    borderRadius: 12,
+                    padding: 10,
+                    background: "#f0fdf4",
+                    color: "#166534",
+                    fontSize: 13,
+                    fontWeight: 850,
+                    display: "grid",
+                    gap: 3,
+                  }}
+                >
+                  <strong>Upload complete</strong>
+                  <span>
+                    {stageResult.snapshot_kind === "FINAL" ? "Final artifact" : "Snapshot"} {stageResult.batch_id}
+                  </span>
+                  <span>
+                    {stageResult.inserted_row_count} route rows
+                    {stageResult.inserted_summary_row_count !== undefined
+                      ? ` · ${stageResult.inserted_summary_row_count} summary rows`
+                      : ""}
+                  </span>
+                </div>
               ) : null}
             </section>
           ) : null}
