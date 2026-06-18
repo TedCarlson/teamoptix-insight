@@ -8,6 +8,7 @@ import { useLob } from "@/features/lob/hooks/useLob";
 import CompanyContractConfigManager from "@/features/company/components/CompanyContractConfigManager";
 import CompanyRouteSortConfig from "@/features/company/components/CompanyRouteSortConfig";
 import DailyOperationsSummary from "@/features/company/components/DailyOperationsSummary";
+import PayrollAttendanceGrid from "@/features/payroll/components/PayrollAttendanceGrid";
 
 type CompanyRecord = {
   id: string;
@@ -22,12 +23,12 @@ type CompanyRecord = {
   created_at: string | null;
 };
 
-type OverviewSurface = "profile" | "today" | "prior-day" | "readiness" | "config";
+type OverviewSurface = "profile" | "payroll" | "prior-day" | "readiness" | "config";
 
 const SIZE_OPTIONS = ["1-9", "10-49", "50-199", "200-999", "1000+"];
 
 function getSurfaceFromPath(pathname: string): OverviewSurface {
-  if (pathname.endsWith("/today")) return "today";
+  if (pathname.endsWith("/payroll")) return "payroll";
   if (pathname.endsWith("/prior-day")) return "prior-day";
   if (pathname.endsWith("/readiness")) return "readiness";
   if (pathname.endsWith("/config")) return "config";
@@ -224,16 +225,9 @@ export default function CompanyPage() {
           </section>
         ) : null}
 
-        {activeSurface === "today" ? (
-          <SectionCard eyebrow="Payroll" title="Payroll Workspace">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
-              <MiniStat label="Current period" value="Coming soon" />
-              <MiniStat label="Threshold pay" value="Pending builder" />
-              <MiniStat label="Exports" value="Pending setup" />
-            </div>
-            <p className="app-card__body" style={{ marginTop: 12 }}>
-              Weekly payroll review, threshold pay, compensation validation, and export workflows will surface here.
-            </p>
+        {activeSurface === "payroll" ? (
+          <SectionCard eyebrow="Payroll" title="Attendance Review">
+            <PayrollAttendanceGrid />
           </SectionCard>
         ) : null}
 

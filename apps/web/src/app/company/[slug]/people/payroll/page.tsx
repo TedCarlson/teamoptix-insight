@@ -5,8 +5,7 @@ export default function PeoplePayrollPage() {
         <p className="eyebrow">People</p>
         <h1>Payroll</h1>
         <p className="muted">
-          Payroll will manage company-scoped compensation records, pay frequency,
-          effective dates, and future payroll reporting views.
+          Payroll tools now live in the company Payroll workspace.
         </p>
       </section>
     </main>
