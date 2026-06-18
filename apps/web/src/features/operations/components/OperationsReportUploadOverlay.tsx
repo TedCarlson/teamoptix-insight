@@ -321,7 +321,7 @@ export default function OperationsReportUploadOverlay(props: OperationsReportUpl
               >
                 <InfoItem label="Service date" value={serviceDate} />
                 <InfoItem
-                  label="Upload mode"
+                  label="Report status"
                   value={
                     detectedFamily === "DSW"
                       ? snapshotKindLabel(snapshotKind)
@@ -347,10 +347,8 @@ export default function OperationsReportUploadOverlay(props: OperationsReportUpl
                       : inspection?.detected?.contract_filter
                   }
                 />
-                <InfoItem label="Generated" value={inspection?.detected?.generated_at_text} />
                 <InfoItem label="Routes" value={inspection?.detected?.route_row_count ?? 0} />
                 <InfoItem label="Summary rows" value={inspection?.detected?.summary_row_count ?? 0} />
-                <InfoItem label="File size" value={fileSize ? `${Math.round(fileSize / 1024)} KB` : "Unknown"} />
               </div>
 
               <div
@@ -363,16 +361,16 @@ export default function OperationsReportUploadOverlay(props: OperationsReportUpl
                   gap: 5,
                 }}
               >
-                <p className="eyebrow">System action</p>
+                <p className="eyebrow">Import action</p>
                 <strong>
                   {detectedFamily === "DSW"
                     ? snapshotKind === "FINAL"
-                      ? "Replace finalized DSW artifact"
-                      : "Store in-day DSW snapshot"
+                      ? "Replace existing Final Report"
+                      : "Create In-Day Snapshot"
                     : detectedFamily === "DRO"
-                      ? "Store DRO planning snapshot"
+                      ? "Store DRO Planning Snapshot"
                       : detectedFamily === "FCC"
-                        ? "Store FCC route health snapshot"
+                        ? "Store FCC Route Health Snapshot"
                         : "Review required"}
                 </strong>
                 <span style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>
@@ -402,9 +400,24 @@ export default function OperationsReportUploadOverlay(props: OperationsReportUpl
                 </div>
               ) : null}
 
-              <p className="app-card__body">
-                Stage writes the batch and route rows into the existing operations report tables.
-              </p>
+              <div
+                style={{
+                  margin: 0,
+                  color: "#475569",
+                  fontSize: 13,
+                  fontWeight: 800,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
+                <span>Ready to import.</span>
+                <span>
+                  {(inspection?.detected?.route_row_count ?? 0) +
+                    (inspection?.detected?.summary_row_count ?? 0)} records
+                </span>
+              </div>
 
               {stageError ? <p style={{ color: "#b42318", margin: 0 }}>{stageError}</p> : null}
               {stageResult ? (
