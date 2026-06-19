@@ -261,6 +261,18 @@ export default function CandidateWorkflowDrawer({
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
 
+  const selectedRosterId = person?.roster_member_id ?? null;
+  const selectedStageKey = person?.candidate_stage_key ?? "candidate_created";
+
+  useEffect(() => {
+    if (!open || !selectedRosterId) return;
+
+    setStageKey(selectedStageKey);
+    setStageNote("");
+    setShowStageNote(false);
+    setError(null);
+  }, [open, selectedRosterId, selectedStageKey]);
+
   useEffect(() => {
     const rosterId = person?.roster_member_id;
     if (!open || !rosterId) return;
@@ -553,125 +565,122 @@ export default function CandidateWorkflowDrawer({
         ) : null}
 
         <section style={candidateFrameStyle}>
-          <div>
-            <p className="workspace-eyebrow">Candidate controls</p>
-            <h3 className="workspace-card-title">Hiring readiness</h3>
-            <p className="workspace-card-body" style={{ marginTop: 4 }}>
-              Candidate-only workflow items stay here so the person record stays clean below.
-            </p>
-          </div>
-
-          <ReadinessSignal progress={person.candidate_progress} />
-
-<section
-          style={{
-            borderTop: "1px solid #e6edf5",
-            paddingTop: 14,
-            display: "grid",
-            gap: 10,
-          }}
-        >
-          <p className="workspace-eyebrow">Hiring disposition</p>
-          <h3 className="workspace-card-title">Candidate stage</h3>
-
-          <label style={{ display: "grid", gap: 6 }}>
-            <span className="hero-stat__label">Stage</span>
-            <select
-              value={stageKey}
-              onChange={(event) => setStageKey(event.target.value)}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 1fr) minmax(360px, 0.95fr)",
+              gap: 14,
+              alignItems: "start",
+            }}
+          >
+            <section
               style={{
-                minHeight: 42,
-                borderRadius: 12,
-                border: "1px solid #d6dfeb",
-                padding: "0 12px",
-                background: "#fff",
-                color: "#17213a",
-                fontWeight: 800,
+                display: "grid",
+                gap: 12,
               }}
             >
-              {DEFAULT_STAGE_OPTIONS.map((stage) => (
-                <option key={stage.stage_key} value={stage.stage_key}>
-                  {stage.label}
-                </option>
-              ))}
-            </select>
-          </label>
+              <div>
+                <p className="workspace-eyebrow">Candidate controls</p>
+                <h3 className="workspace-card-title">Hiring disposition</h3>
+                <p className="workspace-card-body" style={{ marginTop: 4 }}>
+                  Candidate-only workflow items stay here so the person record stays clean below.
+                </p>
+              </div>
 
-          <button
-            type="button"
-            className="button"
-            onClick={() => setShowStageNote((v) => !v)}
-          >
-            {showStageNote ? "Hide note" : "Add disposition note"}
-          </button>
-
-          {showStageNote ? (
-            <label style={{ display: "grid", gap: 6 }}>
-              <span className="hero-stat__label">Note</span>
-              <textarea
-                value={stageNote}
-                onChange={(event) => setStageNote(event.target.value)}
-                placeholder="Optional reason or disposition note"
+              <section
                 style={{
-                  minHeight: 72,
-                  borderRadius: 12,
-                  border: "1px solid #d6dfeb",
-                  padding: 12,
-                  background: "#fff",
-                  color: "#17213a",
-                  fontWeight: 700,
-                  resize: "vertical",
+                  borderTop: "1px solid #e6edf5",
+                  paddingTop: 14,
+                  display: "grid",
+                  gap: 10,
                 }}
-              />
-            </label>
-          ) : null}
+              >
+                <p className="workspace-eyebrow">Candidate stage</p>
 
-          <button
-            className="button button-primary"
-            type="button"
-            disabled={savingStage}
-            onClick={saveCandidateStage}
-          >
-            {savingStage ? "Saving..." : "Update candidate stage"}
-          </button>
-        </section>
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span className="hero-stat__label">Stage</span>
+                  <select
+                    value={stageKey}
+                    onChange={(event) => setStageKey(event.target.value)}
+                    style={{
+                      minHeight: 42,
+                      borderRadius: 12,
+                      border: "1px solid #d6dfeb",
+                      padding: "0 12px",
+                      background: "#fff",
+                      color: "#17213a",
+                      fontWeight: 800,
+                    }}
+                  >
+                    {DEFAULT_STAGE_OPTIONS.map((stage) => (
+                      <option key={stage.stage_key} value={stage.stage_key}>
+                        {stage.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-<CandidateChecklistPanel
-          slug={slug}
-          rosterId={person.roster_member_id}
-          onChanged={onRefresh}
-        />
-        </section>
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => setShowStageNote((v) => !v)}
+                >
+                  {showStageNote ? "Hide note" : "Add disposition note"}
+                </button>
 
-        <section style={sectionFrameStyle}>
-          <div>
-            <p className="workspace-eyebrow">Person record</p>
-            <h3 className="workspace-card-title">Shared profile and work facts</h3>
-            <p className="workspace-card-body" style={{ marginTop: 4 }}>
-              These fields follow the person across candidate, active, and former states.
-            </p>
+                {showStageNote ? (
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span className="hero-stat__label">Note</span>
+                    <textarea
+                      value={stageNote}
+                      onChange={(event) => setStageNote(event.target.value)}
+                      placeholder="Add context for this candidate stage change."
+                      style={{
+                        minHeight: 84,
+                        borderRadius: 12,
+                        border: "1px solid #d6dfeb",
+                        padding: 12,
+                        background: "#fff",
+                        color: "#17213a",
+                      }}
+                    />
+                  </label>
+                ) : null}
+
+                <button
+                  type="button"
+                  className="button button-primary"
+                  disabled={savingStage}
+                  onClick={saveCandidateStage}
+                >
+                  {savingStage ? "Saving..." : "Update candidate stage"}
+                </button>
+              </section>
+            </section>
+
+            <aside>
+              <ReadinessSignal progress={person.candidate_progress} />
+            </aside>
           </div>
-
-          <div style={sectionDividerStyle} />
-
-          <PersonCoreSection
-            person={person}
-            saving={savingDetails}
-            onSave={saveDetails}
-          />
-
-          <PersonOperationsSection
-            person={person}
-            saving={savingOperations}
-            onSave={saveOperations}
-          />
-
-          <PersonLifecycleSection
-            person={person}
-            saving={savingStatus}
-            onSave={saveStatus}
-          />
         </section>
+
+        <PersonLifecycleSection
+          person={person}
+          saving={savingStatus}
+          onSave={saveStatus}
+        />
+
+        <PersonCoreSection
+          person={person}
+          saving={savingDetails}
+          onSave={saveDetails}
+        />
+
+        <PersonOperationsSection
+          person={person}
+          saving={savingOperations}
+          onSave={saveOperations}
+        />
 
         <section style={sectionFrameStyle}>
           <PersonTimelineSection events={timelineEvents} loading={loadingTimeline} />
