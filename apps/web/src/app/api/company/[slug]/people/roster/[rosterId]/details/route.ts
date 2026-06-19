@@ -48,7 +48,8 @@ export async function PATCH(
       p_license_expiration_date: dateOrNull(body.license_expiration_date),
     });
 
-    if (error) {
+    
+if (error) {
       return NextResponse.json(
         {
           error: "Failed to update details.",

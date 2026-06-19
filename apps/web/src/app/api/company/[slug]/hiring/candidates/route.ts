@@ -176,6 +176,38 @@ export async function GET(
       );
     }
 
+    const profileIds = (rosterRows ?? [])
+      .map((row: any) => row.profile_id)
+      .filter(Boolean);
+
+    let privateFactByProfileId = new Map<string, any>();
+    let licenseByProfileId = new Map<string, any>();
+
+    if (profileIds.length > 0) {
+      const { data: privateRows } = await supabase
+        .schema("core")
+        .from("profile_private_fact")
+        .select("profile_id, date_of_birth, address_line_1, address_line_2, city, state_region, postal_code")
+        .in("profile_id", profileIds);
+
+      privateFactByProfileId = new Map(
+        (privateRows ?? []).map((fact: any) => [fact.profile_id, fact])
+      );
+
+      const { data: licenseRows } = await supabase
+        .schema("core")
+        .from("profile_driver_license")
+        .select("profile_id, license_number, issuing_state, issue_date, expiration_date, created_at")
+        .in("profile_id", profileIds)
+        .order("created_at", { ascending: false });
+
+      for (const license of licenseRows ?? []) {
+        if (!licenseByProfileId.has(license.profile_id)) {
+          licenseByProfileId.set(license.profile_id, license);
+        }
+      }
+    }
+
     let factRows: any[] = [];
 
     if (rosterIds.length > 0) {
@@ -195,6 +227,12 @@ export async function GET(
     const candidates = (rosterRows ?? []).map((row) => {
       const fact = factByRosterId.get(row.roster_member_id);
       const ops = opsByRosterId.get(row.roster_member_id);
+      const privateFact = row.profile_id
+        ? privateFactByProfileId.get(row.profile_id)
+        : null;
+      const license = row.profile_id
+        ? licenseByProfileId.get(row.profile_id)
+        : null;
       const stageKey = fact?.stage_key ?? fallbackStageKey(row);
       const stage = stageByKey.get(stageKey);
 
@@ -213,16 +251,16 @@ export async function GET(
         notes: row.notes ?? null,
         profile_id: row.profile_id ?? null,
         person_id: row.person_id ?? null,
-        date_of_birth: row.date_of_birth ?? null,
-        address_line_1: row.address_line_1 ?? null,
-        address_line_2: row.address_line_2 ?? null,
-        city: row.city ?? null,
-        state_region: row.state_region ?? null,
-        postal_code: row.postal_code ?? null,
-        license_number: row.license_number ?? null,
-        issuing_state: row.issuing_state ?? null,
-        license_issue_date: row.license_issue_date ?? null,
-        license_expiration_date: row.license_expiration_date ?? null,
+        date_of_birth: privateFact?.date_of_birth ?? row.date_of_birth ?? null,
+        address_line_1: privateFact?.address_line_1 ?? row.address_line_1 ?? null,
+        address_line_2: privateFact?.address_line_2 ?? row.address_line_2 ?? null,
+        city: privateFact?.city ?? row.city ?? null,
+        state_region: privateFact?.state_region ?? row.state_region ?? null,
+        postal_code: privateFact?.postal_code ?? row.postal_code ?? null,
+        license_number: license?.license_number ?? row.license_number ?? null,
+        issuing_state: license?.issuing_state ?? row.issuing_state ?? null,
+        license_issue_date: license?.issue_date ?? row.license_issue_date ?? null,
+        license_expiration_date: license?.expiration_date ?? row.license_expiration_date ?? null,
         stage_key: stageKey,
         stage_label:
           stage?.label ?? fact?.default_label ?? "New",
@@ -249,6 +287,8 @@ export async function GET(
         ),
       };
     });
+
+    console.log("HIRING DEMETRIUS HYDRATION", candidates.find((c: any) => c.full_name === "Demetrius Chestnut"));
 
     return NextResponse.json({
       company_id: company.id,

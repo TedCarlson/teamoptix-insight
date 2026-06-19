@@ -23,7 +23,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     }
 
     const { data: events, error } = await supabase
-      .from("company_roster_event")
+      .from("company_roster_event_view")
       .select("id, company_id, roster_id, event_category, event_type, event_detail, event_metadata, occurred_at, created_at")
       .eq("company_id", company.id)
       .eq("roster_id", rosterId)

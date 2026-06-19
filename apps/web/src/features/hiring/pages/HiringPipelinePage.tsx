@@ -27,6 +27,18 @@ type PipelineCandidateRow = {
   full_name: string;
   email?: string | null;
   phone?: string | null;
+  profile_id?: string | null;
+  person_id?: string | null;
+  date_of_birth?: string | null;
+  address_line_1?: string | null;
+  address_line_2?: string | null;
+  city?: string | null;
+  state_region?: string | null;
+  postal_code?: string | null;
+  license_number?: string | null;
+  issuing_state?: string | null;
+  license_issue_date?: string | null;
+  license_expiration_date?: string | null;
   role: string;
   market: string;
   stage_key: string;
@@ -224,8 +236,8 @@ function ReadinessBlocks(props: { progress?: CandidateProgress | null }) {
 function toRosterRow(row: PipelineCandidateRow): RosterRow {
   return {
     roster_member_id: row.id,
-    profile_id: null,
-    person_id: null,
+    profile_id: row.profile_id ?? null,
+    person_id: row.person_id ?? null,
     full_name: row.full_name,
     email: row.email ?? null,
     phone: row.phone ?? null,
@@ -249,6 +261,16 @@ function toRosterRow(row: PipelineCandidateRow): RosterRow {
     candidate_stage_key: row.stage_key ?? null,
     candidate_stage_label: row.stage_label ?? null,
     candidate_stage_is_terminal: false,
+    date_of_birth: row.date_of_birth ?? null,
+    address_line_1: row.address_line_1 ?? null,
+    address_line_2: row.address_line_2 ?? null,
+    city: row.city ?? null,
+    state_region: row.state_region ?? null,
+    postal_code: row.postal_code ?? null,
+    license_number: row.license_number ?? null,
+    issuing_state: row.issuing_state ?? null,
+    license_issue_date: row.license_issue_date ?? null,
+    license_expiration_date: row.license_expiration_date ?? null,
     candidate_progress: row.progress ?? null,
   };
 }
