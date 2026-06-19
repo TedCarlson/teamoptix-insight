@@ -22,9 +22,10 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const peopleBase = `${base}/people`;
   const scheduleBase = `${base}/schedule`;
   const operationsBase = `${base}/operations`;
+  const configBase = `${base}/config`;
 
   const mainItems: NavItem[] = [
-    { label: "Admin", href: base, match: (path) => path === base },
+    { label: "Admin", href: base, match: (path) => path === base || path.startsWith(configBase) },
     { label: "Operations", href: operationsBase, match: (path) => path.startsWith(operationsBase) || path.startsWith(`${base}/dispatch`) },
     { label: "Schedule", href: scheduleBase, match: (path) => path.startsWith(scheduleBase) },
     { label: "People", href: peopleBase, match: (path) => path.startsWith(peopleBase) || path.startsWith(`${base}/hiring`) },
@@ -35,8 +36,8 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     { label: "Profile", href: base, match: (path) => path === base },
     { label: "Payroll", href: `${base}/payroll`, match: (path) => path === `${base}/payroll` },
     { label: "Ops Reports", href: `${base}/prior-day`, match: (path) => path === `${base}/prior-day` },
-    { label: "Access", href: `${base}/readiness`, match: (path) => path === `${base}/readiness` },
-    { label: "Config", href: `${base}/config`, match: (path) => path === `${base}/config` },
+    { label: "Analytics", href: `${base}/analytics`, match: (path) => path === `${base}/analytics` || path === `${base}/readiness` },
+    { label: "Config", href: configBase, match: (path) => path.startsWith(configBase) },
   ];
 
   const peopleSubItems: NavItem[] = [
@@ -59,6 +60,14 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     { label: "Planning", href: `${operationsBase}/planning`, match: (path) => path.startsWith(`${operationsBase}/planning`) },
   ];
 
+  const configSubItems: NavItem[] = [
+    { label: "Back to Admin", href: base, match: () => false },
+    { label: "Company", href: configBase, match: (path) => path === configBase || path === `${configBase}/company` },
+    { label: "Leadership", href: `${configBase}/leadership`, match: (path) => path === `${configBase}/leadership` },
+    { label: "Access", href: `${configBase}/access`, match: (path) => path === `${configBase}/access` },
+    { label: "Operations", href: `${configBase}/operations`, match: (path) => path === `${configBase}/operations` },
+  ];
+
   const inPeopleBranch =
     pathname === peopleBase ||
     pathname.startsWith(`${peopleBase}/`) ||
@@ -72,19 +81,23 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     pathname.startsWith(`${operationsBase}/`) ||
     pathname.startsWith(`${base}/dispatch`);
 
-  const subItems = pathname === base ||
-  pathname === `${base}/payroll` ||
-  pathname === `${base}/prior-day` ||
-  pathname === `${base}/readiness` ||
-  pathname === `${base}/config`
-    ? overviewSubItems
-    : inPeopleBranch
-      ? peopleSubItems
-      : inScheduleBranch
-        ? scheduleSubItems
-        : inOperationsBranch
-          ? operationsSubItems
-          : [];
+  const inConfigBranch = pathname === configBase || pathname.startsWith(`${configBase}/`);
+
+  const subItems = inConfigBranch
+    ? configSubItems
+    : pathname === base ||
+        pathname === `${base}/payroll` ||
+        pathname === `${base}/prior-day` ||
+        pathname === `${base}/analytics` ||
+  pathname === `${base}/readiness`
+      ? overviewSubItems
+      : inPeopleBranch
+        ? peopleSubItems
+        : inScheduleBranch
+          ? scheduleSubItems
+          : inOperationsBranch
+            ? operationsSubItems
+            : [];
 
   return (
     <nav className="app-nav-shell" aria-label="Company workspace">
@@ -96,7 +109,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
 
         <div className="app-nav-group">
           <Link href="/companies" className="app-nav-pill">
-            Companies
+            Switch Company
           </Link>
 
           {mainItems.map((item) => {

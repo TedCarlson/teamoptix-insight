@@ -5,8 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, usePathname } from "next/navigation";
 import { useAccess } from "@/features/access/AccessProvider";
 import { useLob } from "@/features/lob/hooks/useLob";
-import CompanyContractConfigManager from "@/features/company/components/CompanyContractConfigManager";
-import CompanyRouteSortConfig from "@/features/company/components/CompanyRouteSortConfig";
+import CompanyConfigWorkspace, { type CompanyConfigSection } from "@/features/company/config/CompanyConfigWorkspace";
 import DailyOperationsSummary from "@/features/company/components/DailyOperationsSummary";
 import PayrollAttendanceGrid from "@/features/payroll/components/PayrollAttendanceGrid";
 
@@ -23,16 +22,23 @@ type CompanyRecord = {
   created_at: string | null;
 };
 
-type OverviewSurface = "profile" | "payroll" | "prior-day" | "readiness" | "config";
+type OverviewSurface = "profile" | "payroll" | "prior-day" | "analytics" | "config";
 
 const SIZE_OPTIONS = ["1-9", "10-49", "50-199", "200-999", "1000+"];
 
 function getSurfaceFromPath(pathname: string): OverviewSurface {
   if (pathname.endsWith("/payroll")) return "payroll";
   if (pathname.endsWith("/prior-day")) return "prior-day";
-  if (pathname.endsWith("/readiness")) return "readiness";
-  if (pathname.endsWith("/config")) return "config";
+  if (pathname.endsWith("/analytics") || pathname.endsWith("/readiness")) return "analytics";
+  if (pathname.includes("/config")) return "config";
   return "profile";
+}
+
+function getConfigSectionFromPath(pathname: string): CompanyConfigSection {
+  if (pathname.endsWith("/config/leadership")) return "leadership";
+  if (pathname.endsWith("/config/access")) return "access";
+  if (pathname.endsWith("/config/operations")) return "operations";
+  return "company";
 }
 
 function SectionCard(props: { eyebrow: string; title: string; children: React.ReactNode }) {
@@ -62,6 +68,7 @@ export default function CompanyPage() {
   const slug = String(params?.slug ?? "");
 
   const [activeSurface, setActiveSurface] = useState<OverviewSurface>("profile");
+  const [activeConfigSection, setActiveConfigSection] = useState<CompanyConfigSection>("company");
   const [company, setCompany] = useState<CompanyRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
@@ -85,6 +92,7 @@ export default function CompanyPage() {
 
   useEffect(() => {
     setActiveSurface(getSurfaceFromPath(pathname));
+    setActiveConfigSection(getConfigSectionFromPath(pathname));
   }, [pathname]);
 
   useEffect(() => {
@@ -237,94 +245,39 @@ export default function CompanyPage() {
           </SectionCard>
         ) : null}
 
-        {activeSurface === "readiness" ? (
-          <SectionCard eyebrow="Access" title="Access Workspace">
+        {activeSurface === "analytics" ? (
+          <SectionCard eyebrow="Analytics" title="Analytics Engine">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
-              <MiniStat label="Company users" value="Coming soon" />
-              <MiniStat label="Invitations" value="Pending surface" />
-              <MiniStat label="Delegates" value="Pending setup" />
+              <MiniStat label="Company signals" value="Coming soon" />
+              <MiniStat label="Operational trends" value="Pending surface" />
+              <MiniStat label="Readiness signals" value="Pending setup" />
             </div>
             <p className="app-card__body" style={{ marginTop: 12 }}>
-              User access, invitations, delegate management, role controls, and audit activity will surface here.
+              Analytics, readiness signals, operational trends, and decision-support summaries will surface here.
             </p>
           </SectionCard>
         ) : null}
 
         {activeSurface === "config" ? (
-          <section style={{ display: "grid", gap: 10 }}>
-            <SectionCard eyebrow="Company config" title="AO profile">
-              {canEditCompany ? (
-                <form
-                  onSubmit={handleSave}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                    gap: 10,
-                  }}
-                >
-                  <input value={company?.company_name ?? ""} disabled style={inputStyleDisabled} />
-                  <input value={company?.company_slug ?? ""} disabled style={inputStyleDisabled} />
-                  <input value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} placeholder="Website" style={inputStyle} />
-                  <input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="AO / company contact email" style={inputStyle} />
-                  <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="AO / company contact phone" style={inputStyle} />
-                  <select value={companySizeBand} onChange={(e) => setCompanySizeBand(e.target.value)} style={inputStyle}>
-                    <option value="">Company size</option>
-                    {SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}</option>)}
-                  </select>
-
-                  <div style={{ gridColumn: "1 / -1" }}>
-                    {saveError ? <p style={{ color: "#c62828", margin: 0 }}>{saveError}</p> : null}
-                    {saveMessage ? <p style={{ color: "#0f9f6e", margin: 0 }}>{saveMessage}</p> : null}
-                  </div>
-
-                  <div className="cta-row" style={{ gridColumn: "1 / -1", marginTop: 0 }}>
-                    <button type="submit" className="button button-primary" disabled={saving}>
-                      {saving ? "Saving..." : "Save AO profile"}
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <p className="app-card__body">You do not have permission to edit this company.</p>
-              )}
-            </SectionCard>
-
-            <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 10, alignItems: "start" }}>
-              <section style={{ display: "grid", gap: 10 }}>
-                <SectionCard eyebrow="Operations behavior" title="Route ordering">
-                  <CompanyRouteSortConfig slug={slug} canEdit={canEditCompany} />
-                </SectionCard>
-
-                <SectionCard eyebrow="Operations config" title="Contract / Terminal Identity / Service Area">
-                  <CompanyContractConfigManager slug={slug} canEdit={canEditCompany} />
-                </SectionCard>
-
-                <SectionCard eyebrow="Leadership config" title="Assignments">
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-                    <MiniStat label="Operations manager" value="Pending roster link" />
-                    <MiniStat label="Fleet manager" value="Pending roster link" />
-                    <MiniStat label="Dispatch supervisor" value="Pending roster link" />
-                    <MiniStat label="Operations supervisor" value="Pending roster link" />
-                  </div>
-                </SectionCard>
-              </section>
-
-              <aside>
-                <SectionCard eyebrow="BC foundation" title="Business contact">
-                  <div style={{ display: "grid", gap: 8 }}>
-                    <MiniStat label="Assignment mode" value="Roster or external" />
-                    <MiniStat label="Primary BC" value="Pending" />
-                    <MiniStat label="Lifecycle" value="Not configured" />
-                  </div>
-
-                  <div className="cta-row" style={{ marginTop: 14 }}>
-                    <button type="button" className="button" disabled>
-                      Add BC assignment
-                    </button>
-                  </div>
-                </SectionCard>
-              </aside>
-            </section>
-          </section>
+          <CompanyConfigWorkspace
+            slug={slug}
+            section={activeConfigSection}
+            company={company}
+            canEditCompany={canEditCompany}
+            contactEmail={contactEmail}
+            contactPhone={contactPhone}
+            websiteUrl={websiteUrl}
+            companySizeBand={companySizeBand}
+            saving={saving}
+            saveError={saveError}
+            saveMessage={saveMessage}
+            sizeOptions={SIZE_OPTIONS}
+            onContactEmailChange={setContactEmail}
+            onContactPhoneChange={setContactPhone}
+            onWebsiteUrlChange={setWebsiteUrl}
+            onCompanySizeBandChange={setCompanySizeBand}
+            onSave={handleSave}
+          />
         ) : null}
       </section>
     </main>

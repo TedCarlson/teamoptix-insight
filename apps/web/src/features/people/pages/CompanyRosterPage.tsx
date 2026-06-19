@@ -104,6 +104,9 @@ export default function CompanyRosterPage() {
   const [savingDetails, setSavingDetails] = useState(false);
   const [savingOperations, setSavingOperations] = useState(false);
   const [savingStatus, setSavingStatus] = useState(false);
+  const [invitingPerson, setInvitingPerson] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState<string | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -402,6 +405,76 @@ export default function CompanyRosterPage() {
     }
   }
 
+  async function sendManagedPersonInvite() {
+    if (!managedPerson) return;
+
+    setInvitingPerson(true);
+    setInviteMessage(null);
+    setInviteError(null);
+    setError(null);
+
+    try {
+      const res = await fetch(
+        `/api/company/${slug}/people/roster/${managedPerson.roster_member_id}/invite`,
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setInviteError(data?.error ?? "Failed to send invite.");
+        return;
+      }
+
+      const nextInviteStatus = String(data?.invite_status ?? "Invited");
+
+      setRows((current) =>
+        current.map((row) =>
+          row.roster_member_id === managedPerson.roster_member_id
+            ? {
+                ...row,
+                invite_status: nextInviteStatus,
+              }
+            : row
+        )
+      );
+
+      setManagedPerson((current) =>
+        current
+          ? {
+              ...current,
+              invite_status: nextInviteStatus,
+            }
+          : current
+      );
+
+      setTimelineEvents((current) => [
+        {
+          id: `local-invite-${Date.now()}`,
+          event_category: "onboarding",
+          event_type: "invite_sent",
+          event_detail: "Invite sent from person drawer.",
+          event_metadata: {
+            email: typeof data?.email === "string" ? data.email : null,
+          },
+          occurred_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+        },
+        ...current,
+      ]);
+
+      setInviteMessage("Invite sent.");
+      await refreshRoster();
+    } catch {
+      setInviteError("Failed to send invite.");
+    } finally {
+      setInvitingPerson(false);
+    }
+  }
+
   async function saveStatus(draft: {
     employment_status: "Active" | "Candidate" | "Former";
     effective_date: string;
@@ -549,14 +622,20 @@ export default function CompanyRosterPage() {
           savingDetails={savingDetails}
           savingOperations={savingOperations}
           savingStatus={savingStatus}
+          inviting={invitingPerson}
+          inviteError={inviteError}
+          inviteMessage={inviteMessage}
           onSaveDetails={savePersonDetails}
           onSaveOperations={saveOperations}
           onSaveStatus={saveStatus}
+          onSendInvite={sendManagedPersonInvite}
           timelineEvents={timelineEvents}
           loadingTimeline={loadingTimeline}
           onClose={() => {
             setManagedPerson(null);
             setTimelineEvents([]);
+            setInviteMessage(null);
+            setInviteError(null);
           }}
         />
       </section>

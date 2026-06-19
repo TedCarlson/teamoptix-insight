@@ -61,12 +61,16 @@ type Props = {
   savingDetails: boolean;
   savingOperations: boolean;
   savingStatus: boolean;
+  inviting?: boolean;
+  inviteError?: string | null;
+  inviteMessage?: string | null;
   timelineEvents: TimelineEvent[];
   loadingTimeline: boolean;
   onClose: () => void;
   onSaveDetails: (draft: CoreDraft) => Promise<void>;
   onSaveOperations: (draft: OperationsDraft) => Promise<void>;
   onSaveStatus: (draft: StatusDraft) => Promise<void>;
+  onSendInvite?: () => Promise<void>;
 };
 
 export default function ManagePersonDrawer({
@@ -75,12 +79,16 @@ export default function ManagePersonDrawer({
   savingDetails,
   savingOperations,
   savingStatus,
+  inviting = false,
+  inviteError = null,
+  inviteMessage = null,
   timelineEvents,
   loadingTimeline,
   onClose,
   onSaveDetails,
   onSaveOperations,
   onSaveStatus,
+  onSendInvite,
 }: Props) {
   if (!open || !person) return null;
 
@@ -138,6 +146,16 @@ export default function ManagePersonDrawer({
           </button>
         </header>
 
+        <PersonLifecycleSection
+          person={person}
+          saving={savingStatus}
+          inviting={inviting}
+          inviteError={inviteError}
+          inviteMessage={inviteMessage}
+          onSave={onSaveStatus}
+          onSendInvite={onSendInvite}
+        />
+
         <PersonCoreSection
           person={person}
           saving={savingDetails}
@@ -148,12 +166,6 @@ export default function ManagePersonDrawer({
           person={person}
           saving={savingOperations}
           onSave={onSaveOperations}
-        />
-
-        <PersonLifecycleSection
-          person={person}
-          saving={savingStatus}
-          onSave={onSaveStatus}
         />
 
         <PersonTimelineSection events={timelineEvents} loading={loadingTimeline} />
