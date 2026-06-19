@@ -2,40 +2,78 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
+const HEADERS = [
+  "Full Name",
+  "Email",
+  "Phone",
+  "Date of Birth",
+  "FX ID",
+  "Role",
+  "License Number",
+  "Issuing State",
+  "License Issue Date",
+  "License Expiration Date",
+  "Address Line 1",
+  "Address Line 2",
+  "City",
+  "State Region",
+  "Postal Code",
+  "Hire Date",
+  "Separation Date",
+  "DOT Expiration Date",
+  "Qual Cert Expiration Date",
+  "Daily Pay Rate",
+  "Daily Pay Effective Date",
+  "DSWID",
+  "Scanner Serial",
+  "Fuel Card",
+  "PIN ID No",
+  "Employment Status",
+  "Market",
+  "Job Title",
+  "DSW Driver Name",
+];
+
+const EXAMPLE = [
+  "Alton Fletcher",
+  "alton5437@gmail.com",
+  "7068334802",
+  "1993-10-16",
+  "4861806",
+  "Driver",
+  "56060960",
+  "GA",
+  "",
+  "",
+  "5001 Charlie Drive",
+  "",
+  "Augusta",
+  "GA",
+  "30909",
+  "2026-02-26",
+  "",
+  "2026-09-09",
+  "2027-04-30",
+  "150.00",
+  "2026-02-26",
+  "FLETCHER, ALTON",
+  "",
+  "",
+  "",
+  "Active",
+  "249",
+  "Driver",
+  "FLETCHER, ALTON",
+];
+
+function csvCell(value: string) {
+  if (/[",\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
+  return value;
+}
+
 const TEMPLATE_CSV = [
-  [
-    "Full Name",
-    "Email",
-    "Phone",
-    "Role",
-    "Market",
-    "Start Date",
-    "Status",
-    "FX ID",
-    "DSWID",
-  ].join(","),
-  [
-    "Alton Fletcher",
-    "alton5437@gmail.com",
-    "7068334802",
-    "Driver",
-    "249",
-    "2026-02-26",
-    "Active",
-    "4861806",
-    "FLETCHER_ALTON",
-  ].join(","),
-  [
-    "Taylor Morgan",
-    "taylor@example.com",
-    "5555555555",
-    "Helper",
-    "249",
-    "2026-03-15",
-    "Candidate",
-    "",
-    "MORGAN_TAYLOR",
-  ].join(","),
+  HEADERS.map(csvCell).join(","),
+  EXAMPLE.map(csvCell).join(","),
 ].join("\n");
 
 export async function GET() {

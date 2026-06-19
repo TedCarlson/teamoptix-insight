@@ -84,10 +84,7 @@ if (error) {
     return NextResponse.json(
       {
         ok: true,
-        roster: {
-          ...(data ?? {}),
-          notes: noteData?.notes ?? note,
-        },
+        roster: data ?? {},
       },
       { status: 200 }
     );
