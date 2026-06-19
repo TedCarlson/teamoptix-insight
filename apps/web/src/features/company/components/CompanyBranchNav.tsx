@@ -19,12 +19,15 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const pathname = usePathname() ?? "";
 
   const base = `/company/${slug}`;
+  const homeBase = `${base}/home`;
+  const announcementsBase = `${base}/announcements`;
   const peopleBase = `${base}/people`;
   const scheduleBase = `${base}/schedule`;
   const operationsBase = `${base}/operations`;
   const configBase = `${base}/config`;
 
   const mainItems: NavItem[] = [
+    { label: "Home", href: homeBase, match: (path) => path === homeBase || path.startsWith(announcementsBase) },
     { label: "Admin", href: base, match: (path) => path === base || path.startsWith(configBase) },
     { label: "Operations", href: operationsBase, match: (path) => path.startsWith(operationsBase) || path.startsWith(`${base}/dispatch`) },
     { label: "Schedule", href: scheduleBase, match: (path) => path.startsWith(scheduleBase) },
@@ -60,6 +63,11 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     { label: "Planning", href: `${operationsBase}/planning`, match: (path) => path.startsWith(`${operationsBase}/planning`) },
   ];
 
+  const homeSubItems: NavItem[] = [
+    { label: "Company Home", href: homeBase, match: (path) => path === homeBase },
+    { label: "Announcements", href: announcementsBase, match: (path) => path.startsWith(announcementsBase) },
+  ];
+
   const configSubItems: NavItem[] = [
     { label: "Back to Admin", href: base, match: () => false },
     { label: "Company", href: configBase, match: (path) => path === configBase || path === `${configBase}/company` },
@@ -67,6 +75,9 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     { label: "Access", href: `${configBase}/access`, match: (path) => path === `${configBase}/access` },
     { label: "Operations", href: `${configBase}/operations`, match: (path) => path === `${configBase}/operations` },
   ];
+
+  const inHomeBranch =
+    pathname === homeBase || pathname.startsWith(`${homeBase}/`) || pathname.startsWith(announcementsBase);
 
   const inPeopleBranch =
     pathname === peopleBase ||
@@ -83,7 +94,9 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
 
   const inConfigBranch = pathname === configBase || pathname.startsWith(`${configBase}/`);
 
-  const subItems = inConfigBranch
+  const subItems = inHomeBranch
+    ? homeSubItems
+    : inConfigBranch
     ? configSubItems
     : pathname === base ||
         pathname === `${base}/payroll` ||

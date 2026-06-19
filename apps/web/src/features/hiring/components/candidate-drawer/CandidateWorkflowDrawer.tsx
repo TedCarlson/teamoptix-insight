@@ -387,24 +387,27 @@ export default function CandidateWorkflowDrawer({
         return;
       }
 
+      const saved = data?.roster ?? {};
+
       onSaved?.({
         ...person,
-        full_name: draft.full_name,
-        email: draft.email,
-        phone: draft.phone,
-        worker_type: draft.worker_type,
-        market_code: draft.market_code,
-        notes: draft.notes,
-        date_of_birth: draft.date_of_birth,
-        address_line_1: draft.address_line_1,
-        address_line_2: draft.address_line_2,
-        city: draft.city,
-        state_region: draft.state_region,
-        postal_code: draft.postal_code,
-        license_number: draft.license_number,
-        issuing_state: draft.issuing_state,
-        license_issue_date: draft.license_issue_date,
-        license_expiration_date: draft.license_expiration_date,
+        full_name: saved.full_name ?? draft.full_name,
+        email: saved.email ?? draft.email,
+        phone: saved.phone ?? draft.phone,
+        worker_type: saved.worker_type ?? draft.worker_type,
+        market_code: saved.market_code ?? draft.market_code,
+        notes: saved.notes ?? draft.notes,
+        date_of_birth: saved.date_of_birth ?? draft.date_of_birth,
+        address_line_1: saved.address_line_1 ?? draft.address_line_1,
+        address_line_2: saved.address_line_2 ?? draft.address_line_2,
+        city: saved.city ?? draft.city,
+        state_region: saved.state_region ?? draft.state_region,
+        postal_code: saved.postal_code ?? draft.postal_code,
+        license_number: saved.license_number ?? draft.license_number,
+        issuing_state: saved.issuing_state ?? draft.issuing_state,
+        license_issue_date: saved.license_issue_date ?? draft.license_issue_date,
+        license_expiration_date:
+          saved.license_expiration_date ?? draft.license_expiration_date,
       });
 
       await onRefresh?.();

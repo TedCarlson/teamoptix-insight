@@ -204,27 +204,49 @@ export async function POST(
       );
     }
 
-    await supabase
+    const { error: rosterUpdateError } = await supabase
+      .schema("core")
       .from("company_roster")
       .update({ invite_status: "Invited" })
       .eq("id", rosterId);
 
-    await supabase.from("company_roster_event").insert({
-      company_id: company.id,
-      roster_id: rosterId,
-      event_category: "onboarding",
-      event_type: "invite_sent",
-      event_detail: "Invite email sent from roster.",
-      event_metadata: {
-        source: "roster_invite_button",
-        full_name: roster.full_name,
-        email: recipientEmail,
-        token_id: tokenRow.id,
-        email_provider_id:
-          typeof resendJson?.id === "string" ? resendJson.id : null,
-      },
-      occurred_at: new Date().toISOString(),
-    });
+    if (rosterUpdateError) {
+      return NextResponse.json(
+        {
+          error: `Invite email sent, but roster invite status was not persisted: ${rosterUpdateError.message}`,
+        },
+        { status: 500 }
+      );
+    }
+
+    const { error: eventInsertError } = await supabase
+      .schema("core")
+      .from("company_roster_event")
+      .insert({
+        company_id: company.id,
+        roster_id: rosterId,
+        event_category: "onboarding",
+        event_type: "invite_sent",
+        event_detail: "Invite email sent from roster.",
+        event_metadata: {
+          source: "roster_invite_button",
+          full_name: roster.full_name,
+          email: recipientEmail,
+          token_id: tokenRow.id,
+          email_provider_id:
+            typeof resendJson?.id === "string" ? resendJson.id : null,
+        },
+        occurred_at: new Date().toISOString(),
+      });
+
+    if (eventInsertError) {
+      return NextResponse.json(
+        {
+          error: `Invite email sent and roster status updated, but event history was not persisted: ${eventInsertError.message}`,
+        },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json(
       {
