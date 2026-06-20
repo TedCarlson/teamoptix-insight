@@ -23,7 +23,6 @@ import PayrollModeTabs from "@/features/payroll/components/PayrollModeTabs";
 import PayrollAttendanceTable from "@/features/payroll/components/PayrollAttendanceTable";
 import PayrollRowDetailTable from "@/features/payroll/components/PayrollRowDetailTable";
 import PayrollDetailTable from "@/features/payroll/components/PayrollDetailTable";
-import PayrollDswAliasTool from "@/features/payroll/components/PayrollDswAliasTool";
 
 import {
   addDays,
@@ -85,8 +84,6 @@ export default function PayrollGrid() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rebuilding, setRebuilding] = useState(false);
-  const [aliasOpen, setAliasOpen] = useState(false);
-  const [aliasCount, setAliasCount] = useState(0);
 
   const days = useMemo(() => weekDaysForEnd(weekEnd), [weekEnd]);
 
@@ -178,40 +175,6 @@ export default function PayrollGrid() {
   }, [slug, days, weekEnd]);
 
   
-  useEffect(() => {
-    let active = true;
-
-    async function loadAliasCount() {
-      if (!slug || !weekEnd) return;
-
-      try {
-        const res = await fetch(`/api/company/${slug}/payroll/dsw-unmatched?weekEnd=${weekEnd}`, {
-          credentials: "include",
-          cache: "no-store",
-        });
-
-        const data = await res.json();
-
-        if (!active) return;
-
-        if (!res.ok) {
-          setAliasCount(0);
-          return;
-        }
-
-        setAliasCount(Array.isArray(data?.unmatched) ? data.unmatched.length : 0);
-      } catch {
-        if (active) setAliasCount(0);
-      }
-    }
-
-    void loadAliasCount();
-
-    return () => {
-      active = false;
-    };
-  }, [slug, weekEnd, payrollMetrics?.activity]);
-
   async function rebuildPayrollActivity() {
     try {
       setRebuilding(true);
@@ -289,42 +252,12 @@ export default function PayrollGrid() {
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <PayrollHeader />
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "end",
-              justifyContent: "flex-end",
-              gap: 10,
-              flexWrap: "wrap",
-            }}
-          >
-            <PayrollWeekControls
-              weekEnd={weekEnd}
-              setWeekEnd={setWeekEnd}
-              rebuilding={rebuilding}
-              onRebuild={rebuildPayrollActivity}
-            />
-
-            <button
-              type="button"
-              onClick={() => setAliasOpen(true)}
-              style={{
-                height: 38,
-                padding: "0 14px",
-                borderRadius: 999,
-                border: "1px solid #dbe6f3",
-                background: "#fff",
-                color: "#0f172a",
-                fontSize: 13,
-                fontWeight: 900,
-                cursor: "pointer",
-                alignSelf: "flex-end",
-                whiteSpace: "nowrap",
-              }}
-            >
-              Alias Review{aliasCount > 0 ? ` (${aliasCount})` : ""}
-            </button>
-          </div>
+          <PayrollWeekControls
+            weekEnd={weekEnd}
+            setWeekEnd={setWeekEnd}
+            rebuilding={rebuilding}
+            onRebuild={rebuildPayrollActivity}
+          />
         </div>
 
         <div
@@ -371,48 +304,13 @@ export default function PayrollGrid() {
         ) : payrollView === "payroll-detail" ? (
           <PayrollDetailTable rows={payrollDetailRows} days={days} />
         ) : payrollView === "row-detail" ? (
-          <PayrollRowDetailTable detailRows={detailRows} />
+          <PayrollRowDetailTable detailRows={payrollMetrics?.activity ?? []} />
         ) : (
           <PayrollAttendanceTable
             attendanceRows={attendanceRows}
             days={days}
           />
         )}
-      {aliasOpen ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 1000,
-            background: "rgba(15,23,42,.42)",
-            display: "grid",
-            placeItems: "center",
-            padding: 24,
-          }}
-          onClick={() => setAliasOpen(false)}
-        >
-          <div
-            style={{
-              width: "min(980px, 96vw)",
-              maxHeight: "86vh",
-              overflow: "auto",
-              background: "#fff",
-              borderRadius: 16,
-              boxShadow: "0 24px 80px rgba(15,23,42,.28)",
-            }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div style={{ padding: 12, borderBottom: "1px solid #e6edf5", display: "flex", justifyContent: "space-between" }}>
-              <strong>DSW Alias Review</strong>
-              <button type="button" className="button" onClick={() => setAliasOpen(false)}>Close</button>
-            </div>
-            <PayrollDswAliasTool slug={slug} weekEnd={weekEnd} />
-          </div>
-        </div>
-      ) : null}
-
     </section>
   );
 }

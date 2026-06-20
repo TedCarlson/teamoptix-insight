@@ -29,6 +29,7 @@ export type PayrollActivityRow = {
   person_name: string | null;
   attendance_status: string | null;
   source_kind: string | null;
+  daily_pay_effective_date?: string | null;
   daily_pay_rate?: number | null;
   daily_pay_eligible?: boolean | null;
   route_name?: string | null;

@@ -24,22 +24,6 @@ export type DswStagedRouteRow = {
   source_dswid: string | null;
 };
 
-
-function numericCell(value: unknown) {
-  const n = Number(String(value ?? "").replace(/,/g, "").trim());
-  return Number.isFinite(n) ? n : 0;
-}
-
-function hasDswActivity(raw: Record<string, unknown>) {
-  const driver = cellText(raw["Driver Name"]);
-  const deliveryStops = numericCell(raw["Act Del Stps"]);
-  const deliveryPackages = numericCell(raw["Act Del Pkgs"]);
-  const pickupStops = numericCell(raw["PU Stps"]);
-  const pickupPackages = numericCell(raw["VScan Pkgs"]);
-
-  return Boolean(driver) || deliveryStops > 0 || deliveryPackages > 0 || pickupStops > 0 || pickupPackages > 0;
-}
-
 export type DswStagedSummaryRow = {
   service_date: string;
   summary_scope: string;
@@ -58,7 +42,7 @@ export function buildDswStagedRows(params: {
   serviceDate: string;
   meta: DswMeta;
 }) {
-  return params.rows.filter(({ raw }) => hasDswActivity(raw)).map(({
+  return params.rows.map(({
     raw,
     source_row_index,
     row_kind,
@@ -93,7 +77,7 @@ export function buildDswStagedSummaryRows(params: {
   serviceDate: string;
   meta: DswMeta;
 }) {
-  return params.rows.filter(({ raw }) => hasDswActivity(raw)).map(({
+  return params.rows.map(({
     raw,
     source_row_index,
     row_kind,

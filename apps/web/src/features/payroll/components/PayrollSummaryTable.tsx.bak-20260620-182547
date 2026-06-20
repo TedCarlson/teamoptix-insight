@@ -70,8 +70,8 @@ export default function PayrollSummaryTable({
                   {group}
                 </td>
               </tr>,
-              ...rows.map((row, rowIndex) => (
-                <tr key={`${group}-${row.roster_member_id ?? row.person_name}-${rowIndex}`}>
+              ...rows.map((row) => (
+                <tr key={`${group}-${row.roster_member_id ?? row.person_name}`}>
                   <td style={tdStyle}><strong>{row.person_name}</strong></td>
                   <td style={{ ...tdStyle, textAlign: "right" }}>
                     {workedDaysLabel(row.days_worked, row.worked_days)}

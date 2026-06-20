@@ -6,7 +6,7 @@ import type {
 
 export function buildPayrollRowDetails(activityRows: PayrollActivityRow[]) {
   return [...activityRows]
-    .filter((row) => isDswPayrollSource(row.source_kind))
+    .filter((row) => row.source_kind === "DSW_ACTUAL")
     .sort((a, b) => {
       const personCompare = String(a.person_name ?? "").localeCompare(String(b.person_name ?? ""));
       if (personCompare !== 0) return personCompare;
@@ -23,18 +23,13 @@ function numberValue(value: unknown) {
   return Number.isFinite(n) ? n : 0;
 }
 
-
-function isDswPayrollSource(sourceKind: string | null | undefined) {
-  return sourceKind === "DSW_ACTUAL" || sourceKind === "DSW_OWNERSHIP";
-}
-
 export function buildPayrollDriverDayDetails(
   activityRows: PayrollActivityRow[]
 ): PayrollDriverDayDetailRow[] {
   const groups = new Map<string, PayrollActivityRow[]>();
 
   for (const row of activityRows) {
-    if (!isDswPayrollSource(row.source_kind)) continue;
+    if (row.source_kind !== "DSW_ACTUAL") continue;
     if (row.attendance_status !== "present") continue;
     if (!row.service_date) continue;
 

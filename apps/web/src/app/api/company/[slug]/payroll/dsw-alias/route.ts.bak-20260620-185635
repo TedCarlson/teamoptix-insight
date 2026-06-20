@@ -1,0 +1,127 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getSupabaseServerClient } from "@/lib/supabase/server";
+
+export const runtime = "nodejs";
+
+function cleanAlias(value: unknown) {
+  const text = String(value ?? "").trim();
+  return text.length ? text : null;
+}
+
+export async function POST(
+  req: NextRequest,
+  context: { params: Promise<{ slug: string }> }
+) {
+  try {
+    const { slug } = await context.params;
+    const body = await req.json().catch(() => ({}));
+
+    const rosterId = cleanAlias(body?.roster_member_id);
+    const alias = cleanAlias(body?.alias);
+
+    if (!rosterId || !alias) {
+      return NextResponse.json(
+        { error: "roster_member_id and alias are required." },
+        { status: 400 }
+      );
+    }
+
+    const supabase = await getSupabaseServerClient();
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    }
+
+    const { data: company, error: companyError } = await supabase
+      .from("companies")
+      .select("id")
+      .eq("company_slug", slug)
+      .single();
+
+    if (companyError || !company) {
+      return NextResponse.json({ error: "Company not found." }, { status: 404 });
+    }
+
+    const { data: roster, error: rosterError } = await supabase
+      .schema("core")
+      .from("company_roster")
+      .select("id, company_id, full_name")
+      .eq("id", rosterId)
+      .eq("company_id", company.id)
+      .single();
+
+    if (rosterError || !roster) {
+      return NextResponse.json({ error: "Roster record not found." }, { status: 404 });
+    }
+
+    const { data: existing } = await supabase
+      .schema("core")
+      .from("company_roster_identifier")
+      .select("id, roster_id, identifier_value")
+      .eq("identifier_type", "dswid")
+      .ilike("identifier_value", alias)
+      .limit(1);
+
+    if ((existing ?? []).some((row: any) => row.roster_id === rosterId)) {
+      return NextResponse.json({
+        ok: true,
+        already_exists: true,
+        roster_member_id: rosterId,
+        alias,
+      });
+    }
+
+    if ((existing ?? []).length > 0) {
+      return NextResponse.json(
+        {
+          error: "That DSW alias is already linked to another roster record.",
+          existing,
+        },
+        { status: 409 }
+      );
+    }
+
+    const { error: insertError } = await supabase
+      .schema("core")
+      .from("company_roster_identifier")
+      .insert({
+        roster_id: rosterId,
+        identifier_type: "dswid",
+        identifier_value: alias,
+      });
+
+    if (insertError) {
+      return NextResponse.json({ error: insertError.message }, { status: 500 });
+    }
+
+    await supabase.from("company_roster_event").insert({
+      company_id: company.id,
+      roster_id: rosterId,
+      event_category: "operations",
+      event_type: "dsw_alias_added",
+      event_detail: `DSW alias added for ${roster.full_name}.`,
+      event_metadata: {
+        alias,
+        source: "payroll_unmatched_alias_tool",
+      },
+      occurred_at: new Date().toISOString(),
+    });
+
+    return NextResponse.json({
+      ok: true,
+      roster_member_id: rosterId,
+      full_name: roster.full_name,
+      alias,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "DSW alias link failed." },
+      { status: 500 }
+    );
+  }
+}

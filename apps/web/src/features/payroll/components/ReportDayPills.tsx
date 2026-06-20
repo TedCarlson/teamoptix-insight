@@ -6,7 +6,7 @@ import { compactDayCode } from "@/features/payroll/lib/payroll.date";
 export default function ReportDayPills(props: { days: string[]; activity: PayrollActivityRow[] }) {
   const finalizedDays = new Set(
     props.activity
-      .filter((row) => row.source_kind === "DSW_ACTUAL" && row.attendance_status === "present")
+      .filter((row) => (row.source_kind === "DSW_ACTUAL" || row.source_kind === "DSW_OWNERSHIP") && row.attendance_status === "present")
       .map((row) => row.service_date)
   );
 

@@ -119,59 +119,18 @@ export async function GET(
       return NextResponse.json({ error: rosterError.message }, { status: 500 });
     }
 
-    const rosterIds = (rosterRows ?? [])
-      .map((row) => row.roster_member_id)
-      .filter((id): id is string => Boolean(id));
-
-    const { data: opsRows, error: opsError } = rosterIds.length
-      ? await supabase
-          .from("company_roster_operations_fact_v")
-          .select("roster_id, daily_pay_rate, daily_pay_effective_date")
-          .in("roster_id", rosterIds)
-      : { data: [], error: null };
-
-    if (opsError) {
-      return NextResponse.json({ error: opsError.message }, { status: 500 });
-    }
-
-    const opsByRosterId = new Map<
-      string,
-      { daily_pay_rate: number | null; daily_pay_effective_date: string | null }
-    >();
-
-    for (const row of opsRows ?? []) {
-      if (!row.roster_id) continue;
-      opsByRosterId.set(row.roster_id, {
-        daily_pay_rate: row.daily_pay_rate == null ? null : Number(row.daily_pay_rate),
-        daily_pay_effective_date: row.daily_pay_effective_date ?? null,
-      });
-    }
-
     const rosterByDswBridge = new Map<
       string,
-      {
-        roster_member_id: string;
-        full_name: string | null;
-        dswid: string | null;
-        daily_pay_rate: number | null;
-        daily_pay_effective_date: string | null;
-      }
+      { roster_member_id: string; full_name: string | null; dswid: string | null }
     >();
 
     for (const row of rosterRows ?? []) {
       const key = dswBridgeKey(row.dswid);
       if (!key || !row.roster_member_id) continue;
-      const ops = opsByRosterId.get(row.roster_member_id) ?? {
-        daily_pay_rate: null,
-        daily_pay_effective_date: null,
-      };
-
       rosterByDswBridge.set(key, {
         roster_member_id: row.roster_member_id,
         full_name: row.full_name ?? null,
         dswid: row.dswid ?? null,
-        daily_pay_rate: ops.daily_pay_rate,
-        daily_pay_effective_date: ops.daily_pay_effective_date,
       });
     }
 
@@ -189,14 +148,8 @@ export async function GET(
         ...row,
         roster_member_id: match.roster_member_id,
         person_name: match.full_name ?? row.person_name,
-        daily_pay_eligible:
-          row.daily_pay_eligible === true ||
-          (match.daily_pay_rate != null &&
-            match.daily_pay_effective_date != null &&
-            match.daily_pay_effective_date <= row.service_date),
-        daily_pay_rate: row.daily_pay_rate ?? match.daily_pay_rate,
-        daily_pay_effective_date:
-          row.daily_pay_effective_date ?? match.daily_pay_effective_date,
+        daily_pay_eligible: row.daily_pay_eligible,
+        daily_pay_rate: row.daily_pay_rate,
         review_flags: (row.review_flags ?? []).filter(
           (flag) => flag !== "UNMATCHED_DSW_DRIVER" && flag !== "UNMATCHED_REVIEW"
         ),

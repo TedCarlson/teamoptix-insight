@@ -28,10 +28,6 @@ export function presentEventCode(code: string) {
   ].includes(code);
 }
 
-function isDswPayrollSource(sourceKind: string | null | undefined) {
-  return sourceKind === "DSW_ACTUAL" || sourceKind === "DSW_OWNERSHIP";
-}
-
 export function cellDisplay(cell: AttendanceCell) {
   if (cell.callout) return { label: "C", title: "Call-out", tone: "#92400e", bg: "#fffbeb", border: "#fde68a" };
   if (cell.noShow) return { label: "N", title: "No show", tone: "#991b1b", bg: "#fef2f2", border: "#fecaca" };
@@ -118,9 +114,9 @@ export function buildAttendanceRows({
     cell.present = true;
     cell.callout = false;
     cell.noShow = false;
-    addSource(cell, isDswPayrollSource(activity.source_kind) ? "DSW" : "PAYROLL");
+    addSource(cell, activity.source_kind === "DSW_ACTUAL" ? "DSW" : "PAYROLL");
 
-    if (isDswPayrollSource(activity.source_kind)) {
+    if (activity.source_kind === "DSW_ACTUAL") {
       addDetail(cell, activity.wa_number ? `WA ${activity.wa_number}` : null);
     }
 
