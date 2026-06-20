@@ -186,7 +186,12 @@ export async function POST(req: NextRequest, context: RouteContext) {
     );
 
     const stagedRows = buildDswStagedRows({
-      rows: parsedRows,
+      rows: classifiedRows.filter(
+        (row) =>
+          row.row_kind === "ROUTE" ||
+          row.row_kind === "ROUTE_CANDIDATE" ||
+          row.row_kind === "ROUTE_BREAKOUT"
+      ),
       sheetName,
       routes: (routes ?? []) as DswRouteBaselineRow[],
       serviceDate,

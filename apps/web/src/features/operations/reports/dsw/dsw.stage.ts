@@ -1,4 +1,4 @@
-import type { DswMeta } from "./dsw.types";
+import type { DswMeta, DswRowKind } from "./dsw.types";
 import { cellText } from "./dsw.parse";
 import { normalizeDsw, normalizeDswSummary } from "./dsw.normalize";
 import { contractCodeFromLabel, summaryScope } from "./dsw.metadata";
@@ -11,7 +11,11 @@ import type { DswClassifiedRow } from "./dsw.classify";
 export type DswStagedRouteRow = {
   sheet_name: string;
   source_row_index: number;
-  row_kind: "ROUTE";
+  row_kind: DswRowKind;
+  parent_source_row_index?: number | null;
+  parent_route_key?: string | null;
+  parent_wa_number?: string | null;
+  parent_driver_name?: string | null;
   raw_row_json: Record<string, unknown>;
   normalized_row_json: ReturnType<typeof normalizeDsw>;
   source_route_key: string | null;
@@ -38,14 +42,26 @@ export function buildDswStagedRows(params: {
   serviceDate: string;
   meta: DswMeta;
 }) {
-  return params.rows.map(({ raw, source_row_index }) => {
+  return params.rows.map(({
+    raw,
+    source_row_index,
+    row_kind,
+    parent_source_row_index,
+    parent_route_key,
+    parent_wa_number,
+    parent_driver_name,
+  }) => {
     const routeMatch = findRouteMatch(raw, params.routes, params.serviceDate);
     const normalized = normalizeDsw(raw, routeMatch, params.meta);
 
     return {
       sheet_name: params.sheetName,
       source_row_index,
-      row_kind: "ROUTE" as const,
+      row_kind,
+      parent_source_row_index,
+      parent_route_key,
+      parent_wa_number,
+      parent_driver_name,
       raw_row_json: raw,
       normalized_row_json: normalized,
       source_route_key: cellText(raw["WA Name"]) || cellText(raw["WA#"]) || null,
@@ -61,7 +77,15 @@ export function buildDswStagedSummaryRows(params: {
   serviceDate: string;
   meta: DswMeta;
 }) {
-  return params.rows.map(({ raw, source_row_index }) => {
+  return params.rows.map(({
+    raw,
+    source_row_index,
+    row_kind,
+    parent_source_row_index,
+    parent_route_key,
+    parent_wa_number,
+    parent_driver_name,
+  }) => {
     const label = cellText(raw["Svc Area #"]);
     const scope = summaryScope(label) ?? "SUMMARY";
 

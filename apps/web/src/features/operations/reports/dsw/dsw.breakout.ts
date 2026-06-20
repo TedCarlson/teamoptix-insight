@@ -15,11 +15,13 @@ export function isRouteRow(raw: ParsedRow) {
 export function looksLikeContinuationRow(raw: ParsedRow) {
   return Boolean(
     !cellText(raw["WA Name"]) &&
-      !cellText(raw["WA#"]) &&
+      cellText(raw["WA#"]) &&
       (
         cellText(raw["Driver Name"]) ||
         cellText(raw["Act Del Stps"]) ||
-        cellText(raw["Act Del Pkgs"])
+        cellText(raw["Act Del Pkgs"]) ||
+        cellText(raw["Code 85"]) ||
+        cellText(raw["Non Delvd Stps"])
       )
   );
 }
