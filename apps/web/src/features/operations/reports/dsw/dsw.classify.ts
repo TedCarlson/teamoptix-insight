@@ -4,6 +4,7 @@ import { summaryScope } from "./dsw.metadata";
 import {
   isBreakoutRow,
   isRouteRow,
+  looksLikeContinuationRow,
   type DswBreakoutContext,
 } from "./dsw.breakout";
 
@@ -38,9 +39,10 @@ export function classifyDswRows(
     if (first.startsWith("Due to stop rate")) continue;
 
     const isSummary = Boolean(summaryScope(first));
-    const hasRouteSignal = Boolean(cellText(raw["WA Name"]) || cellText(raw["WA#"]));
+    const routeSignal = Boolean(cellText(raw["WA Name"]) || cellText(raw["WA#"]));
+    const continuationSignal = looksLikeContinuationRow(raw);
 
-    if (!isSummary && !hasRouteSignal) continue;
+    if (!isSummary && !routeSignal && !continuationSignal) continue;
 
     if (!isSummary && isRouteRow(raw)) {
       context = {
@@ -53,18 +55,23 @@ export function classifyDswRows(
 
     const rowKind: DswRowKind = isSummary
       ? "SUMMARY"
-      : isBreakoutRow(raw)
-        ? "ROUTE_BREAKOUT"
-        : "ROUTE";
+      : continuationSignal
+        ? "ROUTE_CANDIDATE"
+        : isBreakoutRow(raw)
+          ? "ROUTE_BREAKOUT"
+          : "ROUTE";
+
+    const carriesParentContext =
+      rowKind === "ROUTE_BREAKOUT" || rowKind === "ROUTE_CANDIDATE";
 
     classifiedRows.push({
       source_row_index,
       raw,
       row_kind: rowKind,
-      parent_source_row_index: rowKind === "ROUTE_BREAKOUT" ? context.parent_source_row_index : null,
-      parent_route_key: rowKind === "ROUTE_BREAKOUT" ? context.parent_route_key : null,
-      parent_wa_number: rowKind === "ROUTE_BREAKOUT" ? context.parent_wa_number : null,
-      parent_driver_name: rowKind === "ROUTE_BREAKOUT" ? context.parent_driver_name : null,
+      parent_source_row_index: carriesParentContext ? context.parent_source_row_index : null,
+      parent_route_key: carriesParentContext ? context.parent_route_key : null,
+      parent_wa_number: carriesParentContext ? context.parent_wa_number : null,
+      parent_driver_name: carriesParentContext ? context.parent_driver_name : null,
       parser_note: null,
     });
   }
