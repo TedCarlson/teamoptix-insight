@@ -1,16 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
-type ImportRow = {
-  full_name?: string;
-  email?: string;
-  phone?: string;
-  role?: string;
-  market?: string;
-  start_date?: string;
-  status?: string;
-  fx_id?: string;
-  dswid?: string;
+type ImportRow = Record<string, unknown> & {
   issues?: string[];
 };
 
@@ -47,6 +38,9 @@ export async function POST(
       {
         ok: Boolean(data?.ok ?? true),
         inserted_count: Number(data?.inserted_count ?? 0),
+        updated_count: Number(data?.updated_count ?? 0),
+        skipped_count: Number(data?.skipped_count ?? 0),
+        errors: Array.isArray(data?.errors) ? data.errors : [],
       },
       { status: 200 }
     );

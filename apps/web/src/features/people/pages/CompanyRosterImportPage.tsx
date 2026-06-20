@@ -10,12 +10,37 @@ type ParsedRow = {
   full_name: string;
   email: string;
   phone: string;
-  role: string;
-  market: string;
-  start_date: string;
-  status: string;
+  date_of_birth: string;
   fx_id: string;
+  role: string;
+  worker_type: string;
+  license_number: string;
+  issuing_state: string;
+  license_issue_date: string;
+  license_expiration_date: string;
+  address_line_1: string;
+  address_line_2: string;
+  city: string;
+  state_region: string;
+  postal_code: string;
+  hire_date: string;
+  start_date: string;
+  separation_date: string;
+  dot_expiration_date: string;
+  qual_cert_expiration_date: string;
+  daily_pay_rate: string;
+  daily_pay_effective_date: string;
   dswid: string;
+  scanner_serial: string;
+  fuel_card: string;
+  pin_id_no: string;
+  employment_status: string;
+  status: string;
+  market: string;
+  market_code: string;
+  job_title: string;
+  dsw_driver_name: string;
+  notes: string;
   issues: string[];
 };
 
@@ -23,12 +48,44 @@ const EXPECTED_HEADERS = [
   "Full Name",
   "Email",
   "Phone",
-  "Role",
-  "Market",
-  "Start Date",
-  "Status",
+  "Date of Birth",
   "FX ID",
+  "Role",
+  "License Number",
+  "Issuing State",
+  "License Issue Date",
+  "License Expiration Date",
+  "Address Line 1",
+  "Address Line 2",
+  "City",
+  "State Region",
+  "Postal Code",
+  "Hire Date",
+  "Separation Date",
+  "DOT Expiration Date",
+  "Qual Cert Expiration Date",
+  "Daily Pay Rate",
+  "Daily Pay Effective Date",
   "DSWID",
+  "Scanner Serial",
+  "Fuel Card",
+  "PIN ID No",
+  "Employment Status",
+  "Market",
+  "Job Title",
+  "DSW Driver Name",
+  "Notes",
+] as const;
+
+const DATE_HEADERS = [
+  "Date of Birth",
+  "License Issue Date",
+  "License Expiration Date",
+  "Hire Date",
+  "Separation Date",
+  "DOT Expiration Date",
+  "Qual Cert Expiration Date",
+  "Daily Pay Effective Date",
 ] as const;
 
 function StepCard(props: {
@@ -88,6 +145,28 @@ function normalizeStatus(value: string) {
   if (v === "former" || v === "inactive") return "Former";
 
   return value.trim();
+}
+
+function normalizeDate(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+
+  const match = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
+  if (!match) return trimmed;
+
+  const month = match[1].padStart(2, "0");
+  const day = match[2].padStart(2, "0");
+  const rawYear = match[3];
+  const year =
+    rawYear.length === 2
+      ? Number(rawYear) >= 50
+        ? `19${rawYear}`
+        : `20${rawYear}`
+      : rawYear;
+
+  return `${year}-${month}-${day}`;
 }
 
 function isIsoDate(value: string) {
@@ -166,20 +245,50 @@ export default function CompanyRosterImportPage() {
       const indexOf = (header: (typeof EXPECTED_HEADERS)[number]) =>
         headerCells.indexOf(header);
 
+      const valueFor = (
+        cells: string[],
+        header: (typeof EXPECTED_HEADERS)[number]
+      ) => cells[indexOf(header)] ?? "";
+
       const parsed: ParsedRow[] = lines.slice(1).map((line, index) => {
         const cells = splitCsvLine(line);
 
         const row: ParsedRow = {
           row_number: index + 2,
-          full_name: cells[indexOf("Full Name")] ?? "",
-          email: cells[indexOf("Email")] ?? "",
-          phone: cells[indexOf("Phone")] ?? "",
-          role: cells[indexOf("Role")] ?? "",
-          market: cells[indexOf("Market")] ?? "",
-          start_date: cells[indexOf("Start Date")] ?? "",
-          status: normalizeStatus(cells[indexOf("Status")] ?? ""),
-          fx_id: cells[indexOf("FX ID")] ?? "",
-          dswid: cells[indexOf("DSWID")] ?? "",
+          full_name: valueFor(cells, "Full Name"),
+          email: valueFor(cells, "Email"),
+          phone: valueFor(cells, "Phone"),
+          date_of_birth: normalizeDate(valueFor(cells, "Date of Birth")),
+          fx_id: valueFor(cells, "FX ID"),
+          role: valueFor(cells, "Role"),
+          worker_type: valueFor(cells, "Role"),
+          license_number: valueFor(cells, "License Number"),
+          issuing_state: valueFor(cells, "Issuing State"),
+          license_issue_date: normalizeDate(valueFor(cells, "License Issue Date")),
+          license_expiration_date: normalizeDate(valueFor(cells, "License Expiration Date")),
+          address_line_1: valueFor(cells, "Address Line 1"),
+          address_line_2: valueFor(cells, "Address Line 2"),
+          city: valueFor(cells, "City"),
+          state_region: valueFor(cells, "State Region"),
+          postal_code: valueFor(cells, "Postal Code"),
+          hire_date: normalizeDate(valueFor(cells, "Hire Date")),
+          start_date: normalizeDate(valueFor(cells, "Hire Date")),
+          separation_date: normalizeDate(valueFor(cells, "Separation Date")),
+          dot_expiration_date: normalizeDate(valueFor(cells, "DOT Expiration Date")),
+          qual_cert_expiration_date: normalizeDate(valueFor(cells, "Qual Cert Expiration Date")),
+          daily_pay_rate: valueFor(cells, "Daily Pay Rate").replace(/^\$/, ""),
+          daily_pay_effective_date: normalizeDate(valueFor(cells, "Daily Pay Effective Date")),
+          dswid: valueFor(cells, "DSWID"),
+          scanner_serial: valueFor(cells, "Scanner Serial"),
+          fuel_card: valueFor(cells, "Fuel Card"),
+          pin_id_no: valueFor(cells, "PIN ID No"),
+          employment_status: normalizeStatus(valueFor(cells, "Employment Status")),
+          status: normalizeStatus(valueFor(cells, "Employment Status")),
+          market: valueFor(cells, "Market"),
+          market_code: valueFor(cells, "Market"),
+          job_title: valueFor(cells, "Job Title"),
+          dsw_driver_name: valueFor(cells, "DSW Driver Name"),
+          notes: valueFor(cells, "Notes"),
           issues: [],
         };
 
@@ -192,13 +301,20 @@ export default function CompanyRosterImportPage() {
         }
 
         if (!row.status.trim()) {
-          row.issues.push("Missing Status");
+          row.issues.push("Missing Employment Status");
         } else if (!["Active", "Candidate", "Former"].includes(row.status)) {
-          row.issues.push("Status must be Active, Candidate, or Former");
+          row.issues.push("Employment Status must be Active, Candidate, or Former");
         }
 
-        if (row.start_date && !isIsoDate(row.start_date)) {
-          row.issues.push("Start Date must be YYYY-MM-DD");
+        for (const header of DATE_HEADERS) {
+          const key = header
+            .toLowerCase()
+            .replace(/ /g, "_") as keyof ParsedRow;
+          const value = row[key];
+
+          if (typeof value === "string" && value && !isIsoDate(value)) {
+            row.issues.push(`${header} must be YYYY-MM-DD or M/D/YYYY`);
+          }
         }
 
         return row;
@@ -240,7 +356,7 @@ export default function CompanyRosterImportPage() {
       }
 
       setCommitMessage(
-        `Imported ${data?.inserted_count ?? validRows.length} roster row(s).`
+        `Import complete: ${data?.inserted_count ?? 0} inserted, ${data?.updated_count ?? 0} updated, ${data?.skipped_count ?? 0} skipped.`
       );
 
       router.push(`/company/${slug}/people/roster`);
@@ -333,7 +449,7 @@ export default function CompanyRosterImportPage() {
           <StepCard
             eyebrow="Step 3"
             title="Commit valid rows"
-            body="Only rows with no issues are inserted into core.company_roster and identifier rows are added after."
+            body="Valid rows enrich existing people first, then create new roster rows only when no match is found."
           />
 
           <article className="value-card" style={{ gridColumn: "1 / -1" }}>
@@ -398,11 +514,17 @@ export default function CompanyRosterImportPage() {
                         "Full Name",
                         "Email",
                         "Phone",
+                        "DOB",
                         "Role",
                         "Market",
-                        "Start Date",
+                        "Hire Date",
                         "Status",
                         "FX ID",
+                        "License",
+                        "DL Exp",
+                        "DOT Exp",
+                        "Qual Exp",
+                        "Daily Pay",
                         "DSWID",
                         "Issues",
                       ].map((label) => (
@@ -431,11 +553,17 @@ export default function CompanyRosterImportPage() {
                         <td style={cellStyle}>{row.full_name || "—"}</td>
                         <td style={cellStyle}>{row.email || "—"}</td>
                         <td style={cellStyle}>{row.phone || "—"}</td>
+                        <td style={cellStyle}>{row.date_of_birth || "—"}</td>
                         <td style={cellStyle}>{row.role || "—"}</td>
                         <td style={cellStyle}>{row.market || "—"}</td>
-                        <td style={cellStyle}>{row.start_date || "—"}</td>
+                        <td style={cellStyle}>{row.hire_date || "—"}</td>
                         <td style={cellStyle}>{row.status || "—"}</td>
                         <td style={cellStyle}>{row.fx_id || "—"}</td>
+                        <td style={cellStyle}>{row.license_number || "—"}</td>
+                        <td style={cellStyle}>{row.license_expiration_date || "—"}</td>
+                        <td style={cellStyle}>{row.dot_expiration_date || "—"}</td>
+                        <td style={cellStyle}>{row.qual_cert_expiration_date || "—"}</td>
+                        <td style={cellStyle}>{row.daily_pay_rate || "—"}</td>
                         <td style={cellStyle}>{row.dswid || "—"}</td>
                         <td style={cellStyle}>
                           {row.issues.length === 0 ? (

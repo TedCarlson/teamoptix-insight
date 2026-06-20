@@ -32,6 +32,7 @@ const HEADERS = [
   "Market",
   "Job Title",
   "DSW Driver Name",
+  "Notes",
 ];
 
 const EXAMPLE = [
@@ -64,6 +65,7 @@ const EXAMPLE = [
   "249",
   "Driver",
   "FLETCHER, ALTON",
+  "",
 ];
 
 function csvCell(value: string) {

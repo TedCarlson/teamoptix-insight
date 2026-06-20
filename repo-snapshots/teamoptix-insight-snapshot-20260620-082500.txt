@@ -1,0 +1,18 @@
+# TeamOptix Insight Repo Snapshot
+# Generated: Sat Jun 20 08:25:00 EDT 2026
+# Root: /Users/tedcarlson/Developer/TeamOptix/insight
+
+## Git
+```
+ M apps/web/src/app/api/company/[slug]/people/roster/[rosterId]/details/route.ts
+ M apps/web/src/app/api/company/[slug]/people/roster/import/commit/route.ts
+ M apps/web/src/app/api/people/roster-template/route.ts
+ M apps/web/src/features/people/pages/CompanyRosterImportPage.tsx
+ M apps/web/tsconfig.tsbuildinfo
+?? repo-snapshots/teamoptix-insight-snapshot-20260620-082500.txt
+main
+5fe0da6 v1.6.19.05 Staging Roster Import v2
+```
+
+## Repo Tree
+```

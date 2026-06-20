@@ -265,6 +265,23 @@ function findRouteMatch(raw: ParsedRow, routes: any[], serviceDate: string) {
   return { id: null, method: "NONE" };
 }
 
+
+function addDaysIso(dateIso: string, days: number) {
+  const date = new Date(`${dateIso}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function payrollWeekEndFriday(dateIso: string) {
+  const date = new Date(`${dateIso}T00:00:00Z`);
+  const dow = date.getUTCDay();
+  return addDaysIso(dateIso, (5 - dow + 7) % 7);
+}
+
+function payrollWeekStartFor(dateIso: string) {
+  return addDaysIso(payrollWeekEndFriday(dateIso), -6);
+}
+
 export async function POST(req: NextRequest, context: RouteContext) {
   try {
     const { slug } = await context.params;
@@ -453,6 +470,23 @@ export async function POST(req: NextRequest, context: RouteContext) {
         return NextResponse.json({ error: finalError.message }, { status: 500 });
       }
 
+      const payrollWeekStart = payrollWeekStartFor(serviceDate);
+      const payrollWeekEnd = payrollWeekEndFriday(serviceDate);
+
+      const { data: payrollRebuildResult, error: payrollRebuildError } =
+        await supabase.rpc("rebuild_payroll_activity_fact", {
+          p_company_id: company.id,
+          p_start_date: payrollWeekStart,
+          p_end_date: payrollWeekEnd,
+        });
+
+      if (payrollRebuildError) {
+        return NextResponse.json(
+          { error: payrollRebuildError.message },
+          { status: 500 }
+        );
+      }
+
       return NextResponse.json({
         ok: true,
         batch_id: typeof finalResult?.batch_id === "string" ? finalResult.batch_id : null,
@@ -465,6 +499,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
         deleted_batch_count: finalResult?.deleted_batch_count ?? 0,
         matched_route_count: matchedCount,
         unmatched_route_count: stagedRows.length - matchedCount,
+        payroll_rebuild: payrollRebuildResult ?? null,
       });
     }
 
