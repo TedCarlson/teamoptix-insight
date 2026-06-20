@@ -7,7 +7,7 @@ import { useAccess } from "@/features/access/AccessProvider";
 import { useLob } from "@/features/lob/hooks/useLob";
 import CompanyConfigWorkspace, { type CompanyConfigSection } from "@/features/company/config/CompanyConfigWorkspace";
 import DailyOperationsSummary from "@/features/company/components/DailyOperationsSummary";
-import PayrollAttendanceGrid from "@/features/payroll/components/PayrollAttendanceGrid";
+import PayrollGrid from "@/features/payroll/components/PayrollGrid";
 
 type CompanyRecord = {
   id: string;
@@ -235,7 +235,7 @@ export default function CompanyPage() {
 
         {activeSurface === "payroll" ? (
           <SectionCard eyebrow="Payroll" title="Attendance Review">
-            <PayrollAttendanceGrid />
+            <PayrollGrid />
           </SectionCard>
         ) : null}
 

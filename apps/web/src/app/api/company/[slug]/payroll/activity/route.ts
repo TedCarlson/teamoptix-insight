@@ -50,11 +50,19 @@ export async function GET(
           "attendance_status",
           "daily_pay_rate",
           "daily_pay_eligible",
-          "threshold_pay_amount",
           "source_kind",
+          "route_name",
           "wa_number",
+          "vehicle_text",
           "actual_delivery_stops",
+          "actual_delivery_packages",
+          "actual_pickup_stops",
+          "actual_pickup_packages",
+          "threshold_stops",
+          "threshold_rate",
+          "threshold_overage",
           "threshold_pay_amount",
+          "review_flags",
         ].join(",")
       )
       .eq("company_id", company.id)
