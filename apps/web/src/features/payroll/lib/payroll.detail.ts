@@ -81,8 +81,13 @@ export function buildPayrollDriverDayDetails(
         return a.wa_number.localeCompare(b.wa_number);
       });
 
-      const dominantRoute = routeCollection[0] ?? null;
-      const totalStops = routeCollection.reduce((sum, route) => sum + route.total_stops, 0);
+      const nonZeroRoutes = routeCollection.filter((route) => route.total_stops > 0);
+      const dominantRoute = nonZeroRoutes[0] ?? routeCollection[0] ?? null;
+
+      // Payroll Detail V1 intentionally pays threshold from the dominant route only.
+      // Secondary DSW rows often represent scanner/vehicle noise or route handoff evidence,
+      // not additional route ownership.
+      const totalStops = dominantRoute?.total_stops ?? 0;
       const thresholdStops = dominantRoute?.threshold_stops ?? null;
       const thresholdRate = dominantRoute?.threshold_rate ?? null;
       const thresholdOverage =
@@ -96,6 +101,7 @@ export function buildPayrollDriverDayDetails(
       }, 0);
 
       if (routeCollection.length > 1) flags.add("MULTI_ROUTE_DAY");
+      if (nonZeroRoutes.length > 1) flags.add("SECONDARY_ROUTE_EVIDENCE");
       if (!dominantRoute) flags.add("NO_DOMINANT_ROUTE");
       if (thresholdStops == null || thresholdRate == null) flags.add("MISSING_THRESHOLD");
 

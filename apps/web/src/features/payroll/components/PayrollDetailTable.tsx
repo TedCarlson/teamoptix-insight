@@ -32,14 +32,14 @@ export default function PayrollDetailTable({
 
   return (
     <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1280 }}>
+      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1060 }}>
         <thead>
           <tr>
             <th style={{ ...thStyle, position: "sticky", left: 0, zIndex: 3, background: "#f8fafc", minWidth: 220, boxShadow: "1px 0 0 #e6edf5" }}>
               Employee
             </th>
             {days.map((day) => (
-              <th key={day} style={{ ...thStyle, textAlign: "center", minWidth: 132 }}>
+              <th key={day} style={{ ...thStyle, textAlign: "center", minWidth: 78, padding: "7px 4px" }}>
                 {compactDayCode(day)}
                 <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>{day.slice(5)}</div>
               </th>
@@ -77,13 +77,13 @@ export default function PayrollDetailTable({
                     const dayRow = row.byDate.get(day);
 
                     return (
-                      <td key={day} style={{ ...tdStyle, textAlign: "center", verticalAlign: "top" }}>
+                      <td key={day} style={{ ...tdStyle, textAlign: "center", verticalAlign: "top", padding: "7px 4px" }}>
                         {dayRow ? (
-                          <div style={{ display: "grid", gap: 2, justifyItems: "center", lineHeight: 1.15 }}>
+                          <div style={{ display: "grid", gap: 1, justifyItems: "center", lineHeight: 1.08 }}>
                             <strong>WA {dayRow.dominant_route?.wa_number ?? "—"}</strong>
-                            <span style={{ color: "#475569", fontSize: 11 }}>{dayRow.total_stops} stops</span>
-                            <span style={{ color: "#475569", fontSize: 11 }}>TSH {money(dayRow.threshold_pay_amount)}</span>
-                            <span style={{ color: "#94a3b8", fontSize: 10 }}>{dayRow.source_row_count} row{dayRow.source_row_count === 1 ? "" : "s"}</span>
+                            <span style={{ color: "#475569", fontSize: 10 }}>{dayRow.total_stops} stops</span>
+                            <span style={{ color: "#475569", fontSize: 10 }}>TSH {money(dayRow.threshold_pay_amount)}</span>
+                            <span style={{ color: "#94a3b8", fontSize: 9 }}>{dayRow.source_row_count} row{dayRow.source_row_count === 1 ? "" : "s"}</span>
                           </div>
                         ) : (
                           <span style={{ color: "#94a3b8", fontWeight: 900 }}>—</span>
