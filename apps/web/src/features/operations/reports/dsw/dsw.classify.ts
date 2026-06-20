@@ -1,11 +1,15 @@
 import { cellText } from "./dsw.parse";
-import type { ParsedRow } from "./dsw.types";
+import type { DswRowKind, ParsedRow } from "./dsw.types";
 import { summaryScope } from "./dsw.metadata";
 
 export type DswClassifiedRow = {
   source_row_index: number;
   raw: ParsedRow;
-  row_kind: "ROUTE" | "SUMMARY";
+  row_kind: DswRowKind;
+  parent_source_row_index?: number | null;
+  parent_route_key?: string | null;
+  parent_wa_number?: string | null;
+  parser_note?: string | null;
 };
 
 export function classifyDswRows(

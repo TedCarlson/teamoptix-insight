@@ -1,5 +1,7 @@
 export type ParsedRow = Record<string, unknown>;
 
+export type DswRowKind = "ROUTE" | "ROUTE_BREAKOUT" | "SUMMARY";
+
 export type DswRouteMatch = {
   id: string | null;
   method: string;
