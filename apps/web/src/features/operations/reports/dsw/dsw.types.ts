@@ -1,0 +1,13 @@
+export type ParsedRow = Record<string, unknown>;
+
+export type DswRouteMatch = {
+  id: string | null;
+  method: string;
+};
+
+export type DswMeta = {
+  terminal_identity: string | null;
+  contract_filter: string | null;
+  service_date_text: string | null;
+  generated_at_text: string | null;
+};
