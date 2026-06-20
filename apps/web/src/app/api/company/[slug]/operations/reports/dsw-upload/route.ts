@@ -25,6 +25,10 @@ import {
   buildDswStagedSummaryRows,
   countMatchedDswRoutes,
 } from "@/features/operations/reports/dsw/dsw.stage";
+import {
+  buildClassificationSummary,
+  buildCandidatePreview,
+} from "@/features/operations/reports/dsw/dsw.inspect";
 
 export const runtime = "nodejs";
 
@@ -84,6 +88,9 @@ export async function POST(req: NextRequest, context: RouteContext) {
     const form = await req.formData();
     const file = form.get("file");
     const requestedDate = cellText(form.get("service_date"));
+    const debugCandidates =
+      req.nextUrl.searchParams.get("debug_candidates") === "true" ||
+      cellText(form.get("debug_candidates")) === "true";
 
     if (!(file instanceof File)) {
       return NextResponse.json({ error: "File is required." }, { status: 400 });
@@ -193,6 +200,10 @@ export async function POST(req: NextRequest, context: RouteContext) {
     });
 
     const matchedCount = countMatchedDswRoutes(stagedRows);
+    const rowClassification = buildClassificationSummary(classifiedRows);
+    const candidatePreview = debugCandidates
+      ? buildCandidatePreview(classifiedRows)
+      : undefined;
 
     const { data: profile } = await supabase
       .from("user_profile")
@@ -217,12 +228,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
         unmatched: stagedRows.length - matchedCount,
       },
       summary_row_count: stagedSummaryRows.length,
-      row_classification: {
-        route_count: parsedRows.length,
-        route_candidate_count: candidateRows.length,
-        route_breakout_count: breakoutRows.length,
-        summary_count: summaryRows.length,
-      },
+      row_classification: rowClassification,
     };
 
     if (snapshotKind === "FINAL") {
@@ -276,6 +282,8 @@ export async function POST(req: NextRequest, context: RouteContext) {
         matched_route_count: matchedCount,
         unmatched_route_count: stagedRows.length - matchedCount,
         payroll_rebuild: payrollRebuildResult ?? null,
+        row_classification: rowClassification,
+        candidate_preview: candidatePreview,
       });
     }
 
@@ -345,6 +353,8 @@ export async function POST(req: NextRequest, context: RouteContext) {
       inserted_summary_row_count: stagedSummaryRows.length,
       matched_route_count: matchedCount,
       unmatched_route_count: stagedRows.length - matchedCount,
+      row_classification: rowClassification,
+      candidate_preview: candidatePreview,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "DSW upload failed.";
