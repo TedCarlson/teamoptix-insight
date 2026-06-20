@@ -1,6 +1,7 @@
 import { cellText } from "./dsw.parse";
 import type { DswRowKind, ParsedRow } from "./dsw.types";
 import { summaryScope } from "./dsw.metadata";
+import { isBreakoutRow } from "./dsw.breakout";
 
 export type DswClassifiedRow = {
   source_row_index: number;
@@ -33,6 +34,8 @@ export function classifyDswRows(
       raw,
       row_kind: summaryScope(cellText(raw["Svc Area #"]))
         ? "SUMMARY"
-        : "ROUTE",
+        : isBreakoutRow(raw)
+          ? "ROUTE_BREAKOUT"
+          : "ROUTE",
     }));
 }
