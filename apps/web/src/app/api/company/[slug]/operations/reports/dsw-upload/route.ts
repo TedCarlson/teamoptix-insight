@@ -8,23 +8,23 @@ import {
   findHeaderRow,
   objectRows,
   extractMeta,
-  toInteger,
-  toNumber,
 } from "@/features/operations/reports/dsw/dsw.parse";
 import {
   payrollWeekEndFriday,
   payrollWeekStartFor,
 } from "@/features/operations/reports/dsw/dsw.payrollWeek";
-import type { ParsedRow } from "@/features/operations/reports/dsw/dsw.types";
-import { normalizeDsw, normalizeDswSummary } from "@/features/operations/reports/dsw/dsw.normalize";
-import { findRouteMatch, type DswRouteBaselineRow } from "@/features/operations/reports/dsw/dsw.routeMatch";
+import type { DswRouteBaselineRow } from "@/features/operations/reports/dsw/dsw.routeMatch";
 import {
   summaryScope,
-  contractCodeFromLabel,
   excelDateToIso,
   deriveDswSnapshotKind,
 } from "@/features/operations/reports/dsw/dsw.metadata";
 import { classifyDswRows } from "@/features/operations/reports/dsw/dsw.classify";
+import {
+  buildDswStagedRows,
+  buildDswStagedSummaryRows,
+  countMatchedDswRoutes,
+} from "@/features/operations/reports/dsw/dsw.stage";
 
 export const runtime = "nodejs";
 
@@ -170,42 +170,21 @@ export async function POST(req: NextRequest, context: RouteContext) {
       (row) => row.row_kind === "SUMMARY"
     );
 
-    const stagedRows = parsedRows.map(({ raw, source_row_index }) => {
-      const routeMatch = findRouteMatch(raw, (routes ?? []) as DswRouteBaselineRow[], serviceDate);
-      const normalized = normalizeDsw(raw, routeMatch, meta);
-
-      return {
-        sheet_name: sheetName,
-        source_row_index,
-        row_kind: "ROUTE",
-        raw_row_json: raw,
-        normalized_row_json: normalized,
-        source_route_key: cellText(raw["WA Name"]) || cellText(raw["WA#"]) || null,
-        source_wa_number: cellText(raw["WA#"]) || null,
-        source_driver_name: cellText(raw["Driver Name"]) || null,
-        source_dswid: cellText(raw["Driver Name"]) || null,
-      };
+    const stagedRows = buildDswStagedRows({
+      rows: parsedRows,
+      sheetName,
+      routes: (routes ?? []) as DswRouteBaselineRow[],
+      serviceDate,
+      meta,
     });
 
-    const stagedSummaryRows = summaryRows.map(({ raw, source_row_index }) => {
-      const label = cellText(raw["Svc Area #"]);
-      const scope = summaryScope(label) ?? "SUMMARY";
-
-      return {
-        service_date: serviceDate,
-        summary_scope: scope,
-        summary_label: label,
-        contract_code: contractCodeFromLabel(label),
-        terminal_code: meta.terminal_identity,
-        source_row_index,
-        raw_row_json: raw,
-        normalized_row_json: normalizeDswSummary(raw, meta),
-      };
+    const stagedSummaryRows = buildDswStagedSummaryRows({
+      rows: summaryRows,
+      serviceDate,
+      meta,
     });
 
-    const matchedCount = stagedRows.filter(
-      (row) => row.normalized_row_json.route_match_method !== "NONE"
-    ).length;
+    const matchedCount = countMatchedDswRoutes(stagedRows);
 
     const { data: profile } = await supabase
       .from("user_profile")
