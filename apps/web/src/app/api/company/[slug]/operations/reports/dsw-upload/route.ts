@@ -166,6 +166,14 @@ export async function POST(req: NextRequest, context: RouteContext) {
       (row) => row.row_kind === "ROUTE"
     );
 
+    const candidateRows = classifiedRows.filter(
+      (row) => row.row_kind === "ROUTE_CANDIDATE"
+    );
+
+    const breakoutRows = classifiedRows.filter(
+      (row) => row.row_kind === "ROUTE_BREAKOUT"
+    );
+
     const summaryRows = classifiedRows.filter(
       (row) => row.row_kind === "SUMMARY"
     );
@@ -209,6 +217,12 @@ export async function POST(req: NextRequest, context: RouteContext) {
         unmatched: stagedRows.length - matchedCount,
       },
       summary_row_count: stagedSummaryRows.length,
+      row_classification: {
+        route_count: parsedRows.length,
+        route_candidate_count: candidateRows.length,
+        route_breakout_count: breakoutRows.length,
+        summary_count: summaryRows.length,
+      },
     };
 
     if (snapshotKind === "FINAL") {
