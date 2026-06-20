@@ -24,6 +24,7 @@ import {
   excelDateToIso,
   deriveDswSnapshotKind,
 } from "@/features/operations/reports/dsw/dsw.metadata";
+import { classifyDswRows } from "@/features/operations/reports/dsw/dsw.classify";
 
 export const runtime = "nodejs";
 
@@ -157,22 +158,16 @@ export async function POST(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: routeError.message }, { status: 500 });
     }
 
-    const allParsedRows = objectRows(rows, headerIndex).filter(({ raw }) => {
-      const first = cellText(raw["Svc Area #"]);
-      if (!first) return false;
-      if (first.startsWith("Access is restricted")) return false;
-      if (first.startsWith("Due to stop rate")) return false;
-      return cellText(raw["WA Name"]) || cellText(raw["WA#"]) || Boolean(summaryScope(first));
-    });
+    const classifiedRows = classifyDswRows(
+      objectRows(rows, headerIndex)
+    );
 
-    const parsedRows = allParsedRows.filter(({ raw }) => {
-      const first = cellText(raw["Svc Area #"]);
-      if (summaryScope(first)) return false;
-      return cellText(raw["WA Name"]) || cellText(raw["WA#"]);
-    });
+    const parsedRows = classifiedRows.filter(
+      (row) => row.row_kind === "ROUTE"
+    );
 
-    const summaryRows = allParsedRows.filter(({ raw }) =>
-      Boolean(summaryScope(cellText(raw["Svc Area #"])))
+    const summaryRows = classifiedRows.filter(
+      (row) => row.row_kind === "SUMMARY"
     );
 
     const stagedRows = parsedRows.map(({ raw, source_row_index }) => {
