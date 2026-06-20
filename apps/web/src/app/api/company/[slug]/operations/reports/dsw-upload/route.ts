@@ -2,93 +2,43 @@ import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { createHash } from "crypto";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { DSW_HEADERS } from "@/features/operations/reports/dsw/dsw.headers";
+import {
+  cellText,
+  findHeaderRow,
+  objectRows,
+  extractMeta,
+  toInteger,
+  toNumber,
+} from "@/features/operations/reports/dsw/dsw.parse";
+import {
+  payrollWeekEndFriday,
+  payrollWeekStartFor,
+} from "@/features/operations/reports/dsw/dsw.payrollWeek";
+import type { ParsedRow } from "@/features/operations/reports/dsw/dsw.types";
 
 export const runtime = "nodejs";
 
 
 type RouteContext = { params: Promise<{ slug: string }> };
-type ParsedRow = Record<string, unknown>;
 
-const DSW_HEADERS = [
-  "Svc Area #",
-  "WA Name",
-  "Veh #",
-  "Driver Name",
-  "WA#",
-  "VScan Pkgs",
-  "Del Stps",
-  "PU Stps",
-  "DIFF",
-  "Act Del Stps",
-  "Act Del Pkgs",
-  "Act PU Stps",
-  "Act PU Pkgs",
-];
 
-function cellText(value: unknown) {
-  return String(value ?? "").trim();
-}
 
-function normalizeHeader(value: unknown) {
-  return cellText(value)
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .replace(/\s+#/g, "#")
-    .trim();
-}
 
-function rowHasHeaders(row: unknown[], headers: string[]) {
-  const normalized = new Set(row.map(normalizeHeader).filter(Boolean));
-  return headers.every((header) => normalized.has(normalizeHeader(header)));
-}
 
-function findHeaderRow(rows: unknown[][], headers: string[]) {
-  return rows.findIndex((row) => rowHasHeaders(row, headers));
-}
 
-function toNumber(value: unknown) {
-  const text = cellText(value).replace(/,/g, "").replace("%", "");
-  if (!text) return null;
-  const parsed = Number(text);
-  return Number.isFinite(parsed) ? parsed : null;
-}
 
-function toInteger(value: unknown) {
-  const parsed = toNumber(value);
-  return parsed === null ? null : Math.trunc(parsed);
-}
 
-function objectRows(rows: unknown[][], headerIndex: number) {
-  const headers = (rows[headerIndex] ?? []).map(cellText);
 
-  return rows
-    .slice(headerIndex + 1)
-    .map((row, offset) => {
-      const raw: ParsedRow = {};
-      headers.forEach((header, index) => {
-        if (header) raw[header] = row[index] ?? "";
-      });
-      return { source_row_index: headerIndex + 2 + offset, raw };
-    })
-    .filter(({ raw }) => Object.values(raw).some((value) => cellText(value)));
-}
 
-function extractMeta(rows: unknown[][]) {
-  const flat = rows.flat().map(cellText);
-  const metaLine = flat.find((cell) => cell.startsWith("FedEx - "));
-  const generatedLine = flat.find((cell) => cell.startsWith("Generated - "));
 
-  const match = metaLine?.match(
-    /^FedEx - (.+?) - Contract: (.+?) - (\d{1,2}\/\d{1,2}\/\d{4})$/
-  );
 
-  return {
-    terminal_identity: match?.[1] ?? null,
-    contract_filter: match?.[2] ?? null,
-    service_date_text: match?.[3] ?? null,
-    generated_at_text: generatedLine?.replace("Generated - ", "") ?? null,
-  };
-}
+
+
+
+
+
+
 
 function normalizeDsw(raw: ParsedRow, routeMatch: { id: string | null; method: string }, meta: ReturnType<typeof extractMeta>) {
   return {
@@ -266,21 +216,11 @@ function findRouteMatch(raw: ParsedRow, routes: any[], serviceDate: string) {
 }
 
 
-function addDaysIso(dateIso: string, days: number) {
-  const date = new Date(`${dateIso}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
 
-function payrollWeekEndFriday(dateIso: string) {
-  const date = new Date(`${dateIso}T00:00:00Z`);
-  const dow = date.getUTCDay();
-  return addDaysIso(dateIso, (5 - dow + 7) % 7);
-}
 
-function payrollWeekStartFor(dateIso: string) {
-  return addDaysIso(payrollWeekEndFriday(dateIso), -6);
-}
+
+
+
 
 export async function POST(req: NextRequest, context: RouteContext) {
   try {
