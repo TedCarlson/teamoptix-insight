@@ -43,16 +43,14 @@ export async function GET(req: NextRequest, context: { params: Promise<{ slug: s
     return NextResponse.json({ error: "Company not found." }, { status: 404 });
   }
 
-  const { data: facts, error: factsError } = await supabase
-    .schema("core")
-    .from("payroll_activity_fact")
-    .select("service_date, person_name, route_name, wa_number, actual_delivery_stops, actual_pickup_stops")
-    .eq("company_id", company.id)
-    .gte("service_date", weekStart)
-    .lte("service_date", weekEnd)
-    .is("roster_member_id", null)
-    .not("person_name", "is", null)
-    .neq("person_name", "");
+  const { data: facts, error: factsError } = await supabase.rpc(
+    "list_payroll_dsw_unmatched",
+    {
+      p_company_id: company.id,
+      p_start_date: weekStart,
+      p_end_date: weekEnd,
+    }
+  );
 
   if (factsError) return NextResponse.json({ error: factsError.message }, { status: 500 });
 
@@ -63,17 +61,8 @@ export async function GET(req: NextRequest, context: { params: Promise<{ slug: s
 
   if (rosterError) return NextResponse.json({ error: rosterError.message }, { status: 500 });
 
-  const { data: aliasRows, error: aliasError } = await supabase
-    .schema("core")
-    .from("company_roster_dsw_alias")
-    .select("roster_id, alias_text")
-    .eq("company_id", company.id);
-
-  if (aliasError) return NextResponse.json({ error: aliasError.message }, { status: 500 });
-
   const resolved = new Set<string>();
   for (const r of rosterRows ?? []) if (r.dswid) resolved.add(key(r.dswid));
-  for (const a of aliasRows ?? []) if (a.alias_text) resolved.add(key(a.alias_text));
 
   const grouped = new Map<string, any>();
 

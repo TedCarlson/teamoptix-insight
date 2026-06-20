@@ -198,7 +198,8 @@ export async function GET(
         daily_pay_effective_date:
           row.daily_pay_effective_date ?? match.daily_pay_effective_date,
         review_flags: (row.review_flags ?? []).filter(
-          (flag) => flag !== "UNMATCHED_DSW_DRIVER" && flag !== "UNMATCHED_REVIEW"
+          (flag) =>
+            !["UNMATCHED", "UNMATCHED_DSW_DRIVER", "UNMATCHED_REVIEW"].includes(flag)
         ),
       };
     });

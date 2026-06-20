@@ -27,14 +27,12 @@ export async function POST(req: NextRequest, context: { params: Promise<{ slug: 
       return NextResponse.json({ error: "Company not found." }, { status: 404 });
     }
 
-    const { error } = await supabase
-      .schema("core")
-      .from("company_roster_dsw_alias")
-      .insert({
-        company_id: company.id,
-        roster_id: rosterId,
-        alias_text: aliasText,
-      });
+    const { error } = await supabase.rpc("create_roster_dsw_alias", {
+      p_company_id: company.id,
+      p_roster_id: rosterId,
+      p_alias_text: aliasText,
+      p_created_by: null,
+    });
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
