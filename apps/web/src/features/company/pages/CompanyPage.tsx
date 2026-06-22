@@ -38,6 +38,7 @@ function getConfigSectionFromPath(pathname: string): CompanyConfigSection {
   if (pathname.endsWith("/config/leadership")) return "leadership";
   if (pathname.endsWith("/config/access")) return "access";
   if (pathname.endsWith("/config/operations")) return "operations";
+  if (pathname.endsWith("/config/automation")) return "automation";
   return "company";
 }
 

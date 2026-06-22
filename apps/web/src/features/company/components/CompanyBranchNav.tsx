@@ -75,6 +75,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     { label: "Leadership", href: `${configBase}/leadership`, match: (path) => path === `${configBase}/leadership` },
     { label: "Access", href: `${configBase}/access`, match: (path) => path === `${configBase}/access` },
     { label: "Operations", href: `${configBase}/operations`, match: (path) => path === `${configBase}/operations` },
+    { label: "Automation", href: `${configBase}/automation`, match: (path) => path === `${configBase}/automation` },
   ];
 
   const inHomeBranch =

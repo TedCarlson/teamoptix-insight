@@ -1,8 +1,9 @@
 import CompanyContractConfigManager from "@/features/company/components/CompanyContractConfigManager";
 import CompanyRouteSortConfig from "@/features/company/components/CompanyRouteSortConfig";
 import CompanyConfigAccessPanel from "./CompanyConfigAccessPanel";
+import AutomationConfigPanel from "@/features/automation/components/AutomationConfigPanel";
 
-export type CompanyConfigSection = "company" | "leadership" | "access" | "operations";
+export type CompanyConfigSection = "company" | "leadership" | "access" | "operations" | "automation";
 
 type CompanyRecord = {
   id: string;
@@ -183,5 +184,6 @@ export default function CompanyConfigWorkspace(props: CompanyConfigWorkspaceProp
   if (props.section === "leadership") return <LeadershipSection />;
   if (props.section === "access") return <AccessSection {...props} />;
   if (props.section === "operations") return <OperationsSection {...props} />;
+  if (props.section === "automation") return <AutomationConfigPanel slug={props.slug} canEdit={props.canEditCompany} />;
   return <CompanySection {...props} />;
 }
