@@ -142,7 +142,8 @@ export default function ScheduleGrid(props: Props) {
           <col style={{ width: "7.5%" }} />
           <col style={{ width: "7.5%" }} />
           <col style={{ width: "7.5%" }} />
-          <col style={{ width: "18%" }} />
+          <col style={{ width: "10%" }} />
+          <col style={{ width: "8%" }} />
         </colgroup>
 
         <thead>
@@ -169,19 +170,20 @@ export default function ScheduleGrid(props: Props) {
             <th style={headerStyleCompact}>H</th>
             <th style={headerStyleCompact}>F</th>
             <th style={headerStyle}>Rotation</th>
+            <th style={headerStyle}>Actions</th>
           </tr>
         </thead>
 
         <tbody>
           {loading ? (
             <tr>
-              <td colSpan={10} style={{ padding: 24 }}>
+              <td colSpan={11} style={{ padding: 24 }}>
                 Loading schedule...
               </td>
             </tr>
           ) : rows.length === 0 ? (
             <tr>
-              <td colSpan={10} style={{ padding: 24 }}>
+              <td colSpan={11} style={{ padding: 24 }}>
                 No schedule rows match the current view.
               </td>
             </tr>
