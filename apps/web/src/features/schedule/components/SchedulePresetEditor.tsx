@@ -41,9 +41,10 @@ export default function SchedulePresetEditor(props: {
   busy: boolean;
   initialDraft: SchedulePresetDraft;
   onClose: () => void;
+  mode?: "create" | "edit";
   onSave: (draft: SchedulePresetDraft) => Promise<void>;
 }) {
-  const { open, busy, initialDraft, onClose, onSave } = props;
+  const { open, busy, initialDraft, onClose, onSave, mode = "create" } = props;
   const [draft, setDraft] = useState<SchedulePresetDraft>(initialDraft);
 
   useEffect(() => {
@@ -59,7 +60,9 @@ export default function SchedulePresetEditor(props: {
   return (
     <article className="value-card" style={{ gridColumn: "1 / -1" }}>
       <p className="value-card__eyebrow">Schedule presets</p>
-      <h3 className="value-card__title">Create preset</h3>
+      <h3 className="value-card__title">
+        {mode === "edit" ? "Edit preset" : "Create preset"}
+      </h3>
       <p className="value-card__body" style={{ marginTop: 8 }}>
         Define which production-week days are on. Rotation remains a helper
         layer; the surface shows the result, not the anchor mechanics.
@@ -140,7 +143,7 @@ export default function SchedulePresetEditor(props: {
           disabled={busy}
           onClick={handleSave}
         >
-          {busy ? "Saving..." : "Save preset"}
+          {busy ? "Saving..." : mode === "edit" ? "Save changes" : "Save preset"}
         </button>
 
         <button

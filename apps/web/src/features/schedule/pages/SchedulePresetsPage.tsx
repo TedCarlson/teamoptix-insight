@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import SchedulePresetEditor, {
@@ -100,6 +100,7 @@ export default function SchedulePresetsPage() {
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorBusy, setEditorBusy] = useState(false);
+  const [editingPreset, setEditingPreset] = useState<SchedulePresetRow | null>(null);
 
   async function loadPresets() {
     try {
@@ -134,29 +135,54 @@ export default function SchedulePresetsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
-  async function handleCreatePreset(draft: SchedulePresetDraft) {
+  function draftFromPreset(preset: SchedulePresetRow): SchedulePresetDraft {
+    return {
+      preset_code: preset.preset_code,
+      works_s: preset.works_s,
+      works_u: preset.works_u,
+      works_m: preset.works_m,
+      works_t: preset.works_t,
+      works_w: preset.works_w,
+      works_h: preset.works_h,
+      works_f: preset.works_f,
+      uses_rotation: preset.uses_rotation,
+    };
+  }
+
+  function openCreatePreset() {
+    setEditingPreset(null);
+    setEditorOpen(true);
+  }
+
+  function openEditPreset(preset: SchedulePresetRow) {
+    setEditingPreset(preset);
+    setEditorOpen(true);
+  }
+
+  async function handleSavePreset(draft: SchedulePresetDraft) {
     try {
       setEditorBusy(true);
       setError(null);
 
       const res = await fetch(`/api/company/${slug}/schedule/presets`, {
-        method: "POST",
+        method: editingPreset ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(draft),
+        body: JSON.stringify(editingPreset ? { ...draft, id: editingPreset.id } : draft),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data?.error ?? "Failed to create preset.");
+        setError(data?.error ?? (editingPreset ? "Failed to update preset." : "Failed to create preset."));
         return;
       }
 
       setEditorOpen(false);
+      setEditingPreset(null);
       await loadPresets();
     } catch {
-      setError("Failed to create preset.");
+      setError(editingPreset ? "Failed to update preset." : "Failed to create preset.");
     } finally {
       setEditorBusy(false);
     }
@@ -185,7 +211,7 @@ export default function SchedulePresetsPage() {
               <button
                 className="button button-primary"
                 type="button"
-                onClick={() => setEditorOpen(true)}
+                onClick={openCreatePreset}
               >
                 Add preset
               </button>
@@ -199,13 +225,14 @@ export default function SchedulePresetsPage() {
           ) : null}
 
           <SchedulePresetEditor
-            open={editorOpen}
+            open={editorOpen && !editingPreset}
             busy={editorBusy}
+            mode="create"
             initialDraft={EMPTY_PRESET_DRAFT}
             onClose={() => {
               if (!editorBusy) setEditorOpen(false);
             }}
-            onSave={handleCreatePreset}
+            onSave={handleSavePreset}
           />
 
           <article className="value-card" style={{ gridColumn: "1 / -1" }}>
@@ -230,6 +257,7 @@ export default function SchedulePresetsPage() {
                   <col style={{ width: "9%" }} />
                   <col style={{ width: "9%" }} />
                   <col style={{ width: "12%" }} />
+                  <col style={{ width: "10%" }} />
                 </colgroup>
 
                 <thead>
@@ -243,25 +271,32 @@ export default function SchedulePresetsPage() {
                     <th style={headerStyleCompact}>H</th>
                     <th style={headerStyleCompact}>F</th>
                     <th style={headerStyle}>Rotation</th>
+                    <th style={headerStyle}>Action</th>
                   </tr>
                 </thead>
 
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={9} style={{ padding: 24 }}>
+                      <td colSpan={10} style={{ padding: 24 }}>
                         Loading presets...
                       </td>
                     </tr>
                   ) : presets.length === 0 ? (
                     <tr>
-                      <td colSpan={9} style={{ padding: 24 }}>
+                      <td colSpan={10} style={{ padding: 24 }}>
                         No presets yet.
                       </td>
                     </tr>
                   ) : (
                     presets.map((preset) => (
-                      <tr key={preset.id}>
+                      <Fragment key={preset.id}>
+                        <tr
+                          style={{
+                            background:
+                              editingPreset?.id === preset.id ? "#f8fafc" : undefined,
+                          }}
+                        >
                         <td style={cellStyle}>{preset.preset_code}</td>
                         <td style={compactCellStyle}>
                           {dayPresetCell(preset.works_s)}
@@ -287,7 +322,38 @@ export default function SchedulePresetsPage() {
                         <td style={cellStyle}>
                           {preset.uses_rotation ? "Uses rotation" : "None"}
                         </td>
+                        <td style={cellStyle}>
+                          <button
+                            className="button"
+                            type="button"
+                            onClick={() => openEditPreset(preset)}
+                            disabled={editorBusy}
+                          >
+                            {editingPreset?.id === preset.id ? "Editing" : "Edit"}
+                          </button>
+                        </td>
                       </tr>
+
+                      {editingPreset?.id === preset.id ? (
+                        <tr key={`${preset.id}:editor`}>
+                          <td colSpan={10} style={{ padding: "12px 10px" }}>
+                            <SchedulePresetEditor
+                              open={true}
+                              busy={editorBusy}
+                              mode="edit"
+                              initialDraft={draftFromPreset(preset)}
+                              onClose={() => {
+                                if (!editorBusy) {
+                                  setEditorOpen(false);
+                                  setEditingPreset(null);
+                                }
+                              }}
+                              onSave={handleSavePreset}
+                            />
+                          </td>
+                        </tr>
+                      ) : null}
+                      </Fragment>
                     ))
                   )}
                 </tbody>

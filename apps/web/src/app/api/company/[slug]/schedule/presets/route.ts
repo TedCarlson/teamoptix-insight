@@ -4,6 +4,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 
 type PresetPayload = {
+  id?: string | null;
   preset_code?: string | null;
   works_s?: boolean | null;
   works_u?: boolean | null;
@@ -168,3 +169,103 @@ export async function POST(
     );
   }
 }
+
+
+export async function PATCH(
+  req: NextRequest,
+  context: { params: Promise<{ slug: string }> }
+) {
+  try {
+    const { slug } = await context.params;
+    const sb = await getSupabaseServerClient();
+    const body = (await req.json()) as PresetPayload;
+
+    const presetId = String(body?.id ?? "").trim();
+    const presetCode = String(body?.preset_code ?? "").trim().toUpperCase();
+
+    if (!presetId) {
+      return NextResponse.json(
+        { error: "preset id is required" },
+        { status: 400 }
+      );
+    }
+
+    if (!presetCode) {
+      return NextResponse.json(
+        { error: "preset_code is required" },
+        { status: 400 }
+      );
+    }
+
+    const { data: company, error: companyErr } = await sb
+      .from("companies")
+      .select("id, company_slug")
+      .eq("company_slug", slug)
+      .single();
+
+    if (companyErr || !company) {
+      return NextResponse.json(
+        { error: "Company not found" },
+        { status: 404 }
+      );
+    }
+
+    const updateRow = {
+      preset_code: presetCode,
+      works_s: Boolean(body?.works_s),
+      works_u: Boolean(body?.works_u),
+      works_m: Boolean(body?.works_m),
+      works_t: Boolean(body?.works_t),
+      works_w: Boolean(body?.works_w),
+      works_h: Boolean(body?.works_h),
+      works_f: Boolean(body?.works_f),
+      uses_rotation: Boolean(body?.uses_rotation),
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await sb
+      .from("schedule_preset")
+      .update(updateRow)
+      .eq("id", presetId)
+      .eq("company_id", company.id)
+      .eq("is_active", true)
+      .select(`
+        id,
+        preset_code,
+        works_s,
+        works_u,
+        works_m,
+        works_t,
+        works_w,
+        works_h,
+        works_f,
+        uses_rotation,
+        is_active,
+        created_at,
+        updated_at
+      `)
+      .single();
+
+    if (error) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      preset: data,
+      pending_commit: true,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to update preset.";
+
+    return NextResponse.json(
+      { error: message },
+      { status: 500 }
+    );
+  }
+}
+
