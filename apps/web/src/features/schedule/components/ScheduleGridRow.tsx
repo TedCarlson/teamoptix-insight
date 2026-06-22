@@ -33,6 +33,14 @@ type ScheduleGridRowModel = {
   anchor_date: string | null;
   effective_start: string | null;
 
+  rotation_works_s: boolean | null;
+  rotation_works_u: boolean | null;
+  rotation_works_m: boolean | null;
+  rotation_works_t: boolean | null;
+  rotation_works_w: boolean | null;
+  rotation_works_h: boolean | null;
+  rotation_works_f: boolean | null;
+
   default_route_s: string | null;
   default_route_u: string | null;
   default_route_m: string | null;
@@ -462,7 +470,7 @@ export default function ScheduleGridRow(props: Props) {
               </div>
 
               <ScheduleBaselineEditor
-                key={`${row.roster_member_id}:${baselineDraft.preset_id}:${baselineDraft.rotation_mode}:${baselineDraft.effective_start}`}
+                key={`${row.roster_member_id}:${baselineDraft.preset_id}:${baselineDraft.rotation_mode}:${baselineDraft.effective_start}:${baselineDraft.anchor_date}`}
                 open={true}
                 busy={baselineBusy}
                 driverName={row.full_name}

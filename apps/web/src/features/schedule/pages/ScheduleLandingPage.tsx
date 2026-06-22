@@ -34,6 +34,14 @@ type ScheduleGridRow = {
   anchor_date: string | null;
   effective_start: string | null;
 
+  rotation_works_s: boolean | null;
+  rotation_works_u: boolean | null;
+  rotation_works_m: boolean | null;
+  rotation_works_t: boolean | null;
+  rotation_works_w: boolean | null;
+  rotation_works_h: boolean | null;
+  rotation_works_f: boolean | null;
+
   default_route_s: string | null;
   default_route_u: string | null;
   default_route_m: string | null;
@@ -324,6 +332,14 @@ export default function ScheduleLandingPage() {
       preset_id: row.preset_id ?? "",
       rotation_mode: row.rotation_mode ?? "NONE",
       effective_start: row.effective_start ?? todayIso(),
+      anchor_date: row.anchor_date ?? row.effective_start ?? todayIso(),
+      rotation_works_s: row.rotation_works_s ?? false,
+      rotation_works_u: row.rotation_works_u ?? false,
+      rotation_works_m: row.rotation_works_m ?? false,
+      rotation_works_t: row.rotation_works_t ?? false,
+      rotation_works_w: row.rotation_works_w ?? false,
+      rotation_works_h: row.rotation_works_h ?? false,
+      rotation_works_f: row.rotation_works_f ?? false,
       default_route_s: row.default_route_s ?? "",
       default_route_u: row.default_route_u ?? "",
       default_route_m: row.default_route_m ?? "",

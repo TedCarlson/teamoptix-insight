@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { rotationLifecyclePreview } from "@/features/schedule/lib/scheduleWorkbench";
 
 type PresetOption = {
   id: string;
@@ -24,6 +25,14 @@ export type ScheduleBaselineDraft = {
   preset_id: string;
   rotation_mode: string;
   effective_start: string;
+  anchor_date: string;
+  rotation_works_s: boolean;
+  rotation_works_u: boolean;
+  rotation_works_m: boolean;
+  rotation_works_t: boolean;
+  rotation_works_w: boolean;
+  rotation_works_h: boolean;
+  rotation_works_f: boolean;
   default_route_s: string;
   default_route_u: string;
   default_route_m: string;
@@ -104,6 +113,16 @@ const DAY_KEYS: Array<[string, DayRouteKey]> = [
   ["F", "default_route_f"],
 ];
 
+const ROTATION_DAY_KEYS: Array<[string, keyof ScheduleBaselineDraft]> = [
+  ["Sat", "rotation_works_s"],
+  ["Sun", "rotation_works_u"],
+  ["Mon", "rotation_works_m"],
+  ["Tue", "rotation_works_t"],
+  ["Wed", "rotation_works_w"],
+  ["Thu", "rotation_works_h"],
+  ["Fri", "rotation_works_f"],
+];
+
 export default function ScheduleBaselineEditor(props: {
   open: boolean;
   busy: boolean;
@@ -131,6 +150,22 @@ export default function ScheduleBaselineEditor(props: {
   const selectedPreset = useMemo(
     () => presetOptions.find((preset) => preset.id === draft.preset_id) ?? null,
     [presetOptions, draft.preset_id]
+  );
+
+  const rotationPreview = useMemo(
+    () =>
+      rotationLifecyclePreview({
+        rotation_mode: draft.rotation_mode,
+        anchor_date: draft.anchor_date,
+        rotation_works_s: draft.rotation_works_s,
+        rotation_works_u: draft.rotation_works_u,
+        rotation_works_m: draft.rotation_works_m,
+        rotation_works_t: draft.rotation_works_t,
+        rotation_works_w: draft.rotation_works_w,
+        rotation_works_h: draft.rotation_works_h,
+        rotation_works_f: draft.rotation_works_f,
+      }),
+    [draft]
   );
 
   if (!open) return null;
@@ -187,7 +222,7 @@ export default function ScheduleBaselineEditor(props: {
           display: "grid",
           gap: 12,
           gridTemplateColumns:
-            "minmax(220px, 1fr) minmax(180px, 0.8fr) minmax(180px, 0.8fr)",
+            "minmax(220px, 1fr) minmax(180px, 0.8fr) minmax(180px, 0.8fr) minmax(180px, 0.8fr)",
         }}
       >
         <select
@@ -218,22 +253,130 @@ export default function ScheduleBaselineEditor(props: {
           }
           style={inputStyle}
         >
-          <option value="NONE">None</option>
-          <option value="WEEKEND_ALT">Weekend alternate</option>
+          <option value="NONE">No rotation</option>
+          <option value="WEEKEND_ALT">Use rotation</option>
         </select>
 
-        <input
-          type="date"
-          value={draft.effective_start}
-          onChange={(e) =>
-            setDraft((current) => ({
-              ...current,
-              effective_start: e.target.value,
-            }))
-          }
-          style={inputStyle}
-        />
+        <label style={{ display: "grid", gap: 4 }}>
+          <span style={{ fontSize: 11, fontWeight: 800, color: "#64748b", textTransform: "uppercase" }}>
+            Effective start
+          </span>
+          <input
+            type="date"
+            value={draft.effective_start}
+            onChange={(e) =>
+              setDraft((current) => ({
+                ...current,
+                effective_start: e.target.value,
+                anchor_date: current.anchor_date || e.target.value,
+              }))
+            }
+            style={inputStyle}
+          />
+        </label>
+
+        <label style={{ display: "grid", gap: 4 }}>
+          <span style={{ fontSize: 11, fontWeight: 800, color: "#64748b", textTransform: "uppercase" }}>
+            Rotation anchor
+          </span>
+          <input
+            type="date"
+            value={draft.anchor_date}
+            onChange={(e) =>
+              setDraft((current) => ({
+                ...current,
+                anchor_date: e.target.value,
+              }))
+            }
+            style={inputStyle}
+          />
+        </label>
       </div>
+
+      {draft.rotation_mode !== "NONE" ? (
+        <div
+          style={{
+            marginTop: 14,
+            display: "grid",
+            gap: 10,
+            padding: 12,
+            borderRadius: 12,
+            border: "1px solid #d6dfeb",
+            background: "#f8fafc",
+          }}
+        >
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>
+              Rotation days
+            </span>
+
+            {ROTATION_DAY_KEYS.map(([label, key]) => {
+              const active = draft[key] === true;
+
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    setDraft((current) => ({
+                      ...current,
+                      [key]: !current[key],
+                    }))
+                  }
+                  style={{
+                    minHeight: 28,
+                    padding: "0 10px",
+                    borderRadius: 999,
+                    border: `1px solid ${active ? "#7bc48a" : "#d6dfeb"}`,
+                    background: active ? "#e8f6eb" : "#fff",
+                    color: active ? "#2f8f46" : "#64748b",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: busy ? "default" : "pointer",
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={{ display: "grid", gap: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>
+              Next Schedule
+            </span>
+
+            {rotationPreview.length > 0 ? (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {rotationPreview.map((item) => (
+                  <span
+                    key={item.iso}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      minHeight: 26,
+                      padding: "0 9px",
+                      borderRadius: 999,
+                      border: `1px solid ${item.state === "ON" ? "#7bc48a" : "#d6dfeb"}`,
+                      background: item.state === "ON" ? "#e8f6eb" : "#fff",
+                      color: item.state === "ON" ? "#2f8f46" : "#64748b",
+                      fontSize: 12,
+                      fontWeight: 800,
+                    }}
+                  >
+                    {item.label} {item.iso.slice(5)} {item.state}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <span style={{ fontSize: 12, color: "#64748b" }}>
+                Select at least one rotation day to preview the lifecycle.
+              </span>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       <div
         style={{

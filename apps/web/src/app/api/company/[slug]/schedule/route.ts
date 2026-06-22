@@ -16,6 +16,13 @@ type BaselineRow = {
   rotation_mode: string | null;
   anchor_date: string | null;
   effective_start: string | null;
+  rotation_works_s: boolean | null;
+  rotation_works_u: boolean | null;
+  rotation_works_m: boolean | null;
+  rotation_works_t: boolean | null;
+  rotation_works_w: boolean | null;
+  rotation_works_h: boolean | null;
+  rotation_works_f: boolean | null;
   default_route_s: string | null;
   default_route_u: string | null;
   default_route_m: string | null;
@@ -122,6 +129,13 @@ export async function GET(
           rotation_mode,
           anchor_date,
           effective_start,
+          rotation_works_s,
+          rotation_works_u,
+          rotation_works_m,
+          rotation_works_t,
+          rotation_works_w,
+          rotation_works_h,
+          rotation_works_f,
           default_route_s,
           default_route_u,
           default_route_m,
@@ -241,6 +255,14 @@ export async function GET(
           rotation_mode: baseline?.rotation_mode ?? null,
           anchor_date: baseline?.anchor_date ?? null,
           effective_start: baseline?.effective_start ?? null,
+
+          rotation_works_s: baseline?.rotation_works_s ?? false,
+          rotation_works_u: baseline?.rotation_works_u ?? false,
+          rotation_works_m: baseline?.rotation_works_m ?? false,
+          rotation_works_t: baseline?.rotation_works_t ?? false,
+          rotation_works_w: baseline?.rotation_works_w ?? false,
+          rotation_works_h: baseline?.rotation_works_h ?? false,
+          rotation_works_f: baseline?.rotation_works_f ?? false,
 
           default_route_s: baseline?.default_route_s ?? null,
           default_route_u: baseline?.default_route_u ?? null,

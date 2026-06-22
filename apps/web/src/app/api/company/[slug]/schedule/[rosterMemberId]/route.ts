@@ -11,6 +11,14 @@ type BaselinePayload = {
   preset_id?: string | null;
   rotation_mode?: string | null;
   effective_start?: string | null;
+  anchor_date?: string | null;
+  rotation_works_s?: boolean | null;
+  rotation_works_u?: boolean | null;
+  rotation_works_m?: boolean | null;
+  rotation_works_t?: boolean | null;
+  rotation_works_w?: boolean | null;
+  rotation_works_h?: boolean | null;
+  rotation_works_f?: boolean | null;
   default_route_s?: string | null;
   default_route_u?: string | null;
   default_route_m?: string | null;
@@ -71,9 +79,10 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     }
 
     const rotationMode = cleanText(body.rotation_mode) ?? "NONE";
-    const anchorDate = existing?.anchor_date ?? todayIso();
     const effectiveStart =
       cleanText(body.effective_start) ?? existing?.effective_start ?? todayIso();
+    const anchorDate =
+      cleanText(body.anchor_date) ?? existing?.anchor_date ?? effectiveStart;
 
     const writePayload = {
       company_id: company.id,
@@ -82,6 +91,13 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       rotation_mode: rotationMode,
       anchor_date: anchorDate,
       effective_start: effectiveStart,
+      rotation_works_s: body.rotation_works_s === true,
+      rotation_works_u: body.rotation_works_u === true,
+      rotation_works_m: body.rotation_works_m === true,
+      rotation_works_t: body.rotation_works_t === true,
+      rotation_works_w: body.rotation_works_w === true,
+      rotation_works_h: body.rotation_works_h === true,
+      rotation_works_f: body.rotation_works_f === true,
       default_route_s: cleanText(body.default_route_s),
       default_route_u: cleanText(body.default_route_u),
       default_route_m: cleanText(body.default_route_m),
