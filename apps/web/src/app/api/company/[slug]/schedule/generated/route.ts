@@ -12,6 +12,8 @@ export async function GET(req: NextRequest, context: RouteContext) {
     const { slug } = await context.params;
     const sb = await getSupabaseServerClient();
     const serviceDate = req.nextUrl.searchParams.get("date");
+    const startDate = req.nextUrl.searchParams.get("start_date");
+    const endDate = req.nextUrl.searchParams.get("end_date");
 
     const { data: company, error: companyErr } = await sb
       .from("companies")
@@ -33,11 +35,15 @@ export async function GET(req: NextRequest, context: RouteContext) {
 
     if (serviceDate) {
       query = query.eq("service_date", serviceDate);
+    } else {
+      if (startDate) query = query.gte("service_date", startDate);
+      if (endDate) query = query.lte("service_date", endDate);
     }
 
     const { data, error } = await query
       .order("service_date", { ascending: true })
-      .order("full_name", { ascending: true });
+      .order("full_name", { ascending: true })
+      .limit(1000);
 
     if (error) {
       return NextResponse.json(

@@ -199,6 +199,10 @@ export default function GeneratedSchedulePage() {
     startOfBusinessWeek(new Date())
   );
 
+  const weekDates = useMemo(() => buildWeekDates(weekStart), [weekStart]);
+  const weekStartIso = weekDates[0]?.iso;
+  const weekEndIso = weekDates[6]?.iso;
+
   useEffect(() => {
     let active = true;
 
@@ -207,10 +211,17 @@ export default function GeneratedSchedulePage() {
         setLoading(true);
         setError(null);
 
-        const res = await fetch(`/api/company/${slug}/schedule/generated`, {
-          credentials: "include",
-          cache: "no-store",
-        });
+        const params = new URLSearchParams();
+        if (weekStartIso) params.set("start_date", weekStartIso);
+        if (weekEndIso) params.set("end_date", weekEndIso);
+
+        const res = await fetch(
+          `/api/company/${slug}/schedule/generated?${params.toString()}`,
+          {
+            credentials: "include",
+            cache: "no-store",
+          }
+        );
 
         const data = await res.json();
 
@@ -232,16 +243,12 @@ export default function GeneratedSchedulePage() {
       }
     }
 
-    if (slug) loadGeneratedSchedule();
+    if (slug && weekStartIso && weekEndIso) loadGeneratedSchedule();
 
     return () => {
       active = false;
     };
-  }, [slug]);
-
-  const weekDates = useMemo(() => buildWeekDates(weekStart), [weekStart]);
-  const weekStartIso = weekDates[0]?.iso;
-  const weekEndIso = weekDates[6]?.iso;
+  }, [slug, weekStartIso, weekEndIso]);
 
   const weekRows = useMemo(() => {
     const q = search.trim().toLowerCase();
