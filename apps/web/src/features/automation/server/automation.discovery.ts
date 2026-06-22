@@ -160,6 +160,7 @@ async function findDswPage(pages: Page[], parentPage: Page) {
 export async function discoverFedExNavigation(input: {
   username: string;
   password: string;
+  serviceDate?: string;
 }) {
   await mkdir(DOWNLOAD_DIR, { recursive: true });
 

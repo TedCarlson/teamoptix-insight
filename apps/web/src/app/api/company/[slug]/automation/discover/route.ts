@@ -1,3 +1,4 @@
+import { readFile, stat } from "node:fs/promises";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import {
@@ -6,11 +7,12 @@ import {
   resolveCompanyBySlug,
 } from "@/features/automation/server/automation.repository";
 import { discoverFedExNavigation } from "@/features/automation/server/automation.discovery";
+import { ingestDswWorkbook } from "@/features/operations/reports/dsw/dsw.ingest";
 
 export const runtime = "nodejs";
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: Promise<{ slug: string }> }
 ) {
   try {
@@ -40,7 +42,39 @@ export async function POST(
       password: credentialResult.row.encrypted_secret,
     });
 
-    return NextResponse.json(result, { status: result.ok ? 200 : 409 });
+    if (!result.ok || !result.excelDownload?.savedPath) {
+      return NextResponse.json(result, { status: result.ok ? 200 : 409 });
+    }
+
+    const downloadedFile = await readFile(result.excelDownload.savedPath);
+    const downloadedStat = await stat(result.excelDownload.savedPath);
+
+    const { data: auth } = await supabase.auth.getUser();
+    const { data: profile } = auth?.user?.id
+      ? await supabase
+          .from("user_profile")
+          .select("profile_id")
+          .eq("auth_user_id", auth.user.id)
+          .maybeSingle()
+      : { data: null };
+
+    const ingest = await ingestDswWorkbook({
+      supabase,
+      slug,
+      buffer: downloadedFile,
+      filename: result.excelDownload.suggestedFilename,
+      fileSize: downloadedStat.size,
+      uploadedByAuthUserId: auth?.user?.id ?? null,
+      uploadedByProfileId: profile?.profile_id ?? null,
+    });
+
+    return NextResponse.json(
+      {
+        ...result,
+        ingest,
+      },
+      { status: 200 }
+    );
   } catch (error) {
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : "Discovery failed." },
