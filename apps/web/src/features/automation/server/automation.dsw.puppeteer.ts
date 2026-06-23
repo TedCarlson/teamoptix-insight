@@ -75,7 +75,26 @@ async function login(page: Page, username: string, password: string) {
     "input[type='text']",
   ], username);
 
-  if (!usernameFilled) throw new Error("Could not locate username field.");
+  if (!usernameFilled) {
+    throw new Error(JSON.stringify({
+      message: "Could not locate username field.",
+      url: page.url(),
+      title: await page.title().catch(() => ""),
+      bodyPreview: (await bodyText(page)).slice(0, 2000),
+      inputs: await page.evaluate(() =>
+        Array.from(document.querySelectorAll("input, button, a")).slice(0, 80).map((el) => ({
+          tag: el.tagName,
+          id: el.getAttribute("id"),
+          name: el.getAttribute("name"),
+          type: el.getAttribute("type"),
+          value: el.getAttribute("value"),
+          text: (el.textContent || "").trim().slice(0, 120),
+          placeholder: el.getAttribute("placeholder"),
+          ariaLabel: el.getAttribute("aria-label"),
+        }))
+      ).catch(() => []),
+    }));
+  }
 
   await clickFirst(page, [
     "input[type='submit']",
