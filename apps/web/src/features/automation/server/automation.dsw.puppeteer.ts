@@ -149,6 +149,61 @@ async function findFccLinksFrame(page: Page): Promise<Frame | null> {
   return null;
 }
 
+async function clickDailyServiceAnywhere(page: Page) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const frames = page.frames();
+
+    for (const frame of frames) {
+      const clicked = await frame.evaluate(() => {
+        const haystack = (el: Element) =>
+          [
+            el.textContent,
+            el.getAttribute("href"),
+            el.getAttribute("id"),
+            el.getAttribute("name"),
+            el.getAttribute("title"),
+            el.getAttribute("aria-label"),
+            el.getAttribute("value"),
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+
+        const candidates = Array.from(document.querySelectorAll("a, button, input, div, span"));
+        const target = candidates.find((el) => {
+          const text = haystack(el);
+          return (
+            text.includes("daily service wk") ||
+            text.includes("daily service") ||
+            text.includes("vision ibpr") ||
+            text.includes("fedex customer connection") ||
+            text.includes("fcc")
+          );
+        });
+
+        if (target instanceof HTMLElement) {
+          target.click();
+          return {
+            clicked: true,
+            tag: target.tagName,
+            id: target.getAttribute("id"),
+            text: (target.textContent || "").trim().slice(0, 160),
+            href: target.getAttribute("href"),
+          };
+        }
+
+        return { clicked: false };
+      }).catch(() => ({ clicked: false }));
+
+      if (clicked.clicked) return clicked;
+    }
+
+    await sleep(2500);
+  }
+
+  return { clicked: false };
+}
+
 async function findDswPage(browser: Browser, parentPage: Page) {
   for (const candidate of await browser.pages()) {
     if (candidate === parentPage) continue;
@@ -205,10 +260,16 @@ export async function discoverFedExNavigationPuppeteer(input: {
     await login(page, input.username, input.password);
 
     const fccFrame = await findFccLinksFrame(page);
-    if (!fccFrame) {
+    const clickedFromFrame = fccFrame
+      ? await clickLinkByText(fccFrame, /Daily Service Wk|Vision IBPR|Daily Service/)
+      : false;
+
+    const clickedAnywhere = clickedFromFrame ? { clicked: true, source: "fcc_frame" } : await clickDailyServiceAnywhere(page);
+
+    if (!clickedAnywhere.clicked) {
       return {
         ok: false,
-        stage: "fcc_frame",
+        stage: "daily_service_navigation",
         parentUrl: page.url(),
         parentTitle: await page.title().catch(() => ""),
         bodyPreview: (await bodyText(page)).slice(0, 2500),
@@ -220,7 +281,7 @@ export async function discoverFedExNavigationPuppeteer(input: {
           }))
         ),
         links: await page.evaluate(() =>
-          Array.from(document.querySelectorAll("a, button, input")).slice(0, 120).map((el) => ({
+          Array.from(document.querySelectorAll("a, button, input")).slice(0, 160).map((el) => ({
             tag: el.tagName,
             id: el.getAttribute("id"),
             name: el.getAttribute("name"),
@@ -232,11 +293,11 @@ export async function discoverFedExNavigationPuppeteer(input: {
             ariaLabel: el.getAttribute("aria-label"),
           }))
         ).catch(() => []),
-        message: "Could not locate FCC Links iframe/frame.",
+        message: "Could not find/click Daily Service navigation target.",
       };
     }
 
-    const clickedDailyService = await clickLinkByText(fccFrame, /Daily Service Wk|Vision IBPR|Daily Service/);
+    const clickedDailyService = true;
     if (!clickedDailyService) {
       return {
         ok: false,
