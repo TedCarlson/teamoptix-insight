@@ -12,3 +12,10 @@ coverage
 turbo
 snapshots/*.zip
 apps/web/.env.local
+
+# Automation runtime downloads
+.automation-downloads/
+apps/web/.automation-downloads/
+tmp/automation-downloads/
+*.xls
+*.xlsx

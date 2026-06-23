@@ -1,9 +1,10 @@
 import { mkdir } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { chromium, type Frame, type Page } from "playwright";
 
 const FEDEX_LOGIN_URL = "https://mybizaccount.fedex.com/my.policy";
-const DOWNLOAD_DIR = path.join(process.cwd(), ".automation-downloads");
+const DOWNLOAD_DIR = path.join(os.tmpdir(), "teamoptix-insight", "automation-downloads");
 
 async function clickSignInFromMyBiz(page: Page) {
   const candidates = [
