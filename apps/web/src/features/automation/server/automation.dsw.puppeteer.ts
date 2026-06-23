@@ -149,6 +149,34 @@ async function findFccLinksFrame(page: Page): Promise<Frame | null> {
   return null;
 }
 
+async function clickSelectorAnywhere(page: Page, selector: string) {
+  const pages = await page.browser().pages();
+
+  for (const candidatePage of pages) {
+    try {
+      const el = await candidatePage.$(selector);
+      if (el) {
+        await el.click();
+        return { clicked: true, source: "page_selector", url: candidatePage.url(), selector };
+      }
+    } catch {}
+  }
+
+  for (const candidatePage of pages) {
+    for (const frame of candidatePage.frames()) {
+      try {
+        const el = await frame.$(selector);
+        if (el) {
+          await el.click();
+          return { clicked: true, source: "frame_selector", url: frame.url(), selector };
+        }
+      } catch {}
+    }
+  }
+
+  return { clicked: false, selector };
+}
+
 async function clickExactTextAnywhere(page: Page, pattern: RegExp) {
   for (const frame of page.frames()) {
     const clicked = await frame.evaluate((source) => {
@@ -245,7 +273,7 @@ async function clickDailyServiceAnywhere(page: Page) {
     await sleep(8000);
   }
 
-  const dailyClick = await clickExactTextAnywhere(page, /Daily Service Wk|Daily Service|Vision IBPR/);
+  const dailyClick = await clickExactTextAnywhere(page, /Daily Service Wk\\s*&\\s*Vision IBPR|Daily Service Wk|Vision IBPR/);
   if (dailyClick.clicked) {
     return {
       clicked: true,
@@ -254,10 +282,21 @@ async function clickDailyServiceAnywhere(page: Page) {
     };
   }
 
+  const dswSelectorClick = await clickSelectorAnywhere(page, "a[id^='GF_FLUID_TL_WRK_GF_HYPERLINK1']");
+  if (dswSelectorClick.clicked) {
+    return {
+      clicked: true,
+      fccClick,
+      dailyClick,
+      dswSelectorClick,
+    };
+  }
+
   return {
     clicked: false,
     fccClick,
     dailyClick,
+    dswSelectorClick,
   };
 }
 
