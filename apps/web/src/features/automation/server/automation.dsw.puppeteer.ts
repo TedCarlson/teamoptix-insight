@@ -177,6 +177,54 @@ async function clickSelectorAnywhere(page: Page, selector: string) {
   return { clicked: false, selector };
 }
 
+async function clickExactTextByMouse(page: Page, pattern: RegExp) {
+  const source = pattern.source;
+
+  for (const candidatePage of await page.browser().pages()) {
+    const target = await candidatePage.evaluate((regexSource) => {
+      const regex = new RegExp(regexSource, "i");
+
+      const candidates = Array.from(document.querySelectorAll("a, button, div, span, input"))
+        .map((el) => {
+          const rect = (el as HTMLElement).getBoundingClientRect();
+          const text = [
+            el.textContent,
+            el.getAttribute("value"),
+            el.getAttribute("title"),
+            el.getAttribute("aria-label"),
+          ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+
+          return {
+            tag: el.tagName,
+            id: el.getAttribute("id"),
+            text,
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+            area: rect.width * rect.height,
+          };
+        })
+        .filter((row) =>
+          regex.test(row.text) &&
+          row.width > 2 &&
+          row.height > 2 &&
+          row.text.length <= 120
+        )
+        .sort((a, b) => a.area - b.area);
+
+      return candidates[0] ?? null;
+    }, source).catch(() => null);
+
+    if (target) {
+      await candidatePage.mouse.click(target.x + target.width / 2, target.y + target.height / 2);
+      return { clicked: true, source: "mouse_text", url: candidatePage.url(), target };
+    }
+  }
+
+  return { clicked: false, source: "mouse_text" };
+}
+
 async function clickExactTextAnywhere(page: Page, pattern: RegExp) {
   for (const frame of page.frames()) {
     const clicked = await frame.evaluate((source) => {
@@ -268,12 +316,12 @@ async function clickPeopleSoftTileByText(page: Page, pattern: RegExp) {
 }
 
 async function clickDailyServiceAnywhere(page: Page) {
-  const fccClick = await clickPeopleSoftTileByText(page, /FCC Links/);
+  const fccClick = await clickExactTextByMouse(page, /FCC Links/);
   if (fccClick.clicked) {
     await sleep(8000);
   }
 
-  const dailyClick = await clickExactTextAnywhere(page, /Daily Service Wk\\s*&\\s*Vision IBPR|Daily Service Wk|Vision IBPR/);
+  const dailyClick = await clickExactTextByMouse(page, /Daily Service Wk\\s*&\\s*Vision IBPR|Daily Service Wk|Vision IBPR/);
   if (dailyClick.clicked) {
     return {
       clicked: true,
