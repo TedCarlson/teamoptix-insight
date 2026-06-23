@@ -450,6 +450,12 @@ export async function discoverFedExNavigationPuppeteer(input: {
     await login(page, input.username, input.password);
 
     const dswPage = await browser.newPage();
+    const browserLogs: string[] = [];
+    const pageErrors: string[] = [];
+
+    dswPage.on("console", (msg) => browserLogs.push(`${msg.type()}: ${msg.text()}`));
+    dswPage.on("pageerror", (error) => pageErrors.push(error.message));
+
     await dswPage.goto(FEDEX_DSW_DIRECT_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
     await dswPage.waitForNetworkIdle({ idleTime: 1500, timeout: 60000 }).catch(() => undefined);
     await dswPage.waitForFunction(
@@ -480,6 +486,25 @@ export async function discoverFedExNavigationPuppeteer(input: {
         dswTitle: await dswPage.title().catch(() => ""),
         bodyPreview: dswBody.slice(0, 2500),
         htmlPreview: await dswPage.content().then((html) => html.slice(0, 2500)).catch(() => ""),
+        diagnostics: await dswPage.evaluate(() => ({
+          readyState: document.readyState,
+          bodyLength: document.body?.innerText?.length ?? null,
+          scriptCount: document.querySelectorAll("script").length,
+          assetCount: document.querySelectorAll("link, script, img").length,
+          images: Array.from(document.querySelectorAll("img")).slice(0, 80).map((img) => ({
+            id: img.id,
+            src: img.getAttribute("src"),
+            alt: img.getAttribute("alt"),
+            title: img.getAttribute("title"),
+          })),
+          scripts: Array.from(document.querySelectorAll("script")).slice(0, 80).map((s) => ({
+            id: s.id,
+            src: s.getAttribute("src"),
+            text: (s.textContent || "").slice(0, 240),
+          })),
+        })).catch((error) => ({ error: String(error) })),
+        browserLogs: browserLogs.slice(-50),
+        pageErrors: pageErrors.slice(-20),
         message: "Authenticated session opened direct DSW URL, but DSW worksheet was not detected.",
       };
     }
