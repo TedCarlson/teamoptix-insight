@@ -318,10 +318,27 @@ export async function discoverFedExNavigationPuppeteer(input: {
     }
 
     if (!dswPage) {
+      const pages = await browser.pages();
+
       return {
         ok: false,
         stage: "dsw_page",
         parentUrl: page.url(),
+        clickedNavigation: clickedAnywhere,
+        openPages: await Promise.all(
+          pages.map(async (candidate) => ({
+            url: candidate.url(),
+            title: await candidate.title().catch(() => ""),
+            bodyPreview: (await bodyText(candidate)).slice(0, 1200),
+            frames: await Promise.all(
+              candidate.frames().map(async (frame) => ({
+                name: frame.name(),
+                url: frame.url(),
+                textPreview: (await bodyText(frame)).slice(0, 600),
+              }))
+            ),
+          }))
+        ),
         message: "Daily Service link clicked, but DSW page was not detected.",
       };
     }
