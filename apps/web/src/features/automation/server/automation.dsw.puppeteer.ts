@@ -210,6 +210,28 @@ export async function discoverFedExNavigationPuppeteer(input: {
         ok: false,
         stage: "fcc_frame",
         parentUrl: page.url(),
+        parentTitle: await page.title().catch(() => ""),
+        bodyPreview: (await bodyText(page)).slice(0, 2500),
+        frames: await Promise.all(
+          page.frames().map(async (frame) => ({
+            name: frame.name(),
+            url: frame.url(),
+            textPreview: (await bodyText(frame)).slice(0, 500),
+          }))
+        ),
+        links: await page.evaluate(() =>
+          Array.from(document.querySelectorAll("a, button, input")).slice(0, 120).map((el) => ({
+            tag: el.tagName,
+            id: el.getAttribute("id"),
+            name: el.getAttribute("name"),
+            type: el.getAttribute("type"),
+            value: el.getAttribute("value"),
+            href: el.getAttribute("href"),
+            text: (el.textContent || "").trim().slice(0, 160),
+            title: el.getAttribute("title"),
+            ariaLabel: el.getAttribute("aria-label"),
+          }))
+        ).catch(() => []),
         message: "Could not locate FCC Links iframe/frame.",
       };
     }
