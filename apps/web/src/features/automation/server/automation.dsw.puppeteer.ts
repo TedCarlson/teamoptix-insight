@@ -5,6 +5,8 @@ import { saveFirstBrowserbaseDownloadZipEntry } from "./browserbase.downloads";
 const FEDEX_LOGIN_URL = "https://mybizaccount.fedex.com/my.policy";
 const FEDEX_DSW_DIRECT_URL =
   "https://mybizaccount.fedex.com/f5-w-68747470733a2f2f6d6762612d6473772e6170702e706161732e66656465782e636f6d$$/mgba/dsw";
+const FEDEX_DSW_RENDERED_URL =
+  "https://mybizaccount.fedex.com/f5-w-68747470733a2f2f6d6762612d6473772e6170702e706161732e66656465782e636f6d$$/mgba/f5-h-$$/f5-h-$$/mgba/dsw";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -456,7 +458,19 @@ export async function discoverFedExNavigationPuppeteer(input: {
     ).catch(() => undefined);
     await sleep(10000);
 
-    const dswBody = await bodyText(dswPage);
+    let dswBody = await bodyText(dswPage);
+
+    if (!/Daily Service Worksheet|Facility|Contract #|WA Name/i.test(dswBody)) {
+      await dswPage.goto(FEDEX_DSW_RENDERED_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
+      await dswPage.waitForNetworkIdle({ idleTime: 1500, timeout: 60000 }).catch(() => undefined);
+      await dswPage.waitForFunction(
+        () => document.body && document.body.innerText.trim().length > 100,
+        { timeout: 60000 }
+      ).catch(() => undefined);
+      await sleep(10000);
+      dswBody = await bodyText(dswPage);
+    }
+
     if (!/Daily Service Worksheet|Facility|Contract #|WA Name/i.test(dswBody)) {
       return {
         ok: false,
