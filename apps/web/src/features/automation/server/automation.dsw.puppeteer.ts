@@ -315,8 +315,50 @@ async function clickPeopleSoftTileByText(page: Page, pattern: RegExp) {
   return { clicked: false, reason: "no_frame_clicked" };
 }
 
+async function clickPeopleSoftGroupletActionByLabel(page: Page, pattern: RegExp) {
+  const source = pattern.source;
+
+  for (const candidatePage of await page.browser().pages()) {
+    const clicked = await candidatePage.evaluate((regexSource) => {
+      const regex = new RegExp(regexSource, "i");
+
+      const labels = Array.from(document.querySelectorAll("[id^='PTNUI_LAND_REC_GROUPLET_LBL$']"));
+      const label = labels.find((el) => regex.test((el.textContent || "").replace(/\s+/g, " ").trim()));
+
+      if (!label) return { clicked: false, reason: "label_not_found" };
+
+      const id = label.getAttribute("id") || "";
+      const index = id.split("$").pop();
+      if (!index) return { clicked: false, reason: "index_not_found", id };
+
+      const action =
+        document.getElementById(`PTNUI_LAND_REC_PTNUI_ACTION_LINK$${index}`) ||
+        document.getElementById(`PTNUI_LAND_REC_GROUPLET$${index}`) ||
+        label.closest("a, button, [role='button'], [onclick]");
+
+      if (!(action instanceof HTMLElement)) {
+        return { clicked: false, reason: "action_not_found", id, index };
+      }
+
+      action.click();
+
+      return {
+        clicked: true,
+        source: "grouplet_action",
+        labelId: id,
+        actionId: action.getAttribute("id"),
+        text: (label.textContent || "").replace(/\s+/g, " ").trim(),
+      };
+    }, source).catch((error) => ({ clicked: false, reason: String(error) }));
+
+    if (clicked.clicked) return { ...clicked, url: candidatePage.url() };
+  }
+
+  return { clicked: false, reason: "no_page_clicked" };
+}
+
 async function clickDailyServiceAnywhere(page: Page) {
-  const fccClick = await clickExactTextByMouse(page, /FCC Links/);
+  const fccClick = await clickPeopleSoftGroupletActionByLabel(page, /FCC Links/);
   if (fccClick.clicked) {
     await sleep(8000);
   }
