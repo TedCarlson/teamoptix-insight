@@ -454,7 +454,9 @@ export async function discoverFedExNavigationPuppeteer(input: {
     const pageErrors: string[] = [];
 
     dswPage.on("console", (msg) => browserLogs.push(`${msg.type()}: ${msg.text()}`));
-    dswPage.on("pageerror", (error) => pageErrors.push(error.message));
+    dswPage.on("pageerror", (error: unknown) =>
+      pageErrors.push(error instanceof Error ? error.message : String(error))
+    );
 
     await dswPage.goto(FEDEX_DSW_DIRECT_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
     await dswPage.waitForNetworkIdle({ idleTime: 1500, timeout: 60000 }).catch(() => undefined);
