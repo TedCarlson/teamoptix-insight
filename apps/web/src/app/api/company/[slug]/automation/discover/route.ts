@@ -56,7 +56,24 @@ export async function POST(
     const downloadMs = Date.now() - downloadStartedAt;
 
     if (!result.ok || !result.excelDownload?.savedPath) {
-      throw new Error("DSW automation did not produce a downloadable file.");
+      if (runId) {
+        await supabase.rpc("finish_operations_automation_run", {
+          p_run_id: runId,
+          p_status: "FAILED",
+          p_source_filename: null,
+          p_batch_id: null,
+          p_inserted_rows: null,
+          p_matched_rows: null,
+          p_unmatched_rows: null,
+          p_route_count: null,
+          p_summary_rows: null,
+          p_download_ms: downloadMs,
+          p_ingest_ms: null,
+          p_error_message: result.message ?? "DSW automation did not produce a downloadable file.",
+        });
+      }
+
+      return NextResponse.json(result, { status: 409 });
     }
 
     const downloadedFile = await readFile(result.excelDownload.savedPath);
