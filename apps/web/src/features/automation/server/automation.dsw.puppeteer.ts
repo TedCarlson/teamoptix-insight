@@ -449,6 +449,9 @@ export async function discoverFedExNavigationPuppeteer(input: {
 
     await login(page, input.username, input.password);
 
+    await clickSelectorAnywhere(page, "#PT_GSEARCH_BTN");
+    await sleep(3000);
+
     const searchBoxTarget = await page.evaluate(() => {
       const candidates = Array.from(document.querySelectorAll("input"))
         .map((el) => {
@@ -502,6 +505,29 @@ export async function discoverFedExNavigationPuppeteer(input: {
       dswSearch: {
         searchBoxTarget,
         dswResultClick,
+        searchProbe: await page.evaluate(() =>
+          Array.from(document.querySelectorAll("input, textarea, [contenteditable='true'], iframe, a, button, [role='searchbox'], [role='textbox']"))
+            .slice(0, 250)
+            .map((el) => {
+              const rect = (el as HTMLElement).getBoundingClientRect();
+              return {
+                tag: el.tagName,
+                id: el.getAttribute("id"),
+                name: el.getAttribute("name"),
+                type: el.getAttribute("type"),
+                role: el.getAttribute("role"),
+                placeholder: el.getAttribute("placeholder"),
+                text: (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 200),
+                value: (el as HTMLInputElement).value ?? null,
+                href: el.getAttribute("href"),
+                visible: rect.width > 2 && rect.height > 2,
+                x: rect.x,
+                y: rect.y,
+                width: rect.width,
+                height: rect.height,
+              };
+            })
+        ).catch((error) => [{ error: String(error) }]),
       },
       ok: false,
       stage: "browserbase_dsw_search_recon",
