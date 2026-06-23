@@ -449,21 +449,50 @@ export async function discoverFedExNavigationPuppeteer(input: {
 
     await login(page, input.username, input.password);
 
-    const dswPage = await browser.newPage();
-    const browserLogs: string[] = [];
-    const pageErrors: string[] = [];
+    const openStartedPages = await browser.pages();
 
-    dswPage.on("console", (msg) => browserLogs.push(`${msg.type()}: ${msg.text()}`));
-    dswPage.on("pageerror", (error: unknown) =>
-      pageErrors.push(error instanceof Error ? error.message : String(error))
-    );
+    const launchDsw = await page.evaluate(() => {
+      const anyWindow = window as unknown as Record<string, unknown>;
+      const anyDocument = document as unknown as Record<string, unknown>;
 
-    await dswPage.goto(FEDEX_DSW_DIRECT_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
+      const candidates = [
+        ["submitAction_win1", "win1"],
+        ["submitAction_win3", "win3"],
+        ["submitAction_win0", "win0"],
+      ] as const;
+
+      for (const [fnName, docName] of candidates) {
+        const fn = anyWindow[fnName];
+        const doc = anyDocument[docName];
+
+        if (typeof fn === "function" && doc) {
+          fn(doc, "GF_FLUID_TL_WRK_GF_HYPERLINK1$2");
+          return { ok: true, method: fnName, doc: docName, target: "GF_FLUID_TL_WRK_GF_HYPERLINK1$2" };
+        }
+      }
+
+      const link = Array.from(document.querySelectorAll("a")).find((a) =>
+        (a.getAttribute("href") || "").includes("GF_FLUID_TL_WRK_GF_HYPERLINK1$2") ||
+        /Daily Service Wk|Vision IBPR/i.test(a.textContent || "")
+      );
+
+      if (link instanceof HTMLElement) {
+        link.click();
+        return { ok: true, method: "link_click", id: link.id, text: (link.textContent || "").trim() };
+      }
+
+      return { ok: false, method: "not_found", bodyPreview: document.body?.innerText?.slice(0, 1800) ?? "" };
+    }).catch((error) => ({ ok: false, method: "evaluate_error", error: String(error) }));
+
+    await sleep(15000);
+
+    const pagesAfterLaunch = await browser.pages();
+    const dswPage =
+      (await findDswPage(browser, page)) ??
+      pagesAfterLaunch.find((candidate) => !openStartedPages.includes(candidate) && candidate !== page) ??
+      page;
+
     await dswPage.waitForNetworkIdle({ idleTime: 1500, timeout: 60000 }).catch(() => undefined);
-    await dswPage.waitForFunction(
-      () => document.body && document.body.innerText.trim().length > 100,
-      { timeout: 60000 }
-    ).catch(() => undefined);
     await sleep(10000);
 
     let dswBody = await bodyText(dswPage);
@@ -482,7 +511,7 @@ export async function discoverFedExNavigationPuppeteer(input: {
     if (!/Daily Service Worksheet|Facility|Contract #|WA Name/i.test(dswBody)) {
       return {
         ok: false,
-        stage: "dsw_direct_page",
+        stage: "dsw_peoplesoft_launch",
         parentUrl: page.url(),
         dswUrl: dswPage.url(),
         dswTitle: await dswPage.title().catch(() => ""),
@@ -507,7 +536,13 @@ export async function discoverFedExNavigationPuppeteer(input: {
         })).catch((error) => ({ error: String(error) })),
         browserLogs: browserLogs.slice(-50),
         pageErrors: pageErrors.slice(-20),
-        message: "Authenticated session opened direct DSW URL, but DSW worksheet was not detected.",
+        launchDsw,
+        openPages: await Promise.all((await browser.pages()).map(async (candidate) => ({
+          url: candidate.url(),
+          title: await candidate.title().catch(() => ""),
+          bodyPreview: (await bodyText(candidate)).slice(0, 1200),
+        }))),
+        message: "PeopleSoft DSW action was triggered, but DSW worksheet was not detected.",
       };
     }
 
