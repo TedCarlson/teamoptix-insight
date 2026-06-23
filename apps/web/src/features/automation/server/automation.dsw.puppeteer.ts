@@ -149,59 +149,71 @@ async function findFccLinksFrame(page: Page): Promise<Frame | null> {
   return null;
 }
 
-async function clickDailyServiceAnywhere(page: Page) {
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const frames = page.frames();
+async function clickExactTextAnywhere(page: Page, pattern: RegExp) {
+  for (const frame of page.frames()) {
+    const clicked = await frame.evaluate((source) => {
+      const regex = new RegExp(source, "i");
 
-    for (const frame of frames) {
-      const clicked = await frame.evaluate(() => {
-        const haystack = (el: Element) =>
-          [
-            el.textContent,
-            el.getAttribute("href"),
-            el.getAttribute("id"),
-            el.getAttribute("name"),
-            el.getAttribute("title"),
-            el.getAttribute("aria-label"),
-            el.getAttribute("value"),
-          ]
-            .filter(Boolean)
-            .join(" ")
-            .toLowerCase();
+      const candidates = Array.from(document.querySelectorAll("a, button, input[type='button'], input[type='submit'], [role='button']"));
 
-        const candidates = Array.from(document.querySelectorAll("a, button, input, div, span"));
-        const target = candidates.find((el) => {
-          const text = haystack(el);
-          return (
-            text.includes("daily service wk") ||
-            text.includes("daily service") ||
-            text.includes("vision ibpr") ||
-            text.includes("fedex customer connection") ||
-            text.includes("fcc")
-          );
-        });
+      const target = candidates.find((el) => {
+        const text = [
+          el.textContent,
+          el.getAttribute("value"),
+          el.getAttribute("title"),
+          el.getAttribute("aria-label"),
+          el.getAttribute("id"),
+          el.getAttribute("name"),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .replace(/\s+/g, " ")
+          .trim();
 
-        if (target instanceof HTMLElement) {
-          target.click();
-          return {
-            clicked: true,
-            tag: target.tagName,
-            id: target.getAttribute("id"),
-            text: (target.textContent || "").trim().slice(0, 160),
-            href: target.getAttribute("href"),
-          };
-        }
+        return regex.test(text);
+      });
 
-        return { clicked: false };
-      }).catch(() => ({ clicked: false }));
+      if (target instanceof HTMLElement) {
+        target.click();
+        return {
+          clicked: true,
+          tag: target.tagName,
+          id: target.getAttribute("id"),
+          name: target.getAttribute("name"),
+          text: (target.textContent || target.getAttribute("value") || "").trim().slice(0, 160),
+          href: target.getAttribute("href"),
+        };
+      }
 
-      if (clicked.clicked) return clicked;
-    }
+      return { clicked: false };
+    }, pattern.source).catch(() => ({ clicked: false }));
 
-    await sleep(2500);
+    if (clicked.clicked) return clicked;
   }
 
   return { clicked: false };
+}
+
+async function clickDailyServiceAnywhere(page: Page) {
+  const fccClick = await clickExactTextAnywhere(page, /^FCC Links$/);
+  if (fccClick.clicked) {
+    await sleep(5000);
+  }
+
+  const dailyClick = await clickExactTextAnywhere(page, /Daily Service Wk|Daily Service|Vision IBPR/);
+  if (dailyClick.clicked) {
+    return {
+      clicked: true,
+      fccClick,
+      dailyClick,
+    };
+  }
+
+  return {
+    clicked: false,
+    fccClick,
+    dailyClick,
+  };
 }
 
 async function findDswPage(browser: Browser, parentPage: Page) {
