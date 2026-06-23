@@ -30,17 +30,26 @@ export async function POST() {
     `);
 
     await page.click("#download");
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    await new Promise((resolve) => setTimeout(resolve, 5000));
     await browser.close().catch(() => undefined);
 
-    const downloads = await bb.sessions.downloads.list(session.id);
+    const response = await bb.sessions.downloads.list(session.id);
+    const contentType = response.headers.get("content-type");
+    const contentDisposition = response.headers.get("content-disposition");
+    const arrayBuffer = await response.arrayBuffer();
+    const byteLength = arrayBuffer.byteLength;
 
     return NextResponse.json({
       ok: true,
       provider: "BROWSERBASE",
       client: "puppeteer-core",
       session_id: session.id,
-      downloads,
+      download_zip: {
+        byteLength,
+        contentType,
+        contentDisposition,
+        hasBytes: byteLength > 0,
+      },
     });
   } catch (error) {
     return NextResponse.json(
