@@ -534,8 +534,6 @@ export async function discoverFedExNavigationPuppeteer(input: {
             text: (s.textContent || "").slice(0, 240),
           })),
         })).catch((error) => ({ error: String(error) })),
-        browserLogs: browserLogs.slice(-50),
-        pageErrors: pageErrors.slice(-20),
         launchDsw,
         openPages: await Promise.all((await browser.pages()).map(async (candidate) => ({
           url: candidate.url(),
