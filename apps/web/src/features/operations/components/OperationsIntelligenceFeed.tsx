@@ -224,12 +224,15 @@ export default function OperationsIntelligenceFeed(props: Props) {
   const dswStep = lastRefresh?.steps?.dsw;
   const fccStep = lastRefresh?.steps?.fcc;
 
-  const dswRows = dswStep?.result?.ingest?.inserted_row_count ?? latestDswRun?.inserted_rows;
-  const fccRows = fccStep?.result?.ingest?.inserted_row_count ?? latestFccRun?.inserted_rows;
-  const dswMatched = dswStep?.result?.ingest?.matched_route_count ?? latestDswRun?.matched_rows;
-  const fccMatched = fccStep?.result?.ingest?.matched_route_count ?? latestFccRun?.matched_rows;
-  const dswUnmatched = dswStep?.result?.ingest?.unmatched_route_count ?? latestDswRun?.unmatched_rows;
-  const fccUnmatched = fccStep?.result?.ingest?.unmatched_route_count ?? latestFccRun?.unmatched_rows;
+  const currentDswFailed = dswStep?.ok === false;
+  const currentFccFailed = fccStep?.ok === false;
+
+  const dswRows = currentDswFailed ? null : dswStep?.result?.ingest?.inserted_row_count ?? latestDswRun?.inserted_rows;
+  const fccRows = currentFccFailed ? null : fccStep?.result?.ingest?.inserted_row_count ?? latestFccRun?.inserted_rows;
+  const dswMatched = currentDswFailed ? null : dswStep?.result?.ingest?.matched_route_count ?? latestDswRun?.matched_rows;
+  const fccMatched = currentFccFailed ? null : fccStep?.result?.ingest?.matched_route_count ?? latestFccRun?.matched_rows;
+  const dswUnmatched = currentDswFailed ? null : dswStep?.result?.ingest?.unmatched_route_count ?? latestDswRun?.unmatched_rows;
+  const fccUnmatched = currentFccFailed ? null : fccStep?.result?.ingest?.unmatched_route_count ?? latestFccRun?.unmatched_rows;
 
   const hasEntries = Boolean(latestDswEntry || latestFccEntry || latestDswRun || latestFccRun);
 
@@ -349,31 +352,31 @@ export default function OperationsIntelligenceFeed(props: Props) {
                 <OutcomeColumn
                   title="DSW"
                   status={dswStep ? (dswStep.ok ? "SUCCESS" : "FAILED") : latestDswRun?.status}
-                  lastUpload={latestDswEntry?.timestamp ?? latestDswRun?.completed_at}
+                  lastUpload={currentDswFailed ? null : latestDswEntry?.timestamp ?? latestDswRun?.completed_at}
                   durationMs={dswStep?.duration_ms ?? latestDswRun?.duration_ms}
-                  downloadMs={latestDswRun?.download_ms}
-                  ingestMs={latestDswRun?.ingest_ms}
+                  downloadMs={currentDswFailed ? null : latestDswRun?.download_ms}
+                  ingestMs={currentDswFailed ? null : latestDswRun?.ingest_ms}
                   rows={dswRows}
-                  routeCount={dswStep?.result?.ingest?.row_classification?.route_count ?? latestDswRun?.route_count}
-                  summaryRows={dswStep?.result?.ingest?.inserted_summary_row_count ?? latestDswRun?.summary_rows}
+                  routeCount={currentDswFailed ? null : dswStep?.result?.ingest?.row_classification?.route_count ?? latestDswRun?.route_count}
+                  summaryRows={currentDswFailed ? null : dswStep?.result?.ingest?.inserted_summary_row_count ?? latestDswRun?.summary_rows}
                   matched={dswMatched}
                   unmatched={dswUnmatched}
-                  batchId={dswStep?.result?.ingest?.batch_id ?? latestDswRun?.batch_id}
+                  batchId={currentDswFailed ? null : dswStep?.result?.ingest?.batch_id ?? latestDswRun?.batch_id}
                   error={dswStep?.result?.error ?? dswStep?.result?.message ?? latestDswRun?.error_message}
                 />
                 <OutcomeColumn
                   title="FCC"
                   status={fccStep ? (fccStep.ok ? "SUCCESS" : "FAILED") : latestFccRun?.status}
-                  lastUpload={latestFccEntry?.timestamp ?? latestFccRun?.completed_at}
+                  lastUpload={currentFccFailed ? null : latestFccEntry?.timestamp ?? latestFccRun?.completed_at}
                   durationMs={fccStep?.duration_ms ?? latestFccRun?.duration_ms}
-                  downloadMs={latestFccRun?.download_ms}
-                  ingestMs={latestFccRun?.ingest_ms}
+                  downloadMs={currentFccFailed ? null : latestFccRun?.download_ms}
+                  ingestMs={currentFccFailed ? null : latestFccRun?.ingest_ms}
                   rows={fccRows}
-                  routeCount={fccStep?.result?.ingest?.row_classification?.route_count ?? latestFccRun?.route_count}
-                  summaryRows={fccStep?.result?.ingest?.inserted_summary_row_count ?? latestFccRun?.summary_rows}
+                  routeCount={currentFccFailed ? null : fccStep?.result?.ingest?.row_classification?.route_count ?? latestFccRun?.route_count}
+                  summaryRows={currentFccFailed ? null : fccStep?.result?.ingest?.inserted_summary_row_count ?? latestFccRun?.summary_rows}
                   matched={fccMatched}
                   unmatched={fccUnmatched}
-                  batchId={fccStep?.result?.ingest?.batch_id ?? latestFccRun?.batch_id}
+                  batchId={currentFccFailed ? null : fccStep?.result?.ingest?.batch_id ?? latestFccRun?.batch_id}
                   error={fccStep?.result?.error ?? fccStep?.result?.message ?? latestFccRun?.error_message}
                 />
               </div>
