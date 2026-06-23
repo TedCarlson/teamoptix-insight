@@ -1,7 +1,8 @@
 import { mkdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { chromium, type Frame, type Page } from "playwright";
+import { type Frame, type Page } from "playwright-core";
+import { createAutomationBrowser } from "./automation.browser";
 
 const FEDEX_LOGIN_URL = "https://mybizaccount.fedex.com/my.policy";
 const DOWNLOAD_DIR = path.join(os.tmpdir(), "teamoptix-insight", "automation-downloads");
@@ -165,7 +166,7 @@ export async function discoverFedExNavigation(input: {
 }) {
   await mkdir(DOWNLOAD_DIR, { recursive: true });
 
-  const browser = await chromium.launch({ headless: true });
+  const browser = await createAutomationBrowser();
 
   try {
     const context = await browser.newContext({ acceptDownloads: true });
@@ -310,7 +311,7 @@ export async function discoverFedExFccServiceAreaStatus(input: {
 }) {
   await mkdir(DOWNLOAD_DIR, { recursive: true });
 
-  const browser = await chromium.launch({ headless: true });
+  const browser = await createAutomationBrowser();
 
   try {
     const context = await browser.newContext({ acceptDownloads: true });

@@ -1,4 +1,5 @@
-import { chromium, type Page } from "playwright";
+import { type Page } from "playwright-core";
+import { createAutomationBrowser } from "./automation.browser";
 
 export type FedExVerificationResult = {
   ok: boolean;
@@ -85,7 +86,7 @@ export async function verifyFedExCredential(input: {
   username: string;
   password: string;
 }): Promise<FedExVerificationResult> {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await createAutomationBrowser();
 
   try {
     const context = await browser.newContext();
