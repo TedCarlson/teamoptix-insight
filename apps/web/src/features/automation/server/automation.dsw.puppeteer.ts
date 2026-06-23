@@ -449,7 +449,12 @@ export async function discoverFedExNavigationPuppeteer(input: {
 
     const dswPage = await browser.newPage();
     await dswPage.goto(FEDEX_DSW_DIRECT_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
-    await sleep(12000);
+    await dswPage.waitForNetworkIdle({ idleTime: 1500, timeout: 60000 }).catch(() => undefined);
+    await dswPage.waitForFunction(
+      () => document.body && document.body.innerText.trim().length > 100,
+      { timeout: 60000 }
+    ).catch(() => undefined);
+    await sleep(10000);
 
     const dswBody = await bodyText(dswPage);
     if (!/Daily Service Worksheet|Facility|Contract #|WA Name/i.test(dswBody)) {
@@ -460,6 +465,7 @@ export async function discoverFedExNavigationPuppeteer(input: {
         dswUrl: dswPage.url(),
         dswTitle: await dswPage.title().catch(() => ""),
         bodyPreview: dswBody.slice(0, 2500),
+        htmlPreview: await dswPage.content().then((html) => html.slice(0, 2500)).catch(() => ""),
         message: "Authenticated session opened direct DSW URL, but DSW worksheet was not detected.",
       };
     }
