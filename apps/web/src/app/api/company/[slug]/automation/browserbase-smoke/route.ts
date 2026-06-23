@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import Browserbase from "@browserbasehq/sdk";
-import { chromium } from "playwright-core";
+import puppeteer from "puppeteer-core";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -8,21 +8,22 @@ export const maxDuration = 300;
 export async function POST() {
   try {
     const apiKey = process.env.BROWSERBASE_API_KEY;
+    const projectId = process.env.BROWSERBASE_PROJECT_ID;
 
     if (!apiKey) {
-      return NextResponse.json(
-        { ok: false, error: "Missing BROWSERBASE_API_KEY." },
-        { status: 500 }
-      );
+      return NextResponse.json({ ok: false, error: "Missing BROWSERBASE_API_KEY." }, { status: 500 });
     }
 
     const bb = new Browserbase({ apiKey });
-    const session = await bb.sessions.create();
+    const session = await bb.sessions.create({
+      ...(projectId ? { projectId } : {}),
+    });
 
-    const browser = await chromium.connectOverCDP(session.connectUrl);
-    const context = browser.contexts()[0] ?? await browser.newContext();
-    const page = context.pages()[0] ?? await context.newPage();
+    const browser = await puppeteer.connect({
+      browserWSEndpoint: session.connectUrl,
+    });
 
+    const page = await browser.newPage();
     await page.goto("https://example.com", { waitUntil: "domcontentloaded" });
 
     const title = await page.title();
@@ -33,15 +34,13 @@ export async function POST() {
     return NextResponse.json({
       ok: true,
       provider: "BROWSERBASE",
+      client: "puppeteer-core",
       session_id: session.id,
       title,
     });
   } catch (error) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: error instanceof Error ? error.message : "Browserbase smoke failed.",
-      },
+      { ok: false, error: error instanceof Error ? error.message : "Browserbase smoke failed." },
       { status: 500 }
     );
   }
