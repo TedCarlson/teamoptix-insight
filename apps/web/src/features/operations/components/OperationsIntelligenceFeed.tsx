@@ -38,7 +38,18 @@ type RefreshStep = {
   ok: boolean;
   status: number;
   duration_ms: number;
-  result?: any;
+  result?: {
+    ingest?: {
+      batch_id?: string | null;
+      inserted_row_count?: number | null;
+      matched_route_count?: number | null;
+      unmatched_route_count?: number | null;
+      row_classification?: { route_count?: number | null } | null;
+      inserted_summary_row_count?: number | null;
+    };
+    error?: string;
+    message?: string;
+  };
 };
 
 type RefreshResult = {
@@ -59,7 +70,7 @@ type Props = {
   title?: string;
 };
 
-function formatTime(value: string | null) {
+function formatTime(value: string | null | undefined) {
   if (!value) return "—";
   const normalized = value.includes("UTC") ? value.replace(" UTC", "Z") : value;
   const date = new Date(normalized);
@@ -73,86 +84,67 @@ function formatDuration(ms: number | null | undefined) {
   return `${Math.round(ms / 1000)}s`;
 }
 
+function shortBatch(value: string | null | undefined) {
+  return value ? value.slice(0, 8) : "—";
+}
+
 function SourceSummary(props: {
   title: string;
-  updatedAt: string | null;
-  rows?: number | null;
-  matched?: number | null;
-  unmatched?: number | null;
+  updatedAt: string | null | undefined;
 }) {
   return (
     <div style={sourceBox}>
       <strong style={sourceTitle}>{props.title}</strong>
-      <div style={summaryLine}>
-        <span style={summaryLabel}>Last Upload</span>
-        <strong>{formatTime(props.updatedAt)}</strong>
-      </div>
-      <div style={summaryLine}>
-        <span style={summaryLabel}>Rows</span>
-        <strong>{props.rows ?? "—"}</strong>
-      </div>
-      <div style={summaryLine}>
-        <span style={summaryLabel}>Matched</span>
-        <strong>
-          {props.matched ?? "—"} / {props.unmatched ?? "—"}
-        </strong>
-      </div>
+      <strong style={{ color: "#334155", fontSize: 12 }}>{formatTime(props.updatedAt)}</strong>
     </div>
   );
 }
 
-function RuntimeColumn(props: {
+function OutcomeColumn(props: {
   title: string;
-  status?: string;
-  totalMs?: number | null;
+  status?: string | null;
+  lastUpload?: string | null;
+  durationMs?: number | null;
+  downloadMs?: number | null;
+  ingestMs?: number | null;
   rows?: number | null;
+  routeCount?: number | null;
+  summaryRows?: number | null;
   matched?: number | null;
   unmatched?: number | null;
-  steps: Array<{ label: string; ms?: number | null; status?: "done" | "active" | "pending" | "failed" }>;
+  batchId?: string | null;
+  error?: string | null;
 }) {
+  const failed = props.status === "FAILED";
+
   return (
     <div style={sourceBox}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
         <strong style={sourceTitle}>{props.title}</strong>
-        <span style={{ fontSize: 12, fontWeight: 900, color: props.status === "FAILED" ? "#991b1b" : "#166534" }}>
+        <span style={{ fontSize: 12, fontWeight: 950, color: failed ? "#991b1b" : "#166534" }}>
           {props.status ?? "—"}
         </span>
       </div>
 
-      <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
-        {props.steps.map((step) => (
-          <div key={step.label} style={runtimeLine}>
-            <span>
-              {step.status === "failed" ? "✕" : step.status === "active" ? "⟳" : step.status === "pending" ? "·" : "✓"}{" "}
-              {step.label}
-            </span>
-            <strong>{formatDuration(step.ms)}</strong>
-          </div>
-        ))}
+      <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
+        <div style={summaryLine}><span style={summaryLabel}>Last Upload</span><strong>{formatTime(props.lastUpload)}</strong></div>
+        <div style={summaryLine}><span style={summaryLabel}>Duration</span><strong>{formatDuration(props.durationMs)}</strong></div>
+        <div style={summaryLine}><span style={summaryLabel}>Download</span><strong>{formatDuration(props.downloadMs)}</strong></div>
+        <div style={summaryLine}><span style={summaryLabel}>Import</span><strong>{formatDuration(props.ingestMs)}</strong></div>
+        <div style={summaryLine}><span style={summaryLabel}>Rows</span><strong>{props.rows ?? "—"}</strong></div>
+        <div style={summaryLine}><span style={summaryLabel}>Routes</span><strong>{props.routeCount ?? "—"}</strong></div>
+        <div style={summaryLine}><span style={summaryLabel}>Summary</span><strong>{props.summaryRows ?? "—"}</strong></div>
+        <div style={summaryLine}><span style={summaryLabel}>Matched</span><strong>{props.matched ?? "—"} / {props.unmatched ?? "—"}</strong></div>
+        <div style={summaryLine}><span style={summaryLabel}>Batch</span><strong>{shortBatch(props.batchId)}</strong></div>
       </div>
 
-      <div style={{ borderTop: "1px solid #e6edf5", marginTop: 10, paddingTop: 8, display: "grid", gap: 4 }}>
-        <div style={runtimeLine}>
-          <span>Total</span>
-          <strong>{formatDuration(props.totalMs)}</strong>
-        </div>
-        <div style={runtimeLine}>
-          <span>Rows</span>
-          <strong>{props.rows ?? "—"}</strong>
-        </div>
-        <div style={runtimeLine}>
-          <span>Matched</span>
-          <strong>
-            {props.matched ?? "—"} / {props.unmatched ?? "—"}
-          </strong>
-        </div>
-      </div>
+      {props.error ? <p style={errorText}>{props.error}</p> : null}
     </div>
   );
 }
 
 export default function OperationsIntelligenceFeed(props: Props) {
-  const { slug, serviceDate, surface, frozen = false, title = "Operations Data" } = props;
+  const { slug, serviceDate, surface, frozen = false, title = "Operations Intelligence" } = props;
   const [sources, setSources] = useState<IntelligenceSource[]>([]);
   const [runs, setRuns] = useState<AutomationRun[]>([]);
   const [overlayOpen, setOverlayOpen] = useState(false);
@@ -218,11 +210,6 @@ export default function OperationsIntelligenceFeed(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frozen, serviceDate, slug, surface]);
 
-  const hasEntries = useMemo(
-    () => sources.some((source) => source.entries.length > 0),
-    [sources]
-  );
-
   const sourceByName = useMemo(() => {
     const map = new Map<string, IntelligenceSource>();
     for (const source of sources) map.set(source.source.toUpperCase(), source);
@@ -233,6 +220,18 @@ export default function OperationsIntelligenceFeed(props: Props) {
   const latestFccRun = runs.find((run) => run.automation_type === "FCC") ?? null;
   const latestDswEntry = sourceByName.get("DSW")?.entries?.[0] ?? null;
   const latestFccEntry = sourceByName.get("FCC")?.entries?.[0] ?? null;
+
+  const dswStep = lastRefresh?.steps?.dsw;
+  const fccStep = lastRefresh?.steps?.fcc;
+
+  const dswRows = dswStep?.result?.ingest?.inserted_row_count ?? latestDswRun?.inserted_rows;
+  const fccRows = fccStep?.result?.ingest?.inserted_row_count ?? latestFccRun?.inserted_rows;
+  const dswMatched = dswStep?.result?.ingest?.matched_route_count ?? latestDswRun?.matched_rows;
+  const fccMatched = fccStep?.result?.ingest?.matched_route_count ?? latestFccRun?.matched_rows;
+  const dswUnmatched = dswStep?.result?.ingest?.unmatched_route_count ?? latestDswRun?.unmatched_rows;
+  const fccUnmatched = fccStep?.result?.ingest?.unmatched_route_count ?? latestFccRun?.unmatched_rows;
+
+  const hasEntries = Boolean(latestDswEntry || latestFccEntry || latestDswRun || latestFccRun);
 
   async function updateOpsNow() {
     try {
@@ -260,9 +259,6 @@ export default function OperationsIntelligenceFeed(props: Props) {
     }
   }
 
-  const dswRuntime = lastRefresh?.steps?.dsw;
-  const fccRuntime = lastRefresh?.steps?.fcc;
-
   return (
     <section style={card}>
       <div style={{ display: "grid", gap: 10 }}>
@@ -283,7 +279,7 @@ export default function OperationsIntelligenceFeed(props: Props) {
               void loadRuns();
               setOverlayOpen(true);
             }}
-            style={{ minHeight: 36, padding: "0 12px", fontSize: 12, width: "100%" }}
+            style={{ minHeight: 30, padding: "0 12px", fontSize: 12, justifySelf: "start" }}
           >
             Update Ops
           </button>
@@ -299,19 +295,17 @@ export default function OperationsIntelligenceFeed(props: Props) {
           }}
           style={feedSummaryButton}
         >
+          <div style={summaryHeader}>
+            <span>Report</span>
+            <span>Last Update</span>
+          </div>
           <SourceSummary
             title="DSW"
-            updatedAt={latestDswEntry?.timestamp ?? null}
-            rows={latestDswRun?.inserted_rows}
-            matched={latestDswRun?.matched_rows}
-            unmatched={latestDswRun?.unmatched_rows}
+            updatedAt={latestDswEntry?.timestamp ?? latestDswRun?.completed_at}
           />
           <SourceSummary
             title="FCC"
-            updatedAt={latestFccEntry?.timestamp ?? null}
-            rows={latestFccRun?.inserted_rows}
-            matched={latestFccRun?.matched_rows}
-            unmatched={latestFccRun?.unmatched_rows}
+            updatedAt={latestFccEntry?.timestamp ?? latestFccRun?.completed_at}
           />
         </button>
       ) : null}
@@ -345,65 +339,42 @@ export default function OperationsIntelligenceFeed(props: Props) {
 
             <section style={sectionBlock}>
               <div>
-                <p className="eyebrow" style={{ margin: 0 }}>Runtime</p>
-                <h3 className="app-card__title" style={{ fontSize: 16, margin: "2px 0 0" }}>Update Ops</h3>
+                <p className="eyebrow" style={{ margin: 0 }}>Outcome</p>
+                <h3 className="app-card__title" style={{ fontSize: 16, margin: "2px 0 0" }}>
+                  Latest automation result
+                </h3>
               </div>
 
               <div style={twoCol}>
-                <RuntimeColumn
+                <OutcomeColumn
                   title="DSW"
-                  status={dswRuntime ? (dswRuntime.ok ? "SUCCESS" : "FAILED") : latestDswRun?.status}
-                  totalMs={dswRuntime?.duration_ms ?? latestDswRun?.duration_ms}
-                  rows={dswRuntime?.result?.ingest?.inserted_row_count ?? latestDswRun?.inserted_rows}
-                  matched={dswRuntime?.result?.ingest?.matched_route_count ?? latestDswRun?.matched_rows}
-                  unmatched={dswRuntime?.result?.ingest?.unmatched_route_count ?? latestDswRun?.unmatched_rows}
-                  steps={[
-                    { label: "Login", status: "done" },
-                    { label: "Download", ms: latestDswRun?.download_ms, status: "done" },
-                    { label: "Import", ms: latestDswRun?.ingest_ms, status: "done" },
-                    { label: "Payroll", status: "done" },
-                    { label: "Complete", status: dswRuntime?.ok === false ? "failed" : "done" },
-                  ]}
+                  status={dswStep ? (dswStep.ok ? "SUCCESS" : "FAILED") : latestDswRun?.status}
+                  lastUpload={latestDswEntry?.timestamp ?? latestDswRun?.completed_at}
+                  durationMs={dswStep?.duration_ms ?? latestDswRun?.duration_ms}
+                  downloadMs={latestDswRun?.download_ms}
+                  ingestMs={latestDswRun?.ingest_ms}
+                  rows={dswRows}
+                  routeCount={dswStep?.result?.ingest?.row_classification?.route_count ?? latestDswRun?.route_count}
+                  summaryRows={dswStep?.result?.ingest?.inserted_summary_row_count ?? latestDswRun?.summary_rows}
+                  matched={dswMatched}
+                  unmatched={dswUnmatched}
+                  batchId={dswStep?.result?.ingest?.batch_id ?? latestDswRun?.batch_id}
+                  error={dswStep?.result?.error ?? dswStep?.result?.message ?? latestDswRun?.error_message}
                 />
-
-                <RuntimeColumn
+                <OutcomeColumn
                   title="FCC"
-                  status={fccRuntime ? (fccRuntime.ok ? "SUCCESS" : "FAILED") : latestFccRun?.status}
-                  totalMs={fccRuntime?.duration_ms ?? latestFccRun?.duration_ms}
-                  rows={fccRuntime?.result?.ingest?.inserted_row_count ?? latestFccRun?.inserted_rows}
-                  matched={fccRuntime?.result?.ingest?.matched_route_count ?? latestFccRun?.matched_rows}
-                  unmatched={fccRuntime?.result?.ingest?.unmatched_route_count ?? latestFccRun?.unmatched_rows}
-                  steps={[
-                    { label: "Login", status: "done" },
-                    { label: "Navigate", status: "done" },
-                    { label: "Search", status: "done" },
-                    { label: "Download", ms: latestFccRun?.download_ms, status: "done" },
-                    { label: "Import", ms: latestFccRun?.ingest_ms, status: "done" },
-                  ]}
-                />
-              </div>
-            </section>
-
-            <section style={sectionBlock}>
-              <div>
-                <p className="eyebrow" style={{ margin: 0 }}>Ops Updated</p>
-                <h3 className="app-card__title" style={{ fontSize: 16, margin: "2px 0 0" }}>Last upload</h3>
-              </div>
-
-              <div style={twoCol}>
-                <SourceSummary
-                  title="DSW"
-                  updatedAt={latestDswEntry?.timestamp ?? latestDswRun?.completed_at ?? null}
-                  rows={latestDswRun?.inserted_rows}
-                  matched={latestDswRun?.matched_rows}
-                  unmatched={latestDswRun?.unmatched_rows}
-                />
-                <SourceSummary
-                  title="FCC"
-                  updatedAt={latestFccEntry?.timestamp ?? latestFccRun?.completed_at ?? null}
-                  rows={latestFccRun?.inserted_rows}
-                  matched={latestFccRun?.matched_rows}
-                  unmatched={latestFccRun?.unmatched_rows}
+                  status={fccStep ? (fccStep.ok ? "SUCCESS" : "FAILED") : latestFccRun?.status}
+                  lastUpload={latestFccEntry?.timestamp ?? latestFccRun?.completed_at}
+                  durationMs={fccStep?.duration_ms ?? latestFccRun?.duration_ms}
+                  downloadMs={latestFccRun?.download_ms}
+                  ingestMs={latestFccRun?.ingest_ms}
+                  rows={fccRows}
+                  routeCount={fccStep?.result?.ingest?.row_classification?.route_count ?? latestFccRun?.route_count}
+                  summaryRows={fccStep?.result?.ingest?.inserted_summary_row_count ?? latestFccRun?.summary_rows}
+                  matched={fccMatched}
+                  unmatched={fccUnmatched}
+                  batchId={fccStep?.result?.ingest?.batch_id ?? latestFccRun?.batch_id}
+                  error={fccStep?.result?.error ?? fccStep?.result?.message ?? latestFccRun?.error_message}
                 />
               </div>
             </section>
@@ -436,19 +407,13 @@ export default function OperationsIntelligenceFeed(props: Props) {
                         <td style={td}>{formatDuration(run.duration_ms)}</td>
                         <td style={td}>{run.inserted_rows ?? "—"}</td>
                         <td style={td}>{run.matched_rows ?? "—"} / {run.unmatched_rows ?? "—"}</td>
-                        <td style={td}>{run.batch_id ? run.batch_id.slice(0, 8) : "—"}</td>
+                        <td style={td}>{shortBatch(run.batch_id)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             </section>
-
-            {latestDswRun?.status !== "SUCCESS" || latestFccRun?.status !== "SUCCESS" ? (
-              runs.find((run) => run.error_message) ? (
-                <p style={errorText}>{runs.find((run) => run.error_message)?.error_message}</p>
-              ) : null
-            ) : null}
           </section>
         </div>
       ) : null}
@@ -460,36 +425,49 @@ const card: React.CSSProperties = {
   border: "1px solid #e6edf5",
   borderRadius: 14,
   background: "#fff",
-  padding: 12,
+  padding: 10,
   display: "grid",
-  gap: 10,
+  gap: 8,
 };
 
 const feedSummaryButton: React.CSSProperties = {
   border: "1px solid #e6edf5",
   background: "#f8fafc",
   borderRadius: 12,
-  padding: 10,
+  padding: "8px 10px",
   display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: 10,
+  gap: 4,
   cursor: "pointer",
   textAlign: "left",
 };
 
 const sourceBox: React.CSSProperties = {
-  border: "1px solid #e6edf5",
-  borderRadius: 12,
-  padding: 10,
-  background: "#fff",
-  display: "grid",
-  gap: 8,
+  border: "0",
+  borderRadius: 10,
+  padding: "3px 2px",
+  background: "transparent",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 10,
 };
 
 const sourceTitle: React.CSSProperties = {
   color: "#0f172a",
-  fontSize: 13,
+  fontSize: 12,
   letterSpacing: "0.06em",
+};
+
+const summaryHeader: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 10,
+  color: "#64748b",
+  fontSize: 10,
+  fontWeight: 900,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+  padding: "0 2px 2px",
 };
 
 const summaryLine: React.CSSProperties = {
@@ -497,22 +475,13 @@ const summaryLine: React.CSSProperties = {
   justifyContent: "space-between",
   gap: 10,
   color: "#334155",
-  fontSize: 12,
-  fontWeight: 850,
+  fontSize: 11,
+  fontWeight: 800,
 };
 
 const summaryLabel: React.CSSProperties = {
   color: "#64748b",
   fontWeight: 800,
-};
-
-const runtimeLine: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: 10,
-  color: "#334155",
-  fontSize: 12,
-  fontWeight: 850,
 };
 
 const twoCol: React.CSSProperties = {

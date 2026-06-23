@@ -71,7 +71,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
     if (surface === "dispatch") {
       const priorDate = addDaysIso(serviceDate, -1);
 
-      const [dro, dsw] = await Promise.all([
+      const [dro, dsw, fcc] = await Promise.all([
         fetchBatches(
           supabase,
           company.id,
@@ -83,6 +83,13 @@ export async function GET(req: NextRequest, context: RouteContext) {
           supabase,
           company.id,
           "DSW",
+          [serviceDate],
+          1
+        ),
+        fetchBatches(
+          supabase,
+          company.id,
+          "FCC",
           [serviceDate],
           1
         ),
@@ -118,6 +125,16 @@ export async function GET(req: NextRequest, context: RouteContext) {
           {
             source: "DSW",
             entries: (dsw.data ?? []).map((row: any) => ({
+              id: row.id,
+              timestamp: entryTime(row),
+              label: "Latest Upload",
+              service_date: row.service_date,
+              status: row.status,
+            })),
+          },
+          {
+            source: "FCC",
+            entries: (fcc.data ?? []).map((row: any) => ({
               id: row.id,
               timestamp: entryTime(row),
               label: "Latest Upload",
