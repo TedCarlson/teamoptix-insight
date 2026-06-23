@@ -449,6 +449,60 @@ export async function discoverFedExNavigationPuppeteer(input: {
 
     await login(page, input.username, input.password);
 
+    const reconPages = await browser.pages();
+
+    return {
+      ok: false,
+      stage: "browserbase_homepage_recon",
+      browserbaseSessionId: session.id,
+      activePage: {
+        url: page.url(),
+        title: await page.title().catch(() => ""),
+        bodyPreview: (await bodyText(page)).slice(0, 4000),
+        anchors: await page.evaluate(() =>
+          Array.from(document.querySelectorAll("a")).slice(0, 400).map((a) => ({
+            id: a.id,
+            text: (a.textContent || "").replace(/\s+/g, " ").trim().slice(0, 240),
+            href: a.getAttribute("href"),
+            onclick: a.getAttribute("onclick"),
+            title: a.getAttribute("title"),
+            ariaLabel: a.getAttribute("aria-label"),
+          }))
+        ).catch((error) => [{ error: String(error) }]),
+        buttons: await page.evaluate(() =>
+          Array.from(document.querySelectorAll("button, input, [role='button']")).slice(0, 250).map((el) => ({
+            tag: el.tagName,
+            id: el.getAttribute("id"),
+            name: el.getAttribute("name"),
+            type: el.getAttribute("type"),
+            value: el.getAttribute("value"),
+            text: (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 200),
+            title: el.getAttribute("title"),
+            ariaLabel: el.getAttribute("aria-label"),
+          }))
+        ).catch((error) => [{ error: String(error) }]),
+        frames: await Promise.all(page.frames().map(async (frame) => ({
+          name: frame.name(),
+          url: frame.url(),
+          bodyPreview: (await bodyText(frame)).slice(0, 2000),
+          anchors: await frame.evaluate(() =>
+            Array.from(document.querySelectorAll("a")).slice(0, 250).map((a) => ({
+              id: a.id,
+              text: (a.textContent || "").replace(/\s+/g, " ").trim().slice(0, 220),
+              href: a.getAttribute("href"),
+              onclick: a.getAttribute("onclick"),
+            }))
+          ).catch((error) => [{ error: String(error) }]),
+        }))),
+      },
+      openPages: await Promise.all(reconPages.map(async (candidate) => ({
+        url: candidate.url(),
+        title: await candidate.title().catch(() => ""),
+        bodyPreview: (await bodyText(candidate)).slice(0, 1200),
+      }))),
+      message: "Recon only: Browserbase homepage state after login. No clicks performed.",
+    };
+
     const openStartedPages = await browser.pages();
 
     const launchDsw = await page.evaluate(() => {
