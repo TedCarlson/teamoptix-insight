@@ -3,6 +3,8 @@ import puppeteer, { type Browser, type Frame, type Page } from "puppeteer-core";
 import { saveFirstBrowserbaseDownloadZipEntry } from "./browserbase.downloads";
 
 const FEDEX_LOGIN_URL = "https://mybizaccount.fedex.com/my.policy";
+const FEDEX_DSW_DIRECT_URL =
+  "https://mybizaccount.fedex.com/f5-w-68747470733a2f2f6d6762612d6473772e6170702e706161732e66656465782e636f6d$$/mgba/dsw";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -445,67 +447,20 @@ export async function discoverFedExNavigationPuppeteer(input: {
 
     await login(page, input.username, input.password);
 
-    const fccFrame = await findFccLinksFrame(page);
-    const clickedFromFrame = fccFrame
-      ? await clickLinkByText(fccFrame, /Daily Service Wk|Vision IBPR|Daily Service/)
-      : false;
-
-    const clickedAnywhere = clickedFromFrame ? { clicked: true, source: "fcc_frame" } : await clickDailyServiceAnywhere(page);
-
-    if (!clickedAnywhere.clicked) {
-      return {
-        ok: false,
-        stage: "daily_service_navigation",
-        parentUrl: page.url(),
-        clickedNavigation: clickedAnywhere,
-        bodyPreview: (await bodyText(page)).slice(0, 1800),
-        message: "Could not find/click Daily Service navigation target.",
-      };
-    }
-
-    const clickedDailyService = true;
-    if (!clickedDailyService) {
-      return {
-        ok: false,
-        stage: "daily_service_link",
-        parentUrl: page.url(),
-        frameUrl: fccFrame?.url() ?? null,
-        frameTextPreview: fccFrame ? (await bodyText(fccFrame)).slice(0, 1500) : null,
-        message: "FCC Links frame found, but Daily Service Wk & Vision IBPR link was not found.",
-      };
-    }
-
+    const dswPage = await browser.newPage();
+    await dswPage.goto(FEDEX_DSW_DIRECT_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
     await sleep(12000);
 
-    let dswPage = await findDswPage(browser, page);
-    if (!dswPage) {
-      await sleep(8000);
-      dswPage = await findDswPage(browser, page);
-    }
-
-    if (!dswPage) {
-      const pages = await browser.pages();
-
+    const dswBody = await bodyText(dswPage);
+    if (!/Daily Service Worksheet|Facility|Contract #|WA Name/i.test(dswBody)) {
       return {
         ok: false,
-        stage: "dsw_page",
+        stage: "dsw_direct_page",
         parentUrl: page.url(),
-        clickedNavigation: clickedAnywhere,
-        openPages: await Promise.all(
-          pages.map(async (candidate) => ({
-            url: candidate.url(),
-            title: await candidate.title().catch(() => ""),
-            bodyPreview: (await bodyText(candidate)).slice(0, 1200),
-            frames: await Promise.all(
-              candidate.frames().map(async (frame) => ({
-                name: frame.name(),
-                url: frame.url(),
-                textPreview: (await bodyText(frame)).slice(0, 600),
-              }))
-            ),
-          }))
-        ),
-        message: "Daily Service link clicked, but DSW page was not detected.",
+        dswUrl: dswPage.url(),
+        dswTitle: await dswPage.title().catch(() => ""),
+        bodyPreview: dswBody.slice(0, 2500),
+        message: "Authenticated session opened direct DSW URL, but DSW worksheet was not detected.",
       };
     }
 
