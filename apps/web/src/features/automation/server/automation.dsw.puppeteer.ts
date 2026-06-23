@@ -303,8 +303,8 @@ export async function discoverFedExNavigationPuppeteer(input: {
         ok: false,
         stage: "daily_service_link",
         parentUrl: page.url(),
-        frameUrl: fccFrame.url(),
-        frameTextPreview: (await bodyText(fccFrame)).slice(0, 1500),
+        frameUrl: fccFrame?.url() ?? null,
+        frameTextPreview: fccFrame ? (await bodyText(fccFrame)).slice(0, 1500) : null,
         message: "FCC Links frame found, but Daily Service Wk & Vision IBPR link was not found.",
       };
     }
