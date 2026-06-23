@@ -449,15 +449,62 @@ export async function discoverFedExNavigationPuppeteer(input: {
 
     await login(page, input.username, input.password);
 
-    const fccOpen = await clickPeopleSoftGroupletActionByLabel(page, /FCC Links/);
-    await sleep(10000);
+    const searchBoxTarget = await page.evaluate(() => {
+      const candidates = Array.from(document.querySelectorAll("input"))
+        .map((el) => {
+          const rect = el.getBoundingClientRect();
+          return {
+            id: el.id,
+            name: el.name,
+            type: el.type,
+            placeholder: el.getAttribute("placeholder"),
+            value: el.value,
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+            visible: rect.width > 20 && rect.height > 10,
+          };
+        })
+        .filter((row) =>
+          row.visible &&
+          (
+            /search/i.test(row.placeholder || "") ||
+            /search/i.test(row.id || "") ||
+            /search/i.test(row.name || "") ||
+            row.type === "search" ||
+            row.type === "text"
+          )
+        )
+        .sort((a, b) => b.width - a.width);
+
+      return candidates[0] ?? null;
+    });
+
+    if (searchBoxTarget) {
+      await page.mouse.click(
+        searchBoxTarget.x + searchBoxTarget.width / 2,
+        searchBoxTarget.y + searchBoxTarget.height / 2
+      );
+      await page.keyboard.down("Meta").catch(() => undefined);
+      await page.keyboard.press("A").catch(() => undefined);
+      await page.keyboard.up("Meta").catch(() => undefined);
+      await page.keyboard.type("Daily Service Wk & Vision IBPR", { delay: 25 });
+      await sleep(7000);
+    }
+
+    const dswResultClick = await clickExactTextByMouse(page, /Daily Service Wk\s*&\s*Vision IBPR|Vision IBPR/);
+    await sleep(15000);
 
     const reconPages = await browser.pages();
 
     return {
-      fccOpen,
+      dswSearch: {
+        searchBoxTarget,
+        dswResultClick,
+      },
       ok: false,
-      stage: "browserbase_homepage_recon",
+      stage: "browserbase_dsw_search_recon",
       browserbaseSessionId: session.id,
       activePage: {
         url: page.url(),
@@ -504,7 +551,7 @@ export async function discoverFedExNavigationPuppeteer(input: {
         title: await candidate.title().catch(() => ""),
         bodyPreview: (await bodyText(candidate)).slice(0, 1200),
       }))),
-      message: "Recon only: Browserbase homepage state after login. No clicks performed.",
+      message: "Recon only: searched global nav for exact DSW trigger and clicked the matching result.",
     };
 
     const openStartedPages = await browser.pages();
