@@ -194,10 +194,55 @@ async function clickExactTextAnywhere(page: Page, pattern: RegExp) {
   return { clicked: false };
 }
 
+async function clickPeopleSoftTileByText(page: Page, pattern: RegExp) {
+  for (const frame of page.frames()) {
+    const clicked = await frame.evaluate((source) => {
+      const regex = new RegExp(source, "i");
+      const all = Array.from(document.querySelectorAll("a, div, span, td, li"));
+
+      const textNode = all.find((el) => regex.test((el.textContent || "").replace(/\s+/g, " ").trim()));
+      if (!textNode) return { clicked: false, reason: "tile_text_not_found" };
+
+      const container =
+        textNode.closest("[id*='PTNUI_LAND_REC']") ||
+        textNode.closest("li") ||
+        textNode.closest("td") ||
+        textNode.parentElement;
+
+      const action =
+        container?.querySelector("a[id*='PTNUI_LAND_REC_PTNUI_ACTION_LINK']") ||
+        container?.querySelector("a[href*='submitAction_win0']") ||
+        textNode.closest("a");
+
+      if (action instanceof HTMLElement) {
+        action.click();
+        return {
+          clicked: true,
+          tag: action.tagName,
+          id: action.getAttribute("id"),
+          text: (textNode.textContent || "").replace(/\s+/g, " ").trim().slice(0, 160),
+          href: action.getAttribute("href"),
+        };
+      }
+
+      return {
+        clicked: false,
+        reason: "tile_action_not_found",
+        text: (textNode.textContent || "").replace(/\s+/g, " ").trim().slice(0, 200),
+        containerId: container?.getAttribute("id") ?? null,
+      };
+    }, pattern.source).catch((error) => ({ clicked: false, reason: String(error) }));
+
+    if (clicked.clicked) return clicked;
+  }
+
+  return { clicked: false, reason: "no_frame_clicked" };
+}
+
 async function clickDailyServiceAnywhere(page: Page) {
-  const fccClick = await clickExactTextAnywhere(page, /^FCC Links$/);
+  const fccClick = await clickPeopleSoftTileByText(page, /FCC Links/);
   if (fccClick.clicked) {
-    await sleep(5000);
+    await sleep(8000);
   }
 
   const dailyClick = await clickExactTextAnywhere(page, /Daily Service Wk|Daily Service|Vision IBPR/);
