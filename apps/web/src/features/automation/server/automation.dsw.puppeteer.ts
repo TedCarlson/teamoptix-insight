@@ -449,9 +449,13 @@ export async function discoverFedExNavigationPuppeteer(input: {
 
     await login(page, input.username, input.password);
 
+    const fccOpen = await clickPeopleSoftGroupletActionByLabel(page, /FCC Links/);
+    await sleep(10000);
+
     const reconPages = await browser.pages();
 
     return {
+      fccOpen,
       ok: false,
       stage: "browserbase_homepage_recon",
       browserbaseSessionId: session.id,
