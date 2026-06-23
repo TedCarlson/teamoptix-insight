@@ -3,10 +3,6 @@ import puppeteer, { type Browser, type Frame, type Page } from "puppeteer-core";
 import { saveFirstBrowserbaseDownloadZipEntry } from "./browserbase.downloads";
 
 const FEDEX_LOGIN_URL = "https://mybizaccount.fedex.com/my.policy";
-const FEDEX_DSW_DIRECT_URL =
-  "https://mybizaccount.fedex.com/f5-w-68747470733a2f2f6d6762612d6473772e6170702e706161732e66656465782e636f6d$$/mgba/dsw";
-const FEDEX_DSW_RENDERED_URL =
-  "https://mybizaccount.fedex.com/f5-w-68747470733a2f2f6d6762612d6473772e6170702e706161732e66656465782e636f6d$$/mgba/f5-h-$$/f5-h-$$/mgba/dsw";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -153,247 +149,6 @@ async function findFccLinksFrame(page: Page): Promise<Frame | null> {
   return null;
 }
 
-async function clickSelectorAnywhere(page: Page, selector: string) {
-  const pages = await page.browser().pages();
-
-  for (const candidatePage of pages) {
-    try {
-      const el = await candidatePage.$(selector);
-      if (el) {
-        await el.click();
-        return { clicked: true, source: "page_selector", url: candidatePage.url(), selector };
-      }
-    } catch {}
-  }
-
-  for (const candidatePage of pages) {
-    for (const frame of candidatePage.frames()) {
-      try {
-        const el = await frame.$(selector);
-        if (el) {
-          await el.click();
-          return { clicked: true, source: "frame_selector", url: frame.url(), selector };
-        }
-      } catch {}
-    }
-  }
-
-  return { clicked: false, selector };
-}
-
-async function clickExactTextByMouse(page: Page, pattern: RegExp) {
-  const source = pattern.source;
-
-  for (const candidatePage of await page.browser().pages()) {
-    const target = await candidatePage.evaluate((regexSource) => {
-      const regex = new RegExp(regexSource, "i");
-
-      const candidates = Array.from(document.querySelectorAll("a, button, div, span, input"))
-        .map((el) => {
-          const rect = (el as HTMLElement).getBoundingClientRect();
-          const text = [
-            el.textContent,
-            el.getAttribute("value"),
-            el.getAttribute("title"),
-            el.getAttribute("aria-label"),
-          ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
-
-          return {
-            tag: el.tagName,
-            id: el.getAttribute("id"),
-            text,
-            x: rect.x,
-            y: rect.y,
-            width: rect.width,
-            height: rect.height,
-            area: rect.width * rect.height,
-          };
-        })
-        .filter((row) =>
-          regex.test(row.text) &&
-          row.width > 2 &&
-          row.height > 2 &&
-          row.text.length <= 120
-        )
-        .sort((a, b) => a.area - b.area);
-
-      return candidates[0] ?? null;
-    }, source).catch(() => null);
-
-    if (target) {
-      await candidatePage.mouse.click(target.x + target.width / 2, target.y + target.height / 2);
-      return { clicked: true, source: "mouse_text", url: candidatePage.url(), target };
-    }
-  }
-
-  return { clicked: false, source: "mouse_text" };
-}
-
-async function clickExactTextAnywhere(page: Page, pattern: RegExp) {
-  for (const frame of page.frames()) {
-    const clicked = await frame.evaluate((source) => {
-      const regex = new RegExp(source, "i");
-
-      const candidates = Array.from(document.querySelectorAll("a, button, input[type='button'], input[type='submit'], [role='button']"));
-
-      const target = candidates.find((el) => {
-        const text = [
-          el.textContent,
-          el.getAttribute("value"),
-          el.getAttribute("title"),
-          el.getAttribute("aria-label"),
-          el.getAttribute("id"),
-          el.getAttribute("name"),
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .replace(/\s+/g, " ")
-          .trim();
-
-        return regex.test(text);
-      });
-
-      if (target instanceof HTMLElement) {
-        target.click();
-        return {
-          clicked: true,
-          tag: target.tagName,
-          id: target.getAttribute("id"),
-          name: target.getAttribute("name"),
-          text: (target.textContent || target.getAttribute("value") || "").trim().slice(0, 160),
-          href: target.getAttribute("href"),
-        };
-      }
-
-      return { clicked: false };
-    }, pattern.source).catch(() => ({ clicked: false }));
-
-    if (clicked.clicked) return clicked;
-  }
-
-  return { clicked: false };
-}
-
-async function clickPeopleSoftTileByText(page: Page, pattern: RegExp) {
-  for (const frame of page.frames()) {
-    const clicked = await frame.evaluate((source) => {
-      const regex = new RegExp(source, "i");
-      const all = Array.from(document.querySelectorAll("a, div, span, td, li"));
-
-      const textNode = all.find((el) => regex.test((el.textContent || "").replace(/\s+/g, " ").trim()));
-      if (!textNode) return { clicked: false, reason: "tile_text_not_found" };
-
-      const container =
-        textNode.closest("[id*='PTNUI_LAND_REC']") ||
-        textNode.closest("li") ||
-        textNode.closest("td") ||
-        textNode.parentElement;
-
-      const action =
-        container?.querySelector("a[id*='PTNUI_LAND_REC_PTNUI_ACTION_LINK']") ||
-        container?.querySelector("a[href*='submitAction_win0']") ||
-        textNode.closest("a");
-
-      if (action instanceof HTMLElement) {
-        action.click();
-        return {
-          clicked: true,
-          tag: action.tagName,
-          id: action.getAttribute("id"),
-          text: (textNode.textContent || "").replace(/\s+/g, " ").trim().slice(0, 160),
-          href: action.getAttribute("href"),
-        };
-      }
-
-      return {
-        clicked: false,
-        reason: "tile_action_not_found",
-        text: (textNode.textContent || "").replace(/\s+/g, " ").trim().slice(0, 200),
-        containerId: container?.getAttribute("id") ?? null,
-      };
-    }, pattern.source).catch((error) => ({ clicked: false, reason: String(error) }));
-
-    if (clicked.clicked) return clicked;
-  }
-
-  return { clicked: false, reason: "no_frame_clicked" };
-}
-
-async function clickPeopleSoftGroupletActionByLabel(page: Page, pattern: RegExp) {
-  const source = pattern.source;
-
-  for (const candidatePage of await page.browser().pages()) {
-    const clicked = await candidatePage.evaluate((regexSource) => {
-      const regex = new RegExp(regexSource, "i");
-
-      const labels = Array.from(document.querySelectorAll("[id^='PTNUI_LAND_REC_GROUPLET_LBL$']"));
-      const label = labels.find((el) => regex.test((el.textContent || "").replace(/\s+/g, " ").trim()));
-
-      if (!label) return { clicked: false, reason: "label_not_found" };
-
-      const id = label.getAttribute("id") || "";
-      const index = id.split("$").pop();
-      if (!index) return { clicked: false, reason: "index_not_found", id };
-
-      const action =
-        document.getElementById(`PTNUI_LAND_REC_PTNUI_ACTION_LINK$${index}`) ||
-        document.getElementById(`PTNUI_LAND_REC_GROUPLET$${index}`) ||
-        label.closest("a, button, [role='button'], [onclick]");
-
-      if (!(action instanceof HTMLElement)) {
-        return { clicked: false, reason: "action_not_found", id, index };
-      }
-
-      action.click();
-
-      return {
-        clicked: true,
-        source: "grouplet_action",
-        labelId: id,
-        actionId: action.getAttribute("id"),
-        text: (label.textContent || "").replace(/\s+/g, " ").trim(),
-      };
-    }, source).catch((error) => ({ clicked: false, reason: String(error) }));
-
-    if (clicked.clicked) return { ...clicked, url: candidatePage.url() };
-  }
-
-  return { clicked: false, reason: "no_page_clicked" };
-}
-
-async function clickDailyServiceAnywhere(page: Page) {
-  const fccClick = await clickPeopleSoftGroupletActionByLabel(page, /FCC Links/);
-  if (fccClick.clicked) {
-    await sleep(8000);
-  }
-
-  const dailyClick = await clickExactTextByMouse(page, /Daily Service Wk\\s*&\\s*Vision IBPR|Daily Service Wk|Vision IBPR/);
-  if (dailyClick.clicked) {
-    return {
-      clicked: true,
-      fccClick,
-      dailyClick,
-    };
-  }
-
-  const dswSelectorClick = await clickSelectorAnywhere(page, "a[id^='GF_FLUID_TL_WRK_GF_HYPERLINK1']");
-  if (dswSelectorClick.clicked) {
-    return {
-      clicked: true,
-      fccClick,
-      dailyClick,
-      dswSelectorClick,
-    };
-  }
-
-  return {
-    clicked: false,
-    fccClick,
-    dailyClick,
-    dswSelectorClick,
-  };
-}
-
 async function findDswPage(browser: Browser, parentPage: Page) {
   for (const candidate of await browser.pages()) {
     if (candidate === parentPage) continue;
@@ -449,229 +204,64 @@ export async function discoverFedExNavigationPuppeteer(input: {
 
     await login(page, input.username, input.password);
 
-    await clickSelectorAnywhere(page, "#PT_GSEARCH_BTN");
-    await sleep(3000);
-
-    const searchBoxTarget = await page.evaluate(() => {
-      const candidates = Array.from(document.querySelectorAll("input"))
-        .map((el) => {
-          const rect = el.getBoundingClientRect();
-          return {
-            id: el.id,
-            name: el.name,
-            type: el.type,
-            placeholder: el.getAttribute("placeholder"),
-            value: el.value,
-            x: rect.x,
-            y: rect.y,
-            width: rect.width,
-            height: rect.height,
-            visible: rect.width > 20 && rect.height > 10,
-          };
-        })
-        .filter((row) =>
-          row.visible &&
-          (
-            /search/i.test(row.placeholder || "") ||
-            /search/i.test(row.id || "") ||
-            /search/i.test(row.name || "") ||
-            row.type === "search" ||
-            row.type === "text"
-          )
-        )
-        .sort((a, b) => b.width - a.width);
-
-      return candidates[0] ?? null;
-    });
-
-    if (searchBoxTarget) {
-      await page.mouse.click(
-        searchBoxTarget.x + searchBoxTarget.width / 2,
-        searchBoxTarget.y + searchBoxTarget.height / 2
-      );
-      await page.keyboard.down("Meta").catch(() => undefined);
-      await page.keyboard.press("A").catch(() => undefined);
-      await page.keyboard.up("Meta").catch(() => undefined);
-      await page.keyboard.type("Daily Service Wk & Vision IBPR", { delay: 25 });
-      await sleep(7000);
-    }
-
-    const dswResultClick = await clickExactTextByMouse(page, /Daily Service Wk\s*&\s*Vision IBPR|Vision IBPR/);
-    await sleep(15000);
-
-    const reconPages = await browser.pages();
-
-    return {
-      dswSearch: {
-        searchBoxTarget,
-        dswResultClick,
-        searchProbe: await page.evaluate(() =>
-          Array.from(document.querySelectorAll("input, textarea, [contenteditable='true'], iframe, a, button, [role='searchbox'], [role='textbox']"))
-            .slice(0, 250)
-            .map((el) => {
-              const rect = (el as HTMLElement).getBoundingClientRect();
-              return {
-                tag: el.tagName,
-                id: el.getAttribute("id"),
-                name: el.getAttribute("name"),
-                type: el.getAttribute("type"),
-                role: el.getAttribute("role"),
-                placeholder: el.getAttribute("placeholder"),
-                text: (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 200),
-                value: (el as HTMLInputElement).value ?? null,
-                href: el.getAttribute("href"),
-                visible: rect.width > 2 && rect.height > 2,
-                x: rect.x,
-                y: rect.y,
-                width: rect.width,
-                height: rect.height,
-              };
-            })
-        ).catch((error) => [{ error: String(error) }]),
-      },
-      ok: false,
-      stage: "browserbase_dsw_search_recon",
-      browserbaseSessionId: session.id,
-      activePage: {
-        url: page.url(),
-        title: await page.title().catch(() => ""),
-        bodyPreview: (await bodyText(page)).slice(0, 4000),
-        anchors: await page.evaluate(() =>
-          Array.from(document.querySelectorAll("a")).slice(0, 400).map((a) => ({
-            id: a.id,
-            text: (a.textContent || "").replace(/\s+/g, " ").trim().slice(0, 240),
-            href: a.getAttribute("href"),
-            onclick: a.getAttribute("onclick"),
-            title: a.getAttribute("title"),
-            ariaLabel: a.getAttribute("aria-label"),
+    const fccFrame = await findFccLinksFrame(page);
+    if (!fccFrame) {
+      return {
+        ok: false,
+        stage: "fcc_frame",
+        parentUrl: page.url(),
+        parentTitle: await page.title().catch(() => ""),
+        bodyPreview: (await bodyText(page)).slice(0, 2500),
+        frames: await Promise.all(
+          page.frames().map(async (frame) => ({
+            name: frame.name(),
+            url: frame.url(),
+            textPreview: (await bodyText(frame)).slice(0, 500),
           }))
-        ).catch((error) => [{ error: String(error) }]),
-        buttons: await page.evaluate(() =>
-          Array.from(document.querySelectorAll("button, input, [role='button']")).slice(0, 250).map((el) => ({
+        ),
+        links: await page.evaluate(() =>
+          Array.from(document.querySelectorAll("a, button, input")).slice(0, 120).map((el) => ({
             tag: el.tagName,
             id: el.getAttribute("id"),
             name: el.getAttribute("name"),
             type: el.getAttribute("type"),
             value: el.getAttribute("value"),
-            text: (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 200),
+            href: el.getAttribute("href"),
+            text: (el.textContent || "").trim().slice(0, 160),
             title: el.getAttribute("title"),
             ariaLabel: el.getAttribute("aria-label"),
           }))
-        ).catch((error) => [{ error: String(error) }]),
-        frames: await Promise.all(page.frames().map(async (frame) => ({
-          name: frame.name(),
-          url: frame.url(),
-          bodyPreview: (await bodyText(frame)).slice(0, 2000),
-          anchors: await frame.evaluate(() =>
-            Array.from(document.querySelectorAll("a")).slice(0, 250).map((a) => ({
-              id: a.id,
-              text: (a.textContent || "").replace(/\s+/g, " ").trim().slice(0, 220),
-              href: a.getAttribute("href"),
-              onclick: a.getAttribute("onclick"),
-            }))
-          ).catch((error) => [{ error: String(error) }]),
-        }))),
-      },
-      openPages: await Promise.all(reconPages.map(async (candidate) => ({
-        url: candidate.url(),
-        title: await candidate.title().catch(() => ""),
-        bodyPreview: (await bodyText(candidate)).slice(0, 1200),
-      }))),
-      message: "Recon only: searched global nav for exact DSW trigger and clicked the matching result.",
-    };
-
-    const openStartedPages = await browser.pages();
-
-    const launchDsw = await page.evaluate(() => {
-      const anyWindow = window as unknown as Record<string, unknown>;
-      const anyDocument = document as unknown as Record<string, unknown>;
-
-      const candidates = [
-        ["submitAction_win1", "win1"],
-        ["submitAction_win3", "win3"],
-        ["submitAction_win0", "win0"],
-      ] as const;
-
-      for (const [fnName, docName] of candidates) {
-        const fn = anyWindow[fnName];
-        const doc = anyDocument[docName];
-
-        if (typeof fn === "function" && doc) {
-          fn(doc, "GF_FLUID_TL_WRK_GF_HYPERLINK1$2");
-          return { ok: true, method: fnName, doc: docName, target: "GF_FLUID_TL_WRK_GF_HYPERLINK1$2" };
-        }
-      }
-
-      const link = Array.from(document.querySelectorAll("a")).find((a) =>
-        (a.getAttribute("href") || "").includes("GF_FLUID_TL_WRK_GF_HYPERLINK1$2") ||
-        /Daily Service Wk|Vision IBPR/i.test(a.textContent || "")
-      );
-
-      if (link instanceof HTMLElement) {
-        link.click();
-        return { ok: true, method: "link_click", id: link.id, text: (link.textContent || "").trim() };
-      }
-
-      return { ok: false, method: "not_found", bodyPreview: document.body?.innerText?.slice(0, 1800) ?? "" };
-    }).catch((error) => ({ ok: false, method: "evaluate_error", error: String(error) }));
-
-    await sleep(15000);
-
-    const pagesAfterLaunch = await browser.pages();
-    const dswPage =
-      (await findDswPage(browser, page)) ??
-      pagesAfterLaunch.find((candidate) => !openStartedPages.includes(candidate) && candidate !== page) ??
-      page;
-
-    await dswPage.waitForNetworkIdle({ idleTime: 1500, timeout: 60000 }).catch(() => undefined);
-    await sleep(10000);
-
-    let dswBody = await bodyText(dswPage);
-
-    if (!/Daily Service Worksheet|Facility|Contract #|WA Name/i.test(dswBody)) {
-      await dswPage.goto(FEDEX_DSW_RENDERED_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
-      await dswPage.waitForNetworkIdle({ idleTime: 1500, timeout: 60000 }).catch(() => undefined);
-      await dswPage.waitForFunction(
-        () => document.body && document.body.innerText.trim().length > 100,
-        { timeout: 60000 }
-      ).catch(() => undefined);
-      await sleep(10000);
-      dswBody = await bodyText(dswPage);
+        ).catch(() => []),
+        message: "Could not locate FCC Links iframe/frame.",
+      };
     }
 
-    if (!/Daily Service Worksheet|Facility|Contract #|WA Name/i.test(dswBody)) {
+    const clickedDailyService = await clickLinkByText(fccFrame, /Daily Service Wk|Vision IBPR|Daily Service/);
+    if (!clickedDailyService) {
       return {
         ok: false,
-        stage: "dsw_peoplesoft_launch",
+        stage: "daily_service_link",
         parentUrl: page.url(),
-        dswUrl: dswPage.url(),
-        dswTitle: await dswPage.title().catch(() => ""),
-        bodyPreview: dswBody.slice(0, 2500),
-        htmlPreview: await dswPage.content().then((html) => html.slice(0, 2500)).catch(() => ""),
-        diagnostics: await dswPage.evaluate(() => ({
-          readyState: document.readyState,
-          bodyLength: document.body?.innerText?.length ?? null,
-          scriptCount: document.querySelectorAll("script").length,
-          assetCount: document.querySelectorAll("link, script, img").length,
-          images: Array.from(document.querySelectorAll("img")).slice(0, 80).map((img) => ({
-            id: img.id,
-            src: img.getAttribute("src"),
-            alt: img.getAttribute("alt"),
-            title: img.getAttribute("title"),
-          })),
-          scripts: Array.from(document.querySelectorAll("script")).slice(0, 80).map((s) => ({
-            id: s.id,
-            src: s.getAttribute("src"),
-            text: (s.textContent || "").slice(0, 240),
-          })),
-        })).catch((error) => ({ error: String(error) })),
-        launchDsw,
-        openPages: await Promise.all((await browser.pages()).map(async (candidate) => ({
-          url: candidate.url(),
-          title: await candidate.title().catch(() => ""),
-          bodyPreview: (await bodyText(candidate)).slice(0, 1200),
-        }))),
-        message: "PeopleSoft DSW action was triggered, but DSW worksheet was not detected.",
+        frameUrl: fccFrame.url(),
+        frameTextPreview: (await bodyText(fccFrame)).slice(0, 1500),
+        message: "FCC Links frame found, but Daily Service Wk & Vision IBPR link was not found.",
+      };
+    }
+
+    await sleep(12000);
+
+    let dswPage = await findDswPage(browser, page);
+    if (!dswPage) {
+      await sleep(8000);
+      dswPage = await findDswPage(browser, page);
+    }
+
+    if (!dswPage) {
+      return {
+        ok: false,
+        stage: "dsw_page",
+        parentUrl: page.url(),
+        message: "Daily Service link clicked, but DSW page was not detected.",
       };
     }
 
