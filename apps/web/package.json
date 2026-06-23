@@ -19,12 +19,14 @@
     "puppeteer-core": "^25.2.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "yauzl": "^3.4.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/yauzl": "^3.4.0",
     "baseline-browser-mapping": "^2.10.0",
     "eslint": "^9.0.0",
     "eslint-config-next": "16.0.0",
