@@ -66,6 +66,15 @@ async function login(page: Page, username: string, password: string) {
   await clickLinkByText(page, /sign in/);
   await sleep(3000);
 
+  await page.evaluate(() => {
+    const saml = document.querySelector("input[name='SAMLRequest']");
+    const form = saml?.closest("form") as HTMLFormElement | null;
+    if (form) form.submit();
+  }).catch(() => undefined);
+
+  await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => undefined);
+  await sleep(5000);
+
   const usernameFilled = await fillFirst(page, [
     "input[name='identifier']",
     "input[name='username']",
