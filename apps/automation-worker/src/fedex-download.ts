@@ -344,11 +344,9 @@ export async function downloadDswExcel(input: {
 
     let filesystemDownload;
     try {
-      await excelIcon.evaluate((el) => {
-        el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
-        el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
-        el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
-      });
+      await excelIcon.dispatchEvent("mousedown");
+      await excelIcon.dispatchEvent("mouseup");
+      await excelIcon.dispatchEvent("click");
       filesystemDownload = await waitForCompletedDownload({
         downloadDir: DOWNLOAD_DIR,
         beforePaths: beforeDswDownloads,
