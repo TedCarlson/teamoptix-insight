@@ -6,10 +6,10 @@ from datetime import datetime
 def getConnection() -> List[Union[mysql.connector.connection.MySQLConnection, mysql.connector.cursor.MySQLCursor]]:
     try:
         connection = mysql.connector.connect(
-            host='127.0.0.1',
-            user='fcms_root',
-            password='emNaHaS(@{_V',
-            database='fcms'
+            host=os.environ.get('FCMS_DB_HOST', '127.0.0.1'),
+            user=os.environ.get('FCMS_DB_USER', ''),
+            password=os.environ.get('FCMS_DB_PASSWORD', ''),
+            database=os.environ.get('FCMS_DB_NAME', 'fcms')
         )
 
         if connection.is_connected():
