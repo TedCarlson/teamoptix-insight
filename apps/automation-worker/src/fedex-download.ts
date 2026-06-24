@@ -1,4 +1,4 @@
-import { mkdir, readFile, stat } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { chromium, type Browser, type Frame, type Page } from "playwright";
@@ -7,6 +7,24 @@ import { makeRunLogger } from "./run-log.js";
 
 const FEDEX_LOGIN_URL = "https://mybizaccount.fedex.com/my.policy";
 const DOWNLOAD_DIR = path.join(os.tmpdir(), "teamoptix-insight-worker", "automation-downloads");
+
+const DIAG_DIR = path.join(os.tmpdir(), "teamoptix-insight-worker", "diagnostics");
+
+async function saveDiagnostic(page: Page, label: string, runId?: string | null) {
+  await mkdir(DIAG_DIR, { recursive: true });
+  const stamp = `${Date.now()}-${label}-${runId ?? "no-run"}`;
+  const screenshotPath = path.join(DIAG_DIR, `${stamp}.png`);
+  const htmlPath = path.join(DIAG_DIR, `${stamp}.html`);
+  const textPath = path.join(DIAG_DIR, `${stamp}.txt`);
+
+  await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => undefined);
+  await writeFile(htmlPath, await page.content().catch(() => "")).catch(() => undefined);
+  await writeFile(textPath, await page.locator("body").innerText().catch(() => "")).catch(() => undefined);
+
+  console.log("[DIAG]", { label, screenshotPath, htmlPath, textPath });
+  return { screenshotPath, htmlPath, textPath };
+}
+
 
 async function clickFirst(page: Page, selectors: string[]) {
   for (const selector of selectors) {
@@ -257,10 +275,27 @@ export async function downloadDswExcel(input: {
 
     await excelIcon.scrollIntoViewIfNeeded({ timeout: 10000 }).catch(() => undefined);
 
-    const [download] = await Promise.all([
-      dswPage.waitForEvent("download", { timeout: 60000 }),
-      excelIcon.click({ timeout: 15000, force: true }),
-    ]);
+    let download;
+    try {
+      [download] = await Promise.all([
+        dswPage.waitForEvent("download", { timeout: 60000 }),
+        excelIcon.click({ timeout: 15000, force: true }),
+      ]);
+    } catch (error) {
+      const diagnostic = await saveDiagnostic(dswPage, "dsw-download-timeout", input.runId);
+      await runLog.log("download:timeout", {
+        message: error instanceof Error ? error.message : String(error),
+        diagnostic,
+      });
+      return {
+        ok: false,
+        stage: "dsw_download_timeout",
+        dswUrl: dswPage.url(),
+        dswTitle: await dswPage.title().catch(() => ""),
+        diagnostic,
+        message: "DSW page opened and Excel icon was found, but the download event did not fire.",
+      };
+    }
 
     const suggestedFilename = download.suggestedFilename();
     const savedPath = path.join(DOWNLOAD_DIR, `${Date.now()}-${suggestedFilename}`);
@@ -500,6 +535,9 @@ export async function downloadFccExcel(input: {
     });
 
     if (!readyForExport) {
+      const diagnostic = await saveDiagnostic(fccPage, "fcc-no-export-results", input.runId);
+      await runLog.log("search:no-export-diagnostic", { diagnostic });
+
       return {
         ok: false,
         stage: "fcc_search_results",
