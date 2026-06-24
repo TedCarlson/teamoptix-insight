@@ -255,9 +255,11 @@ export async function downloadDswExcel(input: {
       excelIconCount: await excelIcon.count().catch(() => -1),
     });
 
+    await excelIcon.scrollIntoViewIfNeeded({ timeout: 10000 }).catch(() => undefined);
+
     const [download] = await Promise.all([
-      dswPage.waitForEvent("download", { timeout: 30000 }),
-      excelIcon.click({ timeout: 10000 }),
+      dswPage.waitForEvent("download", { timeout: 60000 }),
+      excelIcon.click({ timeout: 15000, force: true }),
     ]);
 
     const suggestedFilename = download.suggestedFilename();
@@ -436,11 +438,19 @@ export async function downloadFccExcel(input: {
       await fccPage.waitForTimeout(5000);
     }
 
+    const serviceAreaStatusLink = fccPage
+      .locator("text=Service Area Status")
+      .last();
+
+    await serviceAreaStatusLink.waitFor({ timeout: 60000 }).catch(() => undefined);
+    await serviceAreaStatusLink.click({ timeout: 15000, force: true }).catch(() => undefined);
+    await fccPage.waitForTimeout(8000);
+
     const workAreaSummary = fccPage.locator("text=Work Area Summary").first();
 
     await workAreaSummary.waitFor({ timeout: 60000 }).catch(() => undefined);
-    await workAreaSummary.click({ timeout: 10000 }).catch(() => undefined);
-    await fccPage.waitForTimeout(5000);
+    await workAreaSummary.click({ timeout: 15000, force: true }).catch(() => undefined);
+    await fccPage.waitForTimeout(8000);
 
     console.log("[FCC] search:start");
     await runLog.log("search:start", {
