@@ -1,0 +1,43 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+class CreateCombinedManifestTable extends Migration
+{
+    /**
+     * Run the migrations.
+     *
+     * @return void
+     */
+    public function up()
+    {
+        Schema::create('combined_manifest', function (Blueprint $table) {
+            $table->increments('id');
+            $table->string('st', 100)->default('');
+            $table->string('delivery_pickup')->default('');
+            $table->string('contact_name')->default('');
+            $table->string('address_line_1', 500)->default('');
+            $table->string('address_line_2', 500)->default('');
+            $table->string('city')->default('');
+            $table->string('state')->default('');
+            $table->string('postal_code')->default('');
+            $table->string('pkgs', 100)->default('');
+            $table->string('sid', 100)->default('');
+            $table->string('ready')->default('');
+            $table->string('close')->default('');
+            $table->timestamp('download_date');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     *
+     * @return void
+     */
+    public function down()
+    {
+        Schema::dropIfExists('combined_manifest');
+    }
+}
