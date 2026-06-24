@@ -6,7 +6,7 @@ import {
   getOrCreateFedExAutomationProfile,
   resolveCompanyBySlug,
 } from "@/features/automation/server/automation.repository";
-import { discoverFedExNavigationPuppeteer } from "@/features/automation/server/automation.dsw.puppeteer";
+import { discoverFedExNavigation } from "@/features/automation/server/automation.discovery";
 import { ingestDswWorkbook } from "@/features/operations/reports/dsw/dsw.ingest";
 
 export const runtime = "nodejs";
@@ -48,7 +48,7 @@ export async function POST(
 
     const downloadStartedAt = Date.now();
 
-    const result = await discoverFedExNavigationPuppeteer({
+    const result = await discoverFedExNavigation({
       username: credentialResult.row.username,
       password: credentialResult.row.encrypted_secret,
     });
@@ -56,24 +56,7 @@ export async function POST(
     const downloadMs = Date.now() - downloadStartedAt;
 
     if (!result.ok || !result.excelDownload?.savedPath) {
-      if (runId) {
-        await supabase.rpc("finish_operations_automation_run", {
-          p_run_id: runId,
-          p_status: "FAILED",
-          p_source_filename: null,
-          p_batch_id: null,
-          p_inserted_rows: null,
-          p_matched_rows: null,
-          p_unmatched_rows: null,
-          p_route_count: null,
-          p_summary_rows: null,
-          p_download_ms: downloadMs,
-          p_ingest_ms: null,
-          p_error_message: result.message ?? "DSW automation did not produce a downloadable file.",
-        });
-      }
-
-      return NextResponse.json(result, { status: 409 });
+      throw new Error("DSW automation did not produce a downloadable file.");
     }
 
     const downloadedFile = await readFile(result.excelDownload.savedPath);
