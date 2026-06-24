@@ -48,10 +48,38 @@ export async function POST(
 
     const downloadStartedAt = Date.now();
 
-    const result = await discoverFedExNavigation({
-      username: credentialResult.row.username,
-      password: credentialResult.row.encrypted_secret,
-    });
+    const workerUrl = process.env.AUTOMATION_WORKER_URL;
+    const workerToken = process.env.AUTOMATION_WORKER_TOKEN;
+
+    const result = workerUrl
+      ? await fetch(`${workerUrl.replace(/\/$/, "")}/run-dsw`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(workerToken ? { Authorization: `Bearer ${workerToken}` } : {}),
+          },
+          body: JSON.stringify({
+            username: credentialResult.row.username,
+            password: credentialResult.row.encrypted_secret,
+          }),
+          cache: "no-store",
+        }).then(async (res) => {
+          const body = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            return {
+              ok: false,
+              stage: "worker_dsw_download",
+              message: body?.error ?? body?.message ?? "Worker DSW download failed.",
+              workerStatus: res.status,
+              workerBody: body,
+            };
+          }
+          return body;
+        })
+      : await discoverFedExNavigation({
+          username: credentialResult.row.username,
+          password: credentialResult.row.encrypted_secret,
+        });
 
     const downloadMs = Date.now() - downloadStartedAt;
 
@@ -59,8 +87,13 @@ export async function POST(
       throw new Error("DSW automation did not produce a downloadable file.");
     }
 
-    const downloadedFile = await readFile(result.excelDownload.savedPath);
-    const downloadedStat = await stat(result.excelDownload.savedPath);
+    const downloadedFile = result.excelDownload.fileBase64
+      ? Buffer.from(result.excelDownload.fileBase64, "base64")
+      : await readFile(result.excelDownload.savedPath);
+
+    const downloadedStat = result.excelDownload.fileSize
+      ? { size: Number(result.excelDownload.fileSize) }
+      : await stat(result.excelDownload.savedPath);
 
     const { data: auth } = await supabase.auth.getUser();
     const { data: profile } = auth?.user?.id

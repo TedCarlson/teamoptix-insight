@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { chromium, type Browser, type Frame, type Page } from "playwright";
@@ -249,6 +249,9 @@ export async function downloadDswExcel(input: {
     await download.saveAs(savedPath);
     console.log("[DSW] download:saved", savedPath);
 
+    const fileBuffer = await readFile(savedPath);
+    const fileStat = await stat(savedPath);
+
     return {
       ok: true,
       stage: "today_dsw_excel_download",
@@ -257,6 +260,8 @@ export async function downloadDswExcel(input: {
       excelDownload: {
         suggestedFilename,
         savedPath,
+        fileSize: fileStat.size,
+        fileBase64: fileBuffer.toString("base64"),
         failure: await download.failure(),
       },
     };
