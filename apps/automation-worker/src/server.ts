@@ -1,4 +1,6 @@
 import express from "express";
+import { z } from "zod";
+import { downloadDswExcel } from "./fedex-download.js";
 
 const app = express();
 app.use(express.json());
@@ -25,8 +27,22 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "automation-worker" });
 });
 
-app.post("/run-dsw", requireWorkerToken, async (_req, res) => {
-  res.status(501).json({ ok: false, status: "NOT_IMPLEMENTED", job: "DSW" });
+const runDswSchema = z.object({
+  username: z.string().min(1),
+  password: z.string().min(1),
+});
+
+app.post("/run-dsw", requireWorkerToken, async (req, res) => {
+  try {
+    const input = runDswSchema.parse(req.body);
+    const result = await downloadDswExcel(input);
+    res.status(result.ok ? 200 : 500).json(result);
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: error instanceof Error ? error.message : "DSW download failed.",
+    });
+  }
 });
 
 app.post("/run-fcc", requireWorkerToken, async (_req, res) => {
