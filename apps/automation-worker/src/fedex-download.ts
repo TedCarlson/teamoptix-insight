@@ -1,4 +1,4 @@
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { chromium, type Browser, type Frame, type Page } from "playwright";
@@ -23,6 +23,71 @@ async function saveDiagnostic(page: Page, label: string, runId?: string | null) 
 
   console.log("[DIAG]", { label, screenshotPath, htmlPath, textPath });
   return { screenshotPath, htmlPath, textPath };
+}
+
+
+async function listCompletedDownloads(dir: string) {
+  await mkdir(dir, { recursive: true });
+  const files = await readdir(dir, { withFileTypes: true }).catch(() => []);
+  const rows = [];
+
+  for (const file of files) {
+    if (!file.isFile()) continue;
+
+    const name = file.name;
+    const lower = name.toLowerCase();
+
+    if (lower.endsWith(".crdownload")) continue;
+    if (lower.endsWith(".tmp")) continue;
+    if (!lower.endsWith(".xls") && !lower.endsWith(".xlsx")) continue;
+
+    const fullPath = path.join(dir, name);
+    const fileStat = await stat(fullPath).catch(() => null);
+    if (!fileStat || fileStat.size <= 0) continue;
+
+    rows.push({
+      name,
+      fullPath,
+      size: fileStat.size,
+      mtimeMs: fileStat.mtimeMs,
+    });
+  }
+
+  return rows.sort((a, b) => b.mtimeMs - a.mtimeMs);
+}
+
+async function waitForCompletedDownload(input: {
+  downloadDir: string;
+  beforePaths: Set<string>;
+  timeoutMs: number;
+}) {
+  const startedAt = Date.now();
+  let lastSeen: Awaited<ReturnType<typeof listCompletedDownloads>> = [];
+
+  while (Date.now() - startedAt < input.timeoutMs) {
+    const completed = await listCompletedDownloads(input.downloadDir);
+    lastSeen = completed;
+
+    const fresh = completed.find((row) => !input.beforePaths.has(row.fullPath));
+    if (fresh) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const firstStat = await stat(fresh.fullPath).catch(() => null);
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const secondStat = await stat(fresh.fullPath).catch(() => null);
+
+      if (firstStat && secondStat && firstStat.size === secondStat.size && secondStat.size > 0) {
+        return {
+          suggestedFilename: fresh.name,
+          savedPath: fresh.fullPath,
+          fileSize: secondStat.size,
+        };
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+
+  throw new Error(`Timed out waiting for completed Excel download. Last seen: ${JSON.stringify(lastSeen.slice(0, 5))}`);
 }
 
 
@@ -275,12 +340,16 @@ export async function downloadDswExcel(input: {
 
     await excelIcon.scrollIntoViewIfNeeded({ timeout: 10000 }).catch(() => undefined);
 
-    let download;
+    const beforeDswDownloads = new Set((await listCompletedDownloads(DOWNLOAD_DIR)).map((row) => row.fullPath));
+
+    let filesystemDownload;
     try {
-      [download] = await Promise.all([
-        dswPage.waitForEvent("download", { timeout: 60000 }),
-        excelIcon.click({ timeout: 15000, force: true }),
-      ]);
+      await excelIcon.click({ timeout: 15000, force: true });
+      filesystemDownload = await waitForCompletedDownload({
+        downloadDir: DOWNLOAD_DIR,
+        beforePaths: beforeDswDownloads,
+        timeoutMs: 90000,
+      });
     } catch (error) {
       const diagnostic = await saveDiagnostic(dswPage, "dsw-download-timeout", input.runId);
       await runLog.log("download:timeout", {
@@ -297,10 +366,9 @@ export async function downloadDswExcel(input: {
       };
     }
 
-    const suggestedFilename = download.suggestedFilename();
-    const savedPath = path.join(DOWNLOAD_DIR, `${Date.now()}-${suggestedFilename}`);
+    const suggestedFilename = filesystemDownload.suggestedFilename;
+    const savedPath = filesystemDownload.savedPath;
 
-    await download.saveAs(savedPath);
     console.log("[DSW] download:saved", savedPath);
     await runLog.log("download:saved", {
       savedPath,
@@ -347,7 +415,7 @@ export async function downloadDswExcel(input: {
         fileSize: fileStat.size,
         fileBase64: fileBuffer.toString("base64"),
         artifact,
-        failure: await download.failure(),
+        failure: null,
       },
     };
   } finally {
@@ -582,13 +650,18 @@ export async function downloadFccExcel(input: {
         try {
           if ((await candidate.count()) === 0) continue;
 
-          const attempt = await Promise.all([
-            fccPage.waitForEvent("download", { timeout: 15000 }).catch(() => null),
-            candidate.click({ timeout: 5000, force: true }).catch(() => undefined),
-          ]);
+          const beforeFccDownloads = new Set((await listCompletedDownloads(DOWNLOAD_DIR)).map((row) => row.fullPath));
 
-          if (attempt[0]) {
-            download = attempt[0];
+          await candidate.click({ timeout: 5000, force: true }).catch(() => undefined);
+
+          const filesystemDownload = await waitForCompletedDownload({
+            downloadDir: DOWNLOAD_DIR,
+            beforePaths: beforeFccDownloads,
+            timeoutMs: 45000,
+          }).catch(() => null);
+
+          if (filesystemDownload) {
+            download = filesystemDownload;
             break;
           }
         } catch {}
@@ -609,10 +682,9 @@ export async function downloadFccExcel(input: {
       };
     }
 
-    const suggestedFilename = download.suggestedFilename();
-    const savedPath = path.join(DOWNLOAD_DIR, `${Date.now()}-${suggestedFilename}`);
+    const suggestedFilename = download.suggestedFilename;
+    const savedPath = download.savedPath;
 
-    await download.saveAs(savedPath);
     console.log("[FCC] download:saved", savedPath);
     await runLog.log("download:saved", {
       savedPath,
@@ -649,7 +721,7 @@ export async function downloadFccExcel(input: {
         fileSize: fileStat.size,
         fileBase64: fileBuffer.toString("base64"),
         artifact,
-        failure: await download.failure(),
+        failure: null,
       },
     };
   } finally {
