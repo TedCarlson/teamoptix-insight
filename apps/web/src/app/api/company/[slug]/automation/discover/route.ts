@@ -6,7 +6,6 @@ import {
   getOrCreateFedExAutomationProfile,
   resolveCompanyBySlug,
 } from "@/features/automation/server/automation.repository";
-import { discoverFedExNavigation } from "@/features/automation/server/automation.discovery";
 import { ingestDswWorkbook } from "@/features/operations/reports/dsw/dsw.ingest";
 
 export const runtime = "nodejs";
@@ -76,10 +75,12 @@ export async function POST(
           }
           return body;
         })
-      : await discoverFedExNavigation({
-          username: credentialResult.row.username,
-          password: credentialResult.row.encrypted_secret,
-        });
+      : await import("@/features/automation/server/automation.discovery").then(({ discoverFedExNavigation }) =>
+          discoverFedExNavigation({
+            username: credentialResult.row.username,
+            password: credentialResult.row.encrypted_secret,
+          })
+        );
 
     const downloadMs = Date.now() - downloadStartedAt;
 
