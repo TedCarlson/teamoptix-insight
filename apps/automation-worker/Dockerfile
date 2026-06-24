@@ -5,7 +5,7 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/automation-worker/package.json apps/automation-worker/package.json
 
-RUN corepack enable && pnpm install --filter @teamoptix/automation-worker... --prod=false
+RUN corepack enable && pnpm install --filter @teamoptix/automation-worker... --config.production=false
 
 COPY apps/automation-worker apps/automation-worker
 

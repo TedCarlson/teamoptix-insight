@@ -6,7 +6,6 @@ import {
   getOrCreateFedExAutomationProfile,
   resolveCompanyBySlug,
 } from "@/features/automation/server/automation.repository";
-import { discoverFedExFccServiceAreaStatus } from "@/features/automation/server/automation.discovery";
 import { ingestFccWorkbook } from "@/features/operations/reports/fcc/fcc.ingest";
 
 export const runtime = "nodejs";
@@ -52,11 +51,48 @@ export async function POST(
 
     const downloadStartedAt = Date.now();
 
-    const result = await discoverFedExFccServiceAreaStatus({
-      username: credentialResult.row.username,
-      password: credentialResult.row.encrypted_secret,
-      serviceDate,
-    });
+    const workerUrl = process.env.AUTOMATION_WORKER_URL;
+    const workerToken = process.env.AUTOMATION_WORKER_TOKEN;
+
+    const result = workerUrl
+      ? await fetch(`${workerUrl.replace(/\/$/, "")}/run-fcc`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${workerToken ?? ""}`,
+          },
+          body: JSON.stringify({
+            username: credentialResult.row.username,
+            password: credentialResult.row.encrypted_secret,
+            serviceDate,
+          }),
+        })
+          .then(async (res) => {
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              return {
+                ok: false,
+                stage: "worker_fcc_download",
+                message: body?.error ?? body?.message ?? "Worker FCC download failed.",
+                workerStatus: res.status,
+                workerBody: body,
+              };
+            }
+            return body;
+          })
+          .catch((error) => ({
+            ok: false,
+            stage: "worker_fetch_failed",
+            message: error instanceof Error ? error.message : "Worker fetch failed.",
+            workerUrl,
+          }))
+      : await import("@/features/automation/server/automation.discovery").then(({ discoverFedExFccServiceAreaStatus }) =>
+          discoverFedExFccServiceAreaStatus({
+            username: credentialResult.row.username,
+            password: credentialResult.row.encrypted_secret,
+            serviceDate,
+          })
+        );
 
     const downloadMs = Date.now() - downloadStartedAt;
 

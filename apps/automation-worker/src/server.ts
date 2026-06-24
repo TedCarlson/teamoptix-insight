@@ -1,6 +1,6 @@
 import express from "express";
 import { z } from "zod";
-import { downloadDswExcel } from "./fedex-download.js";
+import { downloadDswExcel, downloadFccExcel } from "./fedex-download.js";
 
 const app = express();
 app.use(express.json());
@@ -45,8 +45,23 @@ app.post("/run-dsw", requireWorkerToken, async (req, res) => {
   }
 });
 
-app.post("/run-fcc", requireWorkerToken, async (_req, res) => {
-  res.status(501).json({ ok: false, status: "NOT_IMPLEMENTED", job: "FCC" });
+const runFccSchema = z.object({
+  username: z.string().min(1),
+  password: z.string().min(1),
+  serviceDate: z.string().optional(),
+});
+
+app.post("/run-fcc", requireWorkerToken, async (req, res) => {
+  try {
+    const input = runFccSchema.parse(req.body);
+    const result = await downloadFccExcel(input);
+    res.status(result.ok ? 200 : 500).json(result);
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: error instanceof Error ? error.message : "FCC download failed.",
+    });
+  }
 });
 
 app.post("/run-ops", requireWorkerToken, async (_req, res) => {
