@@ -30,6 +30,9 @@ app.get("/health", (_req, res) => {
 const runDswSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
+  companyId: z.string().optional(),
+  runId: z.string().optional().nullable(),
+  serviceDate: z.string().optional(),
 });
 
 app.post("/run-dsw", requireWorkerToken, async (req, res) => {
@@ -49,6 +52,8 @@ const runFccSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
   serviceDate: z.string().optional(),
+  companyId: z.string().optional(),
+  runId: z.string().optional().nullable(),
 });
 
 app.post("/run-fcc", requireWorkerToken, async (req, res) => {

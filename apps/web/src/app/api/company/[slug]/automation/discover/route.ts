@@ -10,6 +10,54 @@ import { ingestDswWorkbook } from "@/features/operations/reports/dsw/dsw.ingest"
 
 export const runtime = "nodejs";
 
+
+async function resolveWorkerWorkbook(params: {
+  supabase: any;
+  excelDownload: any;
+}) {
+  const { supabase, excelDownload } = params;
+
+  if (excelDownload?.artifact?.artifactBucket &&
+      excelDownload?.artifact?.artifactPath) {
+
+    const { data, error } = await supabase.storage
+      .from(excelDownload.artifact.artifactBucket)
+      .download(excelDownload.artifact.artifactPath);
+
+    if (error || !data) {
+      throw new Error(error?.message ?? "Artifact download failed.");
+    }
+
+    const buffer = Buffer.from(await data.arrayBuffer());
+
+    return {
+      buffer,
+      size: excelDownload.artifact.artifactSize ?? buffer.length,
+    };
+  }
+
+  if (excelDownload?.fileBase64) {
+    const buffer = Buffer.from(
+      excelDownload.fileBase64,
+      "base64"
+    );
+
+    return {
+      buffer,
+      size: excelDownload.fileSize ?? buffer.length,
+    };
+  }
+
+  const buffer = await readFile(excelDownload.savedPath);
+  const fileStat = await stat(excelDownload.savedPath);
+
+  return {
+    buffer,
+    size: fileStat.size,
+  };
+}
+
+
 export async function POST(
   _req: NextRequest,
   context: { params: Promise<{ slug: string }> }
@@ -60,6 +108,8 @@ export async function POST(
           body: JSON.stringify({
             username: credentialResult.row.username,
             password: credentialResult.row.encrypted_secret,
+            companyId: resolved.company.id,
+            runId,
           }),
           cache: "no-store",
         }).then(async (res) => {
@@ -88,13 +138,16 @@ export async function POST(
       throw new Error("DSW automation did not produce a downloadable file.");
     }
 
-    const downloadedFile = result.excelDownload.fileBase64
-      ? Buffer.from(result.excelDownload.fileBase64, "base64")
-      : await readFile(result.excelDownload.savedPath);
+    const workbook = await resolveWorkerWorkbook({
+      supabase,
+      excelDownload: result.excelDownload,
+    });
 
-    const downloadedStat = result.excelDownload.fileSize
-      ? { size: Number(result.excelDownload.fileSize) }
-      : await stat(result.excelDownload.savedPath);
+    const downloadedFile = workbook.buffer;
+
+    const downloadedStat = {
+      size: workbook.size,
+    };
 
     const { data: auth } = await supabase.auth.getUser();
     const { data: profile } = auth?.user?.id

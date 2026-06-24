@@ -2,6 +2,8 @@ import { mkdir, readFile, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { chromium, type Browser, type Frame, type Page } from "playwright";
+import { uploadAutomationArtifact } from "./artifact-storage.js";
+import { makeRunLogger } from "./run-log.js";
 
 const FEDEX_LOGIN_URL = "https://mybizaccount.fedex.com/my.policy";
 const DOWNLOAD_DIR = path.join(os.tmpdir(), "teamoptix-insight-worker", "automation-downloads");
@@ -150,8 +152,17 @@ async function createBrowser(): Promise<Browser> {
 export async function downloadDswExcel(input: {
   username: string;
   password: string;
+  companyId?: string;
+  runId?: string | null;
+  serviceDate?: string;
 }) {
   await mkdir(DOWNLOAD_DIR, { recursive: true });
+
+  const runLog = makeRunLogger(input.runId, "DSW");
+  await runLog.log("run:start", {
+    companyId: input.companyId,
+    serviceDate: input.serviceDate,
+  });
 
   const browser = await createBrowser();
 
@@ -238,6 +249,12 @@ export async function downloadDswExcel(input: {
     }
 
     console.log("[DSW] download:start");
+    await runLog.log("download:start", {
+      url: dswPage.url(),
+      title: await dswPage.title().catch(() => ""),
+      excelIconCount: await excelIcon.count().catch(() => -1),
+    });
+
     const [download] = await Promise.all([
       dswPage.waitForEvent("download", { timeout: 30000 }),
       excelIcon.click({ timeout: 10000 }),
@@ -248,9 +265,39 @@ export async function downloadDswExcel(input: {
 
     await download.saveAs(savedPath);
     console.log("[DSW] download:saved", savedPath);
+    await runLog.log("download:saved", {
+      savedPath,
+      suggestedFilename,
+    });
 
     const fileBuffer = await readFile(savedPath);
     const fileStat = await stat(savedPath);
+
+    await runLog.log("artifact:upload:start", {
+      hasCompanyId: Boolean(input.companyId),
+      hasRunId: Boolean(input.runId),
+    });
+
+    await runLog.log("artifact:upload:start", {
+      hasCompanyId: Boolean(input.companyId),
+      hasRunId: Boolean(input.runId),
+    });
+
+    const artifact =
+      input.companyId && input.runId
+        ? await uploadAutomationArtifact({
+            savedPath,
+            suggestedFilename,
+            reportType: "DSW",
+            companyId: input.companyId,
+            runId: input.runId,
+            serviceDate: input.serviceDate,
+          })
+        : null;
+
+    await runLog.log("artifact:upload:done", {
+      artifact,
+    });
 
     return {
       ok: true,
@@ -262,6 +309,7 @@ export async function downloadDswExcel(input: {
         savedPath,
         fileSize: fileStat.size,
         fileBase64: fileBuffer.toString("base64"),
+        artifact,
         failure: await download.failure(),
       },
     };
@@ -295,8 +343,16 @@ export async function downloadFccExcel(input: {
   username: string;
   password: string;
   serviceDate?: string;
+  companyId?: string;
+  runId?: string | null;
 }) {
   await mkdir(DOWNLOAD_DIR, { recursive: true });
+
+  const runLog = makeRunLogger(input.runId, "FCC");
+  await runLog.log("run:start", {
+    companyId: input.companyId,
+    serviceDate: input.serviceDate,
+  });
 
   const browser = await createBrowser();
 
@@ -387,6 +443,10 @@ export async function downloadFccExcel(input: {
     await fccPage.waitForTimeout(5000);
 
     console.log("[FCC] search:start");
+    await runLog.log("search:start", {
+      url: fccPage.url(),
+      title: await fccPage.title().catch(() => ""),
+    });
 
     const searchCandidates = [
       fccPage.locator("input[id='saStatusForm:search']"),
@@ -422,6 +482,13 @@ export async function downloadFccExcel(input: {
       (await fccPage.locator("text=/records found/i").count().catch(() => 0)) > 0 ||
       (await fccPage.locator("input[name='saStatusForm:buttonGenerateExcel'], input[id='saStatusForm:buttonGenerateExcel'], input[type='image']").count().catch(() => 0)) > 0;
 
+    await runLog.log("search:ready-for-export", {
+      readyForExport,
+      url: fccPage.url(),
+      title: await fccPage.title().catch(() => ""),
+      bodyPreview: (await fccPage.locator("body").innerText().catch(() => "")).slice(0, 1200),
+    });
+
     if (!readyForExport) {
       return {
         ok: false,
@@ -434,6 +501,10 @@ export async function downloadFccExcel(input: {
     }
 
     console.log("[FCC] download:start");
+    await runLog.log("download:start", {
+      url: fccPage.url(),
+      title: await fccPage.title().catch(() => ""),
+    });
 
     let download = null;
     const frameDebug: Array<Record<string, unknown>> = [];
@@ -495,9 +566,29 @@ export async function downloadFccExcel(input: {
 
     await download.saveAs(savedPath);
     console.log("[FCC] download:saved", savedPath);
+    await runLog.log("download:saved", {
+      savedPath,
+      suggestedFilename,
+    });
 
     const fileBuffer = await readFile(savedPath);
     const fileStat = await stat(savedPath);
+
+    const artifact =
+      input.companyId && input.runId
+        ? await uploadAutomationArtifact({
+            savedPath,
+            suggestedFilename,
+            reportType: "FCC",
+            companyId: input.companyId,
+            runId: input.runId,
+            serviceDate: input.serviceDate,
+          })
+        : null;
+
+    await runLog.log("artifact:upload:done", {
+      artifact,
+    });
 
     return {
       ok: true,
@@ -509,6 +600,7 @@ export async function downloadFccExcel(input: {
         savedPath,
         fileSize: fileStat.size,
         fileBase64: fileBuffer.toString("base64"),
+        artifact,
         failure: await download.failure(),
       },
     };

@@ -10,6 +10,54 @@ import { ingestFccWorkbook } from "@/features/operations/reports/fcc/fcc.ingest"
 
 export const runtime = "nodejs";
 
+
+async function resolveWorkerWorkbook(params: {
+  supabase: any;
+  excelDownload: any;
+}) {
+  const { supabase, excelDownload } = params;
+
+  if (excelDownload?.artifact?.artifactBucket &&
+      excelDownload?.artifact?.artifactPath) {
+
+    const { data, error } = await supabase.storage
+      .from(excelDownload.artifact.artifactBucket)
+      .download(excelDownload.artifact.artifactPath);
+
+    if (error || !data) {
+      throw new Error(error?.message ?? "Artifact download failed.");
+    }
+
+    const buffer = Buffer.from(await data.arrayBuffer());
+
+    return {
+      buffer,
+      size: excelDownload.artifact.artifactSize ?? buffer.length,
+    };
+  }
+
+  if (excelDownload?.fileBase64) {
+    const buffer = Buffer.from(
+      excelDownload.fileBase64,
+      "base64"
+    );
+
+    return {
+      buffer,
+      size: excelDownload.fileSize ?? buffer.length,
+    };
+  }
+
+  const buffer = await readFile(excelDownload.savedPath);
+  const fileStat = await stat(excelDownload.savedPath);
+
+  return {
+    buffer,
+    size: fileStat.size,
+  };
+}
+
+
 function todayIsoNewYork() {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/New_York",
@@ -65,6 +113,8 @@ export async function POST(
             username: credentialResult.row.username,
             password: credentialResult.row.encrypted_secret,
             serviceDate,
+            companyId: resolved.company.id,
+            runId,
           }),
         })
           .then(async (res) => {
@@ -117,8 +167,16 @@ export async function POST(
       return NextResponse.json(result, { status: 409 });
     }
 
-    const fileBuffer = await readFile(result.excelDownload.savedPath);
-    const fileStat = await stat(result.excelDownload.savedPath);
+    const workbook = await resolveWorkerWorkbook({
+      supabase,
+      excelDownload: result.excelDownload,
+    });
+
+    const fileBuffer = workbook.buffer;
+
+    const fileStat = {
+      size: workbook.size,
+    };
 
     const ingestStartedAt = Date.now();
 
