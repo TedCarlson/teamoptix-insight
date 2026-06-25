@@ -59,6 +59,24 @@ type ScheduleRow = {
   updated_at: string;
 };
 
+type CollectionRequest = {
+  id: string;
+  company_id: string;
+  company_slug: string;
+  request_type: string;
+  request_status: string;
+  priority: number;
+  service_date: string | null;
+  service_date_start: string | null;
+  service_date_end: string | null;
+  requested_reports: string[];
+  request_payload: Record<string, unknown>;
+  duration_ms: number | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 function SectionCard(props: { eyebrow: string; title: string; children: ReactNode }) {
   return (
     <article className="app-card" style={{ padding: 14 }}>
@@ -168,6 +186,28 @@ function scheduleLabel(value: string) {
   if (value === "BUSINESS_DAY") return "Business Day";
   if (value === "OFF") return "Off";
   return value;
+}
+
+function formatRequestTiming(request: CollectionRequest) {
+  const payload = request.request_payload ?? {};
+  const cadence = typeof payload.cadence_minutes === "number" ? `${payload.cadence_minutes}m` : null;
+  const windows = Array.isArray(payload.windows)
+    ? payload.windows
+        .map((window) => {
+          if (!window || typeof window !== "object") return null;
+          const record = window as Record<string, unknown>;
+          const report = String(record.report ?? "");
+          const start = String(record.start_time ?? "").slice(0, 5);
+          const end = String(record.end_time ?? "").slice(0, 5);
+          return report && start && end ? `${report} ${start}-${end}` : null;
+        })
+        .filter(Boolean)
+        .join(" · ")
+    : "";
+
+  if (cadence && windows) return `${cadence} · ${windows}`;
+  if (cadence) return cadence;
+  return "—";
 }
 
 function RunSummary(props: { title: string; run: AutomationRun | null }) {
@@ -387,6 +427,7 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
   const [credential, setCredential] = useState<CredentialResponse | null>(null);
   const [scheduleRows, setScheduleRows] = useState<ScheduleRow[]>([]);
   const [runs, setRuns] = useState<AutomationRun[]>([]);
+  const [collectionRequests, setCollectionRequests] = useState<CollectionRequest[]>([]);
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -395,6 +436,7 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
   const [verifying, setVerifying] = useState(false);
   const [showCredentialEditor, setShowCredentialEditor] = useState(false);
   const [savingScheduleKey, setSavingScheduleKey] = useState<string | null>(null);
+  const [queueingRequest, setQueueingRequest] = useState<string | null>(null);
 
   const [message, setMessage] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -452,9 +494,22 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
     setRuns(Array.isArray(data?.rows) ? data.rows : []);
   }, [props.slug]);
 
+  const loadCollectionRequests = useCallback(async () => {
+    const res = await fetch(`/api/company/${props.slug}/collection-requests?limit=10`, {
+      cache: "no-store",
+      credentials: "include",
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) throw new Error(data?.error ?? "Failed to load collection requests.");
+
+    setCollectionRequests(Array.isArray(data?.rows) ? data.rows : []);
+  }, [props.slug]);
+
   const loadAll = useCallback(async () => {
-    await Promise.all([loadStatus(), loadCredential(), loadSchedule(), loadRuns()]);
-  }, [loadStatus, loadCredential, loadSchedule, loadRuns]);
+    await Promise.all([loadStatus(), loadCredential(), loadSchedule(), loadRuns(), loadCollectionRequests()]);
+  }, [loadStatus, loadCredential, loadSchedule, loadRuns, loadCollectionRequests]);
 
   useEffect(() => {
     let active = true;
@@ -488,6 +543,61 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
           .map((row) => `${row.automation_type}: ${row.cadence_minutes}m`)
           .join(" · ")
       : "Not scheduled";
+
+  const activeRefreshRows = scheduleRows.filter((row) => row.is_enabled && row.window_preset !== "OFF");
+  const activeRefreshReports = activeRefreshRows.map((row) => row.automation_type);
+  const refreshCadenceLabel =
+    activeRefreshRows.length > 0
+      ? `${Math.min(...activeRefreshRows.map((row) => row.cadence_minutes))} min`
+      : "Not scheduled";
+  const refreshWindowLabel =
+    activeRefreshRows.length > 0
+      ? activeRefreshRows.map((row) => `${row.automation_type}: ${formatWindow(row)}`).join(" · ")
+      : "No active window";
+
+  async function queueWorkdayRefreshRequest() {
+    try {
+      setQueueingRequest("OPERATIONS_FEED");
+      setMessage(null);
+      setStatusError(null);
+
+      const res = await fetch(`/api/company/${props.slug}/collection-requests`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          request_type: "OPERATIONS_FEED",
+          requested_reports: activeRefreshReports,
+          priority: 80,
+          request_payload: {
+            source: "collection_center",
+            intent: "workday_refresh",
+            cadence_minutes: activeRefreshRows.length > 0
+              ? Math.min(...activeRefreshRows.map((row) => row.cadence_minutes))
+              : null,
+            windows: activeRefreshRows.map((row) => ({
+              report: row.automation_type,
+              window_preset: row.window_preset,
+              start_time: row.start_time,
+              end_time: row.end_time,
+              cadence_minutes: row.cadence_minutes,
+            })),
+          },
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data?.error ?? "Failed to prepare refresh ticket.");
+
+      await loadCollectionRequests();
+      setMessage("Workday refresh ticket prepared.");
+    } catch (error) {
+      setStatusError(error instanceof Error ? error.message : "Failed to prepare refresh ticket.");
+    } finally {
+      setQueueingRequest(null);
+    }
+  }
 
   async function saveCredential() {
     try {
@@ -746,6 +856,76 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
         </div>
       </SectionCard>
 
+      <SectionCard eyebrow="Workday Refresh" title="Live data freshness">
+        <div style={workdayRefreshCard}>
+          <div>
+            <p style={mutedCopy}>
+              These saved presets prepare small all-day refresh tickets that keep operations current without getting in the way of larger collection work.
+            </p>
+            <div style={grid4}>
+              <MiniStat label="Included Reports" value={activeRefreshReports.length ? activeRefreshReports.join(" + ") : "None"} />
+              <MiniStat label="Refresh Cadence" value={refreshCadenceLabel} />
+              <MiniStat label="Refresh Window" value={refreshWindowLabel} />
+              <MiniStat label="Priority" value="80" />
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="button button-primary"
+            disabled={!props.canEdit || queueingRequest === "OPERATIONS_FEED" || activeRefreshReports.length === 0}
+            onClick={queueWorkdayRefreshRequest}
+          >
+            {queueingRequest === "OPERATIONS_FEED" ? "Preparing..." : "Prepare Refresh Ticket"}
+          </button>
+        </div>
+      </SectionCard>
+
+      <SectionCard eyebrow="Request Warehouse" title="Recent collection requests">
+        <div style={grid4}>
+          <MiniStat label="Requests" value={collectionRequests.length} />
+          <MiniStat label="Queued" value={collectionRequests.filter((request) => request.request_status === "QUEUED").length} />
+          <MiniStat label="Running" value={collectionRequests.filter((request) => request.request_status === "RUNNING" || request.request_status === "CLAIMED").length} />
+          <MiniStat label="Complete" value={collectionRequests.filter((request) => request.request_status === "COMPLETE").length} />
+        </div>
+
+        <div style={{ overflowX: "auto", marginTop: 12 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ color: "#64748b", textAlign: "left" }}>
+                <th style={th}>Created</th>
+                <th style={th}>Request</th>
+                <th style={th}>Status</th>
+                <th style={th}>Priority</th>
+                <th style={th}>Date</th>
+                <th style={th}>Reports</th>
+                <th style={th}>Timing</th>
+                <th style={th}>Duration</th>
+              </tr>
+            </thead>
+            <tbody>
+              {collectionRequests.map((request) => (
+                <tr key={request.id}>
+                  <td style={td}>{formatTime(request.created_at)}</td>
+                  <td style={td}>{request.request_type}</td>
+                  <td style={td}>{request.request_status}</td>
+                  <td style={td}>{request.priority}</td>
+                  <td style={td}>{request.service_date ?? request.service_date_start ?? "—"}</td>
+                  <td style={td}>{request.requested_reports?.join(", ") || "—"}</td>
+                  <td style={td}>{formatRequestTiming(request)}</td>
+                  <td style={td}>{formatDuration(request.duration_ms)}</td>
+                </tr>
+              ))}
+              {collectionRequests.length === 0 ? (
+                <tr>
+                  <td style={td} colSpan={7}>No collection requests yet.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
+
       <SectionCard eyebrow="Runtime inspection" title="Latest report seams">
         <div style={twoCol}>
           <RunSummary title="DSW" run={latestDswRun} />
@@ -954,6 +1134,17 @@ const profileCard: CSSProperties = {
   gap: 9,
   alignContent: "start",
   boxShadow: "0 10px 28px rgba(15, 23, 42, 0.04)",
+};
+
+const workdayRefreshCard: CSSProperties = {
+  border: "1px solid #dbe7f3",
+  borderRadius: 16,
+  padding: 12,
+  background: "#fff",
+  display: "grid",
+  gridTemplateColumns: "1fr auto",
+  gap: 12,
+  alignItems: "center",
 };
 
 const reportChip: CSSProperties = {
