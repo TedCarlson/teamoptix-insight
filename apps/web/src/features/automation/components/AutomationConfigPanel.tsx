@@ -78,6 +78,57 @@ function MiniStat(props: { label: string; value: string | number | null | undefi
   );
 }
 
+function StatusPill(props: { tone: "blue" | "green" | "slate"; children: ReactNode }) {
+  const palette = {
+    blue: { border: "#bfdbfe", background: "#eff6ff", color: "#1d4ed8" },
+    green: { border: "#bbf7d0", background: "#f0fdf4", color: "#166534" },
+    slate: { border: "#dbe7f3", background: "#f8fafc", color: "#475569" },
+  }[props.tone];
+
+  return (
+    <span style={{
+      border: `1px solid ${palette.border}`,
+      background: palette.background,
+      color: palette.color,
+      borderRadius: 999,
+      padding: "6px 10px",
+      fontSize: 12,
+      fontWeight: 950,
+    }}>
+      {props.children}
+    </span>
+  );
+}
+
+function ProfileCard(props: {
+  title: string;
+  badge: string;
+  tone: "blue" | "green" | "slate";
+  description: string;
+  reports: string[];
+  footer: string;
+}) {
+  return (
+    <div style={profileCard}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+        <div>
+          <h4 style={{ margin: 0, fontSize: 16, color: "#0f172a" }}>{props.title}</h4>
+          <p style={{ ...mutedCopy, margin: "6px 0 0" }}>{props.description}</p>
+        </div>
+        <StatusPill tone={props.tone}>{props.badge}</StatusPill>
+      </div>
+
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {props.reports.map((report) => (
+          <span key={report} style={reportChip}>{report}</span>
+        ))}
+      </div>
+
+      <p style={{ margin: 0, color: "#475569", fontSize: 12, fontWeight: 850 }}>{props.footer}</p>
+    </div>
+  );
+}
+
 function formatStatus(value: AutomationStatusValue | null) {
   if (!value) return "Loading...";
   return value
@@ -342,6 +393,7 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
 
   const [saving, setSaving] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [showCredentialEditor, setShowCredentialEditor] = useState(false);
   const [savingScheduleKey, setSavingScheduleKey] = useState<string | null>(null);
 
   const [message, setMessage] = useState<string | null>(null);
@@ -536,61 +588,147 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
 
   return (
     <section style={{ display: "grid", gap: 10 }}>
-      <SectionCard eyebrow="Automation status" title="Data acquisition health">
-        <div style={grid4}>
-          <MiniStat label="Status" value={statusError ? "Warning" : formatStatus(status?.status ?? null)} />
-          <MiniStat label="Last DSW" value={formatTime(latestDswRun?.started_at)} />
-          <MiniStat label="Last FCC" value={formatTime(latestFccRun?.started_at)} />
-          <MiniStat label="Next Run" value={nextRunLabel} />
+      <SectionCard eyebrow="Insight Collection Center" title="Collection Health">
+        <p style={leadText}>
+          Operational dashboards stay current while required platform collections protect historical reporting.
+        </p>
+
+        <div style={executiveSignalGrid}>
+          <MiniStat label="Collection Health" value={formatStatus(status?.status ?? null)} />
+
+          <button
+            type="button"
+            style={credentialSignalButton}
+            disabled={!props.canEdit}
+            onClick={() => setShowCredentialEditor((value) => !value)}
+          >
+            <span className="context-stat__label">FedEx Connection</span>
+            <strong>{credential?.has_secret ? "Credentials Current" : "Credentials Needed"}</strong>
+            <span style={{ color: "#2563eb", fontSize: 11, fontWeight: 900 }}>
+              {showCredentialEditor ? "Click to close" : "Click to update"}
+            </span>
+            <span style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>
+              {credential?.has_secret
+                ? `Last verified ${formatDateTime(credential?.last_verified_at)}`
+                : "Click to add credentials"}
+            </span>
+          </button>
+
+          <MiniStat label="Last Successful Collection" value={formatTime(latestDswRun?.started_at ?? latestFccRun?.started_at)} />
         </div>
+
+        <div style={policyStrip}>
+          <span style={{ fontWeight: 950, color: "#166534" }}>✓ Platform policy:</span>
+          <span>Required integrity collections always receive priority.</span>
+        </div>
+
+        {showCredentialEditor ? (
+          <div style={credentialEditorBox}>
+            <div style={credentialNotice}>
+              <strong>Credential changes affect report collection.</strong>
+              <span>
+                Insight uses this connection only when a collection order is executed. Updating it controls whether the runner can
+                reach FedEx and collect operational reports for this company.
+              </span>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+              <label style={credentialField}>
+                <span>FedEx Username</span>
+                <input
+                  style={credentialInput}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Enter username"
+                  disabled={!props.canEdit}
+                />
+              </label>
+
+              <label style={credentialField}>
+                <span>Password</span>
+                <input
+                  style={credentialInput}
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={credential?.has_secret ? "Enter new password to replace" : "Enter password"}
+                  disabled={!props.canEdit}
+                />
+              </label>
+            </div>
+
+            <div className="cta-row">
+              <button
+                type="button"
+                className="button button-primary"
+                disabled={!props.canEdit || saving || !username.trim() || !password.trim()}
+                onClick={saveCredential}
+              >
+                {saving ? "Saving..." : "Save Credentials"}
+              </button>
+
+              <button
+                type="button"
+                className="button"
+                disabled={!props.canEdit || verifying || !credential?.has_secret}
+                onClick={verifyCredential}
+              >
+                {verifying ? "Testing..." : "Test Connection"}
+              </button>
+
+              <button type="button" className="button" onClick={() => setShowCredentialEditor(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {message ? <p style={{ color: "#0f9f6e", fontWeight: 800, marginBottom: 0 }}>{message}</p> : null}
+        {statusError ? <p style={{ color: "#c62828", fontWeight: 800, marginBottom: 0 }}>{statusError}</p> : null}
       </SectionCard>
 
-      <SectionCard eyebrow="Credential vault" title="FedEx credentials">
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
-          <input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="FedEx username"
-            disabled={!props.canEdit}
+      <SectionCard eyebrow="Protected Collections" title="Collection orders Insight depends on">
+        <p style={mutedCopy}>
+          These collection orders protect the data foundation Insight needs to produce trustworthy operational intelligence.
+        </p>
+
+        <div style={profileGrid}>
+          <ProfileCard
+            title="Previous Day Close"
+            badge="Automatic"
+            tone="blue"
+            description="Closes yesterday before today begins. Today this behavior is driven by prior-day DSW ingestion."
+            reports={["Yesterday", "DSW", "Historical completeness"]}
+            footer="Purpose: normal daily completion"
           />
 
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="FedEx password"
-            disabled={!props.canEdit}
+          <ProfileCard
+            title="Last Look"
+            badge="Automatic"
+            tone="green"
+            description="Takes an in-day final look at today's operation before the day rolls."
+            reports={["Today", "DSW", "FCC", "Available artifacts"]}
+            footer="Purpose: best available current-day picture"
+          />
+
+          <ProfileCard
+            title="Historical Backfill"
+            badge="Onboarding"
+            tone="slate"
+            description="Builds historical DSW context so new Insight users can experience the intelligence engine immediately."
+            reports={["Date range", "DSW history", "Trend baseline"]}
+            footer="Purpose: teach Insight the story behind the operation"
+          />
+
+          <ProfileCard
+            title="Targeted Recovery"
+            badge="Manual"
+            tone="blue"
+            description="Pulls one identified prior day in isolation to heal a missing, corrupt, or questionable record."
+            reports={["Selected date", "DSW", "Record repair"]}
+            footer="Purpose: recover trustworthy historical truth"
           />
         </div>
-
-        <div className="cta-row" style={{ marginTop: 12 }}>
-          <button
-            type="button"
-            className="button button-primary"
-            disabled={!props.canEdit || saving || !username.trim() || !password.trim()}
-            onClick={saveCredential}
-          >
-            {saving ? "Saving..." : "Save Credentials"}
-          </button>
-
-          <button
-            type="button"
-            className="button"
-            disabled={!props.canEdit || verifying || !credential?.has_secret}
-            onClick={verifyCredential}
-          >
-            {verifying ? "Verifying..." : "Test Connection"}
-          </button>
-        </div>
-
-        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
-          <MiniStat label="Credential Status" value={credential?.has_secret ? "Configured" : "Not Configured"} />
-          <MiniStat label="Last Verified" value={formatDateTime(credential?.last_verified_at)} />
-          <MiniStat label="Access Scope" value="DSW / FCC Required" />
-        </div>
-
-        {message ? <p style={{ color: "#0f9f6e", fontWeight: 800 }}>{message}</p> : null}
-        {statusError ? <p style={{ color: "#c62828", fontWeight: 800 }}>{statusError}</p> : null}
       </SectionCard>
 
       <SectionCard eyebrow="Schedule configuration" title="Automation cadence">
@@ -670,6 +808,162 @@ const grid4: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
   gap: 8,
+};
+
+const executiveSignalGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "0.8fr 1.4fr 0.8fr",
+  gap: 10,
+  marginTop: 12,
+};
+
+const credentialSignalButton: CSSProperties = {
+  border: "1px solid #bfdbfe",
+  borderRadius: 16,
+  padding: "9px 10px",
+  background: "#fff",
+  display: "grid",
+  gap: 3,
+  textAlign: "left",
+  cursor: "pointer",
+  minHeight: 58,
+  boxShadow: "0 12px 30px rgba(37, 99, 235, 0.06)",
+};
+
+const policyStrip: CSSProperties = {
+  marginTop: 10,
+  border: "1px solid #bbf7d0",
+  borderRadius: 999,
+  padding: "7px 10px",
+  background: "#f0fdf4",
+  color: "#166534",
+  display: "flex",
+  gap: 6,
+  alignItems: "center",
+  fontSize: 12,
+  fontWeight: 850,
+};
+
+const heroGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1.4fr 0.8fr",
+  gap: 12,
+  alignItems: "stretch",
+  marginBottom: 12,
+};
+
+const leadText: CSSProperties = {
+  margin: 0,
+  color: "#334155",
+  fontSize: 14,
+  lineHeight: 1.55,
+  fontWeight: 750,
+};
+
+const mutedCopy: CSSProperties = {
+  margin: "0 0 12px",
+  color: "#64748b",
+  fontSize: 13,
+  lineHeight: 1.5,
+  fontWeight: 750,
+};
+
+const capacityBox: CSSProperties = {
+  border: "1px solid #dbe7f3",
+  borderRadius: 16,
+  padding: 12,
+  background: "linear-gradient(180deg, #f8fbff 0%, #ffffff 100%)",
+  display: "grid",
+  gap: 6,
+};
+
+const connectionStripButton: CSSProperties = {
+  border: "1px solid #dbe7f3",
+  borderRadius: 16,
+  padding: 12,
+  background: "#fff",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  alignItems: "center",
+  marginTop: 12,
+  width: "100%",
+  textAlign: "left",
+  cursor: "pointer",
+};
+
+const credentialEditorBox: CSSProperties = {
+  border: "1px dashed #bfdbfe",
+  borderRadius: 16,
+  padding: 12,
+  background: "#f8fbff",
+  display: "grid",
+  gap: 10,
+  marginTop: 12,
+};
+
+const credentialNotice: CSSProperties = {
+  border: "1px solid #dbe7f3",
+  borderRadius: 14,
+  padding: "10px 12px",
+  background: "#fff",
+  color: "#334155",
+  display: "grid",
+  gap: 4,
+  fontSize: 12,
+  fontWeight: 800,
+  lineHeight: 1.45,
+};
+
+const credentialField: CSSProperties = {
+  border: "1px solid #dbe7f3",
+  borderRadius: 16,
+  padding: "9px 12px",
+  background: "#fff",
+  display: "grid",
+  gap: 5,
+  color: "#64748b",
+  fontSize: 11,
+  fontWeight: 950,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+};
+
+const credentialInput: CSSProperties = {
+  border: 0,
+  outline: "none",
+  background: "transparent",
+  color: "#0f172a",
+  fontSize: 15,
+  fontWeight: 900,
+  minHeight: 28,
+};
+
+const profileGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+  gap: 10,
+};
+
+const profileCard: CSSProperties = {
+  border: "1px solid #e6edf5",
+  borderRadius: 16,
+  padding: 10,
+  background: "#fff",
+  display: "grid",
+  gap: 9,
+  alignContent: "start",
+  boxShadow: "0 10px 28px rgba(15, 23, 42, 0.04)",
+};
+
+const reportChip: CSSProperties = {
+  border: "1px solid #e6edf5",
+  background: "#f8fafc",
+  color: "#334155",
+  borderRadius: 999,
+  padding: "5px 8px",
+  fontSize: 11,
+  fontWeight: 900,
 };
 
 const twoCol: CSSProperties = {
