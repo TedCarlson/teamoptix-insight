@@ -75,10 +75,10 @@ def writeError(download_date, error, name, start_time):
     closeConnection(CONNECTION)
 
 def getMainFolder():
-    # return os.getcwd()
-    if isPlatformLinux(): return "/var/www/html/storage/app/public/scraper"
-    return r"D:\Work\\Upwork\\Upwork\\fcms_admin\\storage\\app\\public\\scraper"
-    # return "/var/www/html/storage/app/public/scraper"
+    return os.environ.get(
+        "FCMS_SCRAPER_HOME",
+        os.path.dirname(os.path.abspath(__file__))
+    )
 
 def getDailyServiceOptions():
     return 8

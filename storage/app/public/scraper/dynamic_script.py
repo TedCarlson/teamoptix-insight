@@ -494,11 +494,12 @@ def main(section_='', option_=0, retry=1):
         logging.info("Crashed On: " + str(ACTIVE_SECTION) + ' and ' + str(ACTIVE_SECTION_OPTION))
         writeError(formatted_date, f"Crashed On:{ACTIVE_SECTION} and {ACTIVE_SECTION_OPTION}", "Daily scrape", START_TIME)
         time.sleep(3)
-        if retry < 75:
+        max_retries = int(os.environ.get("FCMS_MAX_RETRIES", "0"))
+        if retry < max_retries:
             return main(ACTIVE_SECTION, ACTIVE_SECTION_OPTION, retry+1)
         else:
-            logging.info(f'{retry} time retried...')
-            sys.exit()
+            logging.info(f'{retry} retries attempted; max_retries={max_retries}. exiting one-shot run.')
+            sys.exit(1)
 
     driver.quit()
     time.sleep(5)
