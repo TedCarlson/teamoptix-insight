@@ -822,12 +822,12 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
           />
 
           <ProfileCard
-            title="Historical Backfill"
+            title="Time Machine"
             badge="Onboarding"
             tone="slate"
-            description="Builds historical DSW context so new Insight users can experience the intelligence engine immediately."
+            description="Recovers deep operational history so new Insight users can begin with intelligence on day one."
             reports={["Date range", "DSW history", "Trend baseline"]}
-            footer="Purpose: teach Insight the story behind the operation"
+            footer="Purpose: recover the story behind the operation"
           />
 
           <ProfileCard
