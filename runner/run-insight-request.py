@@ -32,7 +32,7 @@ def infer_report_identity(filename: str) -> dict:
     if "serviceareasummary" in name or "sasummary" in name:
         return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Service Area Summary.xlsx"}
     if "serviceareastatus" in name or "sastatus" in name:
-        return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Service Area Status.xlsx"}
+        return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Work Area Summary.xlsx"}
     if "combinedmanifest" in name or name.startswith("cm_"):
         return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Combined Manifest.xlsx"}
     if "deliverymanifest" in name:
@@ -116,6 +116,8 @@ def artifact_matches_targets(request: dict, artifact: dict) -> bool:
     if "DSW" in keys and "daily service worksheet" in display:
         return True
     if "SERVICE_AREA_SUMMARY" in keys and "serviceareasummary" in filename:
+        return True
+    if "WORK_AREA_SUMMARY" in keys and "serviceareastatus" in filename:
         return True
     if "SERVICE_AREA_STATUS" in keys and "serviceareastatus" in filename:
         return True
