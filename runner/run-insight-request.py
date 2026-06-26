@@ -16,6 +16,40 @@ INSIGHT_ENV_FILE = Path(os.environ.get(
 RUNNER_KEY = os.environ.get("RUNNER_KEY", "vps-laravel-runner-001")
 PROVIDER_KEY = "FEDEX"
 DONOR_RUNNER = APP_DIR / "runner" / "run-donor-once.sh"
+SCRAPER_HOME = APP_DIR / "storage" / "app" / "public" / "scraper"
+
+def service_date_folder(service_date: str | None) -> str:
+    if not service_date:
+        return time.strftime("%m-%d-%Y")
+    yyyy, mm, dd = service_date.split("-")
+    return f"{mm}-{dd}-{yyyy}"
+
+def collect_artifacts(request: dict) -> list[dict]:
+    folder_name = service_date_folder(request.get("service_date"))
+    excel_dir = SCRAPER_HOME / "Excels" / folder_name
+    artifacts = []
+
+    if excel_dir.exists():
+        for file in sorted(excel_dir.iterdir()):
+            if file.is_file():
+                artifacts.append({
+                    "kind": "excel",
+                    "path": str(file),
+                    "filename": file.name,
+                    "size_bytes": file.stat().st_size,
+                })
+
+    logs_dir = SCRAPER_HOME / "Logs"
+    if logs_dir.exists():
+        for file in sorted(logs_dir.glob("daily_scraper_*.log"), key=lambda p: p.stat().st_mtime, reverse=True)[:3]:
+            artifacts.append({
+                "kind": "scraper_log",
+                "path": str(file),
+                "filename": file.name,
+                "size_bytes": file.stat().st_size,
+            })
+
+    return artifacts
 
 def load_env_file(path: Path) -> dict:
     env = {}
@@ -125,6 +159,13 @@ def main() -> int:
         print("[insight-runner] ready to execute donor runner")
         if os.environ.get("INSIGHT_RUNNER_DRY_RUN", "1") == "1":
             print("[insight-runner] dry run only; scraper not executed")
+            artifacts = collect_artifacts(request)
+            print(json.dumps({
+                "event": "artifact_manifest",
+                "dry_run": True,
+                "artifact_count": len(artifacts),
+                "artifacts": artifacts,
+            }, indent=2))
             update_status(request_id, "COMPLETE")
             return 0
 
@@ -141,6 +182,14 @@ def main() -> int:
         if proc.returncode != 0:
             update_status(request_id, "FAILED", f"Donor runner failed with exit code {proc.returncode}")
             return proc.returncode
+
+        artifacts = collect_artifacts(request)
+        print(json.dumps({
+            "event": "artifact_manifest",
+            "dry_run": False,
+            "artifact_count": len(artifacts),
+            "artifacts": artifacts,
+        }, indent=2))
 
         update_status(request_id, "COMPLETE")
         return 0
