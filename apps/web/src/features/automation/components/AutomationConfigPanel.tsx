@@ -898,6 +898,9 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
   const [queueingRequest, setQueueingRequest] = useState<string | null>(null);
   const [selectedCollection, setSelectedCollection] = useState<ProtectedCollectionType | null>(null);
 
+  const [artifacts, setArtifacts] = useState<any[]>([]);
+  const [inspectingArtifactId, setInspectingArtifactId] = useState<string | null>(null);
+  const [artifactInspection, setArtifactInspection] = useState<any | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
 
@@ -967,9 +970,22 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
     setCollectionRequests(Array.isArray(data?.rows) ? data.rows : []);
   }, [props.slug]);
 
+  const loadArtifacts = useCallback(async () => {
+    const res = await fetch(`/api/company/${props.slug}/operations/artifacts?status=READY_FOR_INGEST&limit=25`, {
+      cache: "no-store",
+      credentials: "include",
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) throw new Error(data?.error ?? "Failed to load artifacts.");
+
+    setArtifacts(Array.isArray(data?.rows) ? data.rows : []);
+  }, [props.slug]);
+
   const loadAll = useCallback(async () => {
-    await Promise.all([loadStatus(), loadCredential(), loadSchedule(), loadRuns(), loadCollectionRequests()]);
-  }, [loadStatus, loadCredential, loadSchedule, loadRuns, loadCollectionRequests]);
+    await Promise.all([loadStatus(), loadCredential(), loadSchedule(), loadRuns(), loadCollectionRequests(), loadArtifacts()]);
+  }, [loadStatus, loadCredential, loadSchedule, loadRuns, loadCollectionRequests, loadArtifacts]);
 
   useEffect(() => {
     let active = true;
@@ -1050,7 +1066,7 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
 
       if (!res.ok) throw new Error(data?.error ?? "Failed to prepare refresh ticket.");
 
-      await loadCollectionRequests();
+      await Promise.all([loadCollectionRequests(), loadArtifacts()]);
       setMessage("Workday refresh ticket prepared.");
     } catch (error) {
       setStatusError(error instanceof Error ? error.message : "Failed to prepare refresh ticket.");
@@ -1076,13 +1092,36 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
 
       if (!res.ok) throw new Error(data?.error ?? "Failed to prepare collection order.");
 
-      await loadCollectionRequests();
+      await Promise.all([loadCollectionRequests(), loadArtifacts()]);
       setSelectedCollection(null);
       setMessage("Collection order prepared.");
     } catch (error) {
       setStatusError(error instanceof Error ? error.message : "Failed to prepare collection order.");
     } finally {
       setQueueingRequest(null);
+    }
+  }
+
+  async function inspectArtifact(artifactId: string) {
+    try {
+      setInspectingArtifactId(artifactId);
+      setArtifactInspection(null);
+      setStatusError(null);
+
+      const res = await fetch(`/api/company/${props.slug}/operations/artifacts/${artifactId}/inspect`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data?.error ?? "Artifact inspection failed.");
+
+      setArtifactInspection(data);
+    } catch (error) {
+      setStatusError(error instanceof Error ? error.message : "Artifact inspection failed.");
+    } finally {
+      setInspectingArtifactId(null);
     }
   }
 
@@ -1365,29 +1404,63 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
                 <th style={th}>Reports</th>
                 <th style={th}>Timing</th>
                 <th style={th}>Duration</th>
+                <th style={th}>Artifacts</th>
               </tr>
             </thead>
             <tbody>
-              {collectionRequests.map((request) => (
-                <tr key={request.id}>
-                  <td style={td}>{formatTime(request.created_at)}</td>
-                  <td style={td}>{request.request_type}</td>
-                  <td style={td}>{request.request_status}</td>
-                  <td style={td}>{request.priority}</td>
-                  <td style={td}>{request.service_date ?? request.service_date_start ?? "—"}</td>
-                  <td style={td}>{request.requested_reports?.join(", ") || "—"}</td>
-                  <td style={td}>{formatRequestTiming(request)}</td>
-                  <td style={td}>{formatDuration(request.duration_ms)}</td>
-                </tr>
-              ))}
+              {collectionRequests.map((request) => {
+                const requestArtifacts = artifacts.filter((artifact) => artifact.collection_request_id === request.id);
+
+                return (
+                  <tr key={request.id}>
+                    <td style={td}>{formatTime(request.created_at)}</td>
+                    <td style={td}>{request.request_type}</td>
+                    <td style={td}>{request.request_status}</td>
+                    <td style={td}>{request.priority}</td>
+                    <td style={td}>{request.service_date ?? request.service_date_start ?? "—"}</td>
+                    <td style={td}>{request.requested_reports?.join(", ") || "—"}</td>
+                    <td style={td}>{formatRequestTiming(request)}</td>
+                    <td style={td}>{formatDuration(request.duration_ms)}</td>
+                    <td style={td}>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {requestArtifacts.length > 0 ? requestArtifacts.map((artifact) => (
+                          <button
+                            key={artifact.id}
+                            type="button"
+                            className="button"
+                            style={{ padding: "5px 8px", fontSize: 11 }}
+                            disabled={inspectingArtifactId === artifact.id}
+                            onClick={() => inspectArtifact(artifact.id)}
+                            title={artifact.normalized_filename ?? artifact.original_filename}
+                          >
+                            {inspectingArtifactId === artifact.id ? "Inspecting..." : artifact.report_family_key ?? "Artifact"}
+                          </button>
+                        )) : "—"}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
               {collectionRequests.length === 0 ? (
                 <tr>
-                  <td style={td} colSpan={7}>No collection requests yet.</td>
+                  <td style={td} colSpan={9}>No collection requests yet.</td>
                 </tr>
               ) : null}
             </tbody>
           </table>
         </div>
+
+        {artifactInspection ? (
+          <div style={{ marginTop: 12, border: "1px solid #d6dfeb", borderRadius: 16, padding: 12, background: "#f8fafc" }}>
+            <p className="eyebrow">Artifact inspection</p>
+            <div style={grid4}>
+              <MiniStat label="File" value={artifactInspection.file_name ?? "—"} />
+              <MiniStat label="Detected" value={artifactInspection.detected?.report_family_key ?? "—"} />
+              <MiniStat label="Shape" value={artifactInspection.detected?.report_shape_key ?? "—"} />
+              <MiniStat label="Rows" value={artifactInspection.detected?.route_row_count ?? 0} />
+            </div>
+          </div>
+        ) : null}
       </SectionCard>
 
       <SectionCard eyebrow="Runtime inspection" title="Latest report seams">
