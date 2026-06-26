@@ -31,6 +31,17 @@ def isPlatformLinux():
     return platform.system().lower() == 'linux'
 
 def getScrapingConfig(CONNECTION, CURSOR):
+    runtime_username = os.environ.get("FCMS_FEDEX_USERNAME", "").strip()
+    runtime_password = os.environ.get("FCMS_FEDEX_PASSWORD", "").strip()
+
+    if runtime_username and runtime_password:
+        return {
+            "can_scrape": True,
+            "username": runtime_username,
+            "password": runtime_password,
+            "source": "insight_runtime"
+        }
+
     CURSOR.execute("SELECT * FROM scraper_config")
     
     found = {}
@@ -52,7 +63,8 @@ def getScrapingConfig(CONNECTION, CURSOR):
     return {
         "can_scrape": False, 
         'username': '',
-        'password': ''
+        'password': '',
+        "source": "legacy_local"
     }
 
 def writeError(download_date, error, name, start_time):
