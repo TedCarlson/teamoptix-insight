@@ -103,7 +103,8 @@ def target_runner_sections(request: dict) -> list[str]:
         if section not in sections:
             sections.append(section)
 
-    return sections
+    section_order = {"Service": 10, "Daily Service": 20, "P&D": 30}
+    return sorted(sections, key=lambda section: section_order.get(section, 999))
 
 def artifact_matches_targets(request: dict, artifact: dict) -> bool:
     keys = target_artifact_keys(request)

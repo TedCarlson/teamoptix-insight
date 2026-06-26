@@ -418,7 +418,7 @@ def main(section_='', option_=0, retry=1):
                 checkDownloads(7)
                 time.sleep(3)
             ACTIVE_SECTION_OPTION = 0
-        if secion_index <= 3:
+        if secion_index <= 3 and should_run_section('SCH'):
             ACTIVE_SECTION = 'SCH'
             logging.info("Pickup SCH")
             sch = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//li[@id='mainTabSettab_4']")))
