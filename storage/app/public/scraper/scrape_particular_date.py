@@ -181,18 +181,13 @@ def main(section_='', option_=0, retry=1):
         
         password = driver.find_element(By.XPATH, '//input[@name="credentials.passcode"]')
         time.sleep(1)
-        # '8478029'
         username.send_keys(SCRAP_INFO['username'])
         time.sleep(1)
         
-        # '8478029#Redd'
         password.send_keys(SCRAP_INFO['password'])
         time.sleep(1)
 
-        # 8478029#Redd!
 
-        # 8478029
-        # 8478029#Redd
 
         password.send_keys(Keys.ENTER)
 

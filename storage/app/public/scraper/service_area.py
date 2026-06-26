@@ -138,7 +138,6 @@ def main(retry=0):
         username.send_keys(SCRAP_INFO['username'])
         time.sleep(1)
         
-        # '8478029#Redd'
         password.send_keys(SCRAP_INFO['password'])
         time.sleep(1)
         
