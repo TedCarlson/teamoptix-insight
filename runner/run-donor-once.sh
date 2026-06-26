@@ -62,6 +62,14 @@ set -e
 echo "[runner] scraper exit status=$status"
 
 if [ "$status" -ne 0 ]; then
+  produced_count="$(find "$SCRAPER_DIR/Excels" -type f -mmin -30 2>/dev/null | wc -l | tr -d ' ')"
+
+  if [ "${produced_count:-0}" -gt 0 ]; then
+    rm -f "$COOLDOWN_FILE"
+    echo "[runner] scraper exited nonzero after producing files; cooldown skipped produced_count=$produced_count"
+    exit "$status"
+  fi
+
   until_epoch="$(($(date +%s) + COOLDOWN_SECONDS))"
   echo "$until_epoch" > "$COOLDOWN_FILE"
   echo "[runner] failure cooldown set for $COOLDOWN_SECONDS seconds"
