@@ -54,26 +54,57 @@ trap 'rm -f "$LOCK_FILE"' EXIT
 
 export FCMS_SCRAPER_HOME="$SCRAPER_DIR"
 
-set +e
-"$PY" "$SCRAPER_DIR/dynamic_script.py"
-status=$?
-set -e
+overall_status=0
+produced_total=0
 
-echo "[runner] scraper exit status=$status"
+IFS=',' read -ra TARGET_SECTIONS <<< "${FCMS_TARGET_SECTIONS:-}"
 
-if [ "$status" -ne 0 ]; then
-  produced_count="$(find "$SCRAPER_DIR/Excels" -type f -mmin -30 2>/dev/null | wc -l | tr -d ' ')"
+if [ "${#TARGET_SECTIONS[@]}" -eq 0 ] || [ -z "${FCMS_TARGET_SECTIONS:-}" ]; then
+  TARGET_SECTIONS=("ALL")
+fi
 
-  if [ "${produced_count:-0}" -gt 0 ]; then
+for section in "${TARGET_SECTIONS[@]}"; do
+  section="$(echo "$section" | xargs)"
+  [ -z "$section" ] && continue
+
+  before_count="$(find "$SCRAPER_DIR/Excels" -type f -mmin -120 2>/dev/null | wc -l | tr -d ' ')"
+
+  echo "[runner] section start: $section"
+
+  set +e
+  if [ "$section" = "ALL" ]; then
+    "$PY" "$SCRAPER_DIR/dynamic_script.py"
+  else
+    FCMS_TARGET_SECTIONS="$section" "$PY" "$SCRAPER_DIR/dynamic_script.py"
+  fi
+  status=$?
+  set -e
+
+  after_count="$(find "$SCRAPER_DIR/Excels" -type f -mmin -120 2>/dev/null | wc -l | tr -d ' ')"
+  produced_count="$((after_count - before_count))"
+  [ "$produced_count" -lt 0 ] && produced_count=0
+  produced_total="$((produced_total + produced_count))"
+
+  echo "[runner] section exit status=$status section=$section produced_count=$produced_count"
+
+  if [ "$status" -ne 0 ]; then
+    overall_status="$status"
+  fi
+done
+
+echo "[runner] scraper exit status=$overall_status produced_total=$produced_total"
+
+if [ "$overall_status" -ne 0 ]; then
+  if [ "${produced_total:-0}" -gt 0 ]; then
     rm -f "$COOLDOWN_FILE"
-    echo "[runner] scraper exited nonzero after producing files; cooldown skipped produced_count=$produced_count"
-    exit "$status"
+    echo "[runner] scraper exited nonzero after producing files; cooldown skipped produced_total=$produced_total"
+    exit "$overall_status"
   fi
 
   until_epoch="$(($(date +%s) + COOLDOWN_SECONDS))"
   echo "$until_epoch" > "$COOLDOWN_FILE"
   echo "[runner] failure cooldown set for $COOLDOWN_SECONDS seconds"
-  exit "$status"
+  exit "$overall_status"
 fi
 
 rm -f "$COOLDOWN_FILE"
