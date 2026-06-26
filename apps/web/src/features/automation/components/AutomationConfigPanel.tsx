@@ -93,6 +93,17 @@ type CollectionOrderDraft = {
   request_payload: Record<string, unknown>;
 };
 
+type CollectionTarget = {
+  key: string;
+  label: string;
+  description: string;
+  report_family_key: "DSW" | "FCC";
+  artifact_key: string;
+  runner_section: "P_AND_D" | "SERVICE" | "DAILY_SERVICE";
+  default_last_look: boolean;
+  default_targeted: boolean;
+};
+
 type CollectionProfile = {
   type: ProtectedCollectionType;
   title: string;
@@ -202,7 +213,7 @@ const COLLECTION_PROFILES: CollectionProfile[] = [
     badge: "Automatic",
     tone: "green",
     description: "Platform-managed final pass for today's operation before the day rolls.",
-    reports: ["Today", "All available reports", "Runner sign-off"],
+    reports: ["Today", "Targeted files", "Runner sign-off"],
     footer: "Runs automatically at 8:00 PM",
     priority: 70,
   },
@@ -221,12 +232,100 @@ const COLLECTION_PROFILES: CollectionProfile[] = [
     title: "Targeted Recovery",
     badge: "Manual",
     tone: "blue",
-    description: "Runs one focused collection to learn what the runner can retrieve and how long the full suite takes.",
-    reports: ["Today", "All available reports", "Runtime telemetry"],
-    footer: "Purpose: VPS runner litmus test",
+    description: "Runs one focused collection for selected file groups and runtime testing.",
+    reports: ["Selected date", "Selected files", "Runtime telemetry"],
+    footer: "Purpose: targeted runner test",
     priority: 90,
   },
 ];
+
+const COLLECTION_TARGETS: CollectionTarget[] = [
+  {
+    key: "DSW_DAILY_SERVICE",
+    label: "Daily Service Worksheet",
+    description: "Primary daily operational worksheet used for route, stop, package, and driver facts.",
+    report_family_key: "DSW",
+    artifact_key: "DSW",
+    runner_section: "DAILY_SERVICE",
+    default_last_look: true,
+    default_targeted: true,
+  },
+  {
+    key: "P_AND_D_COMBINED_MANIFEST",
+    label: "Combined Manifest",
+    description: "Best first manifest target. Likely avoids separate delivery/pickup manifest pulls for many questions.",
+    report_family_key: "FCC",
+    artifact_key: "COMBINED_MANIFEST",
+    runner_section: "P_AND_D",
+    default_last_look: true,
+    default_targeted: true,
+  },
+  {
+    key: "SERVICE_AREA_SUMMARY",
+    label: "Service Area Summary",
+    description: "Service-level summary signal from FCC.",
+    report_family_key: "FCC",
+    artifact_key: "SERVICE_AREA_SUMMARY",
+    runner_section: "SERVICE",
+    default_last_look: true,
+    default_targeted: true,
+  },
+  {
+    key: "SERVICE_AREA_STATUS",
+    label: "Service Area Status",
+    description: "Work-area/service status signal from FCC.",
+    report_family_key: "FCC",
+    artifact_key: "SERVICE_AREA_STATUS",
+    runner_section: "SERVICE",
+    default_last_look: true,
+    default_targeted: true,
+  },
+  {
+    key: "P_AND_D_DELIVERY_MANIFEST",
+    label: "Delivery Manifest",
+    description: "Route-level delivery manifest. Use when combined manifest is not enough.",
+    report_family_key: "FCC",
+    artifact_key: "DELIVERY_MANIFEST",
+    runner_section: "P_AND_D",
+    default_last_look: false,
+    default_targeted: false,
+  },
+  {
+    key: "P_AND_D_PICKUP_MANIFEST",
+    label: "Pickup Manifest",
+    description: "Route-level pickup manifest. Use only when pickup detail is specifically needed.",
+    report_family_key: "FCC",
+    artifact_key: "PICKUP_MANIFEST",
+    runner_section: "P_AND_D",
+    default_last_look: false,
+    default_targeted: false,
+  },
+];
+
+function defaultCollectionTargetKeys(profileType?: ProtectedCollectionType) {
+  if (profileType === "TARGETED_RECOVERY") {
+    return COLLECTION_TARGETS.filter((target) => target.default_targeted).map((target) => target.key);
+  }
+
+  if (profileType === "LAST_LOOK") {
+    return COLLECTION_TARGETS.filter((target) => target.default_last_look).map((target) => target.key);
+  }
+
+  if (profileType === "HISTORICAL_BACKFILL") {
+    return ["DSW_DAILY_SERVICE"];
+  }
+
+  return [];
+}
+
+function selectedCollectionTargets(keys: string[]) {
+  const selected = new Set(keys);
+  return COLLECTION_TARGETS.filter((target) => selected.has(target.key));
+}
+
+function requestedReportsFromTargets(targets: CollectionTarget[]) {
+  return Array.from(new Set(targets.map((target) => target.report_family_key)));
+}
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -253,13 +352,15 @@ function CollectionOrderDrawer(props: {
   const [endDate, setEndDate] = useState(todayIso);
   const [includeDsw, setIncludeDsw] = useState(true);
   const [includeFcc, setIncludeFcc] = useState(false);
+  const [selectedTargetKeys, setSelectedTargetKeys] = useState<string[]>(() => defaultCollectionTargetKeys(profile?.type));
   const [timeMachinePriorityMode, setTimeMachinePriorityMode] = useState<"standard" | "onboarding">("standard");
 
   if (!profile) return null;
 
+  const selectedTargets = selectedCollectionTargets(selectedTargetKeys);
   const requestedReports =
-    profile.type === "TARGETED_RECOVERY"
-      ? []
+    profile.type === "TARGETED_RECOVERY" || profile.type === "LAST_LOOK"
+      ? requestedReportsFromTargets(selectedTargets)
       : profile.type === "HISTORICAL_BACKFILL"
         ? ["DSW"]
         : ([includeDsw ? "DSW" : null, includeFcc ? "FCC" : null].filter(Boolean) as string[]);
@@ -273,7 +374,7 @@ function CollectionOrderDrawer(props: {
   const canPrepare =
     props.canEdit &&
     !isPlatformManaged &&
-    (profile.type === "TARGETED_RECOVERY" || requestedReports.length > 0) &&
+    (profile.type === "TARGETED_RECOVERY" ? selectedTargets.length > 0 : requestedReports.length > 0) &&
     (isDateRange ? Boolean(startDate && endDate) : Boolean(serviceDate));
 
   async function prepareOrder() {
@@ -292,10 +393,17 @@ function CollectionOrderDrawer(props: {
         intent: profile.type.toLowerCase(),
         collect_scope:
           profile.type === "TARGETED_RECOVERY"
-            ? "all_available_reports_today"
+            ? "targeted_file_groups"
             : profile.type === "HISTORICAL_BACKFILL"
               ? "dsw_only"
               : "selected_reports",
+        targets: selectedTargets.map((target) => ({
+          key: target.key,
+          label: target.label,
+          report_family_key: target.report_family_key,
+          artifact_key: target.artifact_key,
+          runner_section: target.runner_section,
+        })),
         runner_goal:
           profile.type === "TARGETED_RECOVERY"
             ? "litmus_test_runtime_and_capability"
@@ -428,11 +536,33 @@ function CollectionOrderDrawer(props: {
 
           {profile.type === "TARGETED_RECOVERY" ? (
             <div style={sourceBox}>
-              <strong style={sourceTitle}>Runner Litmus Test</strong>
+              <strong style={sourceTitle}>File Groups</strong>
               <p style={{ ...mutedCopy, margin: 0 }}>
-                This order asks the VPS runner to collect every available FedEx contractor report it can reach for today.
-                The goal is capability discovery and runtime telemetry, not a narrow report request.
+                Choose the report groups the VPS runner should attempt. SCH Pickup Management is intentionally excluded.
               </p>
+              <div style={{ display: "grid", gap: 8 }}>
+                {COLLECTION_TARGETS.map((target) => (
+                  <label key={target.key} style={checkRow}>
+                    <input
+                      type="checkbox"
+                      checked={selectedTargetKeys.includes(target.key)}
+                      onChange={(event) => {
+                        setSelectedTargetKeys((current) =>
+                          event.target.checked
+                            ? Array.from(new Set([...current, target.key]))
+                            : current.filter((key) => key !== target.key)
+                        );
+                      }}
+                    />
+                    <span>
+                      <strong>{target.label}</strong>
+                      <span style={{ display: "block", color: "#64748b", fontSize: 12, fontWeight: 750 }}>
+                        {target.description}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
             </div>
           ) : null}
 
@@ -442,7 +572,7 @@ function CollectionOrderDrawer(props: {
               {isPlatformManaged
                 ? "This protected collection is scheduled by Insight and cannot be manually minimized."
                 : profile.type === "TARGETED_RECOVERY"
-                  ? "The runner will attempt every available report for today so Insight can learn capability, timing, and reliability."
+                  ? `The runner will attempt ${selectedTargets.length} selected file group${selectedTargets.length === 1 ? "" : "s"} for the selected service date.`
                   : profile.type === "HISTORICAL_BACKFILL"
                     ? `Time Machine will collect DSW only for the selected date range. ${
                         timeMachinePriorityMode === "onboarding"
