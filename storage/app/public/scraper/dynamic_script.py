@@ -155,6 +155,13 @@ SECTION_LIST = ["P&D", "Service", "Pickup", "SCH", "Daily Service"]
 ACTIVE_SECTION = ''
 ACTIVE_SECTION_OPTION = 0
 
+def should_run_section(section_name):
+    # SCH PU Mgmt is intentionally excluded from Insight Last Look / normal sweeps.
+    # It is an internal operational workflow and not currently useful for Insight ingestion.
+    if section_name == "SCH":
+        return os.environ.get("FCMS_ENABLE_SCH", "0") == "1"
+    return True
+
 def scrollTo(el, driver):
     desired_y = (el.size['height'] / 2) + el.location['y']
     current_y = (driver.execute_script('return window.innerHeight') / 2) + driver.execute_script(
@@ -232,7 +239,7 @@ def main(section_='', option_=0, retry=1):
                     secion_index = index
                     break
 
-        if secion_index <= 3:
+        if secion_index <= 3 and should_run_section('SCH'):
             iframe = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//iframe[@title='FCC Links']")))
 
             driver.switch_to.frame(iframe)
@@ -257,7 +264,7 @@ def main(section_='', option_=0, retry=1):
             WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.XPATH, "//li[@id='mainTabSettab_1']")))
             time.sleep(5)
         
-        if secion_index <= 0:
+        if secion_index <= 0 and should_run_section('P&D'):
             # P&D Mainifests
             ACTIVE_SECTION = 'P&D'
             logging.info("Accessing P&D")
@@ -344,7 +351,7 @@ def main(section_='', option_=0, retry=1):
                     checkDownloads(1)
                     time.sleep(3)
             ACTIVE_SECTION_OPTION = 0
-        if secion_index <= 1:
+        if secion_index <= 1 and should_run_section('Service'):
             ACTIVE_SECTION = 'Service'
             logging.info("Accessing Service")
             service = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//li[@id='mainTabSettab_2']")))
@@ -389,7 +396,7 @@ def main(section_='', option_=0, retry=1):
                 time.sleep(3)
             
             ACTIVE_SECTION_OPTION = 0
-        if secion_index <= 2:
+        if secion_index <= 2 and should_run_section('Pickup'):
             ACTIVE_SECTION = 'Pickup'
             logging.info("Pickup")
             pickup = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//li[@id='mainTabSettab_3']")))
@@ -453,7 +460,7 @@ def main(section_='', option_=0, retry=1):
                     time.sleep(3)
             driver.close()
             ACTIVE_SECTION_OPTION = 0
-        if secion_index <= 4:
+        if secion_index <= 4 and should_run_section('Daily Service'):
             ACTIVE_SECTION = 'Daily Service'
             logging.info("Pickup Daily Service")
             iframe = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//iframe[@title='FCC Links']")))
