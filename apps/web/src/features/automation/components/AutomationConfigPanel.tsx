@@ -77,6 +77,33 @@ type CollectionRequest = {
   updated_at: string;
 };
 
+type ProtectedCollectionType =
+  | "PREVIOUS_DAY_CLOSE"
+  | "LAST_LOOK"
+  | "HISTORICAL_BACKFILL"
+  | "TARGETED_RECOVERY";
+
+type CollectionOrderDraft = {
+  request_type: ProtectedCollectionType | "OPERATIONS_FEED";
+  service_date?: string | null;
+  service_date_start?: string | null;
+  service_date_end?: string | null;
+  requested_reports: string[];
+  priority: number;
+  request_payload: Record<string, unknown>;
+};
+
+type CollectionProfile = {
+  type: ProtectedCollectionType;
+  title: string;
+  badge: string;
+  tone: "blue" | "green" | "slate";
+  description: string;
+  reports: string[];
+  footer: string;
+  priority: number;
+};
+
 function SectionCard(props: { eyebrow: string; title: string; children: ReactNode }) {
   return (
     <article className="app-card" style={{ padding: 14 }}>
@@ -125,9 +152,20 @@ function ProfileCard(props: {
   description: string;
   reports: string[];
   footer: string;
+  onClick?: () => void;
 }) {
   return (
-    <div style={profileCard}>
+    <button
+      type="button"
+      style={{
+        ...profileCard,
+        border: "1px solid #e6edf5",
+        cursor: props.onClick ? "pointer" : "default",
+        textAlign: "left",
+        width: "100%",
+      }}
+      onClick={props.onClick}
+    >
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
         <div>
           <h4 style={{ margin: 0, fontSize: 16, color: "#0f172a" }}>{props.title}</h4>
@@ -143,6 +181,297 @@ function ProfileCard(props: {
       </div>
 
       <p style={{ margin: 0, color: "#475569", fontSize: 12, fontWeight: 850 }}>{props.footer}</p>
+    </button>
+  );
+}
+
+const COLLECTION_PROFILES: CollectionProfile[] = [
+  {
+    type: "PREVIOUS_DAY_CLOSE",
+    title: "Previous Day Close",
+    badge: "Automatic",
+    tone: "blue",
+    description: "Platform-managed daily closeout. Insight protects historical reporting by collecting the prior-day record every morning.",
+    reports: ["Yesterday", "Daily close", "Historical completeness"],
+    footer: "Runs automatically every day at 3:00 AM",
+    priority: 60,
+  },
+  {
+    type: "LAST_LOOK",
+    title: "Last Look",
+    badge: "Automatic",
+    tone: "green",
+    description: "Platform-managed final pass for today's operation before the day rolls.",
+    reports: ["Today", "All available reports", "Runner sign-off"],
+    footer: "Runs automatically at 8:00 PM",
+    priority: 70,
+  },
+  {
+    type: "HISTORICAL_BACKFILL",
+    title: "Time Machine",
+    badge: "Onboarding",
+    tone: "slate",
+    description: "Recovers deep operational history so new Insight users can begin with intelligence on day one.",
+    reports: ["Date range", "DSW only", "Trend baseline"],
+    footer: "Purpose: recover the DSW story behind the operation",
+    priority: 120,
+  },
+  {
+    type: "TARGETED_RECOVERY",
+    title: "Targeted Recovery",
+    badge: "Manual",
+    tone: "blue",
+    description: "Runs one focused collection to learn what the runner can retrieve and how long the full suite takes.",
+    reports: ["Today", "All available reports", "Runtime telemetry"],
+    footer: "Purpose: VPS runner litmus test",
+    priority: 90,
+  },
+];
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function yesterdayIso() {
+  const date = new Date();
+  date.setDate(date.getDate() - 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function CollectionOrderDrawer(props: {
+  profile: CollectionProfile | null;
+  canEdit: boolean;
+  queueing: boolean;
+  onClose: () => void;
+  onSubmit: (draft: CollectionOrderDraft) => Promise<void>;
+}) {
+  const profile = props.profile;
+  const [serviceDate, setServiceDate] = useState(() =>
+    profile?.type === "LAST_LOOK" || profile?.type === "TARGETED_RECOVERY" ? todayIso() : yesterdayIso()
+  );
+  const [startDate, setStartDate] = useState(yesterdayIso);
+  const [endDate, setEndDate] = useState(todayIso);
+  const [includeDsw, setIncludeDsw] = useState(true);
+  const [includeFcc, setIncludeFcc] = useState(false);
+  const [timeMachinePriorityMode, setTimeMachinePriorityMode] = useState<"standard" | "onboarding">("standard");
+
+  if (!profile) return null;
+
+  const requestedReports =
+    profile.type === "TARGETED_RECOVERY"
+      ? []
+      : profile.type === "HISTORICAL_BACKFILL"
+        ? ["DSW"]
+        : ([includeDsw ? "DSW" : null, includeFcc ? "FCC" : null].filter(Boolean) as string[]);
+
+  const isDateRange = profile.type === "HISTORICAL_BACKFILL";
+  const isPlatformManaged = profile.type === "PREVIOUS_DAY_CLOSE" || profile.type === "LAST_LOOK";
+  const effectivePriority =
+    profile.type === "HISTORICAL_BACKFILL" && timeMachinePriorityMode === "onboarding"
+      ? 10
+      : profile.priority;
+  const canPrepare =
+    props.canEdit &&
+    !isPlatformManaged &&
+    (profile.type === "TARGETED_RECOVERY" || requestedReports.length > 0) &&
+    (isDateRange ? Boolean(startDate && endDate) : Boolean(serviceDate));
+
+  async function prepareOrder() {
+    if (!profile) return;
+
+    await props.onSubmit({
+      request_type: profile.type,
+      service_date: isDateRange ? null : serviceDate,
+      service_date_start: isDateRange ? startDate : null,
+      service_date_end: isDateRange ? endDate : null,
+      requested_reports: requestedReports,
+      priority: effectivePriority,
+      request_payload: {
+        source: "collection_center",
+        customer_language: profile.title,
+        intent: profile.type.toLowerCase(),
+        collect_scope:
+          profile.type === "TARGETED_RECOVERY"
+            ? "all_available_reports_today"
+            : profile.type === "HISTORICAL_BACKFILL"
+              ? "dsw_only"
+              : "selected_reports",
+        runner_goal:
+          profile.type === "TARGETED_RECOVERY"
+            ? "litmus_test_runtime_and_capability"
+            : profile.type === "HISTORICAL_BACKFILL" && timeMachinePriorityMode === "onboarding"
+              ? "onboarding_historical_foundation"
+              : null,
+        priority_mode:
+          profile.type === "HISTORICAL_BACKFILL"
+            ? timeMachinePriorityMode
+            : null,
+        preferred_window:
+          profile.type === "HISTORICAL_BACKFILL" && timeMachinePriorityMode === "standard"
+            ? "20:00-03:00"
+            : null,
+        control_level: "customer_requested",
+      },
+    });
+  }
+
+  return (
+    <div role="presentation" style={drawerBackdrop} onClick={props.onClose}>
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${profile.title} collection order`}
+        style={drawerPanel}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+          <div>
+            <p className="value-card__eyebrow" style={{ margin: 0 }}>Prepare Collection Order</p>
+            <h3 className="app-card__title" style={{ fontSize: 20, margin: "4px 0 0" }}>{profile.title}</h3>
+            <p style={{ ...mutedCopy, margin: "8px 0 0" }}>{profile.description}</p>
+          </div>
+
+          <button type="button" className="button" onClick={props.onClose}>
+            Close
+          </button>
+        </div>
+
+        <div style={policyStrip}>
+          <span style={{ fontWeight: 950, color: "#166534" }}>✓ Handoff:</span>
+          <span>
+            {isPlatformManaged
+              ? "This collection is protected by platform policy and is not manually queued here."
+              : "Insight stores this order for the VPS runner. Vercel does not collect the report."}
+          </span>
+        </div>
+
+        <div style={{ display: "grid", gap: 10 }}>
+          {isPlatformManaged ? (
+            <div style={sourceBox}>
+              <strong style={sourceTitle}>Protected Rule</strong>
+              <div style={summaryLine}>
+                <span style={summaryLabel}>Schedule</span>
+                <strong>{profile.type === "PREVIOUS_DAY_CLOSE" ? "Daily at 3:00 AM" : "Daily at 8:00 PM"}</strong>
+              </div>
+              <div style={summaryLine}>
+                <span style={summaryLabel}>User Control</span>
+                <strong>Read only</strong>
+              </div>
+              <div style={summaryLine}>
+                <span style={summaryLabel}>Purpose</span>
+                <strong>{profile.type === "PREVIOUS_DAY_CLOSE" ? "Protect historical reporting" : "Final same-day sign-off"}</strong>
+              </div>
+            </div>
+          ) : isDateRange ? (
+            <div style={{ display: "grid", gap: 10 }}>
+              <div style={twoCol}>
+                <label style={fieldLabel}>
+                  Start Date
+                  <input style={timeInputBox} type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+                </label>
+                <label style={fieldLabel}>
+                  End Date
+                  <input style={timeInputBox} type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+                </label>
+              </div>
+
+              <div style={sourceBox}>
+                <strong style={sourceTitle}>Reports</strong>
+                <div style={summaryLine}>
+                  <span style={summaryLabel}>Time Machine</span>
+                  <strong>DSW only</strong>
+                </div>
+              </div>
+
+              <div style={sourceBox}>
+                <strong style={sourceTitle}>Run Priority</strong>
+                <label style={checkRow}>
+                  <input
+                    type="radio"
+                    name="time-machine-priority"
+                    checked={timeMachinePriorityMode === "standard"}
+                    onChange={() => setTimeMachinePriorityMode("standard")}
+                  />
+                  Standard historical run — preferred outside business hours
+                </label>
+                <label style={checkRow}>
+                  <input
+                    type="radio"
+                    name="time-machine-priority"
+                    checked={timeMachinePriorityMode === "onboarding"}
+                    onChange={() => setTimeMachinePriorityMode("onboarding")}
+                  />
+                  Onboarding priority — build the historical foundation first
+                </label>
+              </div>
+            </div>
+          ) : (
+            <label style={fieldLabel}>
+              Service Date
+              <input style={timeInputBox} type="date" value={serviceDate} onChange={(event) => setServiceDate(event.target.value)} />
+            </label>
+          )}
+
+          {!isPlatformManaged && !isDateRange && profile.type !== "TARGETED_RECOVERY" ? (
+            <div style={sourceBox}>
+              <strong style={sourceTitle}>Reports</strong>
+              <label style={checkRow}>
+                <input type="checkbox" checked={includeDsw} onChange={(event) => setIncludeDsw(event.target.checked)} />
+                DSW
+              </label>
+              <label style={checkRow}>
+                <input type="checkbox" checked={includeFcc} onChange={(event) => setIncludeFcc(event.target.checked)} />
+                FCC
+              </label>
+            </div>
+          ) : null}
+
+          {profile.type === "TARGETED_RECOVERY" ? (
+            <div style={sourceBox}>
+              <strong style={sourceTitle}>Runner Litmus Test</strong>
+              <p style={{ ...mutedCopy, margin: 0 }}>
+                This order asks the VPS runner to collect every available FedEx contractor report it can reach for today.
+                The goal is capability discovery and runtime telemetry, not a narrow report request.
+              </p>
+            </div>
+          ) : null}
+
+          <div style={orderSummaryBox}>
+            <strong style={sourceTitle}>Order Summary</strong>
+            <p style={{ ...mutedCopy, margin: 0 }}>
+              {isPlatformManaged
+                ? "This protected collection is scheduled by Insight and cannot be manually minimized."
+                : profile.type === "TARGETED_RECOVERY"
+                  ? "The runner will attempt every available report for today so Insight can learn capability, timing, and reliability."
+                  : profile.type === "HISTORICAL_BACKFILL"
+                    ? `Time Machine will collect DSW only for the selected date range. ${
+                        timeMachinePriorityMode === "onboarding"
+                          ? "This order will be advanced as an onboarding foundation run."
+                          : "This order is preferred outside the business workday."
+                      }`
+                    : `This order will collect ${requestedReports.join(" + ")}.`}
+            </p>
+          </div>
+        </div>
+
+        <div className="cta-row" style={{ justifyContent: "flex-end" }}>
+          <button type="button" className="button" onClick={props.onClose}>
+            Cancel
+          </button>
+          {!isPlatformManaged ? (
+            <button
+              type="button"
+              className="button button-primary"
+              disabled={!canPrepare || props.queueing}
+              onClick={() => {
+                void prepareOrder();
+              }}
+            >
+              {props.queueing ? "Preparing..." : "Prepare Order"}
+            </button>
+          ) : null}
+        </div>
+      </section>
     </div>
   );
 }
@@ -437,6 +766,7 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
   const [showCredentialEditor, setShowCredentialEditor] = useState(false);
   const [savingScheduleKey, setSavingScheduleKey] = useState<string | null>(null);
   const [queueingRequest, setQueueingRequest] = useState<string | null>(null);
+  const [selectedCollection, setSelectedCollection] = useState<ProtectedCollectionType | null>(null);
 
   const [message, setMessage] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -594,6 +924,33 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
       setMessage("Workday refresh ticket prepared.");
     } catch (error) {
       setStatusError(error instanceof Error ? error.message : "Failed to prepare refresh ticket.");
+    } finally {
+      setQueueingRequest(null);
+    }
+  }
+
+  async function queueProtectedCollectionRequest(draft: CollectionOrderDraft) {
+    try {
+      setQueueingRequest(draft.request_type);
+      setMessage(null);
+      setStatusError(null);
+
+      const res = await fetch(`/api/company/${props.slug}/collection-requests`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(draft),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data?.error ?? "Failed to prepare collection order.");
+
+      await loadCollectionRequests();
+      setSelectedCollection(null);
+      setMessage("Collection order prepared.");
+    } catch (error) {
+      setStatusError(error instanceof Error ? error.message : "Failed to prepare collection order.");
     } finally {
       setQueueingRequest(null);
     }
@@ -803,41 +1160,18 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
         </p>
 
         <div style={profileGrid}>
-          <ProfileCard
-            title="Previous Day Close"
-            badge="Automatic"
-            tone="blue"
-            description="Closes yesterday before today begins. Today this behavior is driven by prior-day DSW ingestion."
-            reports={["Yesterday", "DSW", "Historical completeness"]}
-            footer="Purpose: normal daily completion"
-          />
-
-          <ProfileCard
-            title="Last Look"
-            badge="Automatic"
-            tone="green"
-            description="Takes an in-day final look at today's operation before the day rolls."
-            reports={["Today", "DSW", "FCC", "Available artifacts"]}
-            footer="Purpose: best available current-day picture"
-          />
-
-          <ProfileCard
-            title="Time Machine"
-            badge="Onboarding"
-            tone="slate"
-            description="Recovers deep operational history so new Insight users can begin with intelligence on day one."
-            reports={["Date range", "DSW history", "Trend baseline"]}
-            footer="Purpose: recover the story behind the operation"
-          />
-
-          <ProfileCard
-            title="Targeted Recovery"
-            badge="Manual"
-            tone="blue"
-            description="Pulls one identified prior day in isolation to heal a missing, corrupt, or questionable record."
-            reports={["Selected date", "DSW", "Record repair"]}
-            footer="Purpose: recover trustworthy historical truth"
-          />
+          {COLLECTION_PROFILES.map((profile) => (
+            <ProfileCard
+              key={profile.type}
+              title={profile.title}
+              badge={profile.badge}
+              tone={profile.tone}
+              description={profile.description}
+              reports={profile.reports}
+              footer={profile.footer}
+              onClick={() => setSelectedCollection(profile.type)}
+            />
+          ))}
         </div>
       </SectionCard>
 
@@ -933,6 +1267,15 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
         </div>
       </SectionCard>
 
+      <CollectionOrderDrawer
+        key={selectedCollection ?? "collection-order-drawer"}
+        profile={COLLECTION_PROFILES.find((profile) => profile.type === selectedCollection) ?? null}
+        canEdit={props.canEdit}
+        queueing={Boolean(queueingRequest && queueingRequest === selectedCollection)}
+        onClose={() => setSelectedCollection(null)}
+        onSubmit={queueProtectedCollectionRequest}
+      />
+
       <SectionCard eyebrow="Historical hydration" title="DSW historical sweep">
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
           <MiniStat label="Mode" value="DSW only" />
@@ -983,6 +1326,59 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
     </section>
   );
 }
+
+const orderSummaryBox: CSSProperties = {
+  border: "1px solid #dbe7f3",
+  borderRadius: 14,
+  padding: "10px 12px",
+  background: "#f8fafc",
+  display: "grid",
+  gap: 6,
+};
+
+const drawerBackdrop: CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 80,
+  background: "rgba(15, 23, 42, 0.36)",
+  display: "flex",
+  justifyContent: "flex-end",
+  padding: 12,
+};
+
+const drawerPanel: CSSProperties = {
+  width: "min(560px, 100%)",
+  height: "100%",
+  overflowY: "auto",
+  borderRadius: 22,
+  background: "#fff",
+  border: "1px solid #dbe7f3",
+  boxShadow: "0 24px 80px rgba(15, 23, 42, 0.24)",
+  padding: 16,
+  display: "grid",
+  gap: 14,
+  alignContent: "start",
+};
+
+const timeInputBox: CSSProperties = {
+  border: "1px solid #dbe7f3",
+  borderRadius: 12,
+  padding: "9px 10px",
+  background: "#fff",
+  color: "#0f172a",
+  fontSize: 14,
+  fontWeight: 850,
+  minHeight: 38,
+};
+
+const checkRow: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  color: "#334155",
+  fontSize: 13,
+  fontWeight: 850,
+};
 
 const grid4: CSSProperties = {
   display: "grid",
