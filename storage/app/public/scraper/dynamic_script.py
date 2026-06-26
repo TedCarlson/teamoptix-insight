@@ -160,6 +160,16 @@ def should_run_section(section_name):
     # It is an internal operational workflow and not currently useful for Insight ingestion.
     if section_name == "SCH":
         return os.environ.get("FCMS_ENABLE_SCH", "0") == "1"
+
+    target_sections = [
+        section.strip()
+        for section in os.environ.get("FCMS_TARGET_SECTIONS", "").split(",")
+        if section.strip()
+    ]
+
+    if target_sections:
+        return section_name in target_sections
+
     return True
 
 def scrollTo(el, driver):

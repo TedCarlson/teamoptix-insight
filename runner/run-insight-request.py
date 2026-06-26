@@ -72,6 +72,62 @@ def local_storage_path(request: dict, artifact: dict) -> str:
         original_filename,
     ])
 
+def request_targets(request: dict) -> list[dict]:
+    payload = request.get("request_payload") or {}
+    targets = payload.get("targets")
+    return targets if isinstance(targets, list) else []
+
+def target_artifact_keys(request: dict) -> set[str]:
+    return {
+        str(target.get("artifact_key") or "").strip().upper()
+        for target in request_targets(request)
+        if isinstance(target, dict) and str(target.get("artifact_key") or "").strip()
+    }
+
+def target_runner_sections(request: dict) -> list[str]:
+    sections: list[str] = []
+    for target in request_targets(request):
+        if not isinstance(target, dict):
+            continue
+
+        runner_section = str(target.get("runner_section") or "").strip().upper()
+        if runner_section == "P_AND_D":
+            section = "P&D"
+        elif runner_section == "SERVICE":
+            section = "Service"
+        elif runner_section == "DAILY_SERVICE":
+            section = "Daily Service"
+        else:
+            continue
+
+        if section not in sections:
+            sections.append(section)
+
+    return sections
+
+def artifact_matches_targets(request: dict, artifact: dict) -> bool:
+    keys = target_artifact_keys(request)
+    if not keys:
+        return True
+
+    filename = str(artifact.get("filename") or "").lower()
+    display = str(artifact.get("display_filename") or "").lower()
+
+    if "DSW" in keys and "daily service worksheet" in display:
+        return True
+    if "SERVICE_AREA_SUMMARY" in keys and "serviceareasummary" in filename:
+        return True
+    if "SERVICE_AREA_STATUS" in keys and "serviceareastatus" in filename:
+        return True
+    if "COMBINED_MANIFEST" in keys and "combinedmanifest" in filename:
+        return True
+    if "DELIVERY_MANIFEST" in keys and "deliverymanifest" in filename:
+        return True
+    if "PICKUP_MANIFEST" in keys and "pickupmanifest" in filename:
+        return True
+
+    return False
+
 def collect_artifacts(request: dict) -> list[dict]:
     folder_name = service_date_folder(request.get("service_date"))
     excel_dir = SCRAPER_HOME / "Excels" / folder_name
@@ -89,6 +145,8 @@ def collect_artifacts(request: dict) -> list[dict]:
                     "content_type": "application/vnd.ms-excel" if file.suffix.lower() == ".xls" else "application/octet-stream",
                     **identity,
                 }
+                if not artifact_matches_targets(request, artifact):
+                    continue
                 artifact["storage_bucket"] = "local-runner-artifacts"
                 artifact["storage_path"] = local_storage_path(request, artifact)
                 artifacts.append(artifact)
@@ -220,6 +278,8 @@ def main() -> int:
         "priority": request.get("priority"),
         "service_date": request.get("service_date"),
         "collect_scope": (request.get("request_payload") or {}).get("collect_scope"),
+        "targets": request_targets(request),
+        "runner_sections": target_runner_sections(request),
     }, indent=2))
 
     try:
@@ -244,6 +304,8 @@ def main() -> int:
         child_env["FCMS_COMPANY_SLUG"] = request.get("company_slug") or ""
         child_env["FCMS_SERVICE_DATE"] = request.get("service_date") or ""
         child_env["FCMS_COLLECTION_SCOPE"] = (request.get("request_payload") or {}).get("collect_scope") or ""
+        child_env["FCMS_TARGET_SECTIONS"] = ",".join(target_runner_sections(request))
+        child_env["FCMS_TARGET_ARTIFACT_KEYS"] = ",".join(sorted(target_artifact_keys(request)))
 
         print("[insight-runner] ready to execute donor runner")
         if os.environ.get("INSIGHT_RUNNER_DRY_RUN", "1") == "1":
