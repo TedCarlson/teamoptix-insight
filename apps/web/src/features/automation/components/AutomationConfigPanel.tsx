@@ -242,8 +242,8 @@ const COLLECTION_PROFILES: CollectionProfile[] = [
 const COLLECTION_TARGETS: CollectionTarget[] = [
   {
     key: "DSW_DAILY_SERVICE",
-    label: "Daily Service Worksheet",
-    description: "Primary daily operational worksheet used for route, stop, package, and driver facts.",
+    label: "DSW · Daily Service Worksheet",
+    description: "Primary DSW route, stop, package, and driver fact source.",
     report_family_key: "DSW",
     artifact_key: "DSW",
     runner_section: "DAILY_SERVICE",
@@ -252,18 +252,18 @@ const COLLECTION_TARGETS: CollectionTarget[] = [
   },
   {
     key: "P_AND_D_COMBINED_MANIFEST",
-    label: "Combined Manifest",
-    description: "Best first manifest target. Likely avoids separate delivery/pickup manifest pulls for many questions.",
+    label: "P&D · Combined Manifest",
+    description: "Planning/last-look manifest target. Excluded from live freshness by default.",
     report_family_key: "FCC",
     artifact_key: "COMBINED_MANIFEST",
     runner_section: "P_AND_D",
     default_last_look: true,
-    default_targeted: true,
+    default_targeted: false,
   },
   {
     key: "SERVICE_AREA_SUMMARY",
-    label: "Service Area Summary",
-    description: "Service-level summary signal from FCC.",
+    label: "FCC · SA Summary",
+    description: "FedEx Service Area Summary rollup; useful for aggregate validation and freshness context.",
     report_family_key: "FCC",
     artifact_key: "SERVICE_AREA_SUMMARY",
     runner_section: "SERVICE",
@@ -271,18 +271,18 @@ const COLLECTION_TARGETS: CollectionTarget[] = [
     default_targeted: true,
   },
   {
-    key: "SERVICE_AREA_STATUS",
-    label: "Service Area Status",
-    description: "Work-area/service status signal from FCC.",
+    key: "FCC_WORK_AREA_SUMMARY",
+    label: "FCC · WA Summary",
+    description: "FedEx Work Area Summary from the Service Area Status page; live route heartbeat signal.",
     report_family_key: "FCC",
-    artifact_key: "SERVICE_AREA_STATUS",
+    artifact_key: "FCC_WORK_AREA_SUMMARY",
     runner_section: "SERVICE",
     default_last_look: true,
     default_targeted: true,
   },
   {
     key: "P_AND_D_DELIVERY_MANIFEST",
-    label: "Delivery Manifest",
+    label: "P&D · Delivery Manifest",
     description: "Route-level delivery manifest. Use when combined manifest is not enough.",
     report_family_key: "FCC",
     artifact_key: "DELIVERY_MANIFEST",
@@ -292,7 +292,7 @@ const COLLECTION_TARGETS: CollectionTarget[] = [
   },
   {
     key: "P_AND_D_PICKUP_MANIFEST",
-    label: "Pickup Manifest",
+    label: "P&D · Pickup Manifest",
     description: "Route-level pickup manifest. Use only when pickup detail is specifically needed.",
     report_family_key: "FCC",
     artifact_key: "PICKUP_MANIFEST",
@@ -1327,7 +1327,7 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
               These saved presets prepare small all-day refresh tickets that keep operations current without getting in the way of larger collection work.
             </p>
             <div style={grid4}>
-              <MiniStat label="Included Reports" value={activeRefreshReports.length ? activeRefreshReports.join(" + ") : "None"} />
+              <MiniStat label="Included Reports" value="DSW + FCC WA/SA" />
               <MiniStat label="Refresh Cadence" value={refreshCadenceLabel} />
               <MiniStat label="Refresh Window" value={refreshWindowLabel} />
               <MiniStat label="Priority" value="80" />
