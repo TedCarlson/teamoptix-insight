@@ -579,13 +579,36 @@ h1 {
   .workspace-main,
   .directory-main,
   .workflow-main {
-    padding: 16px 0 28px;
+    padding: 10px 0 24px;
   }
 
   .workspace-header,
   .directory-header {
     grid-template-columns: 1fr;
-    padding: 16px;
+    gap: 10px;
+    padding: 12px;
+    border-radius: 18px;
+  }
+
+  .workspace-title,
+  .directory-title {
+    font-size: clamp(24px, 8vw, 32px);
+    letter-spacing: -0.045em;
+  }
+
+  .workspace-subtitle,
+  .directory-subtitle {
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .context-grid {
+    gap: 8px;
+  }
+
+  .context-stat {
+    padding: 9px 10px;
+    border-radius: 14px;
   }
 
   .context-grid,
@@ -674,17 +697,56 @@ h1 {
 
 @media (max-width: 900px) {
   .app-nav-shell {
-    padding: 10px 12px 0;
+    padding: 8px 10px 0;
   }
 
   .app-nav-inner {
-    border-radius: 22px;
-    align-items: flex-start;
+    gap: 8px;
+    padding: 10px;
+    border-radius: 18px;
+    align-items: stretch;
     flex-direction: column;
   }
 
   .app-nav-group {
     width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app-nav-group::-webkit-scrollbar {
+    display: none;
+  }
+
+  .app-nav-pill {
+    min-height: 34px;
+    padding: 0 11px;
+    font-size: 13px;
+    flex: 0 0 auto;
+  }
+
+  .app-nav-menu {
+    width: 38px;
+    min-width: 38px;
+    height: 38px;
+    flex: 0 0 auto;
+  }
+
+  .company-subnav {
+    margin: 10px auto 12px;
+    padding: 0 10px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .company-subnav::-webkit-scrollbar {
+    display: none;
   }
 }
 
