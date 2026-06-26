@@ -275,7 +275,7 @@ const COLLECTION_TARGETS: CollectionTarget[] = [
     label: "FCC · WA Summary",
     description: "FedEx Work Area Summary from the Service Area Status page; live route heartbeat signal.",
     report_family_key: "FCC",
-    artifact_key: "FCC_WORK_AREA_SUMMARY",
+    artifact_key: "WORK_AREA_SUMMARY",
     runner_section: "SERVICE",
     default_last_look: true,
     default_targeted: true,
