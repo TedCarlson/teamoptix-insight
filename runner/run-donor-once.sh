@@ -12,6 +12,18 @@ COOLDOWN_SECONDS="${RUNNER_LOGIN_FAILURE_COOLDOWN_SECONDS:-3600}"
 
 mkdir -p "$APP_DIR/runtime/logs" "$APP_DIR/runtime/locks" "$APP_DIR/runtime/state"
 
+if [ -f "$APP_DIR/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$APP_DIR/.env"
+  set +a
+fi
+
+export FCMS_DB_HOST="${FCMS_DB_HOST:-${DB_HOST:-127.0.0.1}}"
+export FCMS_DB_USER="${FCMS_DB_USER:-${DB_USERNAME:-}}"
+export FCMS_DB_PASSWORD="${FCMS_DB_PASSWORD:-${DB_PASSWORD:-}}"
+export FCMS_DB_NAME="${FCMS_DB_NAME:-${DB_DATABASE:-fcms}}"
+
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "[runner] start $(date -u +"%Y-%m-%dT%H:%M:%SZ")"

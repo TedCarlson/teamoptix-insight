@@ -16,7 +16,7 @@ import shutil
 import threading
 from datetime import datetime
 
-from webdriver_manager.chrome import ChromeDriverManager
+# from webdriver_manager.chrome import ChromeDriverManager
 
 from rename_files import renameFolder
 from extract_data import extractDataFromFolder
@@ -107,12 +107,19 @@ def checkDownloads(index):
 def getDriver():
     options = webdriver.ChromeOptions() 
     options.add_argument("start-maximized")
-    # options.binary_location = '/usr/bin/google-chrome'
+    if isPlatformLinux():
+        options.binary_location = '/usr/bin/google-chrome-stable'
 
-    if isPlatformLinux(): options.add_argument('--headless=new')
+    if isPlatformLinux():
+        options.add_argument('--headless=new')
+        options.add_argument('--remote-debugging-port=0')
+        options.add_argument('--user-data-dir=/tmp/teamoptix-selenium-chrome')
     # options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-setuid-sandbox')
+    options.add_argument('--disable-extensions')
+    options.add_argument('--disable-software-rasterizer')
 
     options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1920,1080')
@@ -130,8 +137,7 @@ def getDriver():
     options.add_argument('--allow-running-insecure-content')
     # 
 
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-    # driver = webdriver.Chrome(options=options)
+    driver = webdriver.Chrome(options=options)
     return driver
 
 def element_opacity_exists(el_ID):
@@ -171,21 +177,34 @@ def main(section_='', option_=0, retry=1):
         username = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.XPATH, '//input[@name="identifier"]')))
 
         logging.info("On login page....")
-        
-        password = driver.find_element(By.XPATH, '//input[@name="credentials.passcode"]')
         time.sleep(1)
-        # '8478029'
+
         username.send_keys(SCRAP_INFO['username'])
         time.sleep(1)
-        
-        # '8478029#Redd'
+
+        continue_candidates = [
+            "//input[@type='submit']",
+            "//button[@type='submit']",
+            "//input[contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'next')]",
+            "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'next')]",
+            "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue')]",
+        ]
+
+        for candidate in continue_candidates:
+            try:
+                el = driver.find_element(By.XPATH, candidate)
+                el.click()
+                logging.info("Clicked username continue...")
+                break
+            except Exception:
+                pass
+
+        password = WebDriverWait(driver, 25).until(
+            EC.presence_of_element_located((By.XPATH, '//input[@name="credentials.passcode"] | //input[@name="password"] | //input[@type="password"]'))
+        )
+        time.sleep(1)
         password.send_keys(SCRAP_INFO['password'])
         time.sleep(1)
-
-        # 8478029#Redd!
-
-        # 8478029
-        # 8478029#Redd
 
         password.send_keys(Keys.ENTER)
 

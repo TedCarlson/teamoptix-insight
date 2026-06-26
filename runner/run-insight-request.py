@@ -24,6 +24,54 @@ def service_date_folder(service_date: str | None) -> str:
     yyyy, mm, dd = service_date.split("-")
     return f"{mm}-{dd}-{yyyy}"
 
+def infer_report_identity(filename: str) -> dict:
+    name = filename.lower()
+
+    if "daily service worksheet" in name:
+        return {"report_family_key": "DSW", "report_shape_key": "DSW_DAILY_SERVICE_WORKSHEET", "report_frame": None, "display_filename": "Daily Service Worksheet.xlsx"}
+    if "serviceareasummary" in name or "sasummary" in name:
+        return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Service Area Summary.xlsx"}
+    if "serviceareastatus" in name or "sastatus" in name:
+        return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Service Area Status.xlsx"}
+    if "combinedmanifest" in name or name.startswith("cm_"):
+        return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Combined Manifest.xlsx"}
+    if "deliverymanifest" in name:
+        return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Delivery Manifest.xlsx"}
+    if "pickupmanifest" in name or name.startswith("pm"):
+        return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Pickup Manifest.xlsx"}
+    if "pickupassignments" in name or name.startswith("pa"):
+        return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Pickup Assignments.xlsx"}
+    if "reorderpulistings" in name or name.startswith("rpl"):
+        return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Reorder PU Listings.xlsx"}
+
+    return {"report_family_key": None, "report_shape_key": None, "report_frame": None, "display_filename": filename}
+
+def storage_slug(value: str) -> str:
+    cleaned = []
+    previous_dash = False
+    for char in value.lower():
+        if char.isalnum():
+            cleaned.append(char)
+            previous_dash = False
+        elif not previous_dash:
+            cleaned.append("-")
+            previous_dash = True
+    return "".join(cleaned).strip("-") or "artifact"
+
+def local_storage_path(request: dict, artifact: dict) -> str:
+    company_slug = request.get("company_slug") or "unknown-company"
+    service_date = request.get("service_date") or time.strftime("%Y-%m-%d")
+    request_id = request.get("id") or "unknown-request"
+    family = artifact.get("report_family_key") or "unknown"
+    original_filename = artifact.get("filename") or "artifact"
+    return "/".join([
+        f"company={company_slug}",
+        f"service_date={service_date}",
+        f"request={request_id}",
+        storage_slug(family),
+        original_filename,
+    ])
+
 def collect_artifacts(request: dict) -> list[dict]:
     folder_name = service_date_folder(request.get("service_date"))
     excel_dir = SCRAPER_HOME / "Excels" / folder_name
@@ -32,24 +80,65 @@ def collect_artifacts(request: dict) -> list[dict]:
     if excel_dir.exists():
         for file in sorted(excel_dir.iterdir()):
             if file.is_file():
-                artifacts.append({
-                    "kind": "excel",
+                identity = infer_report_identity(file.name)
+                artifact = {
+                    "kind": "REPORT_FILE",
                     "path": str(file),
                     "filename": file.name,
                     "size_bytes": file.stat().st_size,
-                })
+                    "content_type": "application/vnd.ms-excel" if file.suffix.lower() == ".xls" else "application/octet-stream",
+                    **identity,
+                }
+                artifact["storage_bucket"] = "local-runner-artifacts"
+                artifact["storage_path"] = local_storage_path(request, artifact)
+                artifacts.append(artifact)
 
     logs_dir = SCRAPER_HOME / "Logs"
     if logs_dir.exists():
         for file in sorted(logs_dir.glob("daily_scraper_*.log"), key=lambda p: p.stat().st_mtime, reverse=True)[:3]:
-            artifacts.append({
-                "kind": "scraper_log",
+            artifact = {
+                "kind": "RUNTIME_LOG",
                 "path": str(file),
                 "filename": file.name,
+                "display_filename": "Scraper Log.txt",
                 "size_bytes": file.stat().st_size,
-            })
+                "content_type": "text/plain",
+                "report_family_key": None,
+                "report_shape_key": None,
+                "report_frame": None,
+            }
+            artifact["storage_bucket"] = "local-runner-artifacts"
+            artifact["storage_path"] = local_storage_path(request, artifact)
+            artifacts.append(artifact)
 
     return artifacts
+
+def register_artifact(request: dict, artifact: dict) -> dict:
+    return rpc("register_operations_collection_artifact", {
+        "p_collection_request_id": request["id"],
+        "p_company_id": request["company_id"],
+        "p_service_date": request.get("service_date"),
+        "p_artifact_kind": artifact.get("kind") or "REPORT_FILE",
+        "p_report_family_key": artifact.get("report_family_key"),
+        "p_report_shape_key": artifact.get("report_shape_key"),
+        "p_report_frame": artifact.get("report_frame"),
+        "p_artifact_status": "READY_FOR_INGEST",
+        "p_storage_bucket": artifact["storage_bucket"],
+        "p_storage_path": artifact["storage_path"],
+        "p_original_filename": artifact["filename"],
+        "p_normalized_filename": artifact.get("display_filename") or artifact["filename"],
+        "p_content_type": artifact.get("content_type"),
+        "p_size_bytes": artifact.get("size_bytes") or 0,
+        "p_source_hash": None,
+        "p_runner_key": RUNNER_KEY,
+        "p_runner_artifact_json": artifact,
+    })
+
+def register_artifacts(request: dict, artifacts: list[dict]) -> list[dict]:
+    registered = []
+    for artifact in artifacts:
+        registered.append(register_artifact(request, artifact))
+    return registered
 
 def load_env_file(path: Path) -> dict:
     env = {}
@@ -118,7 +207,7 @@ def main() -> int:
         "p_runner_key": RUNNER_KEY,
     }))
 
-    if not request:
+    if not request or not request.get("id") or not request.get("company_id"):
         print("[insight-runner] no queued request")
         return 0
 
@@ -160,13 +249,15 @@ def main() -> int:
         if os.environ.get("INSIGHT_RUNNER_DRY_RUN", "1") == "1":
             print("[insight-runner] dry run only; scraper not executed")
             artifacts = collect_artifacts(request)
+            registered = register_artifacts(request, artifacts)
             print(json.dumps({
                 "event": "artifact_manifest",
                 "dry_run": True,
                 "artifact_count": len(artifacts),
+                "registered_count": len(registered),
                 "artifacts": artifacts,
             }, indent=2))
-            update_status(request_id, "COMPLETE")
+            update_status(request_id, "ARTIFACTS_READY" if registered else "COMPLETE")
             return 0
 
         started = time.time()
@@ -179,19 +270,30 @@ def main() -> int:
         elapsed_ms = int((time.time() - started) * 1000)
         print(f"[insight-runner] donor exit={proc.returncode} elapsed_ms={elapsed_ms}")
 
-        if proc.returncode != 0:
-            update_status(request_id, "FAILED", f"Donor runner failed with exit code {proc.returncode}")
-            return proc.returncode
-
         artifacts = collect_artifacts(request)
+        registered = register_artifacts(request, artifacts)
         print(json.dumps({
             "event": "artifact_manifest",
             "dry_run": False,
+            "donor_exit_code": proc.returncode,
             "artifact_count": len(artifacts),
+            "registered_count": len(registered),
             "artifacts": artifacts,
         }, indent=2))
 
-        update_status(request_id, "COMPLETE")
+        if proc.returncode != 0:
+            if registered:
+                update_status(
+                    request_id,
+                    "ARTIFACTS_READY",
+                    f"Donor runner failed with exit code {proc.returncode}; partial artifacts registered."
+                )
+                return 0
+
+            update_status(request_id, "FAILED", f"Donor runner failed with exit code {proc.returncode}")
+            return proc.returncode
+
+        update_status(request_id, "ARTIFACTS_READY" if registered else "COMPLETE")
         return 0
 
     except Exception as exc:
