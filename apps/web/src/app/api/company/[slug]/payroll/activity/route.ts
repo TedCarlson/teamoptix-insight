@@ -39,7 +39,11 @@ function dswBridgeKey(value: unknown) {
 
 
 function isDswPayrollSource(sourceKind: string | null | undefined) {
-  return sourceKind === "DSW_ACTUAL" || sourceKind === "DSW_OWNERSHIP";
+  return (
+    sourceKind === "DSW_ACTUAL" ||
+    sourceKind === "DSW_OWNERSHIP" ||
+    sourceKind === "DSW_CANDIDATE"
+  );
 }
 
 export async function GET(
