@@ -101,9 +101,16 @@ if [ "$overall_status" -ne 0 ]; then
     exit "$overall_status"
   fi
 
-  until_epoch="$(($(date +%s) + COOLDOWN_SECONDS))"
-  echo "$until_epoch" > "$COOLDOWN_FILE"
-  echo "[runner] failure cooldown set for $COOLDOWN_SECONDS seconds"
+  latest_scraper_log="$(ls -t "$SCRAPER_DIR/Logs"/*.log 2>/dev/null | head -1 || true)"
+
+  if [ -n "$latest_scraper_log" ] && grep -qi "Login successfull\|Login successful" "$latest_scraper_log"; then
+    rm -f "$COOLDOWN_FILE"
+    echo "[runner] non-login scraper failure; cooldown not set latest_log=$latest_scraper_log"
+  else
+    until_epoch="$(($(date +%s) + COOLDOWN_SECONDS))"
+    echo "$until_epoch" > "$COOLDOWN_FILE"
+    echo "[runner] login failure cooldown set for $COOLDOWN_SECONDS seconds"
+  fi
   exit "$overall_status"
 fi
 
