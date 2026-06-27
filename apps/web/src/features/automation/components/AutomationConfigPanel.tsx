@@ -1382,9 +1382,22 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
           <button
             type="button"
             className="button"
-            onClick={() => {
-              void loadCollectionRequests();
-              void loadArtifacts();
+            onClick={async () => {
+              setStatusError(null);
+
+              const res = await fetch(`/api/company/${props.slug}/operations/artifact-ingest`, {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ source: "queue_refresh_button" }),
+              });
+
+              if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                setStatusError(data?.error ?? "Queue refresh failed.");
+              }
+
+              await Promise.all([loadCollectionRequests(), loadArtifacts(), loadRuns()]);
             }}
           >
             Refresh Queue
