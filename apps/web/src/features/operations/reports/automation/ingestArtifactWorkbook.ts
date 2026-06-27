@@ -12,6 +12,38 @@ type ArtifactRow = {
   size_bytes: number | null;
 };
 
+async function downloadArtifactBuffer(params: {
+  bucket: string;
+  path: string;
+}) {
+  const { bucket, path } = params;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL.");
+  if (!serviceRoleKey) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY.");
+
+  const url = `${supabaseUrl.replace(/\/$/, "")}/storage/v1/object/${encodeURIComponent(bucket)}/${path
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/")}`;
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Artifact download failed: HTTP ${response.status} ${body}`);
+  }
+
+  return Buffer.from(await response.arrayBuffer());
+}
+
 export async function ingestArtifactWorkbook(params: {
   supabase: any;
   slug: string;
@@ -25,13 +57,10 @@ export async function ingestArtifactWorkbook(params: {
   if (artifact.report_family_key !== "DSW") throw new Error("Only DSW artifact ingest is enabled.");
   if (!artifact.storage_bucket || !artifact.storage_path) throw new Error("Artifact is missing storage location.");
 
-  const { data: blob, error } = await supabase.storage
-    .from(artifact.storage_bucket)
-    .download(artifact.storage_path);
-
-  if (error || !blob) throw new Error(error?.message ?? "Artifact download failed.");
-
-  const buffer = Buffer.from(await blob.arrayBuffer());
+  const buffer = await downloadArtifactBuffer({
+    bucket: artifact.storage_bucket,
+    path: artifact.storage_path,
+  });
 
   return ingestDswWorkbook({
     supabase,
