@@ -318,7 +318,7 @@ const COLLECTION_TARGETS: CollectionTarget[] = [
 
 function defaultCollectionTargetKeys(profileType?: ProtectedCollectionType) {
   if (profileType === "TARGETED_RECOVERY") {
-    return COLLECTION_TARGETS.filter((target) => target.default_targeted).map((target) => target.key);
+    return [];
   }
 
   if (profileType === "LAST_LOOK") {
