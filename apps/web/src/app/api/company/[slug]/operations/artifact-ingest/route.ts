@@ -18,7 +18,8 @@ async function markArtifact(params: {
   const { supabase, artifactId, status, metadata = {}, reportBatchId = null, errorMessage = null } = params;
 
   const { error } = await supabase
-    .from("core.operations_collection_artifact")
+    .schema("core")
+    .from("operations_collection_artifact")
     .update({
       artifact_status: status,
       ingest_metadata_json: metadata,
@@ -77,9 +78,9 @@ function assertMachineAccess(req: NextRequest) {
 
 async function handleArtifactIngest(req: NextRequest, context: RouteContext) {
   const startedAt = Date.now();
-  assertMachineAccess(req);
 
   try {
+    assertMachineAccess(req);
     const { slug } = await context.params;
     const supabase = await getSupabaseServerClient();
 
