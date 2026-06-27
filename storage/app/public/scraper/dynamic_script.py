@@ -172,20 +172,6 @@ def should_run_section(section_name):
 
     return True
 
-def target_artifact_keys():
-    return {
-        key.strip().upper()
-        for key in os.environ.get("FCMS_TARGET_ARTIFACT_KEYS", "").split(",")
-        if key.strip()
-    }
-
-def should_run_artifact(*keys):
-    targets = target_artifact_keys()
-    if not targets:
-        return True
-    return any(key.upper() in targets for key in keys)
-
-
 def scrollTo(el, driver):
     desired_y = (el.size['height'] / 2) + el.location['y']
     current_y = (driver.execute_script('return window.innerHeight') / 2) + driver.execute_script(
@@ -385,41 +371,39 @@ def main(section_='', option_=0, retry=1):
             WebDriverWait(driver, 30).until( EC.presence_of_element_located((By.XPATH, "//em[contains(text(), 'Work Area Summary')]")) )
 
             # Service Area Summary
-            if should_run_artifact("SERVICE_AREA_SUMMARY"):
-                try:
-                    s_a = WebDriverWait(driver, 30).until( EC.element_to_be_clickable((By.XPATH, "//em[contains(text(), 'Service Area Summary')]")) )
-                    time.sleep(1)
-                    s_a.click()
-
-                    WebDriverWait(driver, 30).until( element_opacity_exists(s_a.find_element(By.XPATH, '../..').get_attribute('id')) )
-                    time.sleep(1)
-
-                    if driver.find_elements(By.XPATH, "//input[@id='saStatusForm:buttonServiceAreaSummaryGenerateExcel']"):
-                        download_file = os.path.join(DOWNLOAD_FOLDER, "ServiceAreaSummary.xls")
-                        if os.path.exists(download_file):
-                            os.remove(download_file)
-                        driver.find_element(By.XPATH, "//input[@id='saStatusForm:buttonServiceAreaSummaryGenerateExcel']").click()
-                        checkDownloads(6)
-                        time.sleep(3)
-                except Exception as e:
-                    print(e)
-
-            # Work Area Summary
-            if should_run_artifact("WORK_AREA_SUMMARY", "SERVICE_AREA_STATUS"):
-                w_a = WebDriverWait(driver, 30).until( EC.element_to_be_clickable((By.XPATH, "//em[contains(text(), 'Work Area Summary')]")) )
+            try:
+                s_a = WebDriverWait(driver, 30).until( EC.element_to_be_clickable((By.XPATH, "//em[contains(text(), 'Service Area Summary')]")) )
                 time.sleep(1)
-                w_a.click()
+                s_a.click()
 
-                WebDriverWait(driver, 30).until( element_opacity_exists(w_a.find_element(By.XPATH, '../..').get_attribute('id')) )
+                WebDriverWait(driver, 30).until( element_opacity_exists(s_a.find_element(By.XPATH, '../..').get_attribute('id')) )
                 time.sleep(1)
 
-                if driver.find_elements(By.XPATH, "//input[@id='saStatusForm:buttonGenerateExcel']"):
-                    download_file = os.path.join(DOWNLOAD_FOLDER, "ServiceAreaStatus.xls")
+                if driver.find_elements(By.XPATH, "//input[@id='saStatusForm:buttonServiceAreaSummaryGenerateExcel']"):
+                    download_file = os.path.join(DOWNLOAD_FOLDER, "ServiceAreaSummary.xls")
                     if os.path.exists(download_file):
                         os.remove(download_file)
-                    driver.find_element(By.XPATH, "//input[@id='saStatusForm:buttonGenerateExcel']").click()
-                    checkDownloads(5)
+                    driver.find_element(By.XPATH, "//input[@id='saStatusForm:buttonServiceAreaSummaryGenerateExcel']").click()
+                    checkDownloads(6)
                     time.sleep(3)
+            except Exception as e:
+                print(e)
+
+            # Work Area Summary
+            w_a = WebDriverWait(driver, 30).until( EC.element_to_be_clickable((By.XPATH, "//em[contains(text(), 'Work Area Summary')]")) )
+            time.sleep(1)
+            w_a.click()
+
+            WebDriverWait(driver, 30).until( element_opacity_exists(w_a.find_element(By.XPATH, '../..').get_attribute('id')) )
+            time.sleep(1)
+
+            if driver.find_elements(By.XPATH, "//input[@id='saStatusForm:buttonGenerateExcel']"):
+                download_file = os.path.join(DOWNLOAD_FOLDER, "ServiceAreaStatus.xls")
+                if os.path.exists(download_file):
+                    os.remove(download_file)
+                driver.find_element(By.XPATH, "//input[@id='saStatusForm:buttonGenerateExcel']").click()
+                checkDownloads(5)
+                time.sleep(3)
             
             ACTIVE_SECTION_OPTION = 0
         if secion_index <= 2 and should_run_section('Pickup'):
