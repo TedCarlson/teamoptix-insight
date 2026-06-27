@@ -647,6 +647,22 @@ function scheduleLabel(value: string) {
   return value;
 }
 
+function summarizeArtifacts(items: any[]) {
+  const counts = new Map<string, number>();
+
+  for (const item of items) {
+    if (item.artifact_kind !== "REPORT_FILE") continue;
+    const key = item.report_family_key ?? "Artifact";
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+
+  if (counts.size === 0) return "—";
+
+  return Array.from(counts.entries())
+    .map(([key, count]) => `${key} ×${count}`)
+    .join(", ");
+}
+
 function formatRequestTiming(request: CollectionRequest) {
   const payload = request.request_payload ?? {};
   const cadence = typeof payload.cadence_minutes === "number" ? `${payload.cadence_minutes}m` : null;
@@ -899,8 +915,6 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
   const [selectedCollection, setSelectedCollection] = useState<ProtectedCollectionType | null>(null);
 
   const [artifacts, setArtifacts] = useState<any[]>([]);
-  const [inspectingArtifactId, setInspectingArtifactId] = useState<string | null>(null);
-  const [artifactInspection, setArtifactInspection] = useState<any | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
 
@@ -1102,28 +1116,6 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
     }
   }
 
-  async function inspectArtifact(artifactId: string) {
-    try {
-      setInspectingArtifactId(artifactId);
-      setArtifactInspection(null);
-      setStatusError(null);
-
-      const res = await fetch(`/api/company/${props.slug}/operations/artifacts/${artifactId}/inspect`, {
-        method: "POST",
-        credentials: "include",
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) throw new Error(data?.error ?? "Artifact inspection failed.");
-
-      setArtifactInspection(data);
-    } catch (error) {
-      setStatusError(error instanceof Error ? error.message : "Artifact inspection failed.");
-    } finally {
-      setInspectingArtifactId(null);
-    }
-  }
 
   async function saveCredential() {
     try {
@@ -1422,21 +1414,7 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
                     <td style={td}>{formatRequestTiming(request)}</td>
                     <td style={td}>{formatDuration(request.duration_ms)}</td>
                     <td style={td}>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        {requestArtifacts.length > 0 ? requestArtifacts.map((artifact) => (
-                          <button
-                            key={artifact.id}
-                            type="button"
-                            className="button"
-                            style={{ padding: "5px 8px", fontSize: 11 }}
-                            disabled={inspectingArtifactId === artifact.id}
-                            onClick={() => inspectArtifact(artifact.id)}
-                            title={artifact.normalized_filename ?? artifact.original_filename}
-                          >
-                            {inspectingArtifactId === artifact.id ? "Inspecting..." : artifact.report_family_key ?? "Artifact"}
-                          </button>
-                        )) : "—"}
-                      </div>
+                      {summarizeArtifacts(requestArtifacts)}
                     </td>
                   </tr>
                 );
@@ -1450,17 +1428,6 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
           </table>
         </div>
 
-        {artifactInspection ? (
-          <div style={{ marginTop: 12, border: "1px solid #d6dfeb", borderRadius: 16, padding: 12, background: "#f8fafc" }}>
-            <p className="eyebrow">Artifact inspection</p>
-            <div style={grid4}>
-              <MiniStat label="File" value={artifactInspection.file_name ?? "—"} />
-              <MiniStat label="Detected" value={artifactInspection.detected?.report_family_key ?? "—"} />
-              <MiniStat label="Shape" value={artifactInspection.detected?.report_shape_key ?? "—"} />
-              <MiniStat label="Rows" value={artifactInspection.detected?.route_row_count ?? 0} />
-            </div>
-          </div>
-        ) : null}
       </SectionCard>
 
       <SectionCard eyebrow="Runtime inspection" title="Latest report seams">
