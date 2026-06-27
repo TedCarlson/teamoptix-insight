@@ -133,7 +133,7 @@ def artifact_matches_targets(request: dict, artifact: dict) -> bool:
 
     return False
 
-def collect_artifacts(request: dict) -> list[dict]:
+def collect_artifacts(request: dict, run_started_at: float) -> list[dict]:
     folder_name = service_date_folder(request.get("service_date"))
     excel_dir = SCRAPER_HOME / "Excels" / folder_name
     artifacts = []
@@ -141,6 +141,8 @@ def collect_artifacts(request: dict) -> list[dict]:
     if excel_dir.exists():
         for file in sorted(excel_dir.iterdir()):
             if file.is_file():
+                if file.stat().st_mtime < run_started_at - 2:
+                    continue
                 identity = infer_report_identity(file.name)
                 artifact = {
                     "kind": "REPORT_FILE",
@@ -320,6 +322,8 @@ def main() -> int:
 
         update_status(request_id, "RUNNING")
 
+        run_started_at = time.time()
+
         child_env = os.environ.copy()
         child_env["FCMS_FEDEX_USERNAME"] = credential["username"]
         child_env["FCMS_FEDEX_PASSWORD"] = credential["encrypted_secret"]
@@ -334,7 +338,7 @@ def main() -> int:
         print("[insight-runner] ready to execute donor runner")
         if os.environ.get("INSIGHT_RUNNER_DRY_RUN", "1") == "1":
             print("[insight-runner] dry run only; scraper not executed")
-            artifacts = collect_artifacts(request)
+            artifacts = collect_artifacts(request, run_started_at)
             registered = register_artifacts(request, artifacts)
             print(json.dumps({
                 "event": "artifact_manifest",
@@ -356,7 +360,7 @@ def main() -> int:
         elapsed_ms = int((time.time() - started) * 1000)
         print(f"[insight-runner] donor exit={proc.returncode} elapsed_ms={elapsed_ms}")
 
-        artifacts = collect_artifacts(request)
+        artifacts = collect_artifacts(request, run_started_at)
         registered = register_artifacts(request, artifacts)
         print(json.dumps({
             "event": "artifact_manifest",
