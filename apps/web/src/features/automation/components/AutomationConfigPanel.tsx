@@ -100,6 +100,8 @@ type CollectionTarget = {
   report_family_key: "DSW" | "FCC";
   artifact_key: string;
   runner_section: "P_AND_D" | "SERVICE" | "DAILY_SERVICE";
+  vps_target: number;
+  expected_filename_match: string[];
   default_last_look: boolean;
   default_targeted: boolean;
 };
@@ -247,6 +249,8 @@ const COLLECTION_TARGETS: CollectionTarget[] = [
     report_family_key: "DSW",
     artifact_key: "DSW",
     runner_section: "DAILY_SERVICE",
+    vps_target: 11,
+    expected_filename_match: ["daily service worksheet"],
     default_last_look: true,
     default_targeted: true,
   },
@@ -257,6 +261,8 @@ const COLLECTION_TARGETS: CollectionTarget[] = [
     report_family_key: "FCC",
     artifact_key: "COMBINED_MANIFEST",
     runner_section: "P_AND_D",
+    vps_target: 3,
+    expected_filename_match: ["CombinedManifest", "CM_"],
     default_last_look: true,
     default_targeted: false,
   },
@@ -267,6 +273,8 @@ const COLLECTION_TARGETS: CollectionTarget[] = [
     report_family_key: "FCC",
     artifact_key: "SERVICE_AREA_SUMMARY",
     runner_section: "SERVICE",
+    vps_target: 6,
+    expected_filename_match: ["ServiceAreaSummary", "SASummary_"],
     default_last_look: true,
     default_targeted: true,
   },
@@ -277,6 +285,8 @@ const COLLECTION_TARGETS: CollectionTarget[] = [
     report_family_key: "FCC",
     artifact_key: "WORK_AREA_SUMMARY",
     runner_section: "SERVICE",
+    vps_target: 5,
+    expected_filename_match: ["ServiceAreaStatus", "SAStatus_"],
     default_last_look: true,
     default_targeted: true,
   },
@@ -287,6 +297,8 @@ const COLLECTION_TARGETS: CollectionTarget[] = [
     report_family_key: "FCC",
     artifact_key: "DELIVERY_MANIFEST",
     runner_section: "P_AND_D",
+    vps_target: 2,
+    expected_filename_match: ["DeliveryManifest"],
     default_last_look: false,
     default_targeted: false,
   },
@@ -297,6 +309,8 @@ const COLLECTION_TARGETS: CollectionTarget[] = [
     report_family_key: "FCC",
     artifact_key: "PICKUP_MANIFEST",
     runner_section: "P_AND_D",
+    vps_target: 1,
+    expected_filename_match: ["PickupManifest", "PM"],
     default_last_look: false,
     default_targeted: false,
   },
@@ -403,6 +417,8 @@ function CollectionOrderDrawer(props: {
           report_family_key: target.report_family_key,
           artifact_key: target.artifact_key,
           runner_section: target.runner_section,
+          vps_target: target.vps_target,
+          expected_filename_match: target.expected_filename_match,
         })),
         runner_goal:
           profile.type === "TARGETED_RECOVERY"
