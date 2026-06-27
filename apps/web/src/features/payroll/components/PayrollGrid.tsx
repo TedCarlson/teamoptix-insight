@@ -24,6 +24,7 @@ import PayrollAttendanceTable from "@/features/payroll/components/PayrollAttenda
 import PayrollRowDetailTable from "@/features/payroll/components/PayrollRowDetailTable";
 import PayrollDetailTable from "@/features/payroll/components/PayrollDetailTable";
 import PayrollDswAliasTool from "@/features/payroll/components/PayrollDswAliasTool";
+import PayrollReportEmailDialog from "@/features/payroll/components/PayrollReportEmailDialog";
 
 import {
   addDays,
@@ -87,6 +88,7 @@ export default function PayrollGrid() {
   const [rebuilding, setRebuilding] = useState(false);
   const [aliasOpen, setAliasOpen] = useState(false);
   const [aliasCount, setAliasCount] = useState(0);
+  const [reportEmailOpen, setReportEmailOpen] = useState(false);
 
   const days = useMemo(() => weekDaysForEnd(weekEnd), [weekEnd]);
 
@@ -307,6 +309,26 @@ export default function PayrollGrid() {
 
             <button
               type="button"
+              onClick={() => setReportEmailOpen(true)}
+              style={{
+                height: 38,
+                padding: "0 14px",
+                borderRadius: 999,
+                border: "1px solid #dbe6f3",
+                background: "#fff",
+                color: "#0f172a",
+                fontSize: 13,
+                fontWeight: 900,
+                cursor: "pointer",
+                alignSelf: "flex-end",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Send Report
+            </button>
+
+            <button
+              type="button"
               onClick={() => setAliasOpen(true)}
               style={{
                 height: 38,
@@ -378,6 +400,15 @@ export default function PayrollGrid() {
             days={days}
           />
         )}
+      <PayrollReportEmailDialog
+        open={reportEmailOpen}
+        slug={slug}
+        weekEnd={weekEnd}
+        summary={payrollMetrics?.summary ?? []}
+        groupedSummaryRows={groupedSummaryRows}
+        onClose={() => setReportEmailOpen(false)}
+      />
+
       {aliasOpen ? (
         <div
           role="dialog"
