@@ -56,24 +56,54 @@ export async function GET(
     const mode = String(req.nextUrl.searchParams.get("mode") ?? "queue").toLowerCase();
     const activeStatuses = ["QUEUED", "CLAIMED", "RUNNING", "ARTIFACTS_READY", "INGESTING"];
 
-    let query = supabase
-      .from("operations_collection_request_v")
-      .select("*")
-      .eq("company_id", resolved.company.id);
+    if (mode === "history") {
+      const { data, error } = await supabase
+        .from("operations_collection_request_v")
+        .select("*")
+        .eq("company_id", resolved.company.id)
+        .order("created_at", { ascending: false })
+        .limit(limit);
 
-    if (mode !== "history") {
-      query = query.in("request_status", activeStatuses);
+      if (error) {
+        return NextResponse.json({ error: error.message, rows: [] }, { status: 500 });
+      }
+
+      return NextResponse.json({ rows: data ?? [] });
     }
 
-    const { data, error } = await query
+    const { data: activeRows, error: activeError } = await supabase
+      .from("operations_collection_request_v")
+      .select("*")
+      .eq("company_id", resolved.company.id)
+      .in("request_status", activeStatuses)
       .order("created_at", { ascending: false })
       .limit(limit);
 
-    if (error) {
-      return NextResponse.json({ error: error.message, rows: [] }, { status: 500 });
+    if (activeError) {
+      return NextResponse.json({ error: activeError.message, rows: [] }, { status: 500 });
     }
 
-    return NextResponse.json({ rows: data ?? [] });
+    const { data: lastCompleteRows, error: completeError } = await supabase
+      .from("operations_collection_request_v")
+      .select("*")
+      .eq("company_id", resolved.company.id)
+      .eq("request_status", "COMPLETE")
+      .order("updated_at", { ascending: false })
+      .limit(1);
+
+    if (completeError) {
+      return NextResponse.json({ error: completeError.message, rows: [] }, { status: 500 });
+    }
+
+    const rowsById = new Map<string, any>();
+    for (const row of activeRows ?? []) rowsById.set(row.id, row);
+    for (const row of lastCompleteRows ?? []) rowsById.set(row.id, row);
+
+    const data = Array.from(rowsById.values()).sort((a, b) =>
+      String(b.created_at ?? "").localeCompare(String(a.created_at ?? ""))
+    );
+
+    return NextResponse.json({ rows: data });
   } catch (error) {
     return NextResponse.json(
       {
