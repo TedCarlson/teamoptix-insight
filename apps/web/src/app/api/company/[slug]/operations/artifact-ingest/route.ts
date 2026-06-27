@@ -79,7 +79,7 @@ async function handleArtifactIngest(req: NextRequest, context: RouteContext) {
       .eq("artifact_kind", "REPORT_FILE")
       .eq("report_family_key", "DSW")
       .eq("artifact_status", "READY_FOR_INGEST")
-      .order("created_at", { ascending: true })
+      .order("created_at", { ascending: false })
       .limit(1);
 
     if (artifactError) throw new Error(artifactError.message);
