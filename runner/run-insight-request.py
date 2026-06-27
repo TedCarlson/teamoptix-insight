@@ -152,7 +152,7 @@ def collect_artifacts(request: dict) -> list[dict]:
                 }
                 if not artifact_matches_targets(request, artifact):
                     continue
-                artifact["storage_bucket"] = "local-runner-artifacts"
+                artifact["storage_bucket"] = "automation-artifacts"
                 artifact["storage_path"] = local_storage_path(request, artifact)
                 artifacts.append(artifact)
 
@@ -170,7 +170,7 @@ def collect_artifacts(request: dict) -> list[dict]:
                 "report_shape_key": None,
                 "report_frame": None,
             }
-            artifact["storage_bucket"] = "local-runner-artifacts"
+            artifact["storage_bucket"] = "automation-artifacts"
             artifact["storage_path"] = local_storage_path(request, artifact)
             artifacts.append(artifact)
 
