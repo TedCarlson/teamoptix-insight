@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 import json
+import hashlib
 import os
 import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
+import urllib.parse
 from pathlib import Path
 
 APP_DIR = Path(__file__).resolve().parents[1]
@@ -174,6 +176,42 @@ def collect_artifacts(request: dict) -> list[dict]:
 
     return artifacts
 
+def upload_artifact_to_storage(artifact: dict) -> dict:
+    local_path = Path(artifact["path"])
+    if not local_path.exists():
+        raise RuntimeError(f"Artifact file missing before upload: {local_path}")
+
+    data = local_path.read_bytes()
+    artifact["size_bytes"] = len(data)
+    artifact["source_hash"] = hashlib.sha256(data).hexdigest()
+
+    bucket = artifact["storage_bucket"]
+    storage_path = artifact["storage_path"]
+
+    bucket_part = urllib.parse.quote(bucket, safe="")
+    path_part = urllib.parse.quote(storage_path, safe="/=")
+
+    req = urllib.request.Request(
+        f"{SUPABASE_URL.rstrip('/')}/storage/v1/object/{bucket_part}/{path_part}",
+        data=data,
+        headers={
+            "apikey": SUPABASE_SERVICE_ROLE_KEY,
+            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+            "Content-Type": artifact.get("content_type") or "application/octet-stream",
+            "x-upsert": "true",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=120) as res:
+            raw = res.read().decode("utf-8")
+            return json.loads(raw) if raw else {"status": res.status}
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(f"Storage upload failed: HTTP {exc.code} {detail}") from exc
+
+
 def register_artifact(request: dict, artifact: dict) -> dict:
     return rpc("register_operations_collection_artifact", {
         "p_collection_request_id": request["id"],
@@ -190,7 +228,7 @@ def register_artifact(request: dict, artifact: dict) -> dict:
         "p_normalized_filename": artifact.get("display_filename") or artifact["filename"],
         "p_content_type": artifact.get("content_type"),
         "p_size_bytes": artifact.get("size_bytes") or 0,
-        "p_source_hash": None,
+        "p_source_hash": artifact.get("source_hash"),
         "p_runner_key": RUNNER_KEY,
         "p_runner_artifact_json": artifact,
     })
@@ -198,6 +236,7 @@ def register_artifact(request: dict, artifact: dict) -> dict:
 def register_artifacts(request: dict, artifacts: list[dict]) -> list[dict]:
     registered = []
     for artifact in artifacts:
+        upload_artifact_to_storage(artifact)
         registered.append(register_artifact(request, artifact))
     return registered
 
