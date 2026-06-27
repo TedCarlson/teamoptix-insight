@@ -64,35 +64,10 @@ async function refreshRequestStatus(params: { supabase: any; requestId: string }
   });
 }
 
-async function tokenHash(value: string) {
-  const bytes = new TextEncoder().encode(value);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-async function assertMachineAccess(req: NextRequest) {
-  const expected = process.env.INSIGHT_ARTIFACT_INGEST_TOKEN ?? "";
-  const provided =
-    req.headers.get("x-insight-artifact-ingest-token") ??
-    req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
-    "";
-
-  if (expected && provided !== expected) {
-    throw new Error(JSON.stringify({
-      code: "Unauthorized",
-      expected_length: expected.length,
-      expected_sha256: await tokenHash(expected),
-      provided_length: provided.length,
-      provided_sha256: await tokenHash(provided),
-    }));
-  }
-}
-
 async function handleArtifactIngest(req: NextRequest, context: RouteContext) {
   const startedAt = Date.now();
 
   try {
-    await assertMachineAccess(req);
     const { slug } = await context.params;
     const supabase = await getSupabaseServerClient();
 
