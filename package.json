@@ -10,6 +10,6 @@
     "verify": "pnpm lint && pnpm typecheck && pnpm build"
   },
   "devDependencies": {
-    "baseline-browser-mapping": "^2.10.8"
+    "baseline-browser-mapping": "^2.10.40"
   }
 }
