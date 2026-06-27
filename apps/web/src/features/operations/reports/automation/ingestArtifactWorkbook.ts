@@ -1,4 +1,5 @@
 import { ingestDswWorkbook } from "@/features/operations/reports/dsw/dsw.ingest";
+import { ingestFccWorkbook } from "@/features/operations/reports/fcc/fcc.ingest";
 
 type ArtifactRow = {
   id: string;
@@ -54,7 +55,6 @@ export async function ingestArtifactWorkbook(params: {
   const { supabase, slug, artifact, uploadedByAuthUserId = null, uploadedByProfileId = null } = params;
 
   if (artifact.artifact_kind !== "REPORT_FILE") throw new Error("Only report files can be ingested.");
-  if (artifact.report_family_key !== "DSW") throw new Error("Only DSW artifact ingest is enabled.");
   if (!artifact.storage_bucket || !artifact.storage_path) throw new Error("Artifact is missing storage location.");
 
   const buffer = await downloadArtifactBuffer({
@@ -62,14 +62,35 @@ export async function ingestArtifactWorkbook(params: {
     path: artifact.storage_path,
   });
 
-  return ingestDswWorkbook({
-    supabase,
-    slug,
-    buffer,
-    filename: artifact.normalized_filename || artifact.original_filename || "artifact.xls",
-    fileSize: artifact.size_bytes ?? buffer.length,
-    requestedDate: artifact.service_date ?? undefined,
-    uploadedByAuthUserId,
-    uploadedByProfileId,
-  });
+  const filename = artifact.original_filename || artifact.normalized_filename || "artifact.xls";
+
+  if (artifact.report_family_key === "DSW") {
+    return ingestDswWorkbook({
+      supabase,
+      slug,
+      buffer,
+      filename,
+      fileSize: artifact.size_bytes ?? buffer.length,
+      requestedDate: artifact.service_date ?? undefined,
+      uploadedByAuthUserId,
+      uploadedByProfileId,
+    });
+  }
+
+  if (artifact.report_family_key === "FCC") {
+    if (!artifact.service_date) throw new Error("FCC artifact is missing service date.");
+
+    return ingestFccWorkbook({
+      supabase,
+      slug,
+      buffer,
+      filename,
+      fileSize: artifact.size_bytes ?? buffer.length,
+      serviceDate: artifact.service_date,
+      uploadedByAuthUserId,
+      uploadedByProfileId,
+    });
+  }
+
+  throw new Error(`Unsupported artifact family ${artifact.report_family_key ?? "UNKNOWN"}.`);
 }
