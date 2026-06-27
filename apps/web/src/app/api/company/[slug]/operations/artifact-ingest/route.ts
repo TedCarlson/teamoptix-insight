@@ -18,7 +18,7 @@ async function markArtifact(params: {
   const { supabase, artifactId, status, metadata = {}, reportBatchId = null, errorMessage = null } = params;
 
   const { error } = await supabase
-    .from("operations_collection_artifact")
+    .from("core.operations_collection_artifact")
     .update({
       artifact_status: status,
       ingest_metadata_json: metadata,
@@ -63,8 +63,21 @@ async function refreshRequestStatus(params: { supabase: any; requestId: string }
   });
 }
 
-async function handleArtifactIngest(_req: NextRequest, context: RouteContext) {
+function assertMachineAccess(req: NextRequest) {
+  const expected = process.env.INSIGHT_ARTIFACT_INGEST_TOKEN;
+  const provided =
+    req.headers.get("x-insight-artifact-ingest-token") ??
+    req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
+    "";
+
+  if (expected && provided !== expected) {
+    throw new Error("Unauthorized.");
+  }
+}
+
+async function handleArtifactIngest(req: NextRequest, context: RouteContext) {
   const startedAt = Date.now();
+  assertMachineAccess(req);
 
   try {
     const { slug } = await context.params;
@@ -158,10 +171,6 @@ async function handleArtifactIngest(_req: NextRequest, context: RouteContext) {
   }
 }
 
-
-export async function GET(req: NextRequest, context: RouteContext) {
-  return handleArtifactIngest(req, context);
-}
 
 export async function POST(req: NextRequest, context: RouteContext) {
   return handleArtifactIngest(req, context);
