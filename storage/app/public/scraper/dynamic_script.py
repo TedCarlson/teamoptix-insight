@@ -249,7 +249,14 @@ def main(section_='', option_=0, retry=1):
                     secion_index = index
                     break
 
-        if secion_index <= 3 and should_run_section('SCH'):
+        needs_fcc_window = (
+            should_run_section('P&D')
+            or should_run_section('Service')
+            or should_run_section('Pickup')
+            or should_run_section('SCH')
+        )
+
+        if secion_index <= 3 and needs_fcc_window:
             iframe = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//iframe[@title='FCC Links']")))
 
             driver.switch_to.frame(iframe)
