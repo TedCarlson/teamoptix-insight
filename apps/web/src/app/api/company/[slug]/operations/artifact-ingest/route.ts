@@ -17,17 +17,13 @@ async function markArtifact(params: {
 }) {
   const { supabase, artifactId, status, metadata = {}, reportBatchId = null, errorMessage = null } = params;
 
-  const { error } = await supabase
-    .schema("core")
-    .from("operations_collection_artifact")
-    .update({
-      artifact_status: status,
-      ingest_metadata_json: metadata,
-      report_batch_id: reportBatchId,
-      error_message: errorMessage,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", artifactId);
+  const { error } = await supabase.rpc("update_operations_collection_artifact_status", {
+    p_artifact_id: artifactId,
+    p_artifact_status: status,
+    p_ingest_metadata_json: metadata,
+    p_report_batch_id: reportBatchId,
+    p_error_message: errorMessage,
+  });
 
   if (error) throw new Error(error.message);
 }
