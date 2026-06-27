@@ -53,10 +53,19 @@ export async function GET(
       50
     );
 
-    const { data, error } = await supabase
+    const mode = String(req.nextUrl.searchParams.get("mode") ?? "queue").toLowerCase();
+    const activeStatuses = ["QUEUED", "CLAIMED", "RUNNING", "ARTIFACTS_READY", "INGESTING"];
+
+    let query = supabase
       .from("operations_collection_request_v")
       .select("*")
-      .eq("company_id", resolved.company.id)
+      .eq("company_id", resolved.company.id);
+
+    if (mode !== "history") {
+      query = query.in("request_status", activeStatuses);
+    }
+
+    const { data, error } = await query
       .order("created_at", { ascending: false })
       .limit(limit);
 
