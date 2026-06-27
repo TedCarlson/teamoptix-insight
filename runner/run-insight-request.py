@@ -156,24 +156,6 @@ def collect_artifacts(request: dict) -> list[dict]:
                 artifact["storage_path"] = local_storage_path(request, artifact)
                 artifacts.append(artifact)
 
-    logs_dir = SCRAPER_HOME / "Logs"
-    if logs_dir.exists():
-        for file in sorted(logs_dir.glob("daily_scraper_*.log"), key=lambda p: p.stat().st_mtime, reverse=True)[:3]:
-            artifact = {
-                "kind": "RUNTIME_LOG",
-                "path": str(file),
-                "filename": file.name,
-                "display_filename": "Scraper Log.txt",
-                "size_bytes": file.stat().st_size,
-                "content_type": "text/plain",
-                "report_family_key": None,
-                "report_shape_key": None,
-                "report_frame": None,
-            }
-            artifact["storage_bucket"] = "automation-artifacts"
-            artifact["storage_path"] = local_storage_path(request, artifact)
-            artifacts.append(artifact)
-
     return artifacts
 
 def upload_artifact_to_storage(artifact: dict) -> dict:
