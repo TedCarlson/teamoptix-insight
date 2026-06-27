@@ -109,27 +109,26 @@ def target_runner_sections(request: dict) -> list[str]:
     return sorted(sections, key=lambda section: section_order.get(section, 999))
 
 def artifact_matches_targets(request: dict, artifact: dict) -> bool:
-    keys = target_artifact_keys(request)
-    if not keys:
+    targets = request_targets(request)
+    if not targets:
         return True
 
     filename = str(artifact.get("filename") or "").lower()
     display = str(artifact.get("display_filename") or "").lower()
+    haystack = f"{filename} {display}"
 
-    if "DSW" in keys and "daily service worksheet" in display:
-        return True
-    if "SERVICE_AREA_SUMMARY" in keys and "serviceareasummary" in filename:
-        return True
-    if "WORK_AREA_SUMMARY" in keys and "serviceareastatus" in filename:
-        return True
-    if "SERVICE_AREA_STATUS" in keys and "serviceareastatus" in filename:
-        return True
-    if "COMBINED_MANIFEST" in keys and "combinedmanifest" in filename:
-        return True
-    if "DELIVERY_MANIFEST" in keys and "deliverymanifest" in filename:
-        return True
-    if "PICKUP_MANIFEST" in keys and "pickupmanifest" in filename:
-        return True
+    for target in targets:
+        if not isinstance(target, dict):
+            continue
+
+        patterns = target.get("expected_filename_match")
+        if not isinstance(patterns, list):
+            continue
+
+        for pattern in patterns:
+            needle = str(pattern or "").strip().lower()
+            if needle and needle in haystack:
+                return True
 
     return False
 
