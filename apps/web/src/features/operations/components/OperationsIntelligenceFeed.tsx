@@ -88,14 +88,24 @@ function shortBatch(value: string | null | undefined) {
   return value ? value.slice(0, 8) : "—";
 }
 
+function sourceComplete(entry: IntelligenceEntry | null | undefined) {
+  const status = String(entry?.status ?? "").toUpperCase();
+  return Boolean(entry) && (!status || ["LOADED", "INGESTED", "COMPLETE", "COMPLETED", "SUCCESS"].includes(status));
+}
+
 function SourceSummary(props: {
   title: string;
-  updatedAt: string | null | undefined;
+  entry: IntelligenceEntry | null | undefined;
 }) {
+  const complete = sourceComplete(props.entry);
+  const statusText = complete ? `✓ ${formatTime(props.entry?.timestamp)}` : props.entry ? "Needs review" : "Waiting";
+
   return (
     <div style={sourceBox}>
       <strong style={sourceTitle}>{props.title}</strong>
-      <strong style={{ color: "#334155", fontSize: 12 }}>{formatTime(props.updatedAt)}</strong>
+      <strong style={{ color: complete ? "#166534" : "#92400e", fontSize: 12 }}>
+        {statusText}
+      </strong>
     </div>
   );
 }
@@ -234,6 +244,16 @@ export default function OperationsIntelligenceFeed(props: Props) {
   const dswUnmatched = currentDswFailed ? null : dswStep?.result?.ingest?.unmatched_route_count ?? latestDswRun?.unmatched_rows;
   const fccUnmatched = currentFccFailed ? null : fccStep?.result?.ingest?.unmatched_route_count ?? latestFccRun?.unmatched_rows;
 
+  const dswComplete = sourceComplete(latestDswEntry);
+  const fccComplete = sourceComplete(latestFccEntry);
+  const completedSourceCount = [dswComplete, fccComplete].filter(Boolean).length;
+  const lastCompletedAt =
+    [latestDswEntry?.timestamp, latestFccEntry?.timestamp]
+      .filter(Boolean)
+      .sort()
+      .at(-1) ?? null;
+  const feedHealth = completedSourceCount === 2 ? "Healthy" : completedSourceCount > 0 ? "Partial" : "Waiting";
+
   const hasEntries = Boolean(latestDswEntry || latestFccEntry || latestDswRun || latestFccRun);
 
   async function updateOpsNow() {
@@ -274,19 +294,6 @@ export default function OperationsIntelligenceFeed(props: Props) {
           ) : null}
         </div>
 
-        {!frozen ? (
-          <button
-            type="button"
-            className="button button-primary"
-            onClick={() => {
-              void loadRuns();
-              setOverlayOpen(true);
-            }}
-            style={{ minHeight: 30, padding: "0 12px", fontSize: 12, justifySelf: "start" }}
-          >
-            Update Ops
-          </button>
-        ) : null}
       </div>
 
       {!frozen && hasEntries ? (
@@ -299,17 +306,11 @@ export default function OperationsIntelligenceFeed(props: Props) {
           style={feedSummaryButton}
         >
           <div style={summaryHeader}>
-            <span>Report</span>
-            <span>Last Update</span>
+            <span>Last Run</span>
+            <span>{formatTime(lastCompletedAt)} · {feedHealth}</span>
           </div>
-          <SourceSummary
-            title="DSW"
-            updatedAt={latestDswEntry?.timestamp ?? latestDswRun?.completed_at}
-          />
-          <SourceSummary
-            title="FCC"
-            updatedAt={latestFccEntry?.timestamp ?? latestFccRun?.completed_at}
-          />
+          <SourceSummary title="DSW" entry={latestDswEntry} />
+          <SourceSummary title="FCC" entry={latestFccEntry} />
         </button>
       ) : null}
 

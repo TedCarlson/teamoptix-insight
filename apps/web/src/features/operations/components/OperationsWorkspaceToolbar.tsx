@@ -14,7 +14,6 @@ function formatLastUpdated(value: string | null) {
     return new Date(value).toLocaleTimeString([], {
       hour: "numeric",
       minute: "2-digit",
-      second: "2-digit",
     });
   } catch {
     return value;

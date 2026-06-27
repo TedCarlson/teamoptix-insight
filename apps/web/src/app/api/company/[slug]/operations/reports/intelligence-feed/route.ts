@@ -16,12 +16,7 @@ function addDaysIso(value: string, days: number) {
 }
 
 function entryTime(row: any) {
-  return (
-    row.metadata_json?.generated_at_text ||
-    row.metadata_json?.uploaded_at_text ||
-    row.created_at ||
-    null
-  );
+  return row.updated_at || row.created_at || null;
 }
 
 async function resolveCompany(slug: string, supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>) {
