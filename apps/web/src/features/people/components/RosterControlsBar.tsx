@@ -1,6 +1,6 @@
 "use client";
 
-export type RosterTab = "active" | "candidates" | "former" | "all";
+export type RosterTab = "active" | "trainee" | "candidates" | "former" | "all";
 
 type Props = {
   tab: RosterTab;
@@ -9,6 +9,7 @@ type Props = {
   setSearch: (value: string) => void;
   counts?: {
     active: number;
+    trainee: number;
     candidates: number;
     former: number;
     all: number;
@@ -52,6 +53,14 @@ export default function RosterControlsBar(props: Props) {
             onClick={() => setTab("active")}
           >
             Active {counts ? `(${counts.active})` : ""}
+          </button>
+          <button
+            type="button"
+            className="button"
+            aria-pressed={tab === "trainee"}
+            onClick={() => setTab("trainee")}
+          >
+            Trainee {counts ? `(${counts.trainee})` : ""}
           </button>
           <button
             type="button"

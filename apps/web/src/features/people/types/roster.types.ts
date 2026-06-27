@@ -1,4 +1,4 @@
-export type RosterEmploymentStatus = "Active" | "Candidate" | "Former";
+export type RosterEmploymentStatus = "Active" | "Candidate" | "Trainee" | "Former";
 
 export type RosterInviteStatus =
   | "Not Invited"
@@ -61,6 +61,8 @@ export type RosterRow = {
 
   daily_pay_effective_date?: string | null;
   daily_pay_rate?: string | number | null;
+  trainee_daily_pay_rate?: string | number | null;
+  trainee_pay_effective_start?: string | null;
 
   scanner_serial?: string | null;
   fuel_card?: string | null;

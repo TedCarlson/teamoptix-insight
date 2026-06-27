@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import ManagePersonDrawer from "@/features/people/components/ManagePersonDrawer";
 import CandidateWorkflowDrawer from "@/features/hiring/components/candidate-drawer/CandidateWorkflowDrawer";
+import TraineePayOverrideOverlay from "@/features/people/components/TraineePayOverrideOverlay";
 import RosterControlsBar, {
   type RosterTab,
 } from "@/features/people/components/RosterControlsBar";
@@ -28,7 +29,7 @@ type ApiRosterRow = {
   email: string | null;
   phone: string | null;
   worker_type: string | null;
-  employment_status: "Active" | "Candidate" | "Former" | null;
+  employment_status: "Active" | "Candidate" | "Trainee" | "Former" | null;
   market_code: string | null;
   reports_to_name: string | null;
   hire_date: string | null;
@@ -40,6 +41,8 @@ type ApiRosterRow = {
   qual_cert_expiration_date?: string | null;
   daily_pay_effective_date?: string | null;
   daily_pay_rate?: string | number | null;
+  trainee_daily_pay_rate?: string | number | null;
+  trainee_pay_effective_start?: string | null;
   scanner_serial?: string | null;
   fuel_card?: string | null;
   pin_id_no?: string | null;
@@ -69,6 +72,8 @@ function normalizeRosterRow(row: ApiRosterRow): RosterRow {
     qual_cert_expiration_date: row.qual_cert_expiration_date ?? null,
     daily_pay_effective_date: row.daily_pay_effective_date ?? null,
     daily_pay_rate: row.daily_pay_rate ?? null,
+    trainee_daily_pay_rate: row.trainee_daily_pay_rate ?? null,
+    trainee_pay_effective_start: row.trainee_pay_effective_start ?? null,
     scanner_serial: row.scanner_serial ?? null,
     fuel_card: row.fuel_card ?? null,
     pin_id_no: row.pin_id_no ?? null,
@@ -100,6 +105,8 @@ export default function CompanyRosterPage() {
   const [search, setSearch] = useState("");
   const [rows, setRows] = useState<RosterRow[]>([]);
   const [managedPerson, setManagedPerson] = useState<RosterRow | null>(null);
+  const [traineePayPerson, setTraineePayPerson] = useState<RosterRow | null>(null);
+  const [traineePayEffectiveDate, setTraineePayEffectiveDate] = useState(new Date().toISOString().slice(0, 10));
   const [candidateWorkflowPerson, setCandidateWorkflowPerson] = useState<RosterRow | null>(null);
   const [savingDetails, setSavingDetails] = useState(false);
   const [savingOperations, setSavingOperations] = useState(false);
@@ -185,6 +192,7 @@ export default function CompanyRosterPage() {
         ? rows
         : rows.filter((row) => {
             if (tab === "active") return row.employment_status === "Active";
+            if (tab === "trainee") return row.employment_status === "Trainee";
             if (tab === "candidates") {
               return (
                 row.employment_status === "Candidate" &&
@@ -216,6 +224,7 @@ export default function CompanyRosterPage() {
   }, [rows, search, tab]);
 
   const activeCount = rows.filter((r) => r.employment_status === "Active").length;
+  const traineeCount = rows.filter((r) => r.employment_status === "Trainee").length;
   const candidateCount = rows.filter((r) => r.employment_status === "Candidate").length;
   const formerCount = rows.filter((r) => r.employment_status === "Former").length;
   const complianceAlertCount = rows.filter(
@@ -476,7 +485,7 @@ export default function CompanyRosterPage() {
   }
 
   async function saveStatus(draft: {
-    employment_status: "Active" | "Candidate" | "Former";
+    employment_status: "Active" | "Candidate" | "Trainee" | "Former";
     effective_date: string;
     note: string;
   }) {
@@ -518,14 +527,19 @@ export default function CompanyRosterPage() {
 
       await refreshRoster();
 
-      setManagedPerson((current) =>
-        current
-          ? {
-              ...current,
-              employment_status: nextStatus,
-            }
-          : current
-      );
+      const updatedManagedPerson = managedPerson
+        ? {
+            ...managedPerson,
+            employment_status: nextStatus,
+          }
+        : null;
+
+      setManagedPerson(updatedManagedPerson);
+
+      if (nextStatus === "Trainee" && updatedManagedPerson) {
+        setTraineePayEffectiveDate(draft.effective_date);
+        setTraineePayPerson(updatedManagedPerson);
+      }
     } catch {
       setError("Failed to update status.");
     }
@@ -559,6 +573,7 @@ export default function CompanyRosterPage() {
             setSearch={setSearch}
             counts={{
               active: activeCount,
+              trainee: traineeCount,
               candidates: candidateCount,
               former: formerCount,
               all: rows.length,
@@ -638,6 +653,15 @@ export default function CompanyRosterPage() {
             setInviteError(null);
           }}
         />
+      <TraineePayOverrideOverlay
+        open={Boolean(traineePayPerson)}
+        slug={slug}
+        person={traineePayPerson}
+        effectiveDate={traineePayEffectiveDate}
+        onClose={() => setTraineePayPerson(null)}
+        onSaved={refreshRoster}
+      />
+
       </section>
     </main>
   );

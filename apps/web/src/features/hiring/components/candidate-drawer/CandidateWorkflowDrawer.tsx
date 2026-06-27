@@ -7,6 +7,7 @@ import PersonCoreSection from "@/features/people/components/person-drawer/Person
 import PersonOperationsSection from "@/features/people/components/person-drawer/PersonOperationsSection";
 import PersonLifecycleSection from "@/features/people/components/person-drawer/PersonLifecycleSection";
 import PersonTimelineSection from "@/features/people/components/person-drawer/PersonTimelineSection";
+import TraineePayOverrideOverlay from "@/features/people/components/TraineePayOverrideOverlay";
 
 type CoreDraft = {
   full_name: string;
@@ -42,7 +43,7 @@ type OperationsDraft = {
 };
 
 type StatusDraft = {
-  employment_status: "Active" | "Candidate" | "Former";
+  employment_status: "Active" | "Candidate" | "Trainee" | "Former";
   effective_date: string;
   note: string;
 };
@@ -260,6 +261,8 @@ export default function CandidateWorkflowDrawer({
   const [error, setError] = useState<string | null>(null);
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
+  const [traineePayPerson, setTraineePayPerson] = useState<RosterRow | null>(null);
+  const [traineePayEffectiveDate, setTraineePayEffectiveDate] = useState(new Date().toISOString().slice(0, 10));
 
   const selectedRosterId = person?.roster_member_id ?? null;
   const selectedStageKey = person?.candidate_stage_key ?? "candidate_created";
@@ -492,14 +495,23 @@ export default function CandidateWorkflowDrawer({
         return;
       }
 
-      onSaved?.({
+      const nextStatus =
+        data?.roster?.employment_status ?? draft.employment_status;
+
+      const updatedPerson = {
         ...person,
-        employment_status:
-          data?.roster?.employment_status ?? draft.employment_status,
+        employment_status: nextStatus,
         separation_date: data?.roster?.separation_date ?? person.separation_date,
-      });
+      };
+
+      onSaved?.(updatedPerson);
 
       await onRefresh?.();
+
+      if (nextStatus === "Trainee") {
+        setTraineePayEffectiveDate(draft.effective_date);
+        setTraineePayPerson(updatedPerson);
+      }
     } catch {
       setError("Failed to update candidate status.");
     } finally {
@@ -689,6 +701,17 @@ export default function CandidateWorkflowDrawer({
           <PersonTimelineSection events={timelineEvents} loading={loadingTimeline} />
         </section>
       </aside>
+
+      <TraineePayOverrideOverlay
+        open={Boolean(traineePayPerson)}
+        slug={slug}
+        person={traineePayPerson}
+        effectiveDate={traineePayEffectiveDate}
+        onClose={() => setTraineePayPerson(null)}
+        onSaved={async () => {
+          await onRefresh?.();
+        }}
+      />
     </div>
   );
 }

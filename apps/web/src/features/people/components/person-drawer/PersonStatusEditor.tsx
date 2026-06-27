@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import type { RosterEmploymentStatus } from "@/features/people/types/roster.types";
 import type { RosterRow } from "@/features/people/types/roster.types";
 
 type Props = {
   person: RosterRow;
   onSave: (draft: {
-    employment_status: "Active" | "Candidate" | "Former";
+    employment_status: RosterEmploymentStatus;
     effective_date: string;
     note: string;
   }) => Promise<void>;
@@ -84,11 +85,13 @@ export default function PersonStatusEditor({
                 e.target.value as
                   | "Active"
                   | "Candidate"
+                  | "Trainee"
                   | "Former"
               )
             }
           >
             <option value="Candidate">Candidate</option>
+            <option value="Trainee">Trainee</option>
             <option value="Active">Active</option>
             <option value="Former">Former</option>
           </select>

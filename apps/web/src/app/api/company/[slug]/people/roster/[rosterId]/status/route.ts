@@ -33,6 +33,24 @@ export async function PATCH(
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
+    if (status !== "Trainee") {
+      const { error: closeTraineePayError } = await supabase.rpc(
+        "close_roster_trainee_pay_override",
+        {
+          p_company_slug: slug,
+          p_roster_id: rosterId,
+          p_effective_end: effectiveDate,
+        }
+      );
+
+      if (closeTraineePayError) {
+        return NextResponse.json(
+          { error: closeTraineePayError.message },
+          { status: 400 }
+        );
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       roster: {

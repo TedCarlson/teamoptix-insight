@@ -138,9 +138,50 @@ export async function GET(
       return NextResponse.json({ error: opsError.message }, { status: 500 });
     }
 
+    const { data: traineeRows, error: traineeError } = rosterIds.length
+      ? await supabase
+          .from("company_roster_trainee_pay_override_v")
+          .select("roster_id, trainee_daily_pay_rate, effective_start, effective_end")
+          .eq("company_id", company.id)
+          .in("roster_id", rosterIds)
+      : { data: [], error: null };
+
+    if (traineeError) {
+      return NextResponse.json({ error: traineeError.message }, { status: 500 });
+    }
+
+    const traineeOverridesByRosterId = new Map<
+      string,
+      {
+        trainee_daily_pay_rate: number;
+        effective_start: string;
+        effective_end: string | null;
+      }[]
+    >();
+
+    for (const row of traineeRows ?? []) {
+      if (!row.roster_id || row.trainee_daily_pay_rate == null || !row.effective_start) continue;
+
+      const current = traineeOverridesByRosterId.get(row.roster_id) ?? [];
+      current.push({
+        trainee_daily_pay_rate: Number(row.trainee_daily_pay_rate),
+        effective_start: row.effective_start,
+        effective_end: row.effective_end ?? null,
+      });
+      traineeOverridesByRosterId.set(row.roster_id, current);
+    }
+
     const opsByRosterId = new Map<
       string,
-      { daily_pay_rate: number | null; daily_pay_effective_date: string | null }
+      {
+        daily_pay_rate: number | null;
+        daily_pay_effective_date: string | null;
+        trainee_overrides: {
+          trainee_daily_pay_rate: number;
+          effective_start: string;
+          effective_end: string | null;
+        }[];
+      }
     >();
 
     for (const row of opsRows ?? []) {
@@ -148,7 +189,55 @@ export async function GET(
       opsByRosterId.set(row.roster_id, {
         daily_pay_rate: row.daily_pay_rate == null ? null : Number(row.daily_pay_rate),
         daily_pay_effective_date: row.daily_pay_effective_date ?? null,
+        trainee_overrides: traineeOverridesByRosterId.get(row.roster_id) ?? [],
       });
+    }
+
+    for (const [rosterId, traineeOverrides] of traineeOverridesByRosterId.entries()) {
+      if (opsByRosterId.has(rosterId)) continue;
+      opsByRosterId.set(rosterId, {
+        daily_pay_rate: null,
+        daily_pay_effective_date: null,
+        trainee_overrides: traineeOverrides,
+      });
+    }
+
+    function resolveDailyPay(
+      rosterId: string | null | undefined,
+      serviceDate: string | null | undefined,
+      baseRate: number | null,
+      baseEffectiveDate: string | null
+    ) {
+      if (!serviceDate) {
+        return {
+          daily_pay_rate: baseRate,
+          daily_pay_effective_date: baseEffectiveDate,
+          daily_pay_source: "BASE",
+        };
+      }
+
+      const traineeOverride = rosterId
+        ? (traineeOverridesByRosterId.get(rosterId) ?? []).find((override) => {
+            return (
+              override.effective_start <= serviceDate &&
+              (override.effective_end == null || serviceDate <= override.effective_end)
+            );
+          })
+        : null;
+
+      if (traineeOverride) {
+        return {
+          daily_pay_rate: traineeOverride.trainee_daily_pay_rate,
+          daily_pay_effective_date: traineeOverride.effective_start,
+          daily_pay_source: "TRAINEE_OVERRIDE",
+        };
+      }
+
+      return {
+        daily_pay_rate: baseRate,
+        daily_pay_effective_date: baseEffectiveDate,
+        daily_pay_source: "BASE",
+      };
     }
 
     const rosterByDswBridge = new Map<
@@ -159,6 +248,11 @@ export async function GET(
         dswid: string | null;
         daily_pay_rate: number | null;
         daily_pay_effective_date: string | null;
+        trainee_overrides: {
+          trainee_daily_pay_rate: number;
+          effective_start: string;
+          effective_end: string | null;
+        }[];
       }
     >();
 
@@ -168,6 +262,7 @@ export async function GET(
       const ops = opsByRosterId.get(row.roster_member_id) ?? {
         daily_pay_rate: null,
         daily_pay_effective_date: null,
+        trainee_overrides: [],
       };
 
       rosterByDswBridge.set(key, {
@@ -176,18 +271,46 @@ export async function GET(
         dswid: row.dswid ?? null,
         daily_pay_rate: ops.daily_pay_rate,
         daily_pay_effective_date: ops.daily_pay_effective_date,
+        trainee_overrides: ops.trainee_overrides,
       });
     }
 
     let dswBridgeMatches = 0;
 
     const rows = rawRows.map((row) => {
-      if (row.roster_member_id) return row;
+      if (row.roster_member_id) {
+        const ops = opsByRosterId.get(row.roster_member_id);
+        const resolvedDailyPay = resolveDailyPay(
+          row.roster_member_id,
+          row.service_date,
+          row.daily_pay_rate ?? ops?.daily_pay_rate ?? null,
+          row.daily_pay_effective_date ?? ops?.daily_pay_effective_date ?? null
+        );
+
+        return {
+          ...row,
+          daily_pay_eligible:
+            row.daily_pay_eligible === true ||
+            (resolvedDailyPay.daily_pay_rate != null &&
+              resolvedDailyPay.daily_pay_effective_date != null &&
+              resolvedDailyPay.daily_pay_effective_date <= row.service_date),
+          daily_pay_rate: resolvedDailyPay.daily_pay_rate,
+          daily_pay_effective_date: resolvedDailyPay.daily_pay_effective_date,
+          daily_pay_source: resolvedDailyPay.daily_pay_source,
+        };
+      }
 
       const match = rosterByDswBridge.get(dswBridgeKey(row.person_name));
       if (!match) return row;
 
       dswBridgeMatches += 1;
+
+      const resolvedDailyPay = resolveDailyPay(
+        match.roster_member_id,
+        row.service_date,
+        row.daily_pay_rate ?? match.daily_pay_rate,
+        row.daily_pay_effective_date ?? match.daily_pay_effective_date
+      );
 
       return {
         ...row,
@@ -195,12 +318,12 @@ export async function GET(
         person_name: match.full_name ?? row.person_name,
         daily_pay_eligible:
           row.daily_pay_eligible === true ||
-          (match.daily_pay_rate != null &&
-            match.daily_pay_effective_date != null &&
-            match.daily_pay_effective_date <= row.service_date),
-        daily_pay_rate: row.daily_pay_rate ?? match.daily_pay_rate,
-        daily_pay_effective_date:
-          row.daily_pay_effective_date ?? match.daily_pay_effective_date,
+          (resolvedDailyPay.daily_pay_rate != null &&
+            resolvedDailyPay.daily_pay_effective_date != null &&
+            resolvedDailyPay.daily_pay_effective_date <= row.service_date),
+        daily_pay_rate: resolvedDailyPay.daily_pay_rate,
+        daily_pay_effective_date: resolvedDailyPay.daily_pay_effective_date,
+        daily_pay_source: resolvedDailyPay.daily_pay_source,
         review_flags: (row.review_flags ?? []).filter(
           (flag) =>
             !["UNMATCHED", "UNMATCHED_DSW_DRIVER", "UNMATCHED_REVIEW"].includes(flag)

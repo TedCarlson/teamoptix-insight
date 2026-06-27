@@ -9,6 +9,10 @@ export function isActiveStatus(value: string | null | undefined) {
   return normalizedStatus(value) === "active";
 }
 
+export function isTraineeStatus(value: string | null | undefined) {
+  return normalizedStatus(value) === "trainee";
+}
+
 export function isDriverType(value: string | null | undefined) {
   return normalizedStatus(value) === "driver";
 }
@@ -17,9 +21,12 @@ export function payrollSummaryGroup(row: PayrollSummaryRow, rosterById: Map<stri
   const roster = row.roster_member_id ? rosterById.get(row.roster_member_id) : undefined;
   const driver = isDriverType(roster?.worker_type);
   const active = isActiveStatus(roster?.employment_status);
+  const trainee = isTraineeStatus(roster?.employment_status);
 
+  if (driver && trainee) return "Drivers · Trainee";
   if (driver && active) return "Drivers · Active";
   if (driver && !active) return "Drivers · Former";
+  if (!driver && trainee) return "Other · Trainee";
   if (!driver && active) return "Other · Active";
   return "Other · Former / unmatched";
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import type { RosterRow } from "@/features/people/types/roster.types";
+import type { RosterEmploymentStatus, RosterRow } from "@/features/people/types/roster.types";
 import PersonCoreSection from "@/features/people/components/person-drawer/PersonCoreSection";
 import PersonOperationsSection from "@/features/people/components/person-drawer/PersonOperationsSection";
 import PersonLifecycleSection from "@/features/people/components/person-drawer/PersonLifecycleSection";
@@ -40,7 +40,7 @@ type OperationsDraft = {
 };
 
 type StatusDraft = {
-  employment_status: "Active" | "Candidate" | "Former";
+  employment_status: RosterEmploymentStatus;
   effective_date: string;
   note: string;
 };

@@ -1,8 +1,0 @@
-{
-  "crons": [
-    {
-      "path": "/api/company/beacon-point-ventures/operations/artifact-ingest",
-      "schedule": "*/5 * * * *"
-    }
-  ]
-}

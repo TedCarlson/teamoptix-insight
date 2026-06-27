@@ -79,6 +79,55 @@ export default function PersonOperationsSection({
             value={person.daily_pay_effective_date}
           />
           <FactRow label="Daily Pay Rate" value={person.daily_pay_rate == null ? null : `$${person.daily_pay_rate}`} />
+          {person.trainee_daily_pay_rate != null ? (
+            <div
+              style={{
+                border: "1px solid #cbd5e1",
+                borderRadius: 14,
+                background: "#f8fafc",
+                padding: "10px 12px",
+                display: "grid",
+                gap: 6,
+              }}
+            >
+              <div
+                style={{
+                  color: "#475569",
+                  fontSize: 11,
+                  fontWeight: 950,
+                  textTransform: "uppercase",
+                  letterSpacing: ".06em",
+                }}
+              >
+                Trainee override active
+              </div>
+
+              <div style={{ display: "grid", gap: 4, fontSize: 12, color: "#64748b" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                  <span>Base daily pay</span>
+                  <strong style={{ color: "#334155" }}>
+                    {person.daily_pay_rate == null ? "—" : `$${person.daily_pay_rate}/day`}
+                  </strong>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                  <span>Payroll override</span>
+                  <strong style={{ color: "#0f172a" }}>${person.trainee_daily_pay_rate}/day</strong>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                  <span>Effective start</span>
+                  <strong style={{ color: "#334155" }}>
+                    {person.trainee_pay_effective_start ?? "—"}
+                  </strong>
+                </div>
+              </div>
+
+              <p style={{ margin: 0, color: "#64748b", fontSize: 11, lineHeight: 1.35 }}>
+                Payroll will use the trainee rate while this override is active.
+              </p>
+            </div>
+          ) : null}
           <FactRow label="Fuel Card" value={person.fuel_card} />
           <FactRow label="ID No / PIN" value={person.pin_id_no} />
         </div>

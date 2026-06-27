@@ -44,6 +44,7 @@ export async function GET(
 
     let stageByRosterId = new Map<string, any>();
     let opsByRosterId = new Map<string, any>();
+    let traineePayByRosterId = new Map<string, any>();
 
     if (rosterIds.length > 0) {
       const { data: opsRows } = await supabase
@@ -53,6 +54,26 @@ export async function GET(
 
       opsByRosterId = new Map(
         (opsRows ?? []).map((ops: any) => [ops.roster_id, ops])
+      );
+    }
+
+    if (rosterIds.length > 0) {
+      const { data: traineePayRows, error: traineePayError } = await supabase
+        .from("company_roster_trainee_pay_override_v")
+        .select("roster_id, trainee_daily_pay_rate, effective_start")
+        .eq("company_id", company.id)
+        .eq("is_active", true)
+        .in("roster_id", rosterIds);
+
+      if (traineePayError) {
+        return NextResponse.json(
+          { error: traineePayError.message, roster: [] },
+          { status: 500 }
+        );
+      }
+
+      traineePayByRosterId = new Map(
+        (traineePayRows ?? []).map((row: any) => [row.roster_id, row])
       );
     }
 
@@ -72,6 +93,7 @@ export async function GET(
       .map((row: any) => {
         const stage = stageByRosterId.get(row.roster_member_id);
         const ops = opsByRosterId.get(row.roster_member_id);
+        const traineePay = traineePayByRosterId.get(row.roster_member_id);
 
         return {
           ...row,
@@ -80,6 +102,8 @@ export async function GET(
           qual_cert_expiration_date: ops?.qual_cert_exp ?? null,
           daily_pay_effective_date: ops?.daily_pay_effective_date ?? null,
           daily_pay_rate: ops?.daily_pay_rate ?? null,
+          trainee_daily_pay_rate: traineePay?.trainee_daily_pay_rate ?? null,
+          trainee_pay_effective_start: traineePay?.effective_start ?? null,
           fuel_card: ops?.fuel_card ?? null,
           pin_id_no: ops?.pin_id_no ?? null,
           candidate_stage_key: stage?.stage_key ?? null,

@@ -143,6 +143,7 @@ export default function PersonLifecycleSection({
             style={compactInput}
           >
             <option value="Candidate">Candidate</option>
+            <option value="Trainee">Trainee</option>
             <option value="Active">Active</option>
             <option value="Former">Former</option>
           </select>
