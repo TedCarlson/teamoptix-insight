@@ -1377,6 +1377,20 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
       </SectionCard>
 
       <SectionCard eyebrow="Request Warehouse" title="Recent collection requests">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 12 }}>
+          <p style={mutedCopy}>Active dock work plus the latest healthy completion signal.</p>
+          <button
+            type="button"
+            className="button"
+            onClick={() => {
+              void loadCollectionRequests();
+              void loadArtifacts();
+            }}
+          >
+            Refresh Queue
+          </button>
+        </div>
+
         <div style={grid4}>
           <MiniStat label="Requests" value={collectionRequests.length} />
           <MiniStat label="Queued" value={collectionRequests.filter((request) => request.request_status === "QUEUED").length} />
