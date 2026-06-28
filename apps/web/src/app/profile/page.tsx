@@ -46,12 +46,18 @@ export default function ProfilePage() {
             </p>
 
             <div className="cta-row">
-              {membershipCount > 0 ? (
+              {canCreateCompany ? (
+                <Link className="button button-primary" href="/command-center">
+                  Open Command Center
+                </Link>
+              ) : membershipCount > 0 ? (
                 <Link className="button button-primary" href="/companies">
                   Go to companies
                 </Link>
-              ) : canCreateCompany ? (
-                <Link className="button button-primary" href="/company/setup">
+              ) : null}
+
+              {membershipCount === 0 && canCreateCompany ? (
+                <Link className="button" href="/company/setup">
                   Create company
                 </Link>
               ) : null}

@@ -17,17 +17,21 @@ export default function HomePage() {
     ? "/sign-in"
     : !hasProfile
       ? "/profile/setup"
-      : membershipCount > 0
-        ? "/companies"
-        : "/profile";
+      : canCreateCompany
+        ? "/command-center"
+        : membershipCount > 0
+          ? "/companies"
+          : "/profile";
 
   const primaryLabel = !signedIn
     ? "Sign in"
     : !hasProfile
       ? "Complete profile"
-      : membershipCount > 0
-        ? "Go to companies"
-        : "Go to profile";
+      : canCreateCompany
+        ? "Open Command Center"
+        : membershipCount > 0
+          ? "Go to companies"
+          : "Go to profile";
 
   return (
     <main className="landing-page">
