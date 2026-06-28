@@ -1,0 +1,15 @@
+export const DSW_HEADERS = [
+  "Svc Area #",
+  "WA Name",
+  "Veh #",
+  "Driver Name",
+  "WA#",
+  "VScan Pkgs",
+  "Del Stps",
+  "PU Stps",
+  "DIFF",
+  "Act Del Stps",
+  "Act Del Pkgs",
+  "Act PU Stps",
+  "Act PU Pkgs",
+];

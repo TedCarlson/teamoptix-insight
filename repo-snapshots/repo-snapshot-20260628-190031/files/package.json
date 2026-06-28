@@ -1,0 +1,15 @@
+{
+  "name": "insight",
+  "private": true,
+  "packageManager": "pnpm@10.6.1",
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm --filter web build",
+    "lint": "pnpm --filter web lint",
+    "typecheck": "pnpm --filter web typecheck",
+    "verify": "pnpm lint && pnpm typecheck && pnpm build"
+  },
+  "devDependencies": {
+    "baseline-browser-mapping": "^2.10.40"
+  }
+}
