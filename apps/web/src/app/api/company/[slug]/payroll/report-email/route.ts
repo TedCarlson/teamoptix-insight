@@ -116,6 +116,7 @@ export async function POST(
               <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:right;">${escapeHtml(row.days_worked)}</td>
               <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:right;">${money(row.daily_pay_total)}</td>
               <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:right;">${money(row.threshold_pay_total)}</td>
+              <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:right;">${money(row.adjustment_total ?? 0)}</td>
               <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;">${money(row.estimated_total)}</td>
             </tr>
           `)
@@ -132,6 +133,7 @@ export async function POST(
                 <th style="padding:8px;text-align:right;border-bottom:1px solid #cbd5e1;">Days</th>
                 <th style="padding:8px;text-align:right;border-bottom:1px solid #cbd5e1;">Base Pay</th>
                 <th style="padding:8px;text-align:right;border-bottom:1px solid #cbd5e1;">Threshold Pay</th>
+                <th style="padding:8px;text-align:right;border-bottom:1px solid #cbd5e1;">Adjustments</th>
                 <th style="padding:8px;text-align:right;border-bottom:1px solid #cbd5e1;">Total Earnings</th>
               </tr>
             </thead>
@@ -160,6 +162,11 @@ export async function POST(
         sum + group.rows.reduce((inner: number, row: any) => inner + Number(row.daily_pay_total ?? 0), 0),
       0
     );
+    const adjustmentTotal = cleanGroups.reduce(
+      (sum: number, group: any) =>
+        sum + group.rows.reduce((inner: number, row: any) => inner + Number(row.adjustment_total ?? 0), 0),
+      0
+    );
 
     const html = `
       <div style="font-family:Arial,sans-serif;color:#0f172a;max-width:880px;margin:0 auto;">
@@ -183,8 +190,12 @@ export async function POST(
           <tr>
             <td style="padding:8px;border:1px solid #e5e7eb;background:#f8fafc;font-weight:700;">Threshold pay</td>
             <td style="padding:8px;border:1px solid #e5e7eb;text-align:right;">${money(estimatedThresholdPay)}</td>
+            <td style="padding:8px;border:1px solid #e5e7eb;background:#f8fafc;font-weight:700;">Adjustments</td>
+            <td style="padding:8px;border:1px solid #e5e7eb;text-align:right;">${money(adjustmentTotal)}</td>
+          </tr>
+          <tr>
             <td style="padding:8px;border:1px solid #e5e7eb;background:#f8fafc;font-weight:700;">Estimated payroll</td>
-            <td style="padding:8px;border:1px solid #e5e7eb;text-align:right;font-weight:900;">${money(estimatedPayroll)}</td>
+            <td colspan="3" style="padding:8px;border:1px solid #e5e7eb;text-align:right;font-weight:900;">${money(estimatedPayroll)}</td>
           </tr>
         </table>
 
