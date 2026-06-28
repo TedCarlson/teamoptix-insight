@@ -1,6 +1,11 @@
 "use client";
 
-export type PayrollView = "attendance" | "summary" | "payroll-detail" | "row-detail";
+export type PayrollView =
+  | "attendance"
+  | "summary"
+  | "payroll-detail"
+  | "row-detail"
+  | "adjustments";
 
 export default function PayrollModeTabs({
   payrollView,
@@ -9,9 +14,17 @@ export default function PayrollModeTabs({
   payrollView: PayrollView;
   setPayrollView: (view: PayrollView) => void;
 }) {
+  const views: PayrollView[] = [
+    "attendance",
+    "summary",
+    "payroll-detail",
+    "row-detail",
+    "adjustments",
+  ];
+
   return (
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-      {(["attendance", "summary", "payroll-detail", "row-detail"] as const).map((view) => (
+      {views.map((view) => (
         <button
           key={view}
           type="button"
@@ -21,10 +34,12 @@ export default function PayrollModeTabs({
           {view === "attendance"
             ? "Attendance"
             : view === "summary"
-            ? "Summary"
-            : view === "payroll-detail"
-            ? "Payroll Detail"
-            : "Row Detail"}
+              ? "Summary"
+              : view === "payroll-detail"
+                ? "Payroll Detail"
+                : view === "row-detail"
+                  ? "Row Detail"
+                  : "Adjustments"}
         </button>
       ))}
     </div>

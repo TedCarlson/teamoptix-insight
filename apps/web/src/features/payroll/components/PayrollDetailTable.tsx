@@ -13,6 +13,7 @@ type DriverWeekRow = {
   total_stops: number;
   threshold_pay_total: number;
   daily_pay_total: number;
+  adjustment_pay_total: number;
   estimated_total: number;
   source_row_count: number;
   flags: string[];
@@ -46,6 +47,7 @@ export default function PayrollDetailTable({
             ))}
             <th style={{ ...thStyle, textAlign: "right" }}>TSH Pay</th>
             <th style={{ ...thStyle, textAlign: "right" }}>Daily Pay</th>
+            <th style={{ ...thStyle, textAlign: "right" }}>Adjustments</th>
             <th style={{ ...thStyle, textAlign: "right" }}>Total</th>
             <th style={{ ...thStyle, textAlign: "right" }}>Rows</th>
             <th style={thStyle}>Flags</th>
@@ -54,7 +56,7 @@ export default function PayrollDetailTable({
         <tbody>
           {weeklyRows.length === 0 ? (
             <tr>
-              <td colSpan={days.length + 6} style={{ padding: 16, color: "#64748b", fontWeight: 800 }}>
+              <td colSpan={days.length + 7} style={{ padding: 16, color: "#64748b", fontWeight: 800 }}>
                 No normalized payroll detail found for this week.
               </td>
             </tr>
@@ -94,13 +96,14 @@ export default function PayrollDetailTable({
 
                   <td style={{ ...tdStyle, textAlign: "right", fontWeight: 950 }}>{money(row.threshold_pay_total)}</td>
                   <td style={{ ...tdStyle, textAlign: "right" }}>{money(row.daily_pay_total)}</td>
+                  <td style={{ ...tdStyle, textAlign: "right" }}>{money(row.adjustment_pay_total)}</td>
                   <td style={{ ...tdStyle, textAlign: "right", fontWeight: 950 }}>{money(row.estimated_total)}</td>
                   <td style={{ ...tdStyle, textAlign: "right" }}>{row.source_row_count}</td>
                   <td style={tdStyle}>{row.flags.length ? row.flags.join(", ") : "—"}</td>
                 </tr>,
                 isSelected ? (
                   <tr key={`${row.key}-detail`}>
-                    <td colSpan={days.length + 6} style={{ padding: 10, background: "#fff" }}>
+                    <td colSpan={days.length + 7} style={{ padding: 10, background: "#fff" }}>
                       <PayrollDriverWeekInlineDetail rows={row.days} />
                     </td>
                   </tr>
@@ -142,6 +145,7 @@ function buildDriverWeekRows(rows: PayrollDriverDayDetailRow[]): DriverWeekRow[]
         total_stops: sortedDays.reduce((sum, row) => sum + row.total_stops, 0),
         threshold_pay_total: sortedDays.reduce((sum, row) => sum + row.threshold_pay_amount, 0),
         daily_pay_total: sortedDays.reduce((sum, row) => sum + row.daily_pay_applied, 0),
+        adjustment_pay_total: sortedDays.reduce((sum, row) => sum + row.adjustment_pay_amount, 0),
         estimated_total: sortedDays.reduce((sum, row) => sum + row.estimated_total, 0),
         source_row_count: sortedDays.reduce((sum, row) => sum + row.source_row_count, 0),
         flags: Array.from(flags).sort(),

@@ -3,7 +3,7 @@ import type { RosterRow } from "@/features/people/types/roster.types";
 import type { AttendanceCell, AttendanceRow, PayrollActivityRow } from "@/features/payroll/lib/payroll.types";
 
 export function emptyCell(): AttendanceCell {
-  return { present: false, callout: false, noShow: false, sources: [], details: [] };
+  return { present: false, callout: false, noShow: false, sources: [], details: [], adjustmentAmount: 0, adjustmentLabels: [] };
 }
 
 export function addSource(cell: AttendanceCell, source: string) {

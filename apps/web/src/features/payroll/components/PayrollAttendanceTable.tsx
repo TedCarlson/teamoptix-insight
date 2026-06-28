@@ -91,6 +91,27 @@ export default function PayrollAttendanceTable({
                         >
                           {display.label}
                         </span>
+                        {cell.adjustmentAmount && cell.adjustmentAmount > 0 ? (
+                          <span
+                            title={(cell.adjustmentLabels ?? []).join(", ") || "Payroll adjustment"}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              minWidth: 34,
+                              height: 16,
+                              borderRadius: 999,
+                              background: "#eff6ff",
+                              color: "#1d4ed8",
+                              border: "1px solid #bfdbfe",
+                              fontSize: 9,
+                              fontWeight: 950,
+                            }}
+                          >
+                            Adj
+                          </span>
+                        ) : null}
+
                         {cell.details.length > 0 ? (
                           <span
                             style={{

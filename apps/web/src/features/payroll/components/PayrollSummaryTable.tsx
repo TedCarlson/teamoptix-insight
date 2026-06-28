@@ -42,13 +42,14 @@ export default function PayrollSummaryTable({
             <th style={{ ...thStyle, textAlign: "right" }}>Days Worked</th>
             <th style={{ ...thStyle, textAlign: "right" }}>Base Pay</th>
             <th style={{ ...thStyle, textAlign: "right" }}>Threshold Pay</th>
+            <th style={{ ...thStyle, textAlign: "right" }}>Adjustments</th>
             <th style={{ ...thStyle, textAlign: "right" }}>Total Earnings</th>
           </tr>
         </thead>
         <tbody>
           {groupedSummaryRows.length === 0 ? (
             <tr>
-              <td colSpan={5} style={{ padding: 16, color: "#64748b", fontWeight: 800 }}>
+              <td colSpan={6} style={{ padding: 16, color: "#64748b", fontWeight: 800 }}>
                 No payroll activity found for this week.
               </td>
             </tr>
@@ -56,7 +57,7 @@ export default function PayrollSummaryTable({
             groupedSummaryRows.flatMap(({ group, rows }) => [
               <tr key={`group-${group}`}>
                 <td
-                  colSpan={5}
+                  colSpan={6}
                   style={{
                     ...tdStyle,
                     background: "#f8fafc",
@@ -81,6 +82,9 @@ export default function PayrollSummaryTable({
                   </td>
                   <td style={{ ...tdStyle, textAlign: "right" }}>
                     {money(row.threshold_pay_total)}
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: "right" }}>
+                    {money(row.adjustment_total ?? 0)}
                   </td>
                   <td style={{ ...tdStyle, textAlign: "right", fontWeight: 950 }}>
                     {money(row.estimated_total)}

@@ -4,6 +4,8 @@ export type AttendanceCell = {
   noShow: boolean;
   sources: string[];
   details: string[];
+  adjustmentAmount?: number;
+  adjustmentLabels?: string[];
 };
 
 export type AttendanceRow = {
@@ -20,6 +22,7 @@ export type PayrollSummaryRow = {
   worked_days?: string[];
   daily_pay_total: number;
   threshold_pay_total: number;
+  adjustment_total?: number;
   estimated_total: number;
 };
 
@@ -43,6 +46,8 @@ export type PayrollActivityRow = {
   threshold_rate?: number | null;
   threshold_overage?: number | null;
   threshold_pay_amount?: number | null;
+  adjustment_amount?: number | null;
+  adjustment_labels?: string[] | null;
   review_flags?: string[] | null;
 };
 
@@ -82,6 +87,7 @@ export type PayrollDriverDayDetailRow = {
   threshold_pay_amount: number;
   daily_pay_rate: number | null;
   daily_pay_applied: number;
+  adjustment_pay_amount: number;
   estimated_total: number;
   source_row_count: number;
   flags: string[];

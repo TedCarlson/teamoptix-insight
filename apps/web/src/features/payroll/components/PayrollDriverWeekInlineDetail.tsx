@@ -12,6 +12,7 @@ export default function PayrollDriverWeekInlineDetail({
   const totalOver = rows.reduce((sum, row) => sum + row.threshold_overage, 0);
   const totalThresholdPay = rows.reduce((sum, row) => sum + row.threshold_pay_amount, 0);
   const totalDailyPay = rows.reduce((sum, row) => sum + row.daily_pay_applied, 0);
+  const totalAdjustmentPay = rows.reduce((sum, row) => sum + row.adjustment_pay_amount, 0);
 
   return (
     <div style={{ padding: 12, background: "#f8fafc", border: "1px solid #e6edf5", borderRadius: 12 }}>
@@ -28,6 +29,7 @@ export default function PayrollDriverWeekInlineDetail({
               <Th align="right">Rate</Th>
               <Th align="right">TSH Pay</Th>
               <Th align="right">Daily Pay</Th>
+              <Th align="right">Adjustments</Th>
               <Th>Flags</Th>
             </tr>
           </thead>
@@ -43,6 +45,7 @@ export default function PayrollDriverWeekInlineDetail({
                 <Td align="right">{row.threshold_rate == null ? "—" : money(row.threshold_rate)}</Td>
                 <Td align="right"><strong>{money(row.threshold_pay_amount)}</strong></Td>
                 <Td align="right">{money(row.daily_pay_applied)}</Td>
+                <Td align="right">{money(row.adjustment_pay_amount)}</Td>
                 <Td>{row.flags.length ? row.flags.join(", ") : "—"}</Td>
               </tr>
             ))}
@@ -57,6 +60,7 @@ export default function PayrollDriverWeekInlineDetail({
               <td style={{ ...totalStyle, textAlign: "right" }}>—</td>
               <td style={{ ...totalStyle, textAlign: "right" }}>{money(totalThresholdPay)}</td>
               <td style={{ ...totalStyle, textAlign: "right" }}>{money(totalDailyPay)}</td>
+              <td style={{ ...totalStyle, textAlign: "right" }}>{money(totalAdjustmentPay)}</td>
               <td style={totalStyle}>—</td>
             </tr>
           </tbody>

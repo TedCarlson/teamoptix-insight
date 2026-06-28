@@ -25,6 +25,7 @@ import PayrollRowDetailTable from "@/features/payroll/components/PayrollRowDetai
 import PayrollDetailTable from "@/features/payroll/components/PayrollDetailTable";
 import PayrollDswAliasTool from "@/features/payroll/components/PayrollDswAliasTool";
 import PayrollReportEmailDialog from "@/features/payroll/components/PayrollReportEmailDialog";
+import PayrollAdjustmentsPanel from "@/features/payroll/components/PayrollAdjustmentsPanel";
 
 import {
   addDays,
@@ -44,7 +45,7 @@ import {
 
 
 
-type PayrollView = "attendance" | "summary" | "payroll-detail" | "row-detail";
+type PayrollView = "attendance" | "summary" | "payroll-detail" | "row-detail" | "adjustments";
 
 
 
@@ -149,6 +150,7 @@ export default function PayrollGrid() {
             worked_days: Array.isArray(row.worked_days) ? row.worked_days : [],
             daily_pay_total: Number(row.daily_pay_total ?? 0),
             threshold_pay_total: Number(row.threshold_pay_total ?? 0),
+            adjustment_total: Number(row.adjustment_total ?? 0),
             estimated_total: Number(row.estimated_total ?? 0),
           }))
           .sort((a, b) => a.person_name.localeCompare(b.person_name));
@@ -286,6 +288,15 @@ export default function PayrollGrid() {
     [payrollMetrics?.activity]
   );
 
+  const estimatedAdjustmentPay = useMemo(
+    () =>
+      (payrollMetrics?.summary ?? []).reduce(
+        (sum, row) => sum + Number(row.adjustment_total ?? 0),
+        0
+      ),
+    [payrollMetrics?.summary]
+  );
+
   return (
     <section style={{ display: "grid", gap: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
@@ -368,7 +379,8 @@ export default function PayrollGrid() {
           <span>
             {payrollMetrics?.record_count ?? attendanceRows.length} records · Estimated payroll{" "}
             {money(payrollMetrics?.estimated_payroll)} · Estimated threshold pay{" "}
-            {money(payrollMetrics?.estimated_threshold_pay)}
+            {money(payrollMetrics?.estimated_threshold_pay)} · Adjustments{" "}
+            {money(estimatedAdjustmentPay)}
           </span>
           {payrollView === "attendance" ? (
             <span>✓ Present · C Call-out · N No Show · — No signal</span>
@@ -394,6 +406,13 @@ export default function PayrollGrid() {
           <PayrollDetailTable rows={payrollDetailRows} days={days} />
         ) : payrollView === "row-detail" ? (
           <PayrollRowDetailTable detailRows={detailRows} />
+        ) : payrollView === "adjustments" ? (
+          <PayrollAdjustmentsPanel
+            slug={slug}
+            weekEnd={weekEnd}
+            roster={roster}
+            onChanged={() => undefined}
+          />
         ) : (
           <PayrollAttendanceTable
             attendanceRows={attendanceRows}

@@ -45,6 +45,7 @@ export default function PayrollRowDetailTable({
             <th style={{ ...thStyle, textAlign: "right" }}>Over</th>
             <th style={{ ...thStyle, textAlign: "right" }}>Rate</th>
             <th style={{ ...thStyle, textAlign: "right" }}>TSH Pay</th>
+            <th style={{ ...thStyle, textAlign: "right" }}>Adjustments</th>
             <th style={thStyle}>Math</th>
             <th style={thStyle}>Flags</th>
           </tr>
@@ -52,7 +53,7 @@ export default function PayrollRowDetailTable({
         <tbody>
           {detailRows.length === 0 ? (
             <tr>
-              <td colSpan={13} style={{ padding: 16, color: "#64748b", fontWeight: 800 }}>
+              <td colSpan={14} style={{ padding: 16, color: "#64748b", fontWeight: 800 }}>
                 No DSW payroll row detail found for this week.
               </td>
             </tr>
@@ -65,6 +66,8 @@ export default function PayrollRowDetailTable({
               const over = Number(row.threshold_overage ?? 0);
               const rate = Number(row.threshold_rate ?? 0);
               const pay = Number(row.threshold_pay_amount ?? 0);
+              const adjustment = Number(row.adjustment_amount ?? 0);
+              const adjustmentLabels = Array.isArray(row.adjustment_labels) ? row.adjustment_labels.join(', ') : '';
               const flags = Array.isArray(row.review_flags) ? row.review_flags.join(", ") : "";
               const math = tsh > 0 ? `(${totalStops} - ${tsh}) = ${over} × ${money(rate)} = ${money(pay)}` : "No threshold";
 
@@ -83,6 +86,7 @@ export default function PayrollRowDetailTable({
                   <td style={{ ...tdStyle, textAlign: "right" }}>{row.threshold_overage ?? "—"}</td>
                   <td style={{ ...tdStyle, textAlign: "right" }}>{row.threshold_rate == null ? "—" : money(rate)}</td>
                   <td style={{ ...tdStyle, textAlign: "right", fontWeight: 950 }}>{money(pay)}</td>
+                  <td style={{ ...tdStyle, textAlign: "right", fontWeight: 900 }} title={adjustmentLabels || "No adjustment"}>{adjustment ? money(adjustment) : "—"}</td>
                   <td style={{ ...tdStyle, whiteSpace: "nowrap", color: "#475569", fontWeight: 800 }}>{math}</td>
                   <td style={tdStyle}>{flags || "—"}</td>
                 </tr>

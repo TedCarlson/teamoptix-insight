@@ -109,6 +109,17 @@ export function buildPayrollDriverDayDetails(
         return Math.max(max, numberValue(row.daily_pay_rate));
       }, 0);
 
+      const adjustmentPayAmount = rows.reduce(
+        (sum, row) => sum + numberValue(row.adjustment_amount),
+        0
+      );
+
+      for (const row of rows) {
+        for (const label of row.adjustment_labels ?? []) {
+          if (label) flags.add(`ADJUSTMENT: ${label}`);
+        }
+      }
+
       if (routeCollection.length > 1) flags.add("MULTI_ROUTE_DAY");
       if (nonZeroRoutes.length > 1) flags.add("SECONDARY_ROUTE_EVIDENCE");
       if (!dominantRoute) flags.add("NO_DOMINANT_ROUTE");
@@ -131,7 +142,11 @@ export function buildPayrollDriverDayDetails(
         threshold_pay_amount: thresholdPayAmount,
         daily_pay_rate: dailyPayRate > 0 ? dailyPayRate : null,
         daily_pay_applied: dailyPayRate > 0 ? dailyPayRate : 0,
-        estimated_total: thresholdPayAmount + (dailyPayRate > 0 ? dailyPayRate : 0),
+        adjustment_pay_amount: adjustmentPayAmount,
+        estimated_total:
+          thresholdPayAmount +
+          (dailyPayRate > 0 ? dailyPayRate : 0) +
+          adjustmentPayAmount,
         source_row_count: rows.length,
         flags: Array.from(flags).sort(),
       };

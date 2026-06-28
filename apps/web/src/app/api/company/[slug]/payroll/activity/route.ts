@@ -331,7 +331,43 @@ export async function GET(
       };
     });
 
-    const people = new Map<string, { id: string | null; name: string; days: Map<string, number>; thresholdPay: number }>();
+    const { data: adjustmentEvents, error: adjustmentError } = await supabase
+      .from("company_payroll_adjustment_event_v")
+      .select("*")
+      .eq("company_id", company.id)
+      .eq("is_active", true)
+      .lte("start_date", weekEnd)
+      .gte("end_date", weekStart);
+
+    if (adjustmentError) {
+      return NextResponse.json({ error: adjustmentError.message }, { status: 500 });
+    }
+
+    const targetedAdjustmentIds = (adjustmentEvents ?? [])
+      .filter((event: any) => event.adjustment_scope === "TARGETED")
+      .map((event: any) => event.adjustment_event_id)
+      .filter(Boolean);
+
+    const { data: adjustmentTargets, error: adjustmentTargetError } = targetedAdjustmentIds.length
+      ? await supabase
+          .from("company_payroll_adjustment_target_v")
+          .select("adjustment_event_id, roster_member_id")
+          .in("adjustment_event_id", targetedAdjustmentIds)
+      : { data: [], error: null };
+
+    if (adjustmentTargetError) {
+      return NextResponse.json({ error: adjustmentTargetError.message }, { status: 500 });
+    }
+
+    const adjustmentTargetsByEventId = new Map<string, Set<string>>();
+    for (const target of adjustmentTargets ?? []) {
+      if (!target.adjustment_event_id || !target.roster_member_id) continue;
+      const current = adjustmentTargetsByEventId.get(target.adjustment_event_id) ?? new Set<string>();
+      current.add(target.roster_member_id);
+      adjustmentTargetsByEventId.set(target.adjustment_event_id, current);
+    }
+
+    const people = new Map<string, { id: string | null; name: string; days: Map<string, number>; thresholdPay: number; adjustmentPay: number }>();
 
     for (const row of rows as any[]) {
       const personKey =
@@ -341,6 +377,7 @@ export async function GET(
         name: row.person_name ?? "Unmatched",
         days: new Map<string, number>(),
         thresholdPay: 0,
+        adjustmentPay: 0,
       };
 
       if (
@@ -360,6 +397,75 @@ export async function GET(
       people.set(personKey, person);
     }
 
+    const adjustmentByPersonDay = new Map<string, { amount: number; labels: string[] }>();
+
+    for (const event of adjustmentEvents ?? []) {
+      const amount = Number(event.amount ?? 0);
+      if (!amount) continue;
+
+      const eventStart = String(event.start_date);
+      const eventEnd = String(event.end_date);
+      const scope = String(event.adjustment_scope ?? "GLOBAL");
+      const targetIds =
+        scope === "TARGETED"
+          ? adjustmentTargetsByEventId.get(event.adjustment_event_id) ?? new Set<string>()
+          : null;
+
+      for (const person of people.values()) {
+        if (targetIds && (!person.id || !targetIds.has(person.id))) continue;
+
+        const matchingDays = Array.from(person.days.keys()).filter(
+          (day) => eventStart <= day && day <= eventEnd
+        );
+
+        if (matchingDays.length === 0) continue;
+
+        const mode = String(event.amount_mode ?? "DAILY");
+        person.adjustmentPay += mode === "FLAT" ? amount : amount * matchingDays.length;
+
+        const adjustmentDays = mode === "FLAT" ? matchingDays.slice(0, 1) : matchingDays;
+        for (const day of adjustmentDays) {
+          const key = `${person.id ?? person.name}|${day}`;
+          const current = adjustmentByPersonDay.get(key) ?? { amount: 0, labels: [] };
+          current.amount += amount;
+          current.labels.push(String(event.adjustment_label ?? event.adjustment_key ?? "Adjustment"));
+          adjustmentByPersonDay.set(key, current);
+        }
+      }
+    }
+
+    const usedAdjustmentRowKeys = new Set<string>();
+
+    const rowsWithAdjustments = (rows as any[]).map((row) => {
+      const personKey = row.roster_member_id ?? row.person_name ?? `unknown-${row.service_date}`;
+      const adjustment = adjustmentByPersonDay.get(`${personKey}|${row.service_date}`);
+
+      if (!adjustment || !isDswPayrollSource(row.source_kind)) {
+        return {
+          ...row,
+          adjustment_amount: 0,
+          adjustment_labels: [],
+        };
+      }
+
+      const useKey = `${personKey}|${row.service_date}`;
+      if (usedAdjustmentRowKeys.has(useKey)) {
+        return {
+          ...row,
+          adjustment_amount: 0,
+          adjustment_labels: [],
+        };
+      }
+
+      usedAdjustmentRowKeys.add(useKey);
+
+      return {
+        ...row,
+        adjustment_amount: adjustment.amount,
+        adjustment_labels: adjustment.labels,
+      };
+    });
+
     const summary = Array.from(people.values()).map((person) => {
       const dailyPay = Array.from(person.days.values()).reduce(
         (sum, value) => sum + value,
@@ -373,7 +479,8 @@ export async function GET(
         worked_days: Array.from(person.days.keys()).sort(),
         daily_pay_total: dailyPay,
         threshold_pay_total: person.thresholdPay,
-        estimated_total: dailyPay + person.thresholdPay,
+        adjustment_total: person.adjustmentPay,
+        estimated_total: dailyPay + person.thresholdPay + person.adjustmentPay,
       };
     });
 
@@ -393,8 +500,9 @@ export async function GET(
       record_count: summary.length,
       estimated_payroll: estimatedPayroll,
       estimated_threshold_pay: estimatedThresholdPay,
+      adjustments: adjustmentEvents ?? [],
       summary,
-      activity: rows,
+      activity: rowsWithAdjustments,
     });
   } catch (error) {
     const message =
