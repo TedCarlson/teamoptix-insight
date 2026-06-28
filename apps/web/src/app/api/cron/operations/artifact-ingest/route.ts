@@ -149,9 +149,10 @@ export async function GET() {
     .from("operations_collection_artifact_v")
     .select("*")
     .eq("artifact_kind", "REPORT_FILE")
-    .eq("artifact_status", "READY_FOR_INGEST")
+    .eq("request_status", "ARTIFACTS_READY")
+    .in("artifact_status", ["READY_FOR_INGEST", "ARTIFACTS_READY"])
     .order("created_at", { ascending: true })
-    .limit(5);
+    .limit(10);
 
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
