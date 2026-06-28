@@ -8,6 +8,7 @@ import { useLob } from "@/features/lob/hooks/useLob";
 import CompanyConfigWorkspace, { type CompanyConfigSection } from "@/features/company/config/CompanyConfigWorkspace";
 import DailyOperationsSummary from "@/features/company/components/DailyOperationsSummary";
 import PayrollGrid from "@/features/payroll/components/PayrollGrid";
+import OperationsReportUploadOverlay from "@/features/operations/components/OperationsReportUploadOverlay";
 
 type CompanyRecord = {
   id: string;
@@ -42,11 +43,32 @@ function getConfigSectionFromPath(pathname: string): CompanyConfigSection {
   return "company";
 }
 
-function SectionCard(props: { eyebrow: string; title: string; children: React.ReactNode }) {
+function SectionCard(props: {
+  eyebrow: string;
+  title: string;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
   return (
     <article className="app-card" style={{ padding: 14 }}>
-      <p className="value-card__eyebrow">{props.eyebrow}</p>
-      <h3 className="app-card__title" style={{ fontSize: 18 }}>{props.title}</h3>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: 12,
+        }}
+      >
+        <div>
+          <p className="value-card__eyebrow">{props.eyebrow}</p>
+          <h3 className="app-card__title" style={{ fontSize: 18 }}>
+            {props.title}
+          </h3>
+        </div>
+
+        {props.action}
+      </div>
+
       <div style={{ marginTop: 10 }}>{props.children}</div>
     </article>
   );
@@ -81,6 +103,8 @@ export default function CompanyPage() {
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  const [uploadOpen, setUploadOpen] = useState(false);
 
   const membership = useMemo(
     () => access.memberships.find((m) => m.company_slug === slug) ?? null,
@@ -241,7 +265,19 @@ export default function CompanyPage() {
         ) : null}
 
         {activeSurface === "prior-day" ? (
-          <SectionCard eyebrow="Daily operations" title="Summary">
+          <SectionCard
+            eyebrow="Daily operations"
+            title="Summary"
+            action={
+              <button
+                type="button"
+                className="button button-primary"
+                onClick={() => setUploadOpen(true)}
+              >
+                Upload Operations Report
+              </button>
+            }
+          >
             <DailyOperationsSummary slug={slug} />
           </SectionCard>
         ) : null}
@@ -281,6 +317,17 @@ export default function CompanyPage() {
           />
         ) : null}
       </section>
+
+      <OperationsReportUploadOverlay
+        open={uploadOpen}
+        onClose={(refresh) => {
+          setUploadOpen(false);
+
+          if (refresh) {
+            window.location.reload();
+          }
+        }}
+      />
     </main>
   );
 }
