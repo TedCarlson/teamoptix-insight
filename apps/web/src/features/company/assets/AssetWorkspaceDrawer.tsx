@@ -13,6 +13,7 @@ type Props = {
   driversLoading: boolean;
   assignedRosterMemberIds: Set<string>;
   showSecondary?: boolean;
+  onEdit?: (row: CompanyAssetRow) => void;
   onClose: () => void;
 };
 
@@ -117,9 +118,16 @@ export default function AssetWorkspaceDrawer(props: Props) {
             <h2 className="app-card__title" style={{ fontSize: 22 }}>{row.asset_identifier}</h2>
           </div>
 
-          <button className="button" type="button" onClick={props.onClose}>
-            Close
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            {props.onEdit ? (
+              <button className="button" type="button" onClick={() => props.onEdit?.(row)}>
+                Edit
+              </button>
+            ) : null}
+            <button className="button" type="button" onClick={props.onClose}>
+              Close
+            </button>
+          </div>
         </div>
 
         <article className="app-card" style={{ padding: 14 }}>

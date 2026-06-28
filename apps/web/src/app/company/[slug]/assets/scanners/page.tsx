@@ -25,6 +25,7 @@ export default async function ScannersPage({
     .select("*")
     .eq("company_slug", slug)
     .eq("asset_type_key", "SCANNER")
+    .order("status_sort_order", { ascending: true })
     .order("assigned_roster_member_name", { ascending: true, nullsFirst: false })
     .order("asset_identifier", { ascending: true });
 

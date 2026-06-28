@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import AssetStatusBadge from "./AssetStatusBadge";
+import AssetEditDrawer from "./AssetEditDrawer";
 import AssetWorkspaceDrawer from "./AssetWorkspaceDrawer";
 import type { CompanyAssetRow } from "./asset.types";
 import { useCompanyRoster } from "./useCompanyRoster";
@@ -25,8 +26,20 @@ function formatDate(value: string | null) {
   }).format(new Date(value));
 }
 
+function displayStatus(row: CompanyAssetRow) {
+  return row.assignment_muted ? "Unavailable for Assignment" : row.status_label;
+}
+
+function statusSort(row: CompanyAssetRow) {
+  if (row.assignment_muted) return 25;
+  return row.status_sort_order ?? 999;
+}
+
 export default function CompanyAssetsTable(props: CompanyAssetsTableProps) {
   const [activeAsset, setActiveAsset] = useState<CompanyAssetRow | null>(null);
+  const [editingAsset, setEditingAsset] = useState<CompanyAssetRow | null>(null);
+  const [addingAsset, setAddingAsset] = useState(false);
+  const [searchText, setSearchText] = useState(props.searchQuery ?? "");
   const companySlug = props.rows[0]?.company_slug ?? "";
   const { drivers, loading, error } = useCompanyRoster(companySlug);
 
@@ -40,7 +53,44 @@ export default function CompanyAssetsTable(props: CompanyAssetsTableProps) {
     [props.rows]
   );
 
+  const visibleRows = useMemo(() => {
+    const q = searchText.trim().toLowerCase();
+    if (q.length > 0 && q.length < 3) return props.rows;
+    if (!q) return props.rows;
 
+    return props.rows.filter((row) =>
+      [
+        row.asset_identifier,
+        row.display_name,
+        row.provider,
+        row.secondary_identifier,
+        row.notes,
+        row.status_label,
+        row.assignment_muted ? "Unavailable for Assignment" : "",
+        row.assigned_roster_member_name,
+        row.asset_type_label,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(q))
+    );
+  }, [props.rows, searchText]);
+
+  const groups = useMemo(() => {
+    const byStatus = new Map<string, CompanyAssetRow[]>();
+
+    for (const row of visibleRows) {
+      const key = `${statusSort(row)}|${displayStatus(row)}`;
+      byStatus.set(key, [...(byStatus.get(key) ?? []), row]);
+    }
+
+    return Array.from(byStatus.entries())
+      .sort(([a], [b]) => Number(a.split("|")[0]) - Number(b.split("|")[0]))
+      .map(([key, rows]) => ({
+        key,
+        label: key.split("|").slice(1).join("|"),
+        rows,
+      }));
+  }, [visibleRows]);
 
   return (
     <>
@@ -51,10 +101,10 @@ export default function CompanyAssetsTable(props: CompanyAssetsTableProps) {
             <h2 className="app-card__title" style={{ fontSize: 18 }}>{props.title}</h2>
           </div>
 
-          <form method="GET" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <input
-              name="q"
-              defaultValue={props.searchQuery ?? ""}
+              value={searchText}
+              onChange={(event) => setSearchText(event.target.value)}
               placeholder="Search assets..."
               style={{
                 height: 38,
@@ -65,11 +115,15 @@ export default function CompanyAssetsTable(props: CompanyAssetsTableProps) {
                 background: "#fff",
               }}
             />
-            <button className="button" type="submit">Search</button>
-            {props.searchQuery ? (
-              <a className="button" href="?">Clear</a>
+            {searchText ? (
+              <button className="button" type="button" onClick={() => setSearchText("")}>
+                Clear
+              </button>
             ) : null}
-          </form>
+            <button className="button button-primary" type="button" onClick={() => setAddingAsset(true)}>
+              Add {props.assetLabel ?? "Asset"}
+            </button>
+          </div>
         </div>
 
         {error ? <p style={{ color: "#c62828", marginTop: 10 }}>{error}</p> : null}
@@ -92,48 +146,29 @@ export default function CompanyAssetsTable(props: CompanyAssetsTableProps) {
               </thead>
 
               <tbody>
-                {props.rows.map((row) => (
-                  <tr
-                    key={row.asset_id}
-                    onClick={() => setActiveAsset(row)}
-                    style={{
-                      borderBottom: "1px solid #eef2f7",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <td style={{ padding: "10px 10px", verticalAlign: "top" }}>
-                      <strong>{row.assigned_roster_member_name || "—"}</strong>
-                    </td>
-
-                    <td style={{ padding: "10px 10px", verticalAlign: "top" }}>
-                      {row.provider || "—"}
-                    </td>
-
-                    <td style={{ padding: "10px 10px", verticalAlign: "top" }}>
-                      <strong>{row.asset_identifier}</strong>
-                      <div style={{ color: "#64748b", fontSize: 12 }}>
-                        {row.display_name || row.asset_type_label}
-                      </div>
-                    </td>
-
-                    {props.showSecondary !== false ? (
-                      <td style={{ padding: "10px 10px", verticalAlign: "top" }}>
-                        {row.secondary_identifier || "—"}
+                {groups.map((group) => (
+                  <Fragment key={group.key}>
+                    <tr key={`${group.key}-header`}>
+                      <td colSpan={props.showSecondary !== false ? 7 : 6} style={{ padding: "10px 10px", background: "#f8fafc", borderTop: "1px solid #d6dfeb", borderBottom: "1px solid #d6dfeb", color: "#334155", fontWeight: 800 }}>
+                        {group.label} · {group.rows.length}
                       </td>
-                    ) : null}
+                    </tr>
 
-                    <td style={{ padding: "10px 10px", verticalAlign: "top" }}>
-                      <AssetStatusBadge label={row.assignment_muted ? "Unavailable for Assignment" : row.status_label} />
-                    </td>
-
-                    <td style={{ padding: "10px 10px", verticalAlign: "top", color: "#64748b", maxWidth: 300 }}>
-                      {row.notes || "—"}
-                    </td>
-
-                    <td style={{ padding: "10px 10px", verticalAlign: "top" }}>
-                      {formatDate(row.updated_at)}
-                    </td>
-                  </tr>
+                    {group.rows.map((row) => (
+                      <tr key={row.asset_id} onClick={() => setActiveAsset(row)} style={{ borderBottom: "1px solid #eef2f7", cursor: "pointer" }}>
+                        <td style={{ padding: "10px 10px", verticalAlign: "top" }}><strong>{row.assigned_roster_member_name || "—"}</strong></td>
+                        <td style={{ padding: "10px 10px", verticalAlign: "top" }}>{row.provider || "—"}</td>
+                        <td style={{ padding: "10px 10px", verticalAlign: "top" }}>
+                          <strong>{row.asset_identifier}</strong>
+                          <div style={{ color: "#64748b", fontSize: 12 }}>{row.display_name || row.asset_type_label}</div>
+                        </td>
+                        {props.showSecondary !== false ? <td style={{ padding: "10px 10px", verticalAlign: "top" }}>{row.secondary_identifier || "—"}</td> : null}
+                        <td style={{ padding: "10px 10px", verticalAlign: "top" }}><AssetStatusBadge label={displayStatus(row)} /></td>
+                        <td style={{ padding: "10px 10px", verticalAlign: "top", color: "#64748b", maxWidth: 300 }}>{row.notes || "—"}</td>
+                        <td style={{ padding: "10px 10px", verticalAlign: "top" }}>{formatDate(row.updated_at)}</td>
+                      </tr>
+                    ))}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -147,8 +182,34 @@ export default function CompanyAssetsTable(props: CompanyAssetsTableProps) {
         driversLoading={loading}
         assignedRosterMemberIds={assignedRosterMemberIds}
         showSecondary={props.showSecondary}
+        onEdit={(row) => {
+          setActiveAsset(null);
+          setEditingAsset(row);
+        }}
         onClose={() => setActiveAsset(null)}
       />
+
+      {addingAsset ? (
+        <AssetEditDrawer
+          companySlug={companySlug}
+          assetTypeKey={props.rows[0]?.asset_type_key ?? ""}
+          assetTypeLabel={props.assetLabel ?? "Asset"}
+          row={null}
+          showSecondary={props.showSecondary}
+          onClose={() => setAddingAsset(false)}
+        />
+      ) : null}
+
+      {editingAsset ? (
+        <AssetEditDrawer
+          companySlug={companySlug}
+          assetTypeKey={editingAsset.asset_type_key}
+          assetTypeLabel={props.assetLabel ?? "Asset"}
+          row={editingAsset}
+          showSecondary={props.showSecondary}
+          onClose={() => setEditingAsset(null)}
+        />
+      ) : null}
     </>
   );
 }
