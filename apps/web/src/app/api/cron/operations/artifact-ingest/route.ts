@@ -71,6 +71,76 @@ async function completeRequest(supabase: any, requestId: string) {
   });
 }
 
+async function reconcileArtifactReadyRequests(supabase: any) {
+  const { data: requests } = await supabase
+    .from("operations_collection_request")
+    .select("id, created_at")
+    .eq("request_status", "ARTIFACTS_READY")
+    .order("created_at", { ascending: true })
+    .limit(25);
+
+  const reconciled = [];
+
+  for (const request of requests ?? []) {
+    const { data: artifacts } = await supabase
+      .from("operations_collection_artifact_v")
+      .select("artifact_status, report_batch_id")
+      .eq("collection_request_id", request.id)
+      .eq("artifact_kind", "REPORT_FILE");
+
+    const rows = artifacts ?? [];
+    const readyOrIngesting = rows.some((row: any) =>
+      ["READY_FOR_INGEST", "INGESTING"].includes(row.artifact_status)
+    );
+    const failed = rows.some((row: any) => row.artifact_status === "FAILED");
+    const ingested = rows.filter((row: any) => row.artifact_status === "INGESTED");
+
+    if (readyOrIngesting) continue;
+
+    if (rows.length === 0) {
+      await supabase.rpc("update_operations_collection_request_status", {
+        p_request_id: request.id,
+        p_request_status: "FAILED",
+        p_error_message: "No report artifacts were registered for this collection request.",
+        p_automation_run_id: null,
+        p_report_batch_ids: null,
+      });
+
+      reconciled.push({ request_id: request.id, status: "FAILED", reason: "NO_ARTIFACTS" });
+      continue;
+    }
+
+    if (failed && ingested.length === 0) {
+      await supabase.rpc("update_operations_collection_request_status", {
+        p_request_id: request.id,
+        p_request_status: "FAILED",
+        p_error_message: "All report artifacts failed ingestion.",
+        p_automation_run_id: null,
+        p_report_batch_ids: null,
+      });
+
+      reconciled.push({ request_id: request.id, status: "FAILED", reason: "ALL_ARTIFACTS_FAILED" });
+      continue;
+    }
+
+    await supabase.rpc("update_operations_collection_request_status", {
+      p_request_id: request.id,
+      p_request_status: "COMPLETE",
+      p_error_message: failed ? "One or more artifacts failed ingestion." : null,
+      p_automation_run_id: null,
+      p_report_batch_ids: ingested.map((row: any) => row.report_batch_id).filter(Boolean),
+    });
+
+    reconciled.push({
+      request_id: request.id,
+      status: "COMPLETE",
+      reason: failed ? "PARTIAL_ARTIFACT_SUCCESS" : "ALL_ARTIFACTS_INGESTED",
+    });
+  }
+
+  return reconciled;
+}
+
 export async function GET() {
   const startedAt = Date.now();
   const supabase = createSupabaseServiceRoleClient();
@@ -136,10 +206,14 @@ export async function GET() {
     }
   }
 
+  const reconciled = await reconcileArtifactReadyRequests(supabase);
+
   return NextResponse.json({
     ok: true,
     processed_count: processed.length,
     processed,
+    reconciled_count: reconciled.length,
+    reconciled,
     elapsed_ms: Date.now() - startedAt,
   });
 }

@@ -103,80 +103,78 @@ async function handleArtifactIngest(req: NextRequest, context: RouteContext) {
       .select("*")
       .eq("company_id", resolved.company.id)
       .eq("artifact_kind", "REPORT_FILE")
-      .eq("report_family_key", "DSW")
       .eq("artifact_status", "READY_FOR_INGEST")
-      .order("created_at", { ascending: false })
-      .limit(1);
+      .order("created_at", { ascending: true })
+      .limit(5);
 
     if (artifactError) throw new Error(artifactError.message);
 
-    const artifact = artifacts?.[0] ?? null;
-    if (!artifact) {
-      return NextResponse.json({ ok: true, processed_count: 0, processed: [], elapsed_ms: Date.now() - startedAt });
-    }
+    const processed = [];
 
-    await markArtifact({
-      supabase,
-      artifactId: artifact.id,
-      status: "INGESTING",
-      metadata: { source: "artifact_ingest", started_at: new Date().toISOString() },
-    });
-
-    try {
-      const ingest = await ingestArtifactWorkbook({
-        supabase,
-        slug,
-        artifact,
-        uploadedByAuthUserId: null,
-        uploadedByProfileId: null,
-      });
-
+    for (const artifact of artifacts ?? []) {
       await markArtifact({
         supabase,
         artifactId: artifact.id,
-        status: "INGESTED",
-        metadata: { source: "artifact_ingest", completed_at: new Date().toISOString(), ingest },
-        reportBatchId: ingest.batch_id ?? null,
+        status: "INGESTING",
+        metadata: { source: "artifact_ingest", started_at: new Date().toISOString() },
       });
 
-      await deleteArtifactObject(artifact);
+      try {
+        const ingest = await ingestArtifactWorkbook({
+          supabase,
+          slug,
+          artifact,
+          uploadedByAuthUserId: null,
+          uploadedByProfileId: null,
+        });
 
-      await refreshRequestStatus({ supabase, requestId: artifact.collection_request_id });
+        await markArtifact({
+          supabase,
+          artifactId: artifact.id,
+          status: "INGESTED",
+          metadata: { source: "artifact_ingest", completed_at: new Date().toISOString(), ingest },
+          reportBatchId: ingest.batch_id ?? null,
+        });
 
-      return NextResponse.json({
-        ok: true,
-        processed_count: 1,
-        processed: [{
+        await deleteArtifactObject(artifact);
+        await refreshRequestStatus({ supabase, requestId: artifact.collection_request_id });
+
+        processed.push({
           artifact_id: artifact.id,
           collection_request_id: artifact.collection_request_id,
+          report_family_key: artifact.report_family_key,
           batch_id: ingest.batch_id ?? null,
           inserted_row_count: ingest.inserted_row_count ?? null,
-        }],
-        elapsed_ms: Date.now() - startedAt,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Artifact ingest failed.";
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Artifact ingest failed.";
 
-      await markArtifact({
-        supabase,
-        artifactId: artifact.id,
-        status: "FAILED",
-        metadata: { source: "artifact_ingest", failed_at: new Date().toISOString() },
-        errorMessage: message,
-      });
+        await markArtifact({
+          supabase,
+          artifactId: artifact.id,
+          status: "FAILED",
+          metadata: { source: "artifact_ingest", failed_at: new Date().toISOString() },
+          errorMessage: message,
+        });
 
-      await supabase.rpc("update_operations_collection_request_status", {
-        p_request_id: artifact.collection_request_id,
-        p_request_status: "FAILED",
-        p_error_message: message,
-        p_automation_run_id: null,
-        p_report_batch_ids: null,
-      });
+        await supabase.rpc("update_operations_collection_request_status", {
+          p_request_id: artifact.collection_request_id,
+          p_request_status: "FAILED",
+          p_error_message: message,
+          p_automation_run_id: null,
+          p_report_batch_ids: null,
+        });
 
-      await deleteArtifactObject(artifact).catch(() => null);
-
-      return NextResponse.json({ ok: false, error: message }, { status: 500 });
+        await deleteArtifactObject(artifact).catch(() => null);
+      }
     }
+
+    return NextResponse.json({
+      ok: true,
+      processed_count: processed.length,
+      processed,
+      elapsed_ms: Date.now() - startedAt,
+    });
   } catch (error) {
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : "Artifact ingest failed." },
