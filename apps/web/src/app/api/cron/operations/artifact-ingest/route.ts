@@ -73,8 +73,8 @@ async function completeRequest(supabase: any, requestId: string) {
 
 async function reconcileArtifactReadyRequests(supabase: any) {
   const { data: requests } = await supabase
-    .from("operations_collection_request")
-    .select("id, created_at")
+    .from("operations_collection_artifact_v")
+    .select("collection_request_id, created_at")
     .eq("request_status", "ARTIFACTS_READY")
     .order("created_at", { ascending: true })
     .limit(25);
@@ -85,7 +85,7 @@ async function reconcileArtifactReadyRequests(supabase: any) {
     const { data: artifacts } = await supabase
       .from("operations_collection_artifact_v")
       .select("artifact_status, report_batch_id")
-      .eq("collection_request_id", request.id)
+      .eq("collection_request_id", request.collection_request_id)
       .eq("artifact_kind", "REPORT_FILE");
 
     const rows = artifacts ?? [];
@@ -99,32 +99,32 @@ async function reconcileArtifactReadyRequests(supabase: any) {
 
     if (rows.length === 0) {
       await supabase.rpc("update_operations_collection_request_status", {
-        p_request_id: request.id,
+        p_request_id: request.collection_request_id,
         p_request_status: "FAILED",
         p_error_message: "No report artifacts were registered for this collection request.",
         p_automation_run_id: null,
         p_report_batch_ids: null,
       });
 
-      reconciled.push({ request_id: request.id, status: "FAILED", reason: "NO_ARTIFACTS" });
+      reconciled.push({ request_id: request.collection_request_id, status: "FAILED", reason: "NO_ARTIFACTS" });
       continue;
     }
 
     if (failed && ingested.length === 0) {
       await supabase.rpc("update_operations_collection_request_status", {
-        p_request_id: request.id,
+        p_request_id: request.collection_request_id,
         p_request_status: "FAILED",
         p_error_message: "All report artifacts failed ingestion.",
         p_automation_run_id: null,
         p_report_batch_ids: null,
       });
 
-      reconciled.push({ request_id: request.id, status: "FAILED", reason: "ALL_ARTIFACTS_FAILED" });
+      reconciled.push({ request_id: request.collection_request_id, status: "FAILED", reason: "ALL_ARTIFACTS_FAILED" });
       continue;
     }
 
     await supabase.rpc("update_operations_collection_request_status", {
-      p_request_id: request.id,
+      p_request_id: request.collection_request_id,
       p_request_status: "COMPLETE",
       p_error_message: failed ? "One or more artifacts failed ingestion." : null,
       p_automation_run_id: null,
@@ -132,7 +132,7 @@ async function reconcileArtifactReadyRequests(supabase: any) {
     });
 
     reconciled.push({
-      request_id: request.id,
+      request_id: request.collection_request_id,
       status: "COMPLETE",
       reason: failed ? "PARTIAL_ARTIFACT_SUCCESS" : "ALL_ARTIFACTS_INGESTED",
     });
