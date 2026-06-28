@@ -1,8 +1,27 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import IdentityPill from "@/features/access/components/IdentityPill";
 import { useAccess } from "@/features/access/AccessProvider";
+
+function NavLink(props: { href: string; children: React.ReactNode }) {
+  const pathname = usePathname();
+  const active = pathname === props.href || pathname.startsWith(`${props.href}/`);
+
+  return (
+    <Link
+      href={props.href}
+      style={{
+        color: active ? "var(--ink)" : undefined,
+        fontWeight: active ? 900 : undefined,
+      }}
+      aria-current={active ? "page" : undefined}
+    >
+      {props.children}
+    </Link>
+  );
+}
 
 export default function SiteHeader() {
   const access = useAccess();
@@ -18,16 +37,16 @@ export default function SiteHeader() {
         <div className="site-header__right">
           <nav className="site-nav" aria-label="Primary">
             {access.is_platform_owner ? (
-              <Link href="/command-center">Command Center</Link>
-            ) : null}
-            <Link href="/companies">Companies</Link>
-            {access.is_platform_owner ? (
               <>
-                <Link href="/commercial">Commercial</Link>
-                <Link href="/configuration">Configuration</Link>
+                <NavLink href="/command-center">Command Center</NavLink>
+                <NavLink href="/companies">Companies</NavLink>
+                <NavLink href="/commercial">Commercial</NavLink>
+                <NavLink href="/configuration">Configuration</NavLink>
               </>
-            ) : null}
-            <Link href="/profile">Profile</Link>
+            ) : (
+              <NavLink href="/companies">Companies</NavLink>
+            )}
+            <NavLink href="/profile">Profile</NavLink>
           </nav>
 
           <IdentityPill />
