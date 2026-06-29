@@ -164,9 +164,7 @@ export async function ingestFccWorkbook(params: {
     throw new Error("FCC Header sheet did not identify Service Area Status.");
   }
 
-  if (headerServiceDate && headerServiceDate !== serviceDate) {
-    throw new Error(`FCC header date ${headerServiceDate} does not match selected report date ${serviceDate}.`);
-  }
+  const warehouseServiceDate = headerServiceDate || serviceDate;
 
   const { data: company, error: companyError } = await supabase
     .from("companies")
@@ -180,7 +178,7 @@ export async function ingestFccWorkbook(params: {
     "get_active_company_contract_config",
     {
       p_company_slug: slug,
-      p_service_date: serviceDate,
+      p_service_date: warehouseServiceDate,
     }
   );
 
@@ -198,8 +196,8 @@ export async function ingestFccWorkbook(params: {
     .select("id, route_name, current_wa_num, route_location, route_type, terminal_id")
     .eq("company_id", company.id)
     .eq("is_active", true)
-    .lte("effective_start", serviceDate)
-    .or(`effective_end.is.null,effective_end.gte.${serviceDate}`);
+    .lte("effective_start", warehouseServiceDate)
+    .or(`effective_end.is.null,effective_end.gte.${warehouseServiceDate}`);
 
   if (routeError) throw new Error(routeError.message);
 
@@ -248,7 +246,7 @@ export async function ingestFccWorkbook(params: {
 
   const { data: rpcResult, error: rpcError } = await supabase.rpc("stage_operations_fcc_report", {
     p_company_id: company.id,
-    p_service_date: serviceDate,
+    p_service_date: warehouseServiceDate,
     p_source_filename: filename,
     p_source_hash: sourceHash,
     p_detected_sheet_name: fccDetailSheetName,
@@ -269,6 +267,11 @@ export async function ingestFccWorkbook(params: {
         terminal_identity: ownership.terminal_identity,
         service_area: ownership.service_area,
       },
+      collection_context: {
+        service_date: serviceDate,
+        service_date_used: warehouseServiceDate,
+        service_date_source: headerServiceDate ? "FCC_HEADER" : "ARTIFACT_CONTEXT",
+      },
       fcc_header: headerMeta,
       route_match: {
         matched: matchedCount,
@@ -285,7 +288,7 @@ export async function ingestFccWorkbook(params: {
     batch_id: rpcResult?.batch_id ?? null,
     report_family_key: "FCC",
     report_shape_key: "FCC_SERVICE_AREA_STATUS",
-    service_date: serviceDate,
+    service_date: warehouseServiceDate,
     inserted_row_count: stagedRows.length,
     matched_route_count: matchedCount,
     unmatched_route_count: stagedRows.length - matchedCount,
@@ -293,6 +296,11 @@ export async function ingestFccWorkbook(params: {
       contract_number: ownership.contract_number,
       terminal_identity: ownership.terminal_identity,
       service_area: ownership.service_area,
+    },
+    collection_context: {
+      service_date: serviceDate,
+      service_date_used: warehouseServiceDate,
+      service_date_source: headerServiceDate ? "FCC_HEADER" : "ARTIFACT_CONTEXT",
     },
     fcc_header: headerMeta,
   };

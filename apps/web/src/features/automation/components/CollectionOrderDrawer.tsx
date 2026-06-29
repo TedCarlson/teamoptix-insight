@@ -57,6 +57,7 @@ export function CollectionOrderDrawer(props: {
       priority: effectivePriority,
       request_payload: {
         source: "collection_center",
+        request_origin: "manual_collection_order",
         customer_language: profile.title,
         intent: profile.type.toLowerCase(),
         collect_scope:

@@ -174,6 +174,7 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
           request_payload: {
             source: "collection_center",
             intent: "workday_refresh",
+            request_origin: "user_collection_center",
             cadence_minutes: activeRefreshRows.length > 0
               ? Math.min(...activeRefreshRows.map((row) => row.cadence_minutes))
               : null,

@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/operations/artifact-ingest",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/operations/generate-collection-requests",
+      "schedule": "* * * * *"
     }
   ]
 }
