@@ -18,7 +18,7 @@ import { buildAttendanceRows } from "@/features/payroll/lib/payroll.attendance";
 import ReportDayPills from "@/features/payroll/components/ReportDayPills";
 import PayrollSummaryTable from "@/features/payroll/components/PayrollSummaryTable";
 import PayrollWeekControls from "@/features/payroll/components/PayrollWeekControls";
-import PayrollHeader from "@/features/payroll/components/PayrollHeader";
+import { WorkspaceHeader } from "@/features/ui/workspace";
 import PayrollModeTabs from "@/features/payroll/components/PayrollModeTabs";
 import PayrollAttendanceTable from "@/features/payroll/components/PayrollAttendanceTable";
 import PayrollRowDetailTable from "@/features/payroll/components/PayrollRowDetailTable";
@@ -299,66 +299,69 @@ export default function PayrollGrid() {
 
   return (
     <section style={{ display: "grid", gap: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <PayrollHeader />
-
-          <div
-            style={{
-              display: "flex",
-              alignItems: "end",
-              justifyContent: "flex-end",
-              gap: 10,
-              flexWrap: "wrap",
-            }}
-          >
-            <PayrollWeekControls
-              weekEnd={weekEnd}
-              setWeekEnd={setWeekEnd}
-              rebuilding={rebuilding}
-              onRebuild={rebuildPayrollActivity}
-            />
-
-            <button
-              type="button"
-              onClick={() => setReportEmailOpen(true)}
+        <WorkspaceHeader
+          eyebrow="Payroll"
+          title="Attendance Review"
+          description="Review attendance, payroll detail, and summary totals for the selected week."
+          action={
+            <div
               style={{
-                height: 38,
-                padding: "0 14px",
-                borderRadius: 999,
-                border: "1px solid #dbe6f3",
-                background: "#fff",
-                color: "#0f172a",
-                fontSize: 13,
-                fontWeight: 900,
-                cursor: "pointer",
-                alignSelf: "flex-end",
-                whiteSpace: "nowrap",
+                display: "flex",
+                alignItems: "end",
+                justifyContent: "flex-end",
+                gap: 10,
+                flexWrap: "wrap",
               }}
             >
-              Send Report
-            </button>
+              <PayrollWeekControls
+                weekEnd={weekEnd}
+                setWeekEnd={setWeekEnd}
+                rebuilding={rebuilding}
+                onRebuild={rebuildPayrollActivity}
+              />
 
-            <button
-              type="button"
-              onClick={() => setAliasOpen(true)}
-              style={{
-                height: 38,
-                padding: "0 14px",
-                borderRadius: 999,
-                border: "1px solid #dbe6f3",
-                background: "#fff",
-                color: "#0f172a",
-                fontSize: 13,
-                fontWeight: 900,
-                cursor: "pointer",
-                alignSelf: "flex-end",
-                whiteSpace: "nowrap",
-              }}
-            >
-              Alias Review{aliasCount > 0 ? ` (${aliasCount})` : ""}
-            </button>
-          </div>
-        </div>
+              <button
+                type="button"
+                onClick={() => setReportEmailOpen(true)}
+                style={{
+                  height: 38,
+                  padding: "0 14px",
+                  borderRadius: 999,
+                  border: "1px solid #dbe6f3",
+                  background: "#fff",
+                  color: "#0f172a",
+                  fontSize: 13,
+                  fontWeight: 900,
+                  cursor: "pointer",
+                  alignSelf: "flex-end",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Send Report
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAliasOpen(true)}
+                style={{
+                  height: 38,
+                  padding: "0 14px",
+                  borderRadius: 999,
+                  border: "1px solid #dbe6f3",
+                  background: "#fff",
+                  color: "#0f172a",
+                  fontSize: 13,
+                  fontWeight: 900,
+                  cursor: "pointer",
+                  alignSelf: "flex-end",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Alias Review{aliasCount > 0 ? ` (${aliasCount})` : ""}
+              </button>
+            </div>
+          }
+        />
 
         <div
           style={{
