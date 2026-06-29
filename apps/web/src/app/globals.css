@@ -1266,3 +1266,55 @@ body {
   }
 
 }
+
+.workspace-header {
+  align-items: end;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.workspace-header__copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.workspace-header__action {
+  flex: 0 0 auto;
+}
+
+.workspace-section,
+.workspace-card {
+  padding: 16px;
+}
+
+.workspace-section {
+  display: grid;
+  gap: 14px;
+}
+
+.workspace-section__head {
+  align-items: start;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.workspace-grid {
+  display: grid;
+  gap: 12px;
+}
+
+@media (max-width: 760px) {
+  .workspace-header,
+  .workspace-section__head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .workspace-header__action {
+    width: 100%;
+  }
+}
