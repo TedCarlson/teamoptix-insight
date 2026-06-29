@@ -9,27 +9,6 @@ type Props = {
 
 export function LegalEditorPane({ section }: Props) {
   const [saveState, setSaveState] = useState("idle");
-
-  return (
-    <EditorCore
-      key={section?.id}   // 🔥 CRITICAL: forces reset per section
-      section={section}
-      saveState={saveState}
-      setSaveState={setSaveState}
-    />
-  );
-}
-
-function EditorCore({
-  section,
-  saveState,
-  setSaveState,
-}: {
-  section: any;
-  saveState: string;
-  setSaveState: (v: string) => void;
-}) {
-  // 🔥 initialize ONCE per mount (no effects, no lint issues)
   const [body, setBody] = useState(section?.body_markdown ?? "");
 
   async function save() {
@@ -52,7 +31,6 @@ function EditorCore({
         return;
       }
 
-      // 🔥 DB truth wins
       setBody(json.section?.body_markdown ?? body);
 
       setSaveState("saved");
@@ -66,11 +44,19 @@ function EditorCore({
     <section className={styles.editor}>
       <div className={styles.documentCard}>
         <div className={styles.documentHeader}>
-          <button onClick={save} type="button">
+          <button className={styles.primaryButton} onClick={save}>
             Save
           </button>
 
-          <span>{saveState}</span>
+          <span
+            className={
+              saveState === "error"
+                ? styles.saveError
+                : styles.saveStatus
+            }
+          >
+            {saveState}
+          </span>
         </div>
 
         <textarea

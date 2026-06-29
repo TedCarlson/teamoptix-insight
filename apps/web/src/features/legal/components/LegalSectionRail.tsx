@@ -15,23 +15,31 @@ export function LegalSectionRail({
 
   return (
     <nav className={styles.rail}>
-      <p className={styles.panelLabel}>Sections</p>
+      <div className={styles.railHeader}>
+        <p className={styles.panelLabel}>Sections</p>
+      </div>
 
-      <div className={styles.sectionList}>
-        {safeSections.map((section) => (
-          <button
-            key={section.id}
-            className={
-              section.id === selectedSectionId
-                ? styles.sectionButtonActive
-                : styles.sectionButton
-            }
-            type="button"
-            onClick={() => onSelectSection(section.id)}
-          >
-            {section.section_number}. {section.title}
-          </button>
-        ))}
+      <div className={styles.railScroll}>
+        <div className={styles.sectionList}>
+          {safeSections.map((section) => (
+            <button
+              key={section.id}
+              className={
+                section.id === selectedSectionId
+                  ? styles.sectionButtonActive
+                  : styles.sectionButton
+              }
+              type="button"
+              onClick={() => onSelectSection(section.id)}
+            >
+              {section.section_number}. {section.title}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className={styles.railFooter}>
+        <span className={styles.saveStatus}>Rail Active</span>
       </div>
     </nav>
   );

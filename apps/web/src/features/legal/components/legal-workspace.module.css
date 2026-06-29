@@ -259,3 +259,107 @@
   cursor: not-allowed;
   opacity: 0.55;
 }
+
+.rail {
+  display: flex;
+  flex-direction: column;
+
+  height: calc(100vh - 120px);
+  overflow: hidden;
+}
+
+/* sticky header container */
+.railHeader {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+
+  background: var(--card, #ffffff);
+  border-bottom: 1px solid var(--border, #dbe3ef);
+}
+
+/* scroll region ONLY */
+.sectionList {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  display: grid;
+  gap: 8px;
+
+  padding: 12px;
+}
+
+/* sticky footer */
+.railFooter {
+  position: sticky;
+  bottom: 0;
+
+  padding: 12px 16px;
+  background: var(--card, #ffffff);
+  border-top: 1px solid var(--border, #dbe3ef);
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+/* =========================
+   RAIL SCROLL + STICKY FOOTER
+   ========================= */
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 140px);
+  overflow: hidden;
+}
+
+.sectionList {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+/* sticky footer (you asked for this explicitly) */
+.railFooter {
+  position: sticky;
+  bottom: 0;
+  background: var(--card, #fff);
+  border-top: 1px solid var(--border, #dbe3ef);
+  padding: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted-foreground, #64748b);
+}
+
+/* ===== RAIL LAYOUT FIX ===== */
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 140px);
+  overflow: hidden;
+}
+
+.railHeader {
+  flex: 0 0 auto;
+}
+
+.railScroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.railFooter {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--border, #dbe3ef);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+
+.saveStatus {
+  font-size: 12px;
+  color: #16a34a;
+  font-weight: 600;
+}

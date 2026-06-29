@@ -12,19 +12,12 @@ import styles from "./legal-workspace.module.css";
 export function MasterServiceAgreementWorkspace(props: any) {
   const document = props?.document ?? null;
 
-  /**
-   * 🔥 HARD NORMALIZATION (no fallback chains in render graph)
-   * This removes ALL ESLint ambiguity.
-   */
-  const safeSections = useMemo(() => {
-    const raw = props.sections;
+  const sections =
+    props?.sections ??
+    props?.data?.sections ??
+    [];
 
-    if (Array.isArray(raw)) return raw;
-
-    const fallback = props.data?.sections;
-
-    return Array.isArray(fallback) ? fallback : [];
-  }, [props.sections, props.data?.sections]);
+  const safeSections = Array.isArray(sections) ? sections : [];
 
   const first = safeSections[0];
 
@@ -33,15 +26,16 @@ export function MasterServiceAgreementWorkspace(props: any) {
   );
 
   const selectedSection = useMemo(() => {
-    const match =
-      safeSections.find((s) => s.id === selectedSectionId) ?? null;
-
-    return match ?? safeSections[0] ?? null;
+    return (
+      safeSections.find((s) => s.id === selectedSectionId) ??
+      safeSections[0] ??
+      null
+    );
   }, [safeSections, selectedSectionId]);
 
   if (!selectedSection) {
     return (
-      <main className={styles.workspace}>
+      <main className="workspace-shell">
         <LegalToolbar document={document} />
         <div style={{ padding: 24 }}>No sections loaded</div>
       </main>
@@ -49,10 +43,10 @@ export function MasterServiceAgreementWorkspace(props: any) {
   }
 
   return (
-    <main className={styles.workspace}>
+    <main className="workspace-shell">
       <LegalToolbar document={document} />
 
-      <div className={styles.body}>
+      <div className="workspace-main">
         <LegalSectionRail
           selectedSectionId={selectedSection.id}
           onSelectSection={setSelectedSectionId}
