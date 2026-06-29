@@ -52,8 +52,31 @@ function buildRequestPayload(activeRows: any[]) {
   return {
     source: "automation_scheduler",
     preset: "operations_pulse",
+    intent: "operations_pulse",
     request_origin: "automation_scheduler",
+    collect_scope: "targeted_file_groups",
+    control_level: "platform_managed",
+    customer_language: "Operations Pulse",
+    runner_goal: "keep_operations_current",
     cadence_minutes: Math.min(...activeRows.map((row) => Number(row.cadence_minutes) || 0)),
+    targets: [
+      {
+        key: "DSW_DAILY_SERVICE",
+        label: "DSW · Daily Service Worksheet",
+        artifact_key: "DSW",
+        report_family_key: "DSW",
+        runner_section: "DAILY_SERVICE",
+        expected_filename_match: ["daily service worksheet"],
+      },
+      {
+        key: "FCC_SERVICE_AREA_STATUS",
+        label: "FCC · Service Area Status",
+        artifact_key: "FCC",
+        report_family_key: "FCC",
+        runner_section: "SERVICE",
+        expected_filename_match: ["serviceareastatus", "sastatus", "work area summary"],
+      },
+    ],
     windows: activeRows.map((row) => ({
       report: row.automation_type,
       window_preset: row.window_preset,
