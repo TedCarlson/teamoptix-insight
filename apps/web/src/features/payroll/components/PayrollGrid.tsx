@@ -18,8 +18,6 @@ import { buildAttendanceRows } from "@/features/payroll/lib/payroll.attendance";
 import ReportDayPills from "@/features/payroll/components/ReportDayPills";
 import PayrollSummaryTable from "@/features/payroll/components/PayrollSummaryTable";
 import PayrollWeekControls from "@/features/payroll/components/PayrollWeekControls";
-import { WorkspaceHeader } from "@/features/ui/workspace";
-import PayrollModeTabs from "@/features/payroll/components/PayrollModeTabs";
 import PayrollAttendanceTable from "@/features/payroll/components/PayrollAttendanceTable";
 import PayrollRowDetailTable from "@/features/payroll/components/PayrollRowDetailTable";
 import PayrollDetailTable from "@/features/payroll/components/PayrollDetailTable";
@@ -297,71 +295,68 @@ export default function PayrollGrid() {
     [payrollMetrics?.summary]
   );
 
+  const payrollViewTitle =
+    payrollView === "attendance"
+      ? "Attendance Review"
+      : payrollView === "summary"
+        ? "Summary"
+        : payrollView === "payroll-detail"
+          ? "Payroll Detail"
+          : payrollView === "row-detail"
+            ? "Row Detail"
+            : "Adjustments";
+
   return (
-    <section style={{ display: "grid", gap: 14 }}>
-        <WorkspaceHeader
-          eyebrow="Payroll"
-          title="Attendance Review"
-          description="Review attendance, payroll detail, and summary totals for the selected week."
-          action={
-            <div
-              style={{
-                display: "flex",
-                alignItems: "end",
-                justifyContent: "flex-end",
-                gap: 10,
-                flexWrap: "wrap",
-              }}
-            >
-              <PayrollWeekControls
-                weekEnd={weekEnd}
-                setWeekEnd={setWeekEnd}
-                rebuilding={rebuilding}
-                onRebuild={rebuildPayrollActivity}
-              />
+    <section className="payroll-workspace">
+        <div className="payroll-workspace-toolbar">
+          <div>
+            <p className="value-card__eyebrow">Payroll</p>
+            <h2 className="app-card__title">{payrollViewTitle}</h2>
+          </div>
 
-              <button
-                type="button"
-                onClick={() => setReportEmailOpen(true)}
-                style={{
-                  height: 38,
-                  padding: "0 14px",
-                  borderRadius: 999,
-                  border: "1px solid #dbe6f3",
-                  background: "#fff",
-                  color: "#0f172a",
-                  fontSize: 13,
-                  fontWeight: 900,
-                  cursor: "pointer",
-                  alignSelf: "flex-end",
-                  whiteSpace: "nowrap",
-                }}
+          <div className="payroll-workspace-toolbar__actions">
+            <div className="workspace-view-picker">
+              <span>View</span>
+              <select
+                className="workspace-select"
+                value={payrollView}
+                onChange={(event) => setPayrollView(event.target.value as PayrollView)}
               >
-                Send Report
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setAliasOpen(true)}
-                style={{
-                  height: 38,
-                  padding: "0 14px",
-                  borderRadius: 999,
-                  border: "1px solid #dbe6f3",
-                  background: "#fff",
-                  color: "#0f172a",
-                  fontSize: 13,
-                  fontWeight: 900,
-                  cursor: "pointer",
-                  alignSelf: "flex-end",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                Alias Review{aliasCount > 0 ? ` (${aliasCount})` : ""}
-              </button>
+                <option value="attendance">Attendance</option>
+                <option value="summary">Summary</option>
+                <option value="payroll-detail">Payroll Detail</option>
+                <option value="row-detail">Row Detail</option>
+                <option value="adjustments">Adjustments</option>
+              </select>
             </div>
-          }
-        />
+
+            <PayrollWeekControls
+              weekEnd={weekEnd}
+              setWeekEnd={setWeekEnd}
+              rebuilding={rebuilding}
+              onRebuild={rebuildPayrollActivity}
+            />
+
+            <button
+              type="button"
+              className="button payroll-action-button"
+              onClick={rebuildPayrollActivity}
+              disabled={rebuilding}
+            >
+              <span aria-hidden="true">⟳</span>
+              {rebuilding ? "Rebuilding..." : "Rebuild"}
+            </button>
+
+            <button type="button" className="button payroll-action-button" onClick={() => setReportEmailOpen(true)}>
+              <span aria-hidden="true">✉</span>
+              Send Report
+            </button>
+
+            <button type="button" className="button payroll-action-button" onClick={() => setAliasOpen(true)}>
+              Alias Review{aliasCount > 0 ? ` (${aliasCount})` : ""}
+            </button>
+          </div>
+        </div>
 
         <div
           style={{
@@ -391,11 +386,6 @@ export default function PayrollGrid() {
             <ReportDayPills days={days} activity={payrollMetrics?.activity ?? []} />
           )}
         </div>
-
-        <PayrollModeTabs
-          payrollView={payrollView}
-          setPayrollView={setPayrollView}
-        />
 
         {error ? (
           <div style={{ color: "#991b1b", fontWeight: 800 }}>{error}</div>
