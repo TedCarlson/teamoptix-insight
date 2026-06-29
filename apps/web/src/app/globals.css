@@ -843,3 +843,24 @@ h1 {
     grid-template-columns: 1fr;
   }
 }
+
+.identity-pill__signout {
+  border: 0;
+  border-left: 1px solid #dbe4f0;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 900;
+  padding: 0 0 0 10px;
+  white-space: nowrap;
+}
+
+.identity-pill__signout:hover {
+  color: #dc2626;
+}
+
+.identity-pill__signout:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}

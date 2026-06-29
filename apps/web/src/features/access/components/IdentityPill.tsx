@@ -1,6 +1,9 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAccess } from "@/features/access/AccessProvider";
+import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 function initials(name?: string, email?: string) {
   const source = (name || email || "?").trim();
@@ -11,6 +14,20 @@ function initials(name?: string, email?: string) {
 
 export default function IdentityPill() {
   const access = useAccess();
+  const router = useRouter();
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function handleSignOut() {
+    try {
+      setSigningOut(true);
+      const supabase = getSupabaseBrowserClient();
+      await supabase.auth.signOut();
+      router.replace("/sign-in");
+      router.refresh();
+    } finally {
+      setSigningOut(false);
+    }
+  }
 
   if (access.loading) {
     return <div className="identity-pill identity-pill--muted">Loading…</div>;
@@ -50,6 +67,15 @@ export default function IdentityPill() {
         <strong>{name}</strong>
         <span>{secondary}</span>
       </span>
+
+      <button
+        type="button"
+        className="identity-pill__signout"
+        disabled={signingOut}
+        onClick={handleSignOut}
+      >
+        {signingOut ? "Signing out…" : "Sign out"}
+      </button>
     </div>
   );
 }
