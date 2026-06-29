@@ -58,69 +58,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { data: existing, error: existingError } = await supabase
-      .schema("core")
-      .from("profiles")
-      .select("id, auth_user_id")
-      .eq("auth_user_id", user.id)
-      .maybeSingle();
+    const { data: profileId, error: profileError } = await supabase.rpc("save_profile_setup", {
+      p_auth_user_id: user.id,
+      p_email: email,
+      p_first_name: first_name,
+      p_last_name: last_name,
+      p_display_name: display_name,
+      p_mobile_phone: mobile_phone,
+    });
 
-    if (existingError) {
+    if (profileError || !profileId) {
       return NextResponse.json(
-        { error: existingError.message },
+        { error: profileError?.message ?? "Failed to save profile." },
         { status: 500 }
       );
-    }
-
-    let profileId: string | null = existing?.id ?? null;
-
-    if (profileId) {
-      const { error: updateError } = await supabase
-        .schema("core")
-        .from("profiles")
-        .update({
-          email,
-          first_name,
-          last_name,
-          display_name,
-          mobile_phone,
-          profile_status: "active",
-          last_active_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", profileId);
-
-      if (updateError) {
-        return NextResponse.json(
-          { error: updateError.message },
-          { status: 500 }
-        );
-      }
-    } else {
-      const { data: inserted, error: insertError } = await supabase
-        .schema("core")
-        .from("profiles")
-        .insert({
-          auth_user_id: user.id,
-          email,
-          first_name,
-          last_name,
-          display_name,
-          mobile_phone,
-          profile_status: "active",
-          last_active_at: new Date().toISOString(),
-        })
-        .select("id")
-        .single();
-
-      if (insertError || !inserted) {
-        return NextResponse.json(
-          { error: insertError?.message ?? "Failed to create profile." },
-          { status: 500 }
-        );
-      }
-
-      profileId = inserted.id;
     }
 
     if (session_id) {

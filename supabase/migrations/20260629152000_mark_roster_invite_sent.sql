@@ -18,13 +18,7 @@ begin
     and company_id = p_company_id;
 
   insert into core.company_roster_event (
-    company_id,
-    roster_id,
-    event_category,
-    event_type,
-    event_detail,
-    event_metadata,
-    occurred_at
+    company_id, roster_id, event_category, event_type, event_detail, event_metadata, occurred_at
   )
   values (
     p_company_id,
