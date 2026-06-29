@@ -28,27 +28,14 @@ import {
   removePersonFromRoute,
 } from "../lib/dispatchEventReducer";
 import {
-  buildAllPeople,
   buildArrivedPersonIds,
-  buildAssignedIds,
-  buildAvailableRoutes,
-  buildCallouts,
-  buildDispatchSummary,
-  buildDroPlanByWa,
   buildHydratedRoutes,
-  buildPlanningRoutes,
-  buildScheduledRosterIds,
-  buildUnscheduledDrivers,
-  buildWorkforce,
   createRouteSorter,
   findUnscheduledDriverCandidates,
-  orderedRouteLabel,
 } from "../lib/dispatchSelectors";
-import { buildDroPlanSignals, type DroPlanRow } from "../lib/droPlanSignals";
-import {
-  buildDswDispatchSignals,
-  type DswCurrentRow,
-} from "../lib/dswDispatchSignals";
+import { type DroPlanRow } from "../lib/droPlanSignals";
+import { type DswCurrentRow } from "../lib/dswDispatchSignals";
+import { buildDispatchWorkspaceModel } from "../lib/dispatchWorkspaceModel";
 import OperationsReportUploadOverlay from "@/features/operations/components/OperationsReportUploadOverlay";
 import OperationsWorkspaceToolbar from "@/features/operations/components/OperationsWorkspaceToolbar";
 import OperationsIntelligenceFeed from "@/features/operations/components/OperationsIntelligenceFeed";
@@ -95,19 +82,6 @@ export default function DispatchPage() {
     useState<"route_name" | "current_wa_num">("route_name");
   const routeSort = useMemo(
     () => createRouteSorter(routeSortKey),
-    [routeSortKey]
-  );
-
-  
-  const droPlanByWa = useMemo(
-    () => buildDroPlanByWa(droPlanRows),
-    [droPlanRows]
-  );
-
-
-
-  const orderedRouteLabelForSort = useCallback(
-    (route: DispatchRoute) => orderedRouteLabel(route, routeSortKey),
     [routeSortKey]
   );
 
@@ -227,101 +201,53 @@ export default function DispatchPage() {
     setIntent(null);
   }, [hydratedRoutes, dispatchEvents]);
 
-  const dispatchRoutes = useMemo(
-    () => Object.values(assignments).sort(routeSort),
-    [assignments, routeSort]
-  );
-
-  const { planSignalsByRouteKey, planTotals } = useMemo(
-    () => buildDroPlanSignals(dispatchRoutes, droPlanRows),
-    [dispatchRoutes, droPlanRows]
-  );
-
-  const { dswSignalsByRouteKey, dswTotals } = useMemo(
-    () => buildDswDispatchSignals(dispatchRoutes, dswRows),
-    [dispatchRoutes, dswRows]
-  );
-
-  const scheduledRosterIds = useMemo(
-    () => buildScheduledRosterIds(scheduleRows, serviceDate),
-    [scheduleRows, serviceDate]
-  );
-
-  const allPeople = useMemo(
+  const workspaceModel = useMemo(
     () =>
-      buildAllPeople({
-        scheduleRows,
+      buildDispatchWorkspaceModel({
+        assignments,
         dispatchEvents,
-        serviceDate,
-      }),
-    [dispatchEvents, scheduleRows, serviceDate]
-  );
-
-  const callouts = useMemo(
-    () =>
-      buildCallouts({
-        scheduleRows,
-        dispatchEvents,
-        serviceDate,
-      }),
-    [dispatchEvents, scheduleRows, serviceDate]
-  );
-
-  const calloutIds = useMemo(
-    () => new Set(callouts.map((person) => person.roster_member_id)),
-    [callouts]
-  );
-
-  const assignedIds = useMemo(
-    () => buildAssignedIds(dispatchRoutes, hydratedRoutes),
-    [dispatchRoutes, hydratedRoutes]
-  );
-
-  const workforce = useMemo(
-    () =>
-      buildWorkforce({
-        allPeople,
-        assignedIds,
-        calloutIds,
-      }),
-    [allPeople, assignedIds, calloutIds]
-  );
-
-  const unscheduledDrivers = useMemo(
-    () =>
-      buildUnscheduledDrivers({
-        allPeople,
-        rosterRows,
-        scheduledRosterIds,
-      }),
-    [allPeople, rosterRows, scheduledRosterIds]
-  );
-
-  const availableRoutes = useMemo(
-    () =>
-      buildAvailableRoutes({
-        dispatchRoutes,
-        routes,
-        routeSort,
-      }),
-    [dispatchRoutes, routeSort, routes]
-  );
-
-  const planningRoutes = useMemo(
-    () =>
-      buildPlanningRoutes({
         droPlanRows,
+        dswRows,
+        hydratedRoutes,
         planningDate,
+        rosterRows,
         routeSort,
+        routeSortKey,
         routes,
+        scheduleRows,
+        serviceDate,
       }),
-    [droPlanRows, planningDate, routeSort, routes]
+    [
+      assignments,
+      dispatchEvents,
+      droPlanRows,
+      dswRows,
+      hydratedRoutes,
+      planningDate,
+      rosterRows,
+      routeSort,
+      routeSortKey,
+      routes,
+      scheduleRows,
+      serviceDate,
+    ]
   );
 
-  const summary = useMemo(
-    () => buildDispatchSummary(dispatchRoutes, workforce.available.length),
-    [dispatchRoutes, workforce.available.length]
-  );
+  const {
+    allPeople,
+    availableRoutes,
+    callouts,
+    dispatchRoutes,
+    dswSignalsByRouteKey,
+    dswTotals,
+    orderedRouteLabelForSort,
+    planSignalsByRouteKey,
+    planTotals,
+    scheduledRosterIds,
+    summary,
+    unscheduledDrivers,
+    workforce,
+  } = workspaceModel;
 
 
   function openSeat(route: DispatchRoute, seat: Seat) {
