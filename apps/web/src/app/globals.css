@@ -1231,3 +1231,15 @@ body {
     padding-right: 0;
   }
 }
+
+@media (max-width: 760px) {
+  .app-nav-shell {
+    width: calc(100% - 20px);
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .app-nav-inner {
+    width: 100%;
+  }
+}
