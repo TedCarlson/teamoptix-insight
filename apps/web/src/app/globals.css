@@ -951,3 +951,20 @@ h1 {
     justify-content: flex-start;
   }
 }
+
+.app-nav-group {
+  padding-inline: 14px;
+  box-sizing: border-box;
+}
+
+.company-subnav {
+  padding-inline: 14px;
+  box-sizing: border-box;
+}
+
+@media (max-width: 760px) {
+  .app-nav-group,
+  .company-subnav {
+    padding-inline: 0;
+  }
+}
