@@ -3,6 +3,7 @@ export type AppMenuItem = {
   label: string;
   href: string;
   match?: (pathname: string) => boolean;
+  children?: AppMenuItem[];
 };
 
 export type AppMenuSection = {
