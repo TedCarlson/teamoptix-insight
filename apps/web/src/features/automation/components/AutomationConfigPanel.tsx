@@ -3,10 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CollectionOrderDrawer } from "./CollectionOrderDrawer";
 import { COLLECTION_PROFILES } from "./automationCollectionConfig";
-import { formatDateTime, formatDuration, formatRequestTiming, formatStatus, formatTime, formatWindow, summarizeArtifacts } from "./automationFormatters";
-import { MiniStat, ProfileCard, RunSummary, SectionCard } from "./automationShared";
-import { credentialEditorBox, credentialField, credentialInput, credentialNotice, credentialSignalButton, executiveSignalGrid, grid4, leadText, mutedCopy, policyStrip, profileGrid, td, th, twoCol, workdayRefreshCard } from "./automationStyles";
-import { ScheduleEditor } from "./ScheduleEditor";
+import { formatDateTime, formatDuration, formatRequestTiming, formatStatus, formatTime, summarizeArtifacts } from "./automationFormatters";
+import { MiniStat, ProfileCard, SectionCard } from "./automationShared";
+import { credentialEditorBox, credentialField, credentialInput, credentialNotice, credentialSignalButton, executiveSignalGrid, grid4, leadText, mutedCopy, policyStrip, profileGrid, td, th } from "./automationStyles";
 import type { AutomationConfigPanelProps, AutomationRun, AutomationStatusResponse, CollectionOrderDraft, CollectionRequest, CredentialResponse, ProtectedCollectionType, ScheduleRow } from "./automation.types";
 
 export default function AutomationConfigPanel(props: AutomationConfigPanelProps) {
@@ -22,7 +21,6 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
   const [saving, setSaving] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [showCredentialEditor, setShowCredentialEditor] = useState(false);
-  const [savingScheduleKey, setSavingScheduleKey] = useState<string | null>(null);
   const [queueingRequest, setQueueingRequest] = useState<string | null>(null);
   const [selectedCollection, setSelectedCollection] = useState<ProtectedCollectionType | null>(null);
 
@@ -97,7 +95,7 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
   }, [props.slug]);
 
   const loadArtifacts = useCallback(async () => {
-    const res = await fetch(`/api/company/${props.slug}/operations/artifacts?status=READY_FOR_INGEST&limit=25`, {
+    const res = await fetch(`/api/company/${props.slug}/operations/artifacts?limit=100`, {
       cache: "no-store",
       credentials: "include",
     });
@@ -138,70 +136,6 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
   const successCount = runs.filter((run) => run.status === "SUCCESS").length;
   const failedCount = runs.filter((run) => run.status === "FAILED").length;
   const enabledCount = scheduleRows.filter((row) => row.is_enabled && row.window_preset !== "OFF").length;
-  const nextRunLabel =
-    enabledCount > 0
-      ? scheduleRows
-          .filter((row) => row.is_enabled && row.window_preset !== "OFF")
-          .map((row) => `${row.automation_type}: ${row.cadence_minutes}m`)
-          .join(" · ")
-      : "Not scheduled";
-
-  const activeRefreshRows = scheduleRows.filter((row) => row.is_enabled && row.window_preset !== "OFF");
-  const activeRefreshReports = activeRefreshRows.map((row) => row.automation_type);
-  const refreshCadenceLabel =
-    activeRefreshRows.length > 0
-      ? `${Math.min(...activeRefreshRows.map((row) => row.cadence_minutes))} min`
-      : "Not scheduled";
-  const refreshWindowLabel =
-    activeRefreshRows.length > 0
-      ? activeRefreshRows.map((row) => `${row.automation_type}: ${formatWindow(row)}`).join(" · ")
-      : "No active window";
-
-  async function queueWorkdayRefreshRequest() {
-    try {
-      setQueueingRequest("OPERATIONS_FEED");
-      setMessage(null);
-      setStatusError(null);
-
-      const res = await fetch(`/api/company/${props.slug}/collection-requests`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          request_type: "OPERATIONS_FEED",
-          requested_reports: activeRefreshReports,
-          priority: 80,
-          request_payload: {
-            source: "collection_center",
-            intent: "workday_refresh",
-            request_origin: "user_collection_center",
-            cadence_minutes: activeRefreshRows.length > 0
-              ? Math.min(...activeRefreshRows.map((row) => row.cadence_minutes))
-              : null,
-            windows: activeRefreshRows.map((row) => ({
-              report: row.automation_type,
-              window_preset: row.window_preset,
-              start_time: row.start_time,
-              end_time: row.end_time,
-              cadence_minutes: row.cadence_minutes,
-            })),
-          },
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) throw new Error(data?.error ?? "Failed to prepare refresh ticket.");
-
-      await Promise.all([loadCollectionRequests(), loadArtifacts()]);
-      setMessage("Workday refresh ticket prepared.");
-    } catch (error) {
-      setStatusError(error instanceof Error ? error.message : "Failed to prepare refresh ticket.");
-    } finally {
-      setQueueingRequest(null);
-    }
-  }
-
   async function queueProtectedCollectionRequest(draft: CollectionOrderDraft) {
     try {
       setQueueingRequest(draft.request_type);
@@ -281,51 +215,6 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
       setVerifying(false);
     }
   }
-
-  async function saveSchedule(row: ScheduleRow) {
-    try {
-      setSavingScheduleKey(row.automation_type);
-      setMessage(null);
-      setStatusError(null);
-
-      const res = await fetch(`/api/company/${props.slug}/automation/schedule`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          automation_type: row.automation_type,
-          is_enabled: row.window_preset === "OFF" ? false : row.is_enabled,
-          cadence_minutes: row.cadence_minutes,
-          window_preset: row.window_preset,
-          start_time: row.start_time,
-          end_time: row.end_time,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) throw new Error(data?.error ?? "Failed to save schedule.");
-
-      await loadSchedule();
-      setMessage(`${row.automation_type} schedule saved.`);
-    } catch (error) {
-      setStatusError(error instanceof Error ? error.message : "Failed to save schedule.");
-    } finally {
-      setSavingScheduleKey(null);
-    }
-  }
-
-  function updateScheduleRow(next: ScheduleRow) {
-    setScheduleRows((current) =>
-      current.map((row) =>
-        row.id === next.id || row.automation_type === next.automation_type
-          ? next
-          : row
-      )
-    );
-  }
-
-  const scheduleRowsToShow = scheduleRows.filter((row) => ["DSW", "FCC"].includes(row.automation_type));
 
   return (
     <section style={{ display: "grid", gap: 10 }}>
@@ -449,46 +338,6 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
         </div>
       </SectionCard>
 
-      <SectionCard eyebrow="Schedule configuration" title="Automation cadence">
-        <div style={twoCol}>
-          {scheduleRowsToShow.map((row) => (
-            <ScheduleEditor
-              key={row.id}
-              row={row}
-              disabled={!props.canEdit}
-              saving={savingScheduleKey === row.automation_type}
-              onChange={updateScheduleRow}
-              onSave={saveSchedule}
-            />
-          ))}
-        </div>
-      </SectionCard>
-
-      <SectionCard eyebrow="Workday Refresh" title="Live data freshness">
-        <div style={workdayRefreshCard}>
-          <div>
-            <p style={mutedCopy}>
-              These saved presets prepare small all-day refresh tickets that keep operations current without getting in the way of larger collection work.
-            </p>
-            <div style={grid4}>
-              <MiniStat label="Included Reports" value="DSW + FCC WA/SA" />
-              <MiniStat label="Refresh Cadence" value={refreshCadenceLabel} />
-              <MiniStat label="Refresh Window" value={refreshWindowLabel} />
-              <MiniStat label="Priority" value="80" />
-            </div>
-          </div>
-
-          <button
-            type="button"
-            className="button button-primary"
-            disabled={!props.canEdit || queueingRequest === "OPERATIONS_FEED" || activeRefreshReports.length === 0}
-            onClick={queueWorkdayRefreshRequest}
-          >
-            {queueingRequest === "OPERATIONS_FEED" ? "Preparing..." : "Prepare Refresh Ticket"}
-          </button>
-        </div>
-      </SectionCard>
-
       <SectionCard eyebrow="Request Warehouse" title="Recent collection requests">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 12 }}>
           <p style={mutedCopy}>Active dock work plus the latest healthy completion signal.</p>
@@ -571,9 +420,40 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
       </SectionCard>
 
       <SectionCard eyebrow="Runtime inspection" title="Latest report seams">
-        <div style={twoCol}>
-          <RunSummary title="DSW" run={latestDswRun} />
-          <RunSummary title="FCC" run={latestFccRun} />
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ color: "#64748b", textAlign: "left" }}>
+                <th style={th}>Report</th>
+                <th style={th}>Run</th>
+                <th style={th}>Run Status</th>
+                <th style={th}>Artifact</th>
+                <th style={th}>Rows</th>
+                <th style={th}>Match</th>
+                <th style={th}>Batch</th>
+                <th style={th}>Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {["DSW", "FCC"].map((family) => {
+                const run = runs.find((item) => item.automation_type === family) ?? null;
+                const artifact = artifacts.find((item) => item.report_family_key === family) ?? null;
+
+                return (
+                  <tr key={family}>
+                    <td style={td}>{family}</td>
+                    <td style={td}>{formatTime(run?.started_at)}</td>
+                    <td style={td}>{run?.status ?? "—"}</td>
+                    <td style={td}>{artifact?.artifact_status ?? "—"}</td>
+                    <td style={td}>{run?.inserted_rows ?? "—"}</td>
+                    <td style={td}>{run?.matched_rows ?? "—"} / {run?.unmatched_rows ?? "—"}</td>
+                    <td style={td}>{run?.batch_id ? run.batch_id.slice(0, 8) : artifact?.report_batch_id ? artifact.report_batch_id.slice(0, 8) : "—"}</td>
+                    <td style={td}>{artifact?.error_message ?? run?.error_message ?? "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </SectionCard>
 

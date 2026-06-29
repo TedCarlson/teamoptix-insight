@@ -20,17 +20,22 @@ export async function GET(
       );
     }
 
-    const status = req.nextUrl.searchParams.get("status") ?? "READY_FOR_INGEST";
-    const limit = Math.min(Math.max(Number(req.nextUrl.searchParams.get("limit") ?? "25"), 1), 100);
+    const status = req.nextUrl.searchParams.get("status");
+    const limit = Math.min(Math.max(Number(req.nextUrl.searchParams.get("limit") ?? "100"), 1), 100);
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("operations_collection_artifact_v")
       .select("*")
       .eq("company_id", resolved.company.id)
       .eq("artifact_kind", "REPORT_FILE")
-      .eq("artifact_status", status)
       .order("created_at", { ascending: false })
       .limit(limit);
+
+    if (status) {
+      query = query.eq("artifact_status", status);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       return NextResponse.json({ error: error.message, rows: [] }, { status: 500 });
