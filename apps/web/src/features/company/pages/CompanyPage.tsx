@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useParams, usePathname } from "next/navigation";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import { useAccess } from "@/features/access/AccessProvider";
 import { useLob } from "@/features/lob/hooks/useLob";
 import CompanyConfigWorkspace, { type CompanyConfigSection } from "@/features/company/config/CompanyConfigWorkspace";
@@ -88,6 +88,7 @@ export default function CompanyPage() {
   const access = useAccess();
   const lob = useLob();
   const pathname = usePathname() ?? "";
+  const router = useRouter();
   const slug = String(params?.slug ?? "");
 
   const [activeSurface, setActiveSurface] = useState<OverviewSurface>("profile");
@@ -114,6 +115,14 @@ export default function CompanyPage() {
   const canEditCompany =
     Boolean(access.is_platform_owner) ||
     (membership?.relationship_type === "admin" && membership?.membership_status === "active");
+
+  const isCompanyAdmin = canEditCompany;
+
+  useEffect(() => {
+    if (!access.loading && slug && pathname === `/company/${slug}` && !isCompanyAdmin) {
+      router.replace(`/company/${slug}/home`);
+    }
+  }, [access.loading, isCompanyAdmin, pathname, router, slug]);
 
   useEffect(() => {
     setActiveSurface(getSurfaceFromPath(pathname));

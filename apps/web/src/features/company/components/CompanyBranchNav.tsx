@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import IdentityPill from "@/features/access/components/IdentityPill";
+import { useAccess } from "@/features/access/AccessProvider";
 
 type CompanyBranchNavProps = {
   slug: string;
@@ -17,6 +18,11 @@ type NavItem = {
 export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const { slug } = props;
   const pathname = usePathname() ?? "";
+  const access = useAccess();
+  const membership = access.memberships.find((item) => item.company_slug === slug) ?? null;
+  const isAdminUser =
+    Boolean(access.is_platform_owner) ||
+    (membership?.relationship_type === "admin" && membership?.membership_status === "active");
 
   const base = `/company/${slug}`;
   const homeBase = `${base}/home`;
@@ -27,14 +33,19 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const configBase = `${base}/config`;
   const assetsBase = `${base}/assets`;
 
-  const mainItems: NavItem[] = [
-    { label: "Home", href: homeBase, match: (path) => path === homeBase || path.startsWith(announcementsBase) },
-    { label: "Admin", href: base, match: (path) => path === base || path.startsWith(configBase) || path.startsWith(assetsBase) },
-    { label: "Operations", href: operationsBase, match: (path) => path.startsWith(operationsBase) || path.startsWith(`${base}/dispatch`) },
-    { label: "Schedule", href: scheduleBase, match: (path) => path.startsWith(scheduleBase) },
-    { label: "People", href: peopleBase, match: (path) => path.startsWith(peopleBase) || path.startsWith(`${base}/hiring`) },
-    { label: "Routes", href: `${base}/routes`, match: (path) => path.startsWith(`${base}/routes`) },
-  ];
+  const mainItems: NavItem[] = isAdminUser
+    ? [
+        { label: "Home", href: homeBase, match: (path) => path === homeBase || path.startsWith(announcementsBase) },
+        { label: "Admin", href: base, match: (path) => path === base || path.startsWith(configBase) || path.startsWith(assetsBase) },
+        { label: "Operations", href: operationsBase, match: (path) => path.startsWith(operationsBase) || path.startsWith(`${base}/dispatch`) },
+        { label: "Schedule", href: scheduleBase, match: (path) => path.startsWith(scheduleBase) },
+        { label: "People", href: peopleBase, match: (path) => path.startsWith(peopleBase) || path.startsWith(`${base}/hiring`) },
+        { label: "Routes", href: `${base}/routes`, match: (path) => path.startsWith(`${base}/routes`) },
+      ]
+    : [
+        { label: "Home", href: homeBase, match: (path) => path === homeBase || path.startsWith(announcementsBase) },
+        { label: "Schedule", href: scheduleBase, match: (path) => path.startsWith(scheduleBase) },
+      ];
 
   const overviewSubItems: NavItem[] = [
     { label: "Profile", href: base, match: (path) => path === base },
@@ -106,25 +117,31 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const inConfigBranch = pathname === configBase || pathname.startsWith(`${configBase}/`);
   const inAssetsBranch = pathname === assetsBase || pathname.startsWith(`${assetsBase}/`);
 
-  const subItems = inHomeBranch
-    ? homeSubItems
-    : inAssetsBranch
-      ? assetsSubItems
-      : inConfigBranch
-        ? configSubItems
-        : pathname === base ||
-            pathname === `${base}/payroll` ||
-            pathname === `${base}/prior-day` ||
-            pathname === `${base}/analytics` ||
-            pathname === `${base}/readiness`
-          ? overviewSubItems
-          : inPeopleBranch
-            ? peopleSubItems
-            : inScheduleBranch
-              ? scheduleSubItems
-              : inOperationsBranch
-                ? operationsSubItems
-                : [];
+  const subItems = !isAdminUser
+    ? inHomeBranch
+      ? homeSubItems
+      : inScheduleBranch
+        ? [{ label: "My Schedule", href: scheduleBase, match: (path: string) => path === scheduleBase }]
+        : []
+    : inHomeBranch
+      ? homeSubItems
+      : inAssetsBranch
+        ? assetsSubItems
+        : inConfigBranch
+          ? configSubItems
+          : pathname === base ||
+              pathname === `${base}/payroll` ||
+              pathname === `${base}/prior-day` ||
+              pathname === `${base}/analytics` ||
+              pathname === `${base}/readiness`
+            ? overviewSubItems
+            : inPeopleBranch
+              ? peopleSubItems
+              : inScheduleBranch
+                ? scheduleSubItems
+                : inOperationsBranch
+                  ? operationsSubItems
+                  : [];
 
   return (
     <nav className="app-nav-shell" aria-label="Company workspace">
