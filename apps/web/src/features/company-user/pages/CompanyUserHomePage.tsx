@@ -8,9 +8,6 @@ type ScheduleRow = {
   roster_member_id: string;
   profile_id?: string | null;
   full_name?: string | null;
-  worker_type?: string | null;
-  employment_status?: string | null;
-  market_code?: string | null;
   default_route_s?: string | null;
   default_route_u?: string | null;
   default_route_m?: string | null;
@@ -21,12 +18,6 @@ type ScheduleRow = {
   schedule_pending?: boolean | null;
 };
 
-type ForecastDay = {
-  iso: string;
-  label: string;
-  route: string | null;
-  status: "scheduled" | "off" | "pending";
-};
 
 const routeByDayKey: Record<number, keyof ScheduleRow> = {
   0: "default_route_s",
@@ -38,56 +29,26 @@ const routeByDayKey: Record<number, keyof ScheduleRow> = {
   6: "default_route_u",
 };
 
-function isoDate(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function dayLabel(date: Date) {
-  return date.toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
+function todayLongLabel() {
+  return new Date().toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
     day: "numeric",
   });
 }
 
-function buildForecast(row: ScheduleRow | null): ForecastDay[] {
-  const today = new Date();
-
-  return Array.from({ length: 14 }).map((_, index) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() + index);
-
-    if (!row || row.schedule_pending) {
-      return {
-        iso: isoDate(date),
-        label: dayLabel(date),
-        route: null,
-        status: "pending",
-      };
-    }
-
-    const routeKey = routeByDayKey[date.getDay()];
-    const rawRoute = row[routeKey];
-    const route = typeof rawRoute === "string" && rawRoute.trim() ? rawRoute.trim() : null;
-
-    return {
-      iso: isoDate(date),
-      label: dayLabel(date),
-      route,
-      status: route ? "scheduled" : "off",
-    };
-  });
+function greeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
 }
 
-function StatusPill(props: { status: ForecastDay["status"] }) {
-  const label =
-    props.status === "scheduled"
-      ? "Scheduled"
-      : props.status === "off"
-        ? "Off"
-        : "Pending";
-
-  return <span className="app-nav-pill" style={{ fontSize: 12 }}>{label}</span>;
+function getTodayRoute(row: ScheduleRow | null) {
+  if (!row || row.schedule_pending) return null;
+  const routeKey = routeByDayKey[new Date().getDay()];
+  const rawRoute = row[routeKey];
+  return typeof rawRoute === "string" && rawRoute.trim() ? rawRoute.trim() : null;
 }
 
 export default function CompanyUserHomePage() {
@@ -118,7 +79,7 @@ export default function CompanyUserHomePage() {
 
         if (!res.ok) {
           setRows([]);
-          setPageError(data?.error ?? "Schedule forecast is not available yet.");
+          setPageError(data?.error ?? "Schedule is not available yet.");
           return;
         }
 
@@ -126,7 +87,7 @@ export default function CompanyUserHomePage() {
       } catch {
         if (!active) return;
         setRows([]);
-        setPageError("Schedule forecast is not available yet.");
+        setPageError("Schedule is not available yet.");
       } finally {
         if (active) setLoading(false);
       }
@@ -141,96 +102,87 @@ export default function CompanyUserHomePage() {
 
   const myScheduleRow = useMemo(() => {
     if (!access.profile_id) return null;
-
     return rows.find((row) => row.profile_id === access.profile_id) ?? null;
   }, [access.profile_id, rows]);
 
-  const forecast = useMemo(() => buildForecast(myScheduleRow), [myScheduleRow]);
+  const todayRoute = getTodayRoute(myScheduleRow);
 
   const displayName =
     access.display_name ||
-    [access.first_name, access.last_name].filter(Boolean).join(" ") ||
+    access.first_name ||
     access.email ||
-    "Company user";
+    "there";
 
   return (
     <main className="workspace-shell">
-      <section className="workspace-main" style={{ paddingTop: 0, paddingBottom: 24 }}>
-        <section className="app-card" style={{ padding: 16, marginBottom: 10 }}>
-          <p className="value-card__eyebrow">Company home</p>
-          <h1 className="workspace-title">Welcome, {displayName}</h1>
-          <p className="app-card__body" style={{ marginTop: 6 }}>
-            This is your company landing page. Announcements, schedule visibility, and basic profile items will live here.
-          </p>
+      <section className="workspace-main company-user-home">
+        <section className="company-user-hero">
+          <div>
+            <p className="value-card__eyebrow">{todayLongLabel()}</p>
+            <h1 className="workspace-title">{greeting()}, {displayName}</h1>
+          </div>
         </section>
 
         {pageError ? (
-          <section className="app-card" style={{ padding: 14, marginBottom: 10 }}>
+          <section className="app-card company-user-card">
             <p style={{ color: "#c62828", margin: 0 }}>{pageError}</p>
           </section>
         ) : null}
 
-        <section
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1.35fr) minmax(320px, .65fr)",
-            gap: 10,
-            alignItems: "start",
-          }}
-        >
-          <section className="app-card" style={{ padding: 14 }}>
-            <p className="value-card__eyebrow">My schedule</p>
-            <h2 className="app-card__title">14-day forecast</h2>
-            <p className="app-card__body" style={{ marginTop: 4 }}>
-              Drawn from the current baseline schedule. Time-off requests will land here later.
-            </p>
+        <section className="app-card company-user-card company-user-today">
+          <p className="value-card__eyebrow">Today</p>
 
-            <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-              {loading ? (
-                <p className="app-card__body">Loading schedule forecast...</p>
-              ) : (
-                forecast.map((day) => (
-                  <div
-                    key={day.iso}
-                    className="context-stat"
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "120px minmax(0, 1fr) auto",
-                      gap: 10,
-                      alignItems: "center",
-                    }}
-                  >
-                    <strong>{day.label}</strong>
-                    <span>{day.route ?? (day.status === "pending" ? "Schedule pending" : "Not scheduled")}</span>
-                    <StatusPill status={day.status} />
-                  </div>
-                ))
-              )}
+          <div className="company-user-action">
+            <div>
+              <span>Start time</span>
+              <strong>8:00 AM</strong>
             </div>
-          </section>
 
-          <aside style={{ display: "grid", gap: 10 }}>
-            <section className="app-card" style={{ padding: 14 }}>
-              <p className="value-card__eyebrow">Announcements</p>
-              <h2 className="app-card__title">Message board</h2>
-              <p className="app-card__body" style={{ marginTop: 4 }}>
-                Company-wide announcements and operational reminders will surface here.
-              </p>
-              <div className="cta-row" style={{ marginTop: 12 }}>
-                <a className="button" href={`/company/${slug}/announcements`}>
-                  View announcements
-                </a>
-              </div>
-            </section>
+            <button type="button" className="button button-primary">
+              Clock in
+            </button>
+          </div>
 
-            <section className="app-card" style={{ padding: 14 }}>
-              <p className="value-card__eyebrow">My profile</p>
-              <h2 className="app-card__title">Access posture</h2>
+          <div className="company-user-today-grid">
+            <div>
+              <span>Route</span>
+              <strong>{loading ? "Loading..." : todayRoute ?? "Not assigned"}</strong>
+            </div>
+            <div>
+              <span>Planned volume</span>
+              <strong>Pending</strong>
+            </div>
+          </div>
+        </section>
+
+        <section className="app-card company-user-card">
+          <div className="company-user-card-head">
+            <div>
+              <p className="value-card__eyebrow">My schedule</p>
+              <h2 className="app-card__title">
+                {loading ? "Loading..." : todayRoute ? "You are scheduled today" : "No shift scheduled today"}
+              </h2>
               <p className="app-card__body" style={{ marginTop: 4 }}>
-                Profile, company membership, and app access status will continue to mature here.
+                {todayRoute ? `Route ${todayRoute}` : "Open your schedule to review upcoming shifts."}
               </p>
-            </section>
-          </aside>
+            </div>
+
+            <a className="button" href={`/company/${slug}/schedule`}>
+              View schedule
+            </a>
+          </div>
+        </section>
+
+        <section className="app-card company-user-card">
+          <p className="value-card__eyebrow">Updates</p>
+          <h2 className="app-card__title">No announcements</h2>
+          <p className="app-card__body">Company messages and dispatch reminders will show here.</p>
+        </section>
+
+        <section className="app-card company-user-card">
+          <p className="value-card__eyebrow">My profile</p>
+          <h2 className="app-card__title">Access active</h2>
+          <p className="app-card__body">Your company access is ready.</p>
         </section>
       </section>
     </main>
