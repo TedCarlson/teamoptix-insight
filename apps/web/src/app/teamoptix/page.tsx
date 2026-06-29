@@ -6,7 +6,7 @@ import {
   WorkspaceSection,
 } from "@/features/ui/workspace";
 import { SignalList } from "@/features/ui/signals";
-import { teamOptixCommandCenterSections } from "@/features/teamoptix/registry";
+import { commandCenterSections, engineeringSections, productSections } from "@/features/teamoptix/registry";
 
 export default function TeamOptixCommandCenterPage() {
   return (
@@ -16,7 +16,7 @@ export default function TeamOptixCommandCenterPage() {
           <WorkspaceHeader eyebrow="TeamOptix" title="Command Center" />
 
           <section className="teamoptix-console">
-            {teamOptixCommandCenterSections.map((section) => (
+            {[...commandCenterSections, ...productSections, ...engineeringSections].map((section) => (
               <WorkspaceSection
                 key={section.key}
                 eyebrow={section.eyebrow}
