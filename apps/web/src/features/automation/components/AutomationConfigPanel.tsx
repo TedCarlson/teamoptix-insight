@@ -136,6 +136,34 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
   const successCount = runs.filter((run) => run.status === "SUCCESS").length;
   const failedCount = runs.filter((run) => run.status === "FAILED").length;
   const enabledCount = scheduleRows.filter((row) => row.is_enabled && row.window_preset !== "OFF").length;
+
+  const reportSeams = ["DSW", "FCC"].map((family) => {
+    const run = runs.find((item) => item.automation_type === family) ?? null;
+    const artifact = artifacts.find((item) => item.report_family_key === family) ?? null;
+    const request = collectionRequests.find((item) => item.requested_reports?.includes(family)) ?? null;
+    const batchId = run?.batch_id ?? artifact?.report_batch_id ?? null;
+    const errorMessage = artifact?.error_message ?? run?.error_message ?? request?.error_message ?? null;
+
+    const ingestStatus =
+      artifact?.artifact_status === "INGESTED" || run?.status === "SUCCESS"
+        ? "Success"
+        : artifact?.artifact_status === "FAILED" || run?.status === "FAILED"
+          ? "Failed"
+          : artifact?.artifact_status === "INGESTING"
+            ? "Ingesting"
+            : "Pending";
+
+    return {
+      family,
+      collectionStatus: request?.request_status ?? "—",
+      artifactStatus: artifact?.artifact_status ?? "—",
+      ingestStatus,
+      warehouseStatus: batchId ? "Updated" : "Pending",
+      duration: formatDuration(run?.duration_ms),
+      runtime: formatTime(artifact?.updated_at ?? run?.completed_at ?? run?.started_at),
+      notes: errorMessage ?? (run ? `${run.inserted_rows ?? "—"} rows · ${run.matched_rows ?? "—"}/${run.unmatched_rows ?? "—"} match` : "—"),
+    };
+  });
   async function queueProtectedCollectionRequest(draft: CollectionOrderDraft) {
     try {
       setQueueingRequest(draft.request_type);
@@ -425,33 +453,28 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
             <thead>
               <tr style={{ color: "#64748b", textAlign: "left" }}>
                 <th style={th}>Report</th>
-                <th style={th}>Run</th>
-                <th style={th}>Run Status</th>
+                <th style={th}>Collection</th>
                 <th style={th}>Artifact</th>
-                <th style={th}>Rows</th>
-                <th style={th}>Match</th>
-                <th style={th}>Batch</th>
-                <th style={th}>Error</th>
+                <th style={th}>Ingest</th>
+                <th style={th}>Warehouse</th>
+                <th style={th}>Duration</th>
+                <th style={th}>Runtime</th>
+                <th style={th}>Notes</th>
               </tr>
             </thead>
             <tbody>
-              {["DSW", "FCC"].map((family) => {
-                const run = runs.find((item) => item.automation_type === family) ?? null;
-                const artifact = artifacts.find((item) => item.report_family_key === family) ?? null;
-
-                return (
-                  <tr key={family}>
-                    <td style={td}>{family}</td>
-                    <td style={td}>{formatTime(run?.started_at)}</td>
-                    <td style={td}>{run?.status ?? "—"}</td>
-                    <td style={td}>{artifact?.artifact_status ?? "—"}</td>
-                    <td style={td}>{run?.inserted_rows ?? "—"}</td>
-                    <td style={td}>{run?.matched_rows ?? "—"} / {run?.unmatched_rows ?? "—"}</td>
-                    <td style={td}>{run?.batch_id ? run.batch_id.slice(0, 8) : artifact?.report_batch_id ? artifact.report_batch_id.slice(0, 8) : "—"}</td>
-                    <td style={td}>{artifact?.error_message ?? run?.error_message ?? "—"}</td>
-                  </tr>
-                );
-              })}
+              {reportSeams.map((row) => (
+                <tr key={row.family}>
+                  <td style={td}>{row.family}</td>
+                  <td style={td}>{row.collectionStatus}</td>
+                  <td style={td}>{row.artifactStatus}</td>
+                  <td style={td}>{row.ingestStatus}</td>
+                  <td style={td}>{row.warehouseStatus}</td>
+                  <td style={td}>{row.duration}</td>
+                  <td style={td}>{row.runtime}</td>
+                  <td style={td}>{row.notes}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
