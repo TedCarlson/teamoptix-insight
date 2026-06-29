@@ -47,7 +47,7 @@ export function buildTeamOptixMenu(): AppMenuSection[] {
     },
     {
       key: "operations",
-      label: "Operating System",
+      label: "Platform",
       items: [
         {
           key: "engineering",
@@ -70,6 +70,22 @@ export function buildTeamOptixMenu(): AppMenuSection[] {
           ],
         },
         {
+          key: "ai",
+          label: "AI",
+          href: "/teamoptix/ai",
+          children: [
+            { key: "ai-prompts", label: "Prompt Library", href: "/teamoptix/ai/prompts" },
+            { key: "ai-assistants", label: "Assistants", href: "/teamoptix/ai/assistants" },
+            { key: "ai-evals", label: "Evaluations", href: "/teamoptix/ai/evaluations" },
+          ],
+        },
+      ],
+    },
+    {
+      key: "business",
+      label: "Business",
+      items: [
+        {
           key: "business",
           label: "Business",
           href: "/teamoptix/business",
@@ -78,16 +94,6 @@ export function buildTeamOptixMenu(): AppMenuSection[] {
             { key: "business-marketing", label: "Marketing", href: "/teamoptix/business/marketing" },
             { key: "business-contracts", label: "Contracts", href: "/teamoptix/business/contracts" },
             { key: "business-legal", label: "Legal", href: "/teamoptix/business/legal" },
-          ],
-        },
-        {
-          key: "ai",
-          label: "AI",
-          href: "/teamoptix/ai",
-          children: [
-            { key: "ai-prompts", label: "Prompt Library", href: "/teamoptix/ai/prompts" },
-            { key: "ai-assistants", label: "Assistants", href: "/teamoptix/ai/assistants" },
-            { key: "ai-evals", label: "Evaluations", href: "/teamoptix/ai/evaluations" },
           ],
         },
       ],
