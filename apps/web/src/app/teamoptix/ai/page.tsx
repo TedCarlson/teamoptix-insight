@@ -1,11 +1,13 @@
-import TeamOptixWorkspaceStub from "@/features/teamoptix/shared/TeamOptixWorkspaceStub";
+import TeamOptixWorkspacePage from "@/features/teamoptix/shared/TeamOptixWorkspacePage";
+import { aiSections } from "@/features/teamoptix/registry";
 
 export default function Page() {
   return (
-    <TeamOptixWorkspaceStub
+    <TeamOptixWorkspacePage
       eyebrow="TeamOptix · AI"
       title="AI"
       description="Assistants, prompts, evaluations, and operating intelligence."
+      sections={aiSections}
     />
   );
 }
