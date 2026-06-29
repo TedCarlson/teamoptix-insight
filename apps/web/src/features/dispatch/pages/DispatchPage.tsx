@@ -13,23 +13,32 @@ import {
   type GeneratedScheduleRow,
   type RouteRow,
   type Seat,
-  classifyPerson,
   cleanRouteKey,
-  compactButton,
-  eyebrow,
-  getReversedDispatchEventIds,
   panel,
-  panelHeader,
-  personFromRow,
-  personSort,
-  personTypeLabel,
-  routeLabel,
-  routeRowBase,
-  seatButtonBase,
-  selectedButton,
-  runFlagForDate,
   todayIso,
 } from "../lib/dispatchSupport";
+import { addDaysIso, isoDateOffset } from "../lib/dispatchDates";
+import {
+  buildAssignmentMapFromRoutesAndEvents,
+  removePersonFromRoute,
+} from "../lib/dispatchEventReducer";
+import {
+  buildAllPeople,
+  buildArrivedPersonIds,
+  buildAssignedIds,
+  buildAvailableRoutes,
+  buildCallouts,
+  buildDispatchSummary,
+  buildDroPlanByWa,
+  buildHydratedRoutes,
+  buildPlanningRoutes,
+  buildScheduledRosterIds,
+  buildUnscheduledDrivers,
+  buildWorkforce,
+  createRouteSorter,
+  findUnscheduledDriverCandidates,
+  orderedRouteLabel,
+} from "../lib/dispatchSelectors";
 import { buildDroPlanSignals, type DroPlanRow } from "../lib/droPlanSignals";
 import {
   buildDswDispatchSignals,
@@ -42,142 +51,6 @@ import { DispatchEventOverlay } from "../components/DispatchEventOverlay";
 import { DispatchRightRail } from "../components/DispatchRightRail";
 import { DispatchRouteQueue } from "../components/DispatchRouteQueue";
 import { DispatchWorkforceRail } from "../components/DispatchWorkforceRail";
-
-function dispatchPersonFromEvent(event: DispatchEventRow): DispatchPerson | null {
-  if (!event.person_roster_member_id || !event.person_name) return null;
-
-  return {
-    roster_member_id: event.person_roster_member_id,
-    full_name: event.person_name,
-    worker_type: null,
-    source_kind: "DISPATCH_EVENT",
-    override_type: null,
-  };
-}
-
-function addDaysIso(value: string, days: number) {
-  const date = new Date(`${value}T00:00:00`);
-  date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
-function removePersonFromRoute(route: DispatchRoute, rosterMemberId: string): DispatchRoute {
-  return {
-    ...route,
-    driver:
-      route.driver?.roster_member_id === rosterMemberId ? null : route.driver,
-    helpers: route.helpers.filter((person) => person.roster_member_id !== rosterMemberId),
-    trainees: route.trainees.filter((person) => person.roster_member_id !== rosterMemberId),
-    extras: route.extras.filter((person) => person.roster_member_id !== rosterMemberId),
-  };
-}
-
-function applyDispatchEvent(
-  current: Record<string, DispatchRoute>,
-  event: DispatchEventRow
-): Record<string, DispatchRoute> {
-  const code = event.event_code;
-  const routeKey = event.route_key ?? event.to_route_key ?? null;
-  const seat = event.seat as Seat | null;
-  const person = dispatchPersonFromEvent(event);
-
-  if (code === "ADD_ROUTE") {
-    if (!routeKey) return current;
-    if (current[routeKey]) return current;
-
-    const payload = event.event_payload ?? {};
-
-    return {
-      ...current,
-      [routeKey]: {
-        route_key: routeKey,
-        route_name:
-          typeof payload.route_name === "string"
-            ? payload.route_name
-            : event.route_label ?? routeKey,
-        current_wa_num:
-          typeof payload.current_wa_num === "string" ? payload.current_wa_num : null,
-        route_location:
-          typeof payload.route_location === "string" ? payload.route_location : null,
-        route_type:
-          typeof payload.route_type === "string" ? payload.route_type : "ADDED",
-        driver: null,
-        helpers: [],
-        trainees: [],
-        extras: [],
-      },
-    };
-  }
-
-  if (code === "REMOVE_ROUTE") {
-    if (!routeKey || !current[routeKey]) return current;
-
-    const next = { ...current };
-    delete next[routeKey];
-    return next;
-  }
-
-  if (!seat) return current;
-
-  if (code.startsWith("ASSIGN_")) {
-    if (!routeKey || !person || !current[routeKey]) return current;
-
-    const next: Record<string, DispatchRoute> = {};
-
-    for (const [key, route] of Object.entries(current)) {
-      next[key] = removePersonFromRoute(route, person.roster_member_id);
-    }
-
-    const target = next[routeKey];
-    if (!target) return current;
-
-    if (seat === "driver") {
-      if (target.driver) target.extras = [...target.extras, target.driver];
-      target.driver = person;
-    }
-
-    if (seat === "helper") {
-      target.helpers = [...target.helpers, person];
-    }
-
-    if (seat === "trainee") {
-      target.trainees = [...target.trainees, person];
-    }
-
-    next[routeKey] = target;
-    return next;
-  }
-
-  if (code.startsWith("UNASSIGN_")) {
-    if (!routeKey || !current[routeKey]) return current;
-
-    const target = current[routeKey];
-    const nextRoute: DispatchRoute = { ...target };
-
-    if (person) {
-      const cleaned = removePersonFromRoute(nextRoute, person.roster_member_id);
-      return { ...current, [routeKey]: cleaned };
-    }
-
-    if (seat === "driver") nextRoute.driver = null;
-    if (seat === "helper") nextRoute.helpers = [];
-    if (seat === "trainee") nextRoute.trainees = [];
-
-    return { ...current, [routeKey]: nextRoute };
-  }
-
-  return current;
-}
-
-
-
-function isoDateOffset(dateText: string, days: number) {
-  const [year, month, day] = dateText.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
 
 export default function DispatchPage() {
   const params = useParams();
@@ -208,75 +81,28 @@ export default function DispatchPage() {
   const planningDate = addDaysIso(serviceDate, 1);
   const dispatchLocked = dispatchDay?.status === "LOCKED";
 
-  const arrivedPersonIds = useMemo(() => {
-    const latest = new Map<string, boolean>();
-
-    const orderedEvents = [...dispatchEvents].sort((a, b) =>
-      a.created_at.localeCompare(b.created_at)
-    );
-
-    for (const event of orderedEvents) {
-      const personId = event.person_roster_member_id;
-      if (!personId) continue;
-
-      if (event.event_code === "ARRIVED") latest.set(personId, true);
-      if (event.event_code === "UNDO_ARRIVED") latest.set(personId, false);
-    }
-
-    return new Set(
-      [...latest.entries()]
-        .filter(([, arrived]) => arrived)
-        .map(([personId]) => personId)
-    );
-  }, [dispatchEvents]);
+  const arrivedPersonIds = useMemo(
+    () => buildArrivedPersonIds(dispatchEvents),
+    [dispatchEvents]
+  );
 
   const [routeSortKey, setRouteSortKey] =
     useState<"route_name" | "current_wa_num">("route_name");
-  const routeSort = useCallback(
-    (a: DispatchRoute, b: DispatchRoute) => {
-      const valueA =
-        routeSortKey === "current_wa_num"
-          ? a.current_wa_num || a.route_name || a.route_key
-          : a.route_name || a.current_wa_num || a.route_key;
-
-      const valueB =
-        routeSortKey === "current_wa_num"
-          ? b.current_wa_num || b.route_name || b.route_key
-          : b.route_name || b.current_wa_num || b.route_key;
-
-      return valueA.localeCompare(valueB, undefined, {
-        numeric: true,
-        sensitivity: "base",
-      });
-    },
+  const routeSort = useMemo(
+    () => createRouteSorter(routeSortKey),
     [routeSortKey]
   );
 
   
-  const droPlanByWa = useMemo(() => {
-    const map = new Map<string, DroPlanRow>();
-
-    for (const row of droPlanRows) {
-      if (row.wa_number) map.set(row.wa_number, row);
-      if (row.route_name) map.set(row.route_name.toLowerCase(), row);
-    }
-
-    return map;
-  }, [droPlanRows]);
+  const droPlanByWa = useMemo(
+    () => buildDroPlanByWa(droPlanRows),
+    [droPlanRows]
+  );
 
 
 
-const orderedRouteLabel = useCallback(
-    (route: DispatchRoute) => {
-      const routeName = route.route_name?.trim() ?? "";
-      const workArea = route.current_wa_num?.trim() ?? "";
-
-      if (routeSortKey === "current_wa_num") {
-        return [workArea, routeName].filter(Boolean).join(" · ") || route.route_key;
-      }
-
-      return [routeName, workArea].filter(Boolean).join(" · ") || route.route_key;
-    },
+  const orderedRouteLabelForSort = useCallback(
+    (route: DispatchRoute) => orderedRouteLabel(route, routeSortKey),
     [routeSortKey]
   );
 
@@ -447,82 +273,19 @@ const orderedRouteLabel = useCallback(
     };
   }, [refreshKey, serviceDate, slug]);
 
-  const hydratedRoutes = useMemo(() => {
-    const runFlag = runFlagForDate(serviceDate);
-    const routeMap = new Map<string, DispatchRoute>();
-
-    for (const route of routes) {
-      if (!route[runFlag as keyof RouteRow]) continue;
-
-      const key = cleanRouteKey(route.current_wa_num || route.route_name);
-
-      routeMap.set(key, {
-        route_key: key,
-        route_name: route.route_name?.trim() || key,
-        current_wa_num: route.current_wa_num,
-        route_location: route.route_location,
-        route_type: route.route_type,
-        driver: null,
-        helpers: [],
-        trainees: [],
-        extras: [],
-      });
-    }
-
-    for (const row of scheduleRows) {
-      if (row.service_date !== serviceDate || !row.planned_on) continue;
-
-      const rawRouteName = row.route_name?.trim();
-      if (!rawRouteName) continue;
-
-      const key = cleanRouteKey(rawRouteName);
-
-      const route = routeMap.get(key);
-      if (!route) continue;
-
-      const person = personFromRow(row);
-      const seat = classifyPerson(row);
-
-      if (seat === "helper") {
-        route.helpers.push(person);
-      } else if (seat === "trainee") {
-        route.trainees.push(person);
-      } else if (!route.driver) {
-        route.driver = person;
-      } else {
-        route.extras.push(person);
-      }
-    }
-
-    return Array.from(routeMap.values()).sort(routeSort);
-  }, [routes, routeSort, scheduleRows, serviceDate]);
+  const hydratedRoutes = useMemo(
+    () =>
+      buildHydratedRoutes({
+        routes,
+        scheduleRows,
+        serviceDate,
+        routeSort,
+      }),
+    [routes, routeSort, scheduleRows, serviceDate]
+  );
 
   useEffect(() => {
-    let next: Record<string, DispatchRoute> = {};
-
-    for (const route of hydratedRoutes) {
-      next[route.route_key] = {
-        ...route,
-        helpers: [...route.helpers],
-        trainees: [...route.trainees],
-        extras: [...route.extras],
-      };
-    }
-
-    const orderedEvents = [...dispatchEvents].sort((a, b) =>
-      a.created_at.localeCompare(b.created_at)
-    );
-
-    const reversedEventIds = getReversedDispatchEventIds(orderedEvents);
-
-    for (const event of orderedEvents) {
-      if (reversedEventIds.has(event.id)) continue;
-      if (event.event_code.startsWith("UNDO_")) continue;
-
-      next = applyDispatchEvent(next, event);
-    }
-
-    setAssignments(next);
+    setAssignments(buildAssignmentMapFromRoutesAndEvents(hydratedRoutes, dispatchEvents));
     setIntent(null);
   }, [hydratedRoutes, dispatchEvents]);
 
@@ -541,233 +304,86 @@ const orderedRouteLabel = useCallback(
     [dispatchRoutes, dswRows]
   );
 
-  const scheduledRosterIds = useMemo(() => {
-    const ids = new Set<string>();
+  const scheduledRosterIds = useMemo(
+    () => buildScheduledRosterIds(scheduleRows, serviceDate),
+    [scheduleRows, serviceDate]
+  );
 
-    for (const row of scheduleRows) {
-      if (row.service_date !== serviceDate) continue;
-      ids.add(row.roster_member_id);
-    }
+  const allPeople = useMemo(
+    () =>
+      buildAllPeople({
+        scheduleRows,
+        dispatchEvents,
+        serviceDate,
+      }),
+    [dispatchEvents, scheduleRows, serviceDate]
+  );
 
-    return ids;
-  }, [scheduleRows, serviceDate]);
-
-  const allPeople = useMemo(() => {
-    const byId = new Map<string, DispatchPerson>();
-
-    for (const row of scheduleRows) {
-      if (row.service_date !== serviceDate || !row.planned_on) continue;
-      const person = personFromRow(row);
-      byId.set(person.roster_member_id, person);
-    }
-
-    const reversedEventIds = getReversedDispatchEventIds(dispatchEvents);
-
-    for (const event of dispatchEvents) {
-      if (reversedEventIds.has(event.id)) continue;
-      if (event.event_code.startsWith("UNDO_")) continue;
-      if (event.event_code !== "ADD_DRIVER") continue;
-
-      const person = dispatchPersonFromEvent(event);
-      if (!person) continue;
-      byId.set(person.roster_member_id, {
-        ...person,
-        source_kind: "DISPATCH_ADD_DRIVER",
-      });
-    }
-
-    return Array.from(byId.values()).sort(personSort);
-  }, [dispatchEvents, scheduleRows, serviceDate]);
-
-  const callouts = useMemo(() => {
-    const byId = new Map<string, DispatchPerson>();
-
-    for (const row of scheduleRows) {
-      if (row.service_date !== serviceDate) continue;
-      if (row.override_type !== "CALL_OUT") continue;
-
-      const person = personFromRow(row);
-      byId.set(person.roster_member_id, person);
-    }
-
-    const reversedEventIds = getReversedDispatchEventIds(dispatchEvents);
-
-    for (const event of dispatchEvents) {
-      if (reversedEventIds.has(event.id)) continue;
-      if (event.event_code.startsWith("UNDO_")) continue;
-      if (event.event_code !== "CALL_OUT" && event.event_code !== "NO_SHOW") continue;
-
-      const person = dispatchPersonFromEvent(event);
-      if (!person) continue;
-
-      byId.set(person.roster_member_id, {
-        ...person,
-        source_kind: "DISPATCH_EVENT",
-        override_type: event.event_code,
-      });
-    }
-
-    return Array.from(byId.values()).sort(personSort);
-  }, [dispatchEvents, scheduleRows, serviceDate]);
+  const callouts = useMemo(
+    () =>
+      buildCallouts({
+        scheduleRows,
+        dispatchEvents,
+        serviceDate,
+      }),
+    [dispatchEvents, scheduleRows, serviceDate]
+  );
 
   const calloutIds = useMemo(
     () => new Set(callouts.map((person) => person.roster_member_id)),
     [callouts]
   );
 
-  const assignedIds = useMemo(() => {
-    const ids = new Set<string>();
+  const assignedIds = useMemo(
+    () => buildAssignedIds(dispatchRoutes, hydratedRoutes),
+    [dispatchRoutes, hydratedRoutes]
+  );
 
-    const visibleRouteKeys = new Set(
-      hydratedRoutes
-        .filter((route) => route.route_key !== "UNASSIGNED")
-        .map((route) => route.route_key)
-    );
+  const workforce = useMemo(
+    () =>
+      buildWorkforce({
+        allPeople,
+        assignedIds,
+        calloutIds,
+      }),
+    [allPeople, assignedIds, calloutIds]
+  );
 
-    for (const route of dispatchRoutes) {
-      if (!visibleRouteKeys.has(route.route_key)) continue;
+  const unscheduledDrivers = useMemo(
+    () =>
+      buildUnscheduledDrivers({
+        allPeople,
+        rosterRows,
+        scheduledRosterIds,
+      }),
+    [allPeople, rosterRows, scheduledRosterIds]
+  );
 
-      if (route.driver) ids.add(route.driver.roster_member_id);
-      for (const person of route.helpers) ids.add(person.roster_member_id);
-      for (const person of route.trainees) ids.add(person.roster_member_id);
-      for (const person of route.extras) ids.add(person.roster_member_id);
-    }
+  const availableRoutes = useMemo(
+    () =>
+      buildAvailableRoutes({
+        dispatchRoutes,
+        routes,
+        routeSort,
+      }),
+    [dispatchRoutes, routeSort, routes]
+  );
 
-    return ids;
-  }, [dispatchRoutes, hydratedRoutes]);
+  const planningRoutes = useMemo(
+    () =>
+      buildPlanningRoutes({
+        droPlanRows,
+        planningDate,
+        routeSort,
+        routes,
+      }),
+    [droPlanRows, planningDate, routeSort, routes]
+  );
 
-  const workforce = useMemo(() => {
-    const available = allPeople.filter(
-      (person) =>
-        !assignedIds.has(person.roster_member_id) &&
-        !calloutIds.has(person.roster_member_id)
-    );
-    const drivers = allPeople.filter((person) => {
-      const label = personTypeLabel(person).toLowerCase();
-      return !label.includes("helper") && !label.includes("trainee");
-    });
-    const helpers = allPeople.filter((person) =>
-      personTypeLabel(person).toLowerCase().includes("helper")
-    );
-    const trainees = allPeople.filter((person) =>
-      personTypeLabel(person).toLowerCase().includes("trainee")
-    );
-
-    return {
-      available,
-      drivers,
-      helpers,
-      trainees,
-    };
-  }, [allPeople, assignedIds, calloutIds]);
-
-  const unscheduledDrivers = useMemo(() => {
-    const scheduledOrAdded = new Set(allPeople.map((person) => person.roster_member_id));
-
-    return rosterRows
-      .filter((row) => !scheduledRosterIds.has(row.roster_member_id))
-      .filter((row) => !scheduledOrAdded.has(row.roster_member_id))
-      .filter((row) => {
-        const status = (row.employment_status ?? "").toLowerCase();
-        if (status && status !== "active") return false;
-
-        const worker = `${row.worker_type ?? ""} ${row.full_name ?? ""}`.toLowerCase();
-        return !worker.includes("helper") && !worker.includes("trainee");
-      })
-      .map((row) => ({
-        roster_member_id: row.roster_member_id,
-        full_name: row.full_name?.trim() || "Unnamed driver",
-        worker_type: row.worker_type,
-        source_kind: "ROSTER_UNSCHEDULED",
-        override_type: null,
-      }))
-      .sort(personSort);
-  }, [allPeople, rosterRows, scheduledRosterIds]);
-
-  const availableRoutes = useMemo(() => {
-    const assignedKeys = new Set(dispatchRoutes.map((route) => route.route_key));
-
-    return routes
-      .map((route) => {
-        const key = cleanRouteKey(route.current_wa_num || route.route_name);
-
-        return {
-          route_key: key,
-          route_name: route.route_name?.trim() || key,
-          current_wa_num: route.current_wa_num,
-          route_location: route.route_location,
-          route_type: route.route_type,
-          driver: null,
-          helpers: [],
-          trainees: [],
-          extras: [],
-        };
-      })
-      .filter((route) => !assignedKeys.has(route.route_key))
-      .sort(routeSort);
-  }, [dispatchRoutes, routeSort, routes]);
-
-  const planningRoutes = useMemo(() => {
-    if (droPlanRows.length > 0) {
-      return droPlanRows
-        .map((row) => {
-          const key = cleanRouteKey(row.wa_number || row.route_name);
-
-          return {
-            route_key: key,
-            route_name: row.route_name?.trim() || key,
-            current_wa_num: row.wa_number,
-            route_location: `${row.stops ?? 0} stops • ${row.packages ?? 0} pkgs`,
-            route_type: row.time_commits
-              ? `${row.time_commits} commits`
-              : "DRO forecast",
-            driver: null,
-            helpers: [],
-            trainees: [],
-            extras: [],
-          };
-        })
-        .sort(routeSort);
-    }
-
-    const runFlag = runFlagForDate(planningDate);
-
-    return routes
-      .filter((route) => Boolean(route[runFlag as keyof RouteRow]))
-      .map((route) => {
-        const key = cleanRouteKey(route.current_wa_num || route.route_name);
-
-        return {
-          route_key: key,
-          route_name: route.route_name?.trim() || key,
-          current_wa_num: route.current_wa_num,
-          route_location: route.route_location,
-          route_type: route.route_type,
-          driver: null,
-          helpers: [],
-          trainees: [],
-          extras: [],
-        };
-      })
-      .sort(routeSort);
-  }, [droPlanRows, planningDate, routeSort, routes]);
-
-  const summary = useMemo(() => {
-    const total = dispatchRoutes.length;
-    const withDriver = dispatchRoutes.filter((route) => route.driver).length;
-    const withoutDriver = total - withDriver;
-    const helpers = dispatchRoutes.reduce((sum, route) => sum + route.helpers.length, 0);
-    const trainees = dispatchRoutes.reduce((sum, route) => sum + route.trainees.length, 0);
-
-    return {
-      total,
-      withDriver,
-      withoutDriver,
-      helpers,
-      trainees,
-      available: workforce.available.length,
-    };
-  }, [dispatchRoutes, workforce.available.length]);
+  const summary = useMemo(
+    () => buildDispatchSummary(dispatchRoutes, workforce.available.length),
+    [dispatchRoutes, workforce.available.length]
+  );
 
 
   function openSeat(route: DispatchRoute, seat: Seat) {
@@ -775,7 +391,7 @@ const orderedRouteLabel = useCallback(
 
     setIntent({
       route_key: route.route_key,
-      route_label: orderedRouteLabel(route),
+      route_label: orderedRouteLabelForSort(route),
       seat,
     });
   }
@@ -837,27 +453,10 @@ const orderedRouteLabel = useCallback(
       const target = current[intent.route_key];
       if (!target) return current;
 
-      const removePerson = (route: DispatchRoute): DispatchRoute => ({
-        ...route,
-        driver:
-          route.driver?.roster_member_id === person.roster_member_id
-            ? null
-            : route.driver,
-        helpers: route.helpers.filter(
-          (item) => item.roster_member_id !== person.roster_member_id
-        ),
-        trainees: route.trainees.filter(
-          (item) => item.roster_member_id !== person.roster_member_id
-        ),
-        extras: route.extras.filter(
-          (item) => item.roster_member_id !== person.roster_member_id
-        ),
-      });
-
       const next: Record<string, DispatchRoute> = {};
 
       for (const [key, route] of Object.entries(current)) {
-        next[key] = removePerson(route);
+        next[key] = removePersonFromRoute(route, person.roster_member_id);
       }
 
       const updatedTarget = next[intent.route_key];
@@ -945,7 +544,7 @@ const orderedRouteLabel = useCallback(
             ? "Helper unassigned"
             : "Trainee unassigned",
       route_key: routeKey,
-      route_label: route ? orderedRouteLabel(route) : routeKey,
+      route_label: route ? orderedRouteLabelForSort(route) : routeKey,
       seat,
       person: removedPerson,
     });
@@ -1043,24 +642,11 @@ const orderedRouteLabel = useCallback(
   async function handleAddDriver() {
     if (dispatchLocked) return;
 
-    const scheduledOrAdded = new Set(allPeople.map((person) => person.roster_member_id));
-
-    const candidates = rosterRows
-      .filter((row) => !scheduledRosterIds.has(row.roster_member_id))
-      .filter((row) => !scheduledOrAdded.has(row.roster_member_id))
-      .filter((row) => {
-        const status = (row.employment_status ?? "").toLowerCase();
-        if (status && status !== "active") return false;
-
-        const worker = `${row.worker_type ?? ""} ${row.full_name ?? ""}`.toLowerCase();
-        return !worker.includes("helper") && !worker.includes("trainee");
-      })
-      .sort((a, b) =>
-        (a.full_name ?? "").localeCompare(b.full_name ?? "", undefined, {
-          numeric: true,
-          sensitivity: "base",
-        })
-      );
+    const candidates = findUnscheduledDriverCandidates({
+      allPeople,
+      rosterRows,
+      scheduledRosterIds,
+    });
 
     if (candidates.length === 0) {
       setError("No off-schedule roster drivers are available to add.");
@@ -1329,7 +915,7 @@ const orderedRouteLabel = useCallback(
             />
 
             <DispatchRouteQueue
-              routeLabelForDisplay={orderedRouteLabel}
+              routeLabelForDisplay={orderedRouteLabelForSort}
               routes={dispatchRoutes}
               totalRoutes={summary.total}
               loading={loading}
