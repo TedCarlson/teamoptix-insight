@@ -79,7 +79,7 @@ export type ProtectedCollectionType =
   | "TARGETED_RECOVERY";
 
 export type CollectionOrderDraft = {
-  request_type: ProtectedCollectionType | "OPERATIONS_FEED";
+  request_type: ProtectedCollectionType | "OPERATIONS_PULSE";
   service_date?: string | null;
   service_date_start?: string | null;
   service_date_end?: string | null;

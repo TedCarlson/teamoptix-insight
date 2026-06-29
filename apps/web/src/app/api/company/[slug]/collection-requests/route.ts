@@ -9,7 +9,7 @@ const ALLOWED_REQUEST_TYPES = new Set([
   "LAST_LOOK",
   "HISTORICAL_BACKFILL",
   "TARGETED_RECOVERY",
-  "OPERATIONS_FEED",
+  "OPERATIONS_PULSE",
 ]);
 
 function normalizeReports(value: unknown) {

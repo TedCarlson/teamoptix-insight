@@ -50,8 +50,8 @@ function isWithinWindow(currentMinutes: number, startTime: string | null | undef
 
 function buildRequestPayload(activeRows: any[]) {
   return {
-    source: "collection_center",
-    intent: "workday_refresh",
+    source: "automation_scheduler",
+    preset: "operations_pulse",
     request_origin: "automation_scheduler",
     cadence_minutes: Math.min(...activeRows.map((row) => Number(row.cadence_minutes) || 0)),
     windows: activeRows.map((row) => ({
@@ -81,7 +81,7 @@ async function companyHasRecentRequest(supabase: any, companySlug: string, caden
     .from("public.operations_collection_request_v")
     .select("created_at")
     .eq("company_slug", companySlug)
-    .eq("request_type", "OPERATIONS_FEED")
+    .eq("request_type", "OPERATIONS_PULSE")
     .order("created_at", { ascending: false })
     .limit(1);
 
@@ -162,7 +162,7 @@ export async function GET() {
         "create_operations_collection_request",
         {
           p_company_slug: companySlug,
-          p_request_type: "OPERATIONS_FEED",
+          p_request_type: "OPERATIONS_PULSE",
           p_requested_reports: requestReports,
           p_priority: 80,
           p_request_payload: buildRequestPayload(activeRows),
