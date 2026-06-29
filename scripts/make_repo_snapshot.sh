@@ -5,7 +5,7 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$ROOT"
 
 DATE="${1:-$(date +%Y%m%d-%H%M%S)}"
-OUTDIR="${OUTDIR:-./repo-snapshots}"
+OUTDIR="${OUTDIR:-$(dirname "$ROOT")/repo-snapshots/insight}"
 WORKDIR="$OUTDIR/repo-snapshot-$DATE"
 ZIP="$OUTDIR/teamoptix-insight-repo-$DATE.zip"
 
@@ -86,13 +86,13 @@ ls -lh "$ZIP"
 
 echo
 echo "Snapshot contents:"
-zipinfo -1 "$ZIP" | head -n 80
+zipinfo -1 "$ZIP" | awk 'NR <= 80 { print }'
 
 echo
 echo "Leak check..."
 if zipinfo -1 "$ZIP" | egrep -q '(^|/)\.env|(^|/)node_modules/|(^|/)\.git/|\.pem$|\.key$|\.p12$|\.pfx$|\.sqlite$|\.db$'; then
   echo "ERROR: snapshot may contain sensitive or bulky files."
-  zipinfo -1 "$ZIP" | egrep '(^|/)\.env|(^|/)node_modules/|(^|/)\.git/|\.pem$|\.key$|\.p12$|\.pfx$|\.sqlite$|\.db$' | head -n 200
+  zipinfo -1 "$ZIP" | egrep '(^|/)\.env|(^|/)node_modules/|(^|/)\.git/|\.pem$|\.key$|\.p12$|\.pfx$|\.sqlite$|\.db$' | awk 'NR <= 200 { print }'
   exit 1
 fi
 

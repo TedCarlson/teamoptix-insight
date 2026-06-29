@@ -1,8 +1,0 @@
-{
-  "crons": [
-    {
-      "path": "/api/cron/operations/artifact-ingest",
-      "schedule": "* * * * *"
-    }
-  ]
-}

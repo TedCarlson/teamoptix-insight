@@ -4,13 +4,15 @@ node_modules
 dist
 build
 coverage
+repo-snapshots/
+snapshots/
 .env
 .env.local
 .env.*.local
 .DS_Store
 *.log
+*.tsbuildinfo
 turbo
-snapshots/*.zip
 apps/web/.env.local
 
 # Automation runtime downloads
