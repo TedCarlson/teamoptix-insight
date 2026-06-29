@@ -66,7 +66,7 @@ function buildRequestPayload(activeRows: any[]) {
 
 async function companyHasActiveRequest(supabase: any, companyId: string) {
   const { data, error } = await supabase
-    .from("public.operations_collection_request_v")
+    .from("operations_collection_request_v")
     .select("id")
     .eq("company_id", companyId)
     .in("request_status", ACTIVE_REQUEST_STATUSES)
@@ -78,7 +78,7 @@ async function companyHasActiveRequest(supabase: any, companyId: string) {
 
 async function companyHasRecentRequest(supabase: any, companySlug: string, cadenceMinutes: number) {
   const { data, error } = await supabase
-    .from("public.operations_collection_request_v")
+    .from("operations_collection_request_v")
     .select("created_at")
     .eq("company_slug", companySlug)
     .eq("request_type", "OPERATIONS_PULSE")
