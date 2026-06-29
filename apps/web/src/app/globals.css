@@ -1248,3 +1248,21 @@ body {
 .company-subnav {
   display: none;
 }
+
+.teamoptix-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  width:min(1400px,calc(100% - 32px));
+  margin:16px auto 10px;
+}
+
+@media (max-width:760px){
+
+  .teamoptix-header{
+    width:calc(100% - 20px);
+    margin:12px auto 10px;
+  }
+
+}

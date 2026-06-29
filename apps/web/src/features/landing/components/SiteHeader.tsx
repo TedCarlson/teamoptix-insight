@@ -29,7 +29,7 @@ export default function SiteHeader() {
   return (
     <header className="site-header">
       <div className="site-header__inner">
-        <Link className="brand-mark" href={access.is_platform_owner ? "/command-center" : "/"}>
+        <Link className="brand-mark" href={access.is_platform_owner ? "/teamoptix" : "/"}>
           <span className="brand-mark__kicker">TeamOptix</span>
           <span className="brand-mark__name">Insight</span>
         </Link>
@@ -38,7 +38,7 @@ export default function SiteHeader() {
           <nav className="site-nav" aria-label="Primary">
             {access.is_platform_owner ? (
               <>
-                <NavLink href="/command-center">Command Center</NavLink>
+                <NavLink href="/teamoptix">Command Center</NavLink>
                 <NavLink href="/companies">Companies</NavLink>
                 <NavLink href="/commercial">Commercial</NavLink>
                 <NavLink href="/configuration">Configuration</NavLink>
