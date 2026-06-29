@@ -1,20 +1,24 @@
 import styles from "./legal-workspace.module.css";
 
-type Props = {
+type LegalSectionRailProps = {
   selectedSectionId: string;
   onSelectSection: (id: string) => void;
-  sections: any[];
+  sections: {
+    id: string;
+    section_number?: string | number | null;
+    title?: string | null;
+  }[];
 };
 
 export function LegalSectionRail({
   selectedSectionId,
   onSelectSection,
   sections = [],
-}: Props) {
+}: LegalSectionRailProps) {
   const safeSections = Array.isArray(sections) ? sections : [];
 
   return (
-    <nav className={styles.rail}>
+    <nav className={styles.rail} aria-label="Agreement sections">
       <div className={styles.railHeader}>
         <p className={styles.panelLabel}>Sections</p>
       </div>
@@ -32,15 +36,16 @@ export function LegalSectionRail({
               type="button"
               onClick={() => onSelectSection(section.id)}
             >
-              {section.section_number}. {section.title}
+              <span className={styles.sectionNumber}>
+                {section.section_number ?? "—"}
+              </span>
+              <span>{section.title ?? "Untitled Section"}</span>
             </button>
           ))}
         </div>
       </div>
 
-      <div className={styles.railFooter}>
-        <span className={styles.saveStatus}>Rail Active</span>
-      </div>
+      <div className={styles.railFooter}>{safeSections.length} sections</div>
     </nav>
   );
 }
