@@ -907,3 +907,47 @@ h1 {
     flex: 0 0 auto;
   }
 }
+
+.app-nav-shell {
+  display: grid;
+  gap: 10px;
+}
+
+.app-nav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.app-nav-group {
+  width: 100%;
+  justify-content: center;
+}
+
+@media (max-width: 760px) {
+  .app-nav-inner {
+    display: flex;
+    grid-template-columns: none;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .brand-mark {
+    width: auto;
+    flex: 0 0 auto;
+  }
+
+  .identity-pill {
+    width: auto;
+    min-width: 0;
+    flex: 1 1 auto;
+    justify-content: flex-end;
+  }
+
+  .app-nav-group {
+    order: initial;
+    justify-content: flex-start;
+  }
+}

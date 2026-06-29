@@ -151,27 +151,27 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
           <span className="brand-mark__name">Insight</span>
         </Link>
 
-        <div className="app-nav-group">
-          <Link href="/companies" className="app-nav-pill">
-            Switch Company
-          </Link>
-
-          {mainItems.map((item) => {
-            const active = item.match(pathname);
-
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`app-nav-pill${active ? " app-nav-pill--active" : ""}`}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
-        </div>
-
         <IdentityPill />
+      </div>
+
+      <div className="app-nav-group">
+        <Link href="/companies" className="app-nav-pill">
+          Switch Company
+        </Link>
+
+        {mainItems.map((item) => {
+          const active = item.match(pathname);
+
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`app-nav-pill${active ? " app-nav-pill--active" : ""}`}
+            >
+              {item.label}
+            </Link>
+          );
+        })}
       </div>
 
       {subItems.length > 0 ? (
