@@ -1,82 +1,72 @@
 "use client";
 
 import TeamOptixShell from "@/features/teamoptix/navigation/TeamOptixShell";
-import { useAccess } from "@/features/access/AccessProvider";
+import {
+  WorkspaceCard,
+  WorkspaceGrid,
+  WorkspaceHeader,
+  WorkspaceSection,
+} from "@/features/ui/workspace";
 
-function CommandCard(props: {
-  eyebrow: string;
-  title: string;
-  body: string;
-}) {
+function SignalRow(props: { label: string; value: string }) {
   return (
-    <section className="app-card" style={{ padding: 16 }}>
-      <p className="value-card__eyebrow">{props.eyebrow}</p>
-      <h2 className="app-card__title">{props.title}</h2>
-      <p className="app-card__body">{props.body}</p>
-    </section>
+    <div className="teamoptix-signal-row">
+      <span>{props.label}</span>
+      <strong>{props.value}</strong>
+    </div>
   );
 }
 
 export default function TeamOptixCommandCenterPage() {
-  const access = useAccess();
-
-  const name =
-    access.display_name ||
-    access.first_name ||
-    access.email ||
-    "Platform Owner";
-
   return (
     <TeamOptixShell>
       <main className="workspace-shell">
         <section className="workspace-main">
-          <section className="app-card" style={{ padding: 18 }}>
-            <p className="value-card__eyebrow">TeamOptix</p>
-            <h1 className="workspace-title">Good to see you, {name}</h1>
-            <p className="workspace-subtitle">
-              Run the business. Build the products.
-            </p>
-          </section>
+          <WorkspaceHeader
+            eyebrow="TeamOptix"
+            title="Command Center"
+          />
 
-          <section
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))",
-              gap: 12,
-              marginTop: 12,
-            }}
+          <WorkspaceGrid>
+            <WorkspaceCard eyebrow="Focus" title="Client Priorities">
+              <SignalRow label="Time Keeping" value="Planning" />
+              <SignalRow label="Scorecards" value="Planning" />
+              <SignalRow label="Fleet" value="Discovery" />
+            </WorkspaceCard>
+
+            <WorkspaceCard eyebrow="Product" title="Insight">
+              <SignalRow label="Current phase" value="Workspace Standard" />
+              <SignalRow label="Next build" value="Time Keeping" />
+              <SignalRow label="Shell" value="Stabilizing" />
+            </WorkspaceCard>
+
+            <WorkspaceCard eyebrow="Projects" title="Active Work">
+              <SignalRow label="Insight" value="Active" />
+              <SignalRow label="ITG v2.0" value="Planning" />
+              <SignalRow label="Presentations" value="Open" />
+            </WorkspaceCard>
+
+            <WorkspaceCard eyebrow="Engineering" title="Platform Health">
+              <SignalRow label="Lint" value="Passing" />
+              <SignalRow label="Typecheck" value="Passing" />
+              <SignalRow label="Production" value="Live" />
+            </WorkspaceCard>
+          </WorkspaceGrid>
+
+          <WorkspaceSection
+            eyebrow="Operating Areas"
+            title="Foundation"
+            description="TeamOptix now owns projects, products, customers, engineering, business, automation, and AI."
           >
-            <CommandCard
-              eyebrow="Today's Focus"
-              title="Projects"
-              body="Workspace Standard, Time Keeping, Scorecards."
-            />
-            <CommandCard
-              eyebrow="Products"
-              title="Insight"
-              body="Current flagship product and active development."
-            />
-            <CommandCard
-              eyebrow="Customers"
-              title="Client Priorities"
-              body="Review requested enhancements and implementation progress."
-            />
-            <CommandCard
-              eyebrow="Engineering"
-              title="Platform Health"
-              body="Repositories, deployments, runtime and automation."
-            />
-            <CommandCard
-              eyebrow="Business"
-              title="Sales & Marketing"
-              body="Presentations, proposals, contracts and growth."
-            />
-            <CommandCard
-              eyebrow="AI"
-              title="Command Intelligence"
-              body="Prompt library, assistants and evaluation workspace."
-            />
-          </section>
+            <WorkspaceGrid min={220}>
+              <WorkspaceCard eyebrow="Work" title="Projects" body="Active initiatives, roadmap, presentations, and decisions." />
+              <WorkspaceCard eyebrow="Work" title="Products" body="Insight, ITG v2.0, and future products." />
+              <WorkspaceCard eyebrow="Work" title="Customers" body="Customer accounts, priorities, and launches." />
+              <WorkspaceCard eyebrow="Platform" title="Engineering" body="Repositories, releases, and code health." />
+              <WorkspaceCard eyebrow="Platform" title="Automation" body="Runner fleet, collections, and telemetry." />
+              <WorkspaceCard eyebrow="Business" title="Legal" body="MSA editor and commercial agreements." />
+            </WorkspaceGrid>
+          </WorkspaceSection>
         </section>
       </main>
     </TeamOptixShell>

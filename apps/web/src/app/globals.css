@@ -1318,3 +1318,29 @@ body {
     width: 100%;
   }
 }
+
+.teamoptix-signal-row {
+  align-items: center;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 10px 0;
+}
+
+.teamoptix-signal-row:first-of-type {
+  border-top: 0;
+  margin-top: 8px;
+}
+
+.teamoptix-signal-row span {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.teamoptix-signal-row strong {
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 900;
+}
