@@ -1344,3 +1344,68 @@ body {
   font-size: 13px;
   font-weight: 900;
 }
+
+.signal-list {
+  display: grid;
+  gap: 0;
+}
+
+.signal-list__row {
+  align-items: center;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 11px 0;
+}
+
+.signal-list__row:first-child {
+  border-top: 0;
+  padding-top: 2px;
+}
+
+.signal-list__row div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.signal-list__row strong {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.signal-list__row span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.signal-list__row em {
+  color: #0f172a;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.teamoptix-console {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.teamoptix-console .workspace-section:first-child {
+  grid-row: span 2;
+}
+
+@media (max-width: 900px) {
+  .teamoptix-console {
+    grid-template-columns: 1fr;
+  }
+
+  .teamoptix-console .workspace-section:first-child {
+    grid-row: auto;
+  }
+}
