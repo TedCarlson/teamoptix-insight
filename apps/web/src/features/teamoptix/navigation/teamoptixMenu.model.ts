@@ -31,7 +31,6 @@ export function buildTeamOptixMenu(): AppMenuSection[] {
           children: [
             { key: "product-insight", label: "Insight", href: "/teamoptix/products/insight" },
             { key: "product-itg", label: "ITG v2.0", href: "/teamoptix/products/itg" },
-            { key: "product-legal", label: "Legal Workspace", href: "/teamoptix/products/legal" },
           ],
         },
         {
@@ -78,6 +77,7 @@ export function buildTeamOptixMenu(): AppMenuSection[] {
             { key: "business-sales", label: "Sales", href: "/teamoptix/business/sales" },
             { key: "business-marketing", label: "Marketing", href: "/teamoptix/business/marketing" },
             { key: "business-contracts", label: "Contracts", href: "/teamoptix/business/contracts" },
+            { key: "business-legal", label: "Legal", href: "/teamoptix/business/legal" },
           ],
         },
         {
