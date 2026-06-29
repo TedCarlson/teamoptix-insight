@@ -1183,3 +1183,14 @@ button.app-drawer__item {
   cursor: pointer;
   font-family: inherit;
 }
+
+@media (max-width: 760px) {
+  .app-nav-group,
+  .company-subnav {
+    display: none;
+  }
+
+  .app-nav-shell {
+    margin-bottom: 10px;
+  }
+}
