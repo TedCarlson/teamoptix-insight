@@ -132,7 +132,7 @@ export async function ingestFccWorkbook(params: {
   buffer: Buffer;
   filename: string;
   fileSize: number;
-  serviceDate: string;
+  serviceDate?: string;
   uploadedByAuthUserId?: string | null;
   uploadedByProfileId?: string | null;
 }) {
@@ -156,6 +156,8 @@ export async function ingestFccWorkbook(params: {
   const sourceReportName = headerValue(headerRows, ["Page"]);
   const reportDateText = headerValue(headerRows, ["Date"]);
   const headerServiceDate = parseUsDateToIso(reportDateText);
+  const warehouseServiceDate = headerServiceDate || serviceDate;
+  if (!warehouseServiceDate) throw new Error("FCC service date was not found in artifact context or Header tab.");
   const headerServiceArea = headerValue(headerRows, ["SA#", "Service Area", "SA"]);
   const displayWorkArea = headerValue(headerRows, ["Display Work Area"]);
   const exportGeneratedText = headerValue(headerRows, ["Export Generated"]);
@@ -163,8 +165,6 @@ export async function ingestFccWorkbook(params: {
   if (normalizeHeader(sourceReportName) !== "service area status") {
     throw new Error("FCC Header sheet did not identify Service Area Status.");
   }
-
-  const warehouseServiceDate = headerServiceDate || serviceDate;
 
   const { data: company, error: companyError } = await supabase
     .from("companies")
@@ -268,7 +268,7 @@ export async function ingestFccWorkbook(params: {
         service_area: ownership.service_area,
       },
       collection_context: {
-        service_date: serviceDate,
+        service_date: warehouseServiceDate,
         service_date_used: warehouseServiceDate,
         service_date_source: headerServiceDate ? "FCC_HEADER" : "ARTIFACT_CONTEXT",
       },
@@ -298,7 +298,7 @@ export async function ingestFccWorkbook(params: {
       service_area: ownership.service_area,
     },
     collection_context: {
-      service_date: serviceDate,
+      service_date: warehouseServiceDate,
       service_date_used: warehouseServiceDate,
       service_date_source: headerServiceDate ? "FCC_HEADER" : "ARTIFACT_CONTEXT",
     },

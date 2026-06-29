@@ -78,15 +78,13 @@ export async function ingestArtifactWorkbook(params: {
   }
 
   if (artifact.report_family_key === "FCC") {
-    if (!artifact.service_date) throw new Error("FCC artifact is missing service date.");
-
     return ingestFccWorkbook({
       supabase,
       slug,
       buffer,
       filename,
       fileSize: artifact.size_bytes ?? buffer.length,
-      serviceDate: artifact.service_date,
+      serviceDate: artifact.service_date ?? undefined,
       uploadedByAuthUserId,
       uploadedByProfileId,
     });
