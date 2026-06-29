@@ -6,20 +6,15 @@ import {
   type AssignmentIntent,
   type DispatchDayRow,
   type DispatchEventRow,
-  type DispatchEventTypeRow,
   type DispatchPerson,
-  type DispatchRosterRow,
   type DispatchRoute,
-  type GeneratedScheduleRow,
-  type RouteRow,
   type Seat,
   cleanRouteKey,
   panel,
   todayIso,
 } from "../lib/dispatchSupport";
-import { addDaysIso, isoDateOffset } from "../lib/dispatchDates";
+import { addDaysIso } from "../lib/dispatchDates";
 import {
-  loadDispatchInputs,
   lockDispatchDay,
   recordDispatchEvent,
 } from "../lib/dispatchApi";
@@ -33,9 +28,8 @@ import {
   createRouteSorter,
   findUnscheduledDriverCandidates,
 } from "../lib/dispatchSelectors";
-import { type DroPlanRow } from "../lib/droPlanSignals";
-import { type DswCurrentRow } from "../lib/dswDispatchSignals";
 import { buildDispatchWorkspaceModel } from "../lib/dispatchWorkspaceModel";
+import { useDispatchWorkspaceData } from "../hooks/useDispatchWorkspaceData";
 import OperationsReportUploadOverlay from "@/features/operations/components/OperationsReportUploadOverlay";
 import OperationsWorkspaceToolbar from "@/features/operations/components/OperationsWorkspaceToolbar";
 import OperationsIntelligenceFeed from "@/features/operations/components/OperationsIntelligenceFeed";
@@ -48,29 +42,36 @@ export default function DispatchPage() {
   const params = useParams();
   const slug = String(params?.slug ?? "");
 
-  const [scheduleRows, setScheduleRows] = useState<GeneratedScheduleRow[]>([]);
-  const [routes, setRoutes] = useState<RouteRow[]>([]);
-  const [rosterRows, setRosterRows] = useState<DispatchRosterRow[]>([]);
   const [assignments, setAssignments] = useState<Record<string, DispatchRoute>>({});
   const [intent, setIntent] = useState<AssignmentIntent>(null);
-  const [dispatchDay, setDispatchDay] = useState<DispatchDayRow | null>(null);
-  const [dispatchEvents, setDispatchEvents] = useState<DispatchEventRow[]>([]);
-  const [eventTypes, setEventTypes] = useState<DispatchEventTypeRow[]>([]);
   const [eventOverlayOpen, setEventOverlayOpen] = useState(false);
   const [savingEvent, setSavingEvent] = useState(false);
   const [locking, setLocking] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [uploadOverlayOpen, setUploadOverlayOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [droPlanRows, setDroPlanRows] = useState<DroPlanRow[]>([]);
-  const [dswRows, setDswRows] = useState<DswCurrentRow[]>([]);
-  const [droPlanSourceFrame, setDroPlanSourceFrame] = useState<"AM" | "PM" | null>(null);
   const persistedCalloutKeys = useRef(new Set<string>());
 
   const serviceDate = todayIso();
   const planningDate = addDaysIso(serviceDate, 1);
+  const {
+    dispatchDay,
+    dispatchEvents,
+    droPlanRows,
+    droPlanSourceFrame,
+    dswRows,
+    error,
+    eventTypes,
+    lastUpdatedAt,
+    loading,
+    refreshKey,
+    refreshWorkspace,
+    rosterRows,
+    routeSortKey,
+    routes,
+    scheduleRows,
+    setDispatchDay,
+    setDispatchEvents,
+    setError,
+  } = useDispatchWorkspaceData(slug, serviceDate);
   const dispatchLocked = dispatchDay?.status === "LOCKED";
 
   const arrivedPersonIds = useMemo(
@@ -78,112 +79,10 @@ export default function DispatchPage() {
     [dispatchEvents]
   );
 
-  const [routeSortKey, setRouteSortKey] =
-    useState<"route_name" | "current_wa_num">("route_name");
   const routeSort = useMemo(
     () => createRouteSorter(routeSortKey),
     [routeSortKey]
   );
-
-  useEffect(() => {
-    let active = true;
-
-    async function hydrateDispatchWorkspace() {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const inputs = await loadDispatchInputs({
-          slug,
-          serviceDate,
-          droPlanServiceDate: isoDateOffset(serviceDate, -1),
-        });
-
-        if (!active) return;
-
-        if (!inputs.schedule.ok) {
-          setError(inputs.schedule.data?.error ?? "Failed to load generated schedule.");
-          setScheduleRows([]);
-          setRoutes([]);
-          setRosterRows([]);
-          return;
-        }
-
-        if (!inputs.routes.ok) {
-          setError(inputs.routes.data?.error ?? "Failed to load routes.");
-          setScheduleRows([]);
-          setRoutes([]);
-          setRosterRows([]);
-          return;
-        }
-
-        if (!inputs.roster.ok) {
-          setError(inputs.roster.data?.error ?? "Failed to load roster.");
-          setScheduleRows([]);
-          setRoutes([]);
-          setRosterRows([]);
-          return;
-        }
-
-        if (!inputs.dispatchDay.ok) {
-          setError(inputs.dispatchDay.data?.error ?? "Failed to load dispatch day.");
-          setScheduleRows([]);
-          setRoutes([]);
-          setRosterRows([]);
-          return;
-        }
-
-        if (!inputs.eventTypes.ok) {
-          setError(inputs.eventTypes.data?.error ?? "Failed to load dispatch event types.");
-          setScheduleRows([]);
-          setRoutes([]);
-          setRosterRows([]);
-          return;
-        }
-
-        const amDroRows = inputs.amDroPlan.ok ? inputs.amDroPlan.data?.rows ?? [] : [];
-        const pmDroRows = inputs.pmDroPlan.ok ? inputs.pmDroPlan.data?.rows ?? [] : [];
-
-        setDroPlanRows(amDroRows.length > 0 ? amDroRows : pmDroRows);
-        setDswRows(inputs.dswCurrent.ok ? inputs.dswCurrent.data?.rows ?? [] : []);
-        setDroPlanSourceFrame(
-          amDroRows.length > 0
-            ? "AM"
-            : pmDroRows.length > 0
-              ? "PM"
-              : null
-        );
-
-        setRouteSortKey(
-          inputs.operationsConfig.data?.config?.route_sort_key === "current_wa_num"
-            ? "current_wa_num"
-            : "route_name"
-        );
-
-        setScheduleRows((inputs.schedule.data?.rows ?? []) as GeneratedScheduleRow[]);
-        setRoutes((inputs.routes.data?.routes ?? []) as RouteRow[]);
-        setRosterRows((inputs.roster.data?.roster ?? []) as DispatchRosterRow[]);
-        setDispatchDay((inputs.dispatchDay.data?.dispatch_day ?? null) as DispatchDayRow | null);
-        setDispatchEvents((inputs.dispatchDay.data?.events ?? []) as DispatchEventRow[]);
-        setEventTypes((inputs.eventTypes.data?.event_types ?? []) as DispatchEventTypeRow[]);
-        setLastUpdatedAt(new Date().toISOString());
-      } catch {
-        if (!active) return;
-        setError("Dispatch hydration failed.");
-        setScheduleRows([]);
-        setRoutes([]);
-        setRosterRows([]);
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    if (slug) hydrateDispatchWorkspace();
-
-    return () => {
-      active = false;
-    };
-  }, [refreshKey, serviceDate, slug]);
 
   const hydratedRoutes = useMemo(
     () =>
@@ -603,7 +502,7 @@ export default function DispatchPage() {
     } finally {
       setSavingEvent(false);
     }
-  }, [serviceDate, slug]);
+  }, [serviceDate, setDispatchDay, setDispatchEvents, setError, slug]);
 
   async function toggleArrived(person: DispatchPerson) {
     if (dispatchLocked) return;
@@ -737,7 +636,7 @@ export default function DispatchPage() {
         <OperationsWorkspaceToolbar
           lastUpdatedAt={lastUpdatedAt}
           refreshing={loading}
-          onRefresh={() => setRefreshKey((current) => current + 1)}
+          onRefresh={refreshWorkspace}
           onUpload={() => setUploadOverlayOpen(true)}
         />
 
@@ -805,7 +704,7 @@ export default function DispatchPage() {
         open={uploadOverlayOpen}
         onClose={(shouldRefresh) => {
           setUploadOverlayOpen(false);
-          if (shouldRefresh) setRefreshKey((current) => current + 1);
+          if (shouldRefresh) refreshWorkspace();
         }}
       />
 
