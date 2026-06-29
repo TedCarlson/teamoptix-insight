@@ -1145,3 +1145,41 @@ h1 {
   border-color: #0f172a;
   color: #ffffff;
 }
+
+.app-drawer__item-group {
+  display: grid;
+  gap: 6px;
+}
+
+.app-drawer__children {
+  display: grid;
+  gap: 6px;
+  padding-left: 14px;
+}
+
+.app-drawer__child {
+  border-left: 2px solid #d7e2f1;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 850;
+  padding: 8px 10px;
+  text-decoration: none;
+}
+
+.app-drawer__child--active {
+  border-left-color: #009b67;
+  color: #0f172a;
+}
+
+.app-drawer__item-button {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  text-align: left;
+  width: 100%;
+}
+
+button.app-drawer__item {
+  cursor: pointer;
+  font-family: inherit;
+}
