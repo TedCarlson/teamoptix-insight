@@ -98,7 +98,7 @@ export async function GET() {
   const currentMinutes = newYorkCurrentMinutes();
 
   const { data: companies, error: companyError } = await supabase
-    .from("core.companies")
+    .from("companies")
     .select("id,company_slug");
 
   if (companyError) {
