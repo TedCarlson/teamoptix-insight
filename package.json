@@ -7,6 +7,7 @@
     "build": "pnpm --filter web build",
     "lint": "pnpm --filter web lint",
     "typecheck": "pnpm --filter web typecheck",
+    "artifact-ingest-poller": "node ./scripts/local-artifact-ingest-poller.js",
     "verify": "pnpm lint && pnpm typecheck && pnpm build"
   },
   "devDependencies": {
