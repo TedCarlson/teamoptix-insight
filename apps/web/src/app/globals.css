@@ -1194,3 +1194,40 @@ button.app-drawer__item {
     margin-bottom: 10px;
   }
 }
+
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+@media (max-width: 760px) {
+  .workspace-shell,
+  .workspace-main,
+  .app-nav-shell,
+  .company-user-home,
+  .app-card {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .workspace-main {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .app-nav-shell {
+    width: auto;
+    margin-left: 10px;
+    margin-right: 10px;
+  }
+
+  .company-user-home {
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
