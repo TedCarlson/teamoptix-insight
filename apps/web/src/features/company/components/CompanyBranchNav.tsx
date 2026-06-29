@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { usePathname } from "next/navigation";
 import IdentityPill from "@/features/access/components/IdentityPill";
 import { useAccess } from "@/features/access/AccessProvider";
+import AppNavigationDrawer from "@/features/navigation/AppNavigationDrawer";
+import { buildCompanyMenu } from "@/features/navigation/appMenu.model";
 
 type CompanyBranchNavProps = {
   slug: string;
@@ -19,10 +22,13 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const { slug } = props;
   const pathname = usePathname() ?? "";
   const access = useAccess();
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const membership = access.memberships.find((item) => item.company_slug === slug) ?? null;
   const isAdminUser =
     Boolean(access.is_platform_owner) ||
     (membership?.relationship_type === "admin" && membership?.membership_status === "active");
+
+  const menuSections = buildCompanyMenu({ slug, isAdminUser });
 
   const base = `/company/${slug}`;
   const homeBase = `${base}/home`;
@@ -146,6 +152,15 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   return (
     <nav className="app-nav-shell" aria-label="Company workspace">
       <div className="app-nav-inner">
+        <button
+          type="button"
+          className="app-menu-button"
+          aria-label="Open navigation menu"
+          onClick={() => setDrawerOpen(true)}
+        >
+          ☰
+        </button>
+
         <Link className="brand-mark" href="/">
           <span className="brand-mark__kicker">TeamOptix</span>
           <span className="brand-mark__name">Insight</span>
@@ -173,6 +188,13 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
           );
         })}
       </div>
+
+      <AppNavigationDrawer
+        open={drawerOpen}
+        pathname={pathname}
+        sections={menuSections}
+        onClose={() => setDrawerOpen(false)}
+      />
 
       {subItems.length > 0 ? (
         <div className="company-subnav">
