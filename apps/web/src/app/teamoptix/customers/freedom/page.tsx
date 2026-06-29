@@ -1,25 +1,11 @@
-import TeamOptixShell from "@/features/teamoptix/navigation/TeamOptixShell";
+import TeamOptixWorkspaceStub from "@/features/teamoptix/shared/TeamOptixWorkspaceStub";
 
-export default function TeamOptixWorkspacePage() {
+export default function Page() {
   return (
-    <TeamOptixShell>
-      <main className="workspace-shell">
-        <section className="workspace-main">
-          <section className="app-card" style={{ padding: 18 }}>
-            <p className="value-card__eyebrow">TeamOptix · Customers</p>
-            <h1 className="workspace-title">Freedom</h1>
-            <p className="workspace-subtitle">Customer workspace, priorities, and platform posture.</p>
-          </section>
-
-          <section className="app-card" style={{ padding: 16 }}>
-            <p className="value-card__eyebrow">Workspace</p>
-            <h2 className="app-card__title">Foundation ready</h2>
-            <p className="app-card__body">
-              This workspace is scaffolded and ready for the next focused pass.
-            </p>
-          </section>
-        </section>
-      </main>
-    </TeamOptixShell>
+    <TeamOptixWorkspaceStub
+      eyebrow="TeamOptix · Customers"
+      title="Freedom"
+      description="Customer workspace, priorities, and platform posture."
+    />
   );
 }
