@@ -19,6 +19,11 @@ import {
 } from "../lib/dispatchSupport";
 import { addDaysIso, isoDateOffset } from "../lib/dispatchDates";
 import {
+  loadDispatchInputs,
+  lockDispatchDay,
+  recordDispatchEvent,
+} from "../lib/dispatchApi";
+import {
   buildAssignmentMapFromRoutesAndEvents,
   removePersonFromRoute,
 } from "../lib/dispatchEventReducer";
@@ -109,131 +114,64 @@ export default function DispatchPage() {
   useEffect(() => {
     let active = true;
 
-    async function loadDispatchInputs() {
+    async function hydrateDispatchWorkspace() {
       try {
         setLoading(true);
         setError(null);
 
-        const droPlanServiceDate = isoDateOffset(serviceDate, -1);
-
-        const [
-          scheduleRes,
-          routesRes,
-          rosterRes,
-          dispatchDayRes,
-          eventTypesRes,
-          operationsConfigRes,
-          amDroPlanRes,
-          pmDroPlanRes,
-          dswCurrentRes,
-        ] = await Promise.all([
-          fetch(`/api/company/${slug}/schedule/generated?date=${serviceDate}`, {
-            credentials: "include",
-            cache: "no-store",
-          }),
-          fetch(`/api/company/${slug}/routes`, {
-            credentials: "include",
-            cache: "no-store",
-          }),
-          fetch(`/api/company/${slug}/people/roster`, {
-            credentials: "include",
-            cache: "no-store",
-          }),
-          fetch(`/api/company/${slug}/dispatch/day?date=${serviceDate}`, {
-            credentials: "include",
-            cache: "no-store",
-          }),
-          fetch(`/api/company/${slug}/dispatch/event-types`, {
-            credentials: "include",
-            cache: "no-store",
-          }),
-          fetch(`/api/company/${slug}/config/operations`, {
-            credentials: "include",
-            cache: "no-store",
-          }),
-          fetch(`/api/company/${slug}/operations/reports/dro-plan?date=${serviceDate}&frame=AM`, {
-            credentials: "include",
-            cache: "no-store",
-          }),
-          fetch(`/api/company/${slug}/operations/reports/dro-plan?date=${droPlanServiceDate}&frame=PM`, {
-            credentials: "include",
-            cache: "no-store",
-          }),
-          fetch(`/api/company/${slug}/operations/reports/dsw-current?date=${serviceDate}`, {
-            credentials: "include",
-            cache: "no-store",
-          }),
-        ]);
-
-        const [
-          scheduleData,
-          routesData,
-          rosterData,
-          dispatchDayData,
-          eventTypesData,
-          operationsConfigData,
-          amDroPlanData,
-          pmDroPlanData,
-          dswCurrentData,
-        ] = await Promise.all([
-          scheduleRes.json(),
-          routesRes.json(),
-          rosterRes.json(),
-          dispatchDayRes.json(),
-          eventTypesRes.json(),
-          operationsConfigRes.json(),
-          amDroPlanRes.json(),
-          pmDroPlanRes.json(),
-          dswCurrentRes.json(),
-        ]);
+        const inputs = await loadDispatchInputs({
+          slug,
+          serviceDate,
+          droPlanServiceDate: isoDateOffset(serviceDate, -1),
+        });
 
         if (!active) return;
 
-        if (!scheduleRes.ok) {
-          setError(scheduleData?.error ?? "Failed to load generated schedule.");
+        if (!inputs.schedule.ok) {
+          setError(inputs.schedule.data?.error ?? "Failed to load generated schedule.");
           setScheduleRows([]);
           setRoutes([]);
           setRosterRows([]);
           return;
         }
 
-        if (!routesRes.ok) {
-          setError(routesData?.error ?? "Failed to load routes.");
+        if (!inputs.routes.ok) {
+          setError(inputs.routes.data?.error ?? "Failed to load routes.");
           setScheduleRows([]);
           setRoutes([]);
           setRosterRows([]);
           return;
         }
 
-        if (!rosterRes.ok) {
-          setError(rosterData?.error ?? "Failed to load roster.");
+        if (!inputs.roster.ok) {
+          setError(inputs.roster.data?.error ?? "Failed to load roster.");
           setScheduleRows([]);
           setRoutes([]);
           setRosterRows([]);
           return;
         }
 
-        if (!dispatchDayRes.ok) {
-          setError(dispatchDayData?.error ?? "Failed to load dispatch day.");
+        if (!inputs.dispatchDay.ok) {
+          setError(inputs.dispatchDay.data?.error ?? "Failed to load dispatch day.");
           setScheduleRows([]);
           setRoutes([]);
           setRosterRows([]);
           return;
         }
 
-        if (!eventTypesRes.ok) {
-          setError(eventTypesData?.error ?? "Failed to load dispatch event types.");
+        if (!inputs.eventTypes.ok) {
+          setError(inputs.eventTypes.data?.error ?? "Failed to load dispatch event types.");
           setScheduleRows([]);
           setRoutes([]);
           setRosterRows([]);
           return;
         }
 
-        const amDroRows = amDroPlanRes.ok ? amDroPlanData?.rows ?? [] : [];
-        const pmDroRows = pmDroPlanRes.ok ? pmDroPlanData?.rows ?? [] : [];
+        const amDroRows = inputs.amDroPlan.ok ? inputs.amDroPlan.data?.rows ?? [] : [];
+        const pmDroRows = inputs.pmDroPlan.ok ? inputs.pmDroPlan.data?.rows ?? [] : [];
 
         setDroPlanRows(amDroRows.length > 0 ? amDroRows : pmDroRows);
-        setDswRows(dswCurrentRes.ok ? dswCurrentData?.rows ?? [] : []);
+        setDswRows(inputs.dswCurrent.ok ? inputs.dswCurrent.data?.rows ?? [] : []);
         setDroPlanSourceFrame(
           amDroRows.length > 0
             ? "AM"
@@ -243,17 +181,17 @@ export default function DispatchPage() {
         );
 
         setRouteSortKey(
-          operationsConfigData?.config?.route_sort_key === "current_wa_num"
+          inputs.operationsConfig.data?.config?.route_sort_key === "current_wa_num"
             ? "current_wa_num"
             : "route_name"
         );
 
-        setScheduleRows((scheduleData?.rows ?? []) as GeneratedScheduleRow[]);
-        setRoutes((routesData?.routes ?? []) as RouteRow[]);
-        setRosterRows((rosterData?.roster ?? []) as DispatchRosterRow[]);
-        setDispatchDay((dispatchDayData?.dispatch_day ?? null) as DispatchDayRow | null);
-        setDispatchEvents((dispatchDayData?.events ?? []) as DispatchEventRow[]);
-        setEventTypes((eventTypesData?.event_types ?? []) as DispatchEventTypeRow[]);
+        setScheduleRows((inputs.schedule.data?.rows ?? []) as GeneratedScheduleRow[]);
+        setRoutes((inputs.routes.data?.routes ?? []) as RouteRow[]);
+        setRosterRows((inputs.roster.data?.roster ?? []) as DispatchRosterRow[]);
+        setDispatchDay((inputs.dispatchDay.data?.dispatch_day ?? null) as DispatchDayRow | null);
+        setDispatchEvents((inputs.dispatchDay.data?.events ?? []) as DispatchEventRow[]);
+        setEventTypes((inputs.eventTypes.data?.event_types ?? []) as DispatchEventTypeRow[]);
         setLastUpdatedAt(new Date().toISOString());
       } catch {
         if (!active) return;
@@ -266,7 +204,7 @@ export default function DispatchPage() {
       }
     }
 
-    if (slug) loadDispatchInputs();
+    if (slug) hydrateDispatchWorkspace();
 
     return () => {
       active = false;
@@ -405,12 +343,10 @@ export default function DispatchPage() {
     person?: DispatchPerson | null;
   }) {
     try {
-      const res = await fetch(`/api/company/${slug}/dispatch/event`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          dispatch_date: serviceDate,
+      const { ok, data } = await recordDispatchEvent({
+        slug,
+        dispatchDate: serviceDate,
+        payload: {
           event_category: "ASSIGNMENT",
           event_code: payload.event_code,
           event_label: payload.event_label,
@@ -424,12 +360,10 @@ export default function DispatchPage() {
           event_payload: {
             source: "dispatch_seat_edit",
           },
-        }),
+        },
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
+      if (!ok) {
         setError(data?.error ?? "Failed to record dispatch assignment.");
         return;
       }
@@ -563,12 +497,10 @@ export default function DispatchPage() {
     person_name?: string | null;
     event_payload?: Record<string, unknown>;
   }) {
-    const res = await fetch(`/api/company/${slug}/dispatch/event`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({
-        dispatch_date: serviceDate,
+    const { ok, data } = await recordDispatchEvent({
+      slug,
+      dispatchDate: serviceDate,
+      payload: {
         route_key: payload.route_key ?? null,
         route_label: payload.route_label ?? null,
         event_code: payload.event_code,
@@ -578,12 +510,10 @@ export default function DispatchPage() {
         person_roster_member_id: payload.person_roster_member_id ?? null,
         person_name: payload.person_name ?? null,
         event_payload: payload.event_payload ?? {},
-      }),
+      },
     });
 
-    const data = await res.json();
-
-    if (!res.ok) {
+    if (!ok) {
       setError(data?.error ?? "Failed to record dispatch action.");
       return null;
     }
@@ -717,22 +647,18 @@ export default function DispatchPage() {
       setSavingEvent(true);
       setError(null);
 
-      const res = await fetch(`/api/company/${slug}/dispatch/event`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          dispatch_date: serviceDate,
+      const { ok, data } = await recordDispatchEvent({
+        slug,
+        dispatchDate: serviceDate,
+        payload: {
           ...payload,
           route_key: payload.route_key ?? null,
           route_label: payload.route_label ?? null,
           event_payload: payload.event_payload ?? {},
-        }),
+        },
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
+      if (!ok) {
         setError(data?.error ?? "Failed to add dispatch event.");
         return;
       }
@@ -853,19 +779,13 @@ export default function DispatchPage() {
         },
       };
 
-      const res = await fetch(`/api/company/${slug}/dispatch/lock`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          dispatch_date: serviceDate,
-          snapshot_json: snapshot,
-        }),
+      const { ok, data } = await lockDispatchDay({
+        slug,
+        dispatchDate: serviceDate,
+        snapshotJson: snapshot,
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
+      if (!ok) {
         setError(data?.error ?? "Failed to lock dispatch.");
         return;
       }
