@@ -4,6 +4,10 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { useAccess } from "@/features/access/AccessProvider";
+import {
+  IntentVerificationDrawer,
+  type IntentVerificationAction,
+} from "@/features/security/components/IntentVerificationDrawer";
 
 type ScheduleRow = {
   roster_member_id: string;
@@ -44,12 +48,6 @@ type ActivityCurrentResponse = {
   state?: "CLOCKED_IN" | "CLOCKED_OUT" | string;
   lastClockIn?: { occurred_at: string } | null;
   lastClockOut?: { occurred_at: string } | null;
-};
-
-type ClockConfirmChallenge = {
-  eventType: "CLOCK_IN" | "CLOCK_OUT";
-  correctCode: string;
-  options: string[];
 };
 
 const routeByDayKey: Record<number, keyof ScheduleRow> = {
@@ -135,25 +133,6 @@ function formatTime(value?: string | null) {
   });
 }
 
-function generateClockConfirmChallenge(
-  eventType: "CLOCK_IN" | "CLOCK_OUT"
-): ClockConfirmChallenge {
-  const correctNumber = Math.floor(100 + Math.random() * 900);
-  const optionSet = new Set<number>([correctNumber]);
-
-  while (optionSet.size < 3) {
-    optionSet.add(Math.floor(100 + Math.random() * 900));
-  }
-
-  return {
-    eventType,
-    correctCode: String(correctNumber),
-    options: Array.from(optionSet)
-      .map(String)
-      .sort(() => Math.random() - 0.5),
-  };
-}
-
 export default function CompanyUserHomePage() {
   const params = useParams();
   const slug = String(params?.slug ?? "");
@@ -164,7 +143,7 @@ export default function CompanyUserHomePage() {
   const [activityLoading, setActivityLoading] = useState(true);
   const [activitySaving, setActivitySaving] = useState(false);
   const [activityState, setActivityState] = useState<ActivityCurrentResponse | null>(null);
-  const [clockConfirm, setClockConfirm] = useState<ClockConfirmChallenge | null>(null);
+  const [clockConfirm, setClockConfirm] = useState<IntentVerificationAction | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
 
   const loadActivity = useCallback(async () => {
@@ -281,19 +260,15 @@ export default function CompanyUserHomePage() {
   function handleWorkdayAction() {
     if (!slug || activitySaving || activityLoading) return;
 
-    const eventType = isClockedIn ? "CLOCK_OUT" : "CLOCK_IN";
-    setClockConfirm(generateClockConfirmChallenge(eventType));
+    const eventType: IntentVerificationAction = isClockedIn ? "CLOCK_OUT" : "CLOCK_IN";
+    setClockConfirm(eventType);
   }
 
-  async function commitWorkdayAction(selectedCode: string) {
-    if (!clockConfirm || selectedCode !== clockConfirm.correctCode) {
-      setClockConfirm(null);
-      return;
-    }
-
+  async function commitWorkdayAction() {
+    if (!clockConfirm) return;
     if (!slug || activitySaving || activityLoading) return;
 
-    const eventType = clockConfirm.eventType;
+    const eventType = clockConfirm;
 
     try {
       setActivitySaving(true);
@@ -331,9 +306,6 @@ export default function CompanyUserHomePage() {
       setActivitySaving(false);
     }
   }
-
-  const confirmActionLabel = clockConfirm?.eventType === "CLOCK_OUT" ? "Clock Out" : "Clock In";
-
   return (
     <main className="workspace-shell">
       <section className="workspace-main company-user-home">
@@ -424,43 +396,13 @@ export default function CompanyUserHomePage() {
             Performance score, rank, trends, attendance, and delivery history will live here.
           </p>
         </section>
-
         {clockConfirm ? (
-          <div className="company-user-confirm-backdrop" role="presentation">
-            <section
-              className="company-user-confirm-drawer"
-              aria-label={`Confirm ${confirmActionLabel}`}
-            >
-              <p className="value-card__eyebrow">Confirm {confirmActionLabel}</p>
-              <h2>Select {clockConfirm.correctCode}</h2>
-              <p className="company-user-muted">
-                This quick check helps prevent accidental pocket taps.
-              </p>
-
-              <div className="company-user-confirm-options">
-                {clockConfirm.options.map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    className="button button-secondary"
-                    onClick={() => void commitWorkdayAction(option)}
-                    disabled={activitySaving}
-                  >
-                    {option}
-                  </button>
-                ))}
-              </div>
-
-              <button
-                type="button"
-                className="company-user-confirm-cancel"
-                onClick={() => setClockConfirm(null)}
-                disabled={activitySaving}
-              >
-                Cancel
-              </button>
-            </section>
-          </div>
+          <IntentVerificationDrawer
+            action={clockConfirm}
+            busy={activitySaving}
+            onCancel={() => setClockConfirm(null)}
+            onConfirm={() => void commitWorkdayAction()}
+          />
         ) : null}
       </section>
     </main>
