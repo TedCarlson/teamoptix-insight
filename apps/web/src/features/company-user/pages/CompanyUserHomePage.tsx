@@ -104,12 +104,9 @@ function buildSchedulePreview(row: ScheduleRow | null): DriverSchedulePreviewDay
     const date = new Date();
     date.setDate(date.getDate() + index);
 
-    const label =
-      index === 0
-        ? "Today"
-        : index === 1
-          ? "Tomorrow"
-          : date.toLocaleDateString(undefined, { weekday: "long" });
+    const dayCodes = ["U", "M", "T", "W", "H", "F", "S"];
+
+    const label = index === 0 ? "Today" : dayCodes[date.getDay()];
 
     const scheduled = isScheduledForDate(row, date);
     const route = routeForDate(row, date);
