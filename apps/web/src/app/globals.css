@@ -1060,7 +1060,7 @@ h1 {
 .app-menu-button {
   border: 1px solid #d7e2f1;
   border-radius: 999px;
-  background: transparent;
+  background: #ffffff;
   color: #0f172a;
   cursor: pointer;
   font-size: 20px;
@@ -1087,7 +1087,7 @@ h1 {
   width: min(360px, 88vw);
   height: 100%;
   overflow-y: auto;
-  background: transparent;
+  background: #ffffff;
   box-shadow: 24px 0 60px rgba(15, 23, 42, 0.24);
   padding: 18px;
 }
@@ -1104,7 +1104,7 @@ h1 {
 .app-drawer__close {
   border: 1px solid #d7e2f1;
   border-radius: 999px;
-  background: transparent;
+  background: #ffffff;
   cursor: pointer;
   font-size: 12px;
   font-weight: 900;
@@ -1477,7 +1477,7 @@ body {
 
 .payroll-week-control__button {
   align-items: center;
-  background: transparent;
+  background: #ffffff;
   border: 0;
   color: #0f172a;
   cursor: pointer;
@@ -1541,7 +1541,7 @@ body {
 }
 
 .workspace-select {
-  background: transparent;
+  background: #ffffff;
   border: 1px solid #d7e2ee;
   border-radius: 999px;
   color: #0f172a;
@@ -1569,7 +1569,7 @@ body {
 .payroll-week-control,
 .payroll-week-control__button,
 .payroll-action-button {
-  background: transparent;
+  background: #ffffff;
 }
 
 
@@ -1644,7 +1644,7 @@ body {
   line-height: 1;
 }
 
-.driver-intent-backdrop {
+.company-user-confirm-backdrop {
   position: fixed;
   inset: 0;
   z-index: 70;
@@ -1655,7 +1655,7 @@ body {
   padding: 1rem;
 }
 
-.driver-intent-drawer {
+.company-user-confirm-drawer {
   width: min(100%, 520px);
   border-radius: 26px 26px 18px 18px;
   background: #ffffff;
@@ -1663,124 +1663,32 @@ body {
   padding: 1.25rem;
 }
 
-.driver-intent-handle {
-  width: 56px;
-  height: 6px;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.35);
-  margin: 0 auto 1rem;
+.company-user-confirm-drawer h2 {
+  margin: 0.2rem 0 0;
+  font-size: 1.35rem;
 }
 
-.driver-intent-drawer h2 {
-  margin: 0.35rem 0 0;
-  max-width: 440px;
-  font-size: 1.25rem;
-  line-height: 1.25;
-}
-
-.driver-intent-clue {
-  display: grid;
-  gap: 0.4rem;
-  margin-top: 1rem;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  border-radius: 18px;
-  padding: 0.9rem 1rem;
-}
-
-.driver-intent-clue span {
-  color: #64748b;
-  font-size: 0.78rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.driver-intent-clue strong {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.8rem;
-  color: #0f172a;
-  font-size: 1.1rem;
-  line-height: 1;
-}
-
-.driver-intent-clue strong span {
-  font-size: 0.92rem;
-}
-
-.driver-intent-options {
+.company-user-confirm-options {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.75rem;
   margin-top: 1rem;
 }
 
-.driver-intent-option {
-  min-height: 112px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: 22px;
-  background: #ffffff;
-  cursor: pointer;
+.company-user-confirm-options .button {
+  justify-content: center;
+  min-height: 52px;
+  font-size: 1.1rem;
+  font-weight: 800;
 }
 
-.driver-intent-option:disabled {
-  cursor: wait;
-  opacity: 0.7;
-}
-
-
-.driver-intent-shape-token {
-  width: 104px;
-  height: 104px;
-  display: inline-grid;
-  place-items: center;
-}
-
-.driver-intent-shape-token svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-  overflow: visible;
-}
-
-.driver-intent-shape-mark {
-  fill: #ffffff;
-  stroke: #111827;
-  stroke-width: 3.5;
-  stroke-linejoin: round;
-}
-
-.driver-intent-shape-number {
-  fill: #0f172a;
-  font-size: 25px;
-  font-weight: 900;
-  dominant-baseline: middle;
-}
-
-.driver-intent-shape-token--small {
-  width: 38px;
-  height: 38px;
-  flex: 0 0 auto;
-}
-
-.driver-intent-shape-token--small .driver-intent-shape-mark {
-  stroke-width: 5;
-}
-
-.driver-intent-shape-token--small .driver-intent-shape-number {
-  font-size: 24px;
-}
-
-.driver-intent-cancel {
-
+.company-user-confirm-cancel {
   width: 100%;
   margin-top: 0.85rem;
   border: 0;
   background: transparent;
   color: #64748b;
-  font-weight: 800;
+  font-weight: 700;
   padding: 0.75rem;
   cursor: pointer;
 }

@@ -4,10 +4,6 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { useAccess } from "@/features/access/AccessProvider";
-import {
-  DriverIntentVerificationDrawer,
-  type DriverIntentAction,
-} from "@/features/driver-activity/components/DriverIntentVerificationDrawer";
 
 type ScheduleRow = {
   roster_member_id: string;
@@ -139,6 +135,25 @@ function formatTime(value?: string | null) {
   });
 }
 
+function generateClockConfirmChallenge(
+  eventType: "CLOCK_IN" | "CLOCK_OUT"
+): ClockConfirmChallenge {
+  const correctNumber = Math.floor(100 + Math.random() * 900);
+  const optionSet = new Set<number>([correctNumber]);
+
+  while (optionSet.size < 3) {
+    optionSet.add(Math.floor(100 + Math.random() * 900));
+  }
+
+  return {
+    eventType,
+    correctCode: String(correctNumber),
+    options: Array.from(optionSet)
+      .map(String)
+      .sort(() => Math.random() - 0.5),
+  };
+}
+
 export default function CompanyUserHomePage() {
   const params = useParams();
   const slug = String(params?.slug ?? "");
@@ -149,7 +164,7 @@ export default function CompanyUserHomePage() {
   const [activityLoading, setActivityLoading] = useState(true);
   const [activitySaving, setActivitySaving] = useState(false);
   const [activityState, setActivityState] = useState<ActivityCurrentResponse | null>(null);
-  const [pendingIntentAction, setPendingIntentAction] = useState<DriverIntentAction | null>(null);
+  const [clockConfirm, setClockConfirm] = useState<ClockConfirmChallenge | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
 
   const loadActivity = useCallback(async () => {
@@ -266,15 +281,19 @@ export default function CompanyUserHomePage() {
   function handleWorkdayAction() {
     if (!slug || activitySaving || activityLoading) return;
 
-    const eventType: DriverIntentAction = isClockedIn ? "CLOCK_OUT" : "CLOCK_IN";
-    setPendingIntentAction(eventType);
+    const eventType = isClockedIn ? "CLOCK_OUT" : "CLOCK_IN";
+    setClockConfirm(generateClockConfirmChallenge(eventType));
   }
 
-  async function commitWorkdayAction() {
-    if (!pendingIntentAction) return;
+  async function commitWorkdayAction(selectedCode: string) {
+    if (!clockConfirm || selectedCode !== clockConfirm.correctCode) {
+      setClockConfirm(null);
+      return;
+    }
+
     if (!slug || activitySaving || activityLoading) return;
 
-    const eventType = pendingIntentAction;
+    const eventType = clockConfirm.eventType;
 
     try {
       setActivitySaving(true);
@@ -304,7 +323,7 @@ export default function CompanyUserHomePage() {
       }
 
       setPageError(null);
-      setPendingIntentAction(null);
+      setClockConfirm(null);
       await loadActivity();
     } catch {
       setPageError("Could not record workday activity.");
@@ -312,6 +331,8 @@ export default function CompanyUserHomePage() {
       setActivitySaving(false);
     }
   }
+
+  const confirmActionLabel = clockConfirm?.eventType === "CLOCK_OUT" ? "Clock Out" : "Clock In";
 
   return (
     <main className="workspace-shell">
@@ -403,13 +424,43 @@ export default function CompanyUserHomePage() {
             Performance score, rank, trends, attendance, and delivery history will live here.
           </p>
         </section>
-        {pendingIntentAction ? (
-          <DriverIntentVerificationDrawer
-            action={pendingIntentAction}
-            busy={activitySaving}
-            onCancel={() => setPendingIntentAction(null)}
-            onConfirm={() => void commitWorkdayAction()}
-          />
+
+        {clockConfirm ? (
+          <div className="company-user-confirm-backdrop" role="presentation">
+            <section
+              className="company-user-confirm-drawer"
+              aria-label={`Confirm ${confirmActionLabel}`}
+            >
+              <p className="value-card__eyebrow">Confirm {confirmActionLabel}</p>
+              <h2>Select {clockConfirm.correctCode}</h2>
+              <p className="company-user-muted">
+                This quick check helps prevent accidental pocket taps.
+              </p>
+
+              <div className="company-user-confirm-options">
+                {clockConfirm.options.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    className="button button-secondary"
+                    onClick={() => void commitWorkdayAction(option)}
+                    disabled={activitySaving}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                className="company-user-confirm-cancel"
+                onClick={() => setClockConfirm(null)}
+                disabled={activitySaving}
+              >
+                Cancel
+              </button>
+            </section>
+          </div>
         ) : null}
       </section>
     </main>
