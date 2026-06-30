@@ -21,8 +21,16 @@ type NavItem = {
 export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const { slug } = props;
   const pathname = usePathname() ?? "";
+  const isDriverShellRoute =
+    pathname === `/company/${slug}/home` ||
+    pathname.startsWith(`/company/${slug}/driver/`);
+
   const access = useAccess();
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  if (isDriverShellRoute) {
+    return null;
+  }
   const membership = access.memberships.find((item) => item.company_slug === slug) ?? null;
   const isAdminUser =
     Boolean(access.is_platform_owner) ||

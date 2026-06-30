@@ -33,9 +33,9 @@ export function buildCompanyMenu(params: {
 
   return [
     buildHomeMenu(base),
-    buildAdministrationMenu(base),
     buildOperationsMenu(base),
     buildScheduleMenu(base),
     buildPeopleMenu(base),
+    buildAdministrationMenu(base),
   ];
 }
