@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { useAccess } from "@/features/access/AccessProvider";
@@ -18,6 +19,11 @@ type ScheduleRow = {
   schedule_pending?: boolean | null;
 };
 
+type PreviewDay = {
+  key: string;
+  label: string;
+  route: string;
+};
 
 const routeByDayKey: Record<number, keyof ScheduleRow> = {
   0: "default_route_s",
@@ -29,26 +35,36 @@ const routeByDayKey: Record<number, keyof ScheduleRow> = {
   6: "default_route_u",
 };
 
-function todayLongLabel() {
-  return new Date().toLocaleDateString(undefined, {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
+function firstNameFromDisplayName(displayName: string) {
+  const first = displayName.trim().split(/\s+/)[0];
+  return first || displayName;
 }
 
-function greeting() {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
-}
-
-function getTodayRoute(row: ScheduleRow | null) {
+function routeForDate(row: ScheduleRow | null, date: Date) {
   if (!row || row.schedule_pending) return null;
-  const routeKey = routeByDayKey[new Date().getDay()];
+  const routeKey = routeByDayKey[date.getDay()];
   const rawRoute = row[routeKey];
   return typeof rawRoute === "string" && rawRoute.trim() ? rawRoute.trim() : null;
+}
+
+function buildSchedulePreview(row: ScheduleRow | null): PreviewDay[] {
+  return Array.from({ length: 4 }, (_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() + index);
+
+    const label =
+      index === 0
+        ? "Today"
+        : index === 1
+          ? "Tomorrow"
+          : date.toLocaleDateString(undefined, { weekday: "long" });
+
+    return {
+      key: date.toISOString(),
+      label,
+      route: routeForDate(row, date) ?? "Off",
+    };
+  });
 }
 
 export default function CompanyUserHomePage() {
@@ -105,21 +121,18 @@ export default function CompanyUserHomePage() {
     return rows.find((row) => row.profile_id === access.profile_id) ?? null;
   }, [access.profile_id, rows]);
 
-  const todayRoute = getTodayRoute(myScheduleRow);
-
-  const displayName =
-    access.display_name ||
-    access.first_name ||
-    access.email ||
-    "there";
+  const displayName = access.display_name || access.first_name || access.email || "there";
+  const firstName = firstNameFromDisplayName(displayName);
+  const todayRoute = routeForDate(myScheduleRow, new Date());
+  const schedulePreview = buildSchedulePreview(myScheduleRow);
 
   return (
     <main className="workspace-shell">
       <section className="workspace-main company-user-home">
         <section className="company-user-hero">
           <div>
-            <p className="value-card__eyebrow">{todayLongLabel()}</p>
-            <h1 className="workspace-title">{greeting()}, {displayName}</h1>
+            <h1 className="workspace-title">Hello, {firstName}.</h1>
+            <p className="workspace-subtitle">Let&apos;s get started.</p>
           </div>
         </section>
 
@@ -129,60 +142,73 @@ export default function CompanyUserHomePage() {
           </section>
         ) : null}
 
-        <section className="app-card company-user-card company-user-today">
-          <p className="value-card__eyebrow">Today</p>
-
-          <div className="company-user-action">
-            <div>
-              <span>Start time</span>
-              <strong>8:00 AM</strong>
-            </div>
-
-            <button type="button" className="button button-primary">
-              Clock in
-            </button>
+        <button
+          type="button"
+          className="app-card company-user-card company-user-workday-card"
+          aria-label="Open today's workday"
+        >
+          <div>
+            <p className="value-card__eyebrow">Today&apos;s Workday</p>
+            <h2>{todayRoute ?? (loading ? "Loading route" : "No route scheduled")}</h2>
+            <p>Start Time 8:00 AM</p>
           </div>
 
-          <div className="company-user-today-grid">
-            <div>
-              <span>Route</span>
-              <strong>{loading ? "Loading..." : todayRoute ?? "Not assigned"}</strong>
-            </div>
-            <div>
-              <span>Planned volume</span>
-              <strong>Pending</strong>
-            </div>
-          </div>
-        </section>
+          <span className="company-user-workday-status">Clock In</span>
+        </button>
 
         <section className="app-card company-user-card">
-          <div className="company-user-card-head">
+          <div className="company-user-section-header">
             <div>
-              <p className="value-card__eyebrow">My schedule</p>
-              <h2 className="app-card__title">
-                {loading ? "Loading..." : todayRoute ? "You are scheduled today" : "No shift scheduled today"}
-              </h2>
-              <p className="app-card__body" style={{ marginTop: 4 }}>
-                {todayRoute ? `Route ${todayRoute}` : "Open your schedule to review upcoming shifts."}
-              </p>
+              <p className="value-card__eyebrow">Schedule</p>
+              <h2>Upcoming work</h2>
             </div>
+            <Link href={`/company/${slug}/schedule`}>View Calendar</Link>
+          </div>
 
-            <a className="button" href={`/company/${slug}/schedule`}>
-              View schedule
-            </a>
+          <div className="company-user-preview-list">
+            {schedulePreview.map((day) => (
+              <div key={day.key} className="company-user-preview-row">
+                <span>{day.label}</span>
+                <strong>{day.route}</strong>
+              </div>
+            ))}
           </div>
         </section>
 
         <section className="app-card company-user-card">
-          <p className="value-card__eyebrow">Updates</p>
-          <h2 className="app-card__title">No announcements</h2>
-          <p className="app-card__body">Company messages and dispatch reminders will show here.</p>
+          <div className="company-user-section-header">
+            <div>
+              <p className="value-card__eyebrow">Company Updates</p>
+              <h2>Nothing new right now</h2>
+            </div>
+          </div>
+          <p className="company-user-muted">
+            Broadcasts, reminders, incentives, and targeted company messages will appear here.
+          </p>
         </section>
 
         <section className="app-card company-user-card">
-          <p className="value-card__eyebrow">My profile</p>
-          <h2 className="app-card__title">Access active</h2>
-          <p className="app-card__body">Your company access is ready.</p>
+          <div className="company-user-section-header">
+            <div>
+              <p className="value-card__eyebrow">Compliance</p>
+              <h2>No urgent expirations</h2>
+            </div>
+          </div>
+          <p className="company-user-muted">
+            DOT, license, badge, and other upcoming expiration reminders will appear here.
+          </p>
+        </section>
+
+        <section className="app-card company-user-card">
+          <div className="company-user-section-header">
+            <div>
+              <p className="value-card__eyebrow">Driver Score</p>
+              <h2>Scorecard coming soon</h2>
+            </div>
+          </div>
+          <p className="company-user-muted">
+            Performance score, rank, trends, attendance, and delivery history will live here.
+          </p>
         </section>
       </section>
     </main>
