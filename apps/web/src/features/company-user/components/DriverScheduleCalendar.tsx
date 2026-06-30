@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useAccess } from "@/features/access/AccessProvider";
 
@@ -236,7 +237,12 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
           <h2>{monthTitle(monthDate)}</h2>
         </div>
 
-        <div className="driver-calendar-nav" aria-label="Calendar navigation">
+        <div className="driver-calendar-actions">
+          <Link className="driver-calendar-home-link" href={`/company/${slug}/home`}>
+            Home
+          </Link>
+
+          <div className="driver-calendar-nav" aria-label="Calendar navigation">
           <button type="button" onClick={() => moveMonth(-1)} aria-label="Previous month">
             ‹
           </button>
@@ -246,6 +252,7 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
           <button type="button" onClick={() => moveMonth(1)} aria-label="Next month">
             ›
           </button>
+          </div>
         </div>
       </div>
 

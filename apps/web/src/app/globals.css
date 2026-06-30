@@ -2063,3 +2063,68 @@ body {
     font-size: 0.58rem;
   }
 }
+
+.driver-calendar-home-link {
+  display: inline-flex;
+  margin-top: 0.35rem;
+  color: #2563eb;
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.driver-calendar-home-link:hover {
+  text-decoration: underline;
+}
+
+.driver-schedule-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.driver-schedule-preview-header a {
+  color: #2563eb;
+  font-size: 0.84rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.driver-schedule-preview-header a:hover {
+  text-decoration: underline;
+}
+
+.driver-calendar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.driver-calendar-actions .driver-calendar-home-link {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 12px;
+  background: #ffffff;
+  color: #2563eb;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 0 0.8rem;
+  text-decoration: none;
+}
+
+@media (max-width: 680px) {
+  .driver-calendar-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 0.8fr 2fr;
+    gap: 0.5rem;
+  }
+
+  .driver-calendar-actions .driver-calendar-home-link {
+    width: 100%;
+  }
+}

@@ -19,11 +19,8 @@ export function DriverSchedulePreviewCard({
 }: DriverSchedulePreviewCardProps) {
   return (
     <section className="app-card company-user-card">
-      <div className="company-user-section-header">
-        <div>
-          <p className="value-card__eyebrow">Schedule</p>
-          <h2>Week at a glance</h2>
-        </div>
+      <div className="company-user-section-header driver-schedule-preview-header">
+        <p className="value-card__eyebrow">Schedule</p>
         <Link href={`/company/${slug}/driver/schedule`}>View Calendar</Link>
       </div>
 
