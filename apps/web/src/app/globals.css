@@ -1563,3 +1563,35 @@ body {
     padding-top: 18px;
   }
 }
+
+.payroll-workspace-toolbar,
+.payroll-workspace .workspace-select,
+.payroll-week-control,
+.payroll-week-control__button,
+.payroll-action-button {
+  background: #ffffff;
+}
+
+
+.app-drawer__section-toggle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #009b67;
+  cursor: pointer;
+  display: flex;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  justify-content: space-between;
+  letter-spacing: 0.16em;
+  padding: 0;
+  text-align: left;
+  text-transform: uppercase;
+  width: 100%;
+}
+
+.app-drawer__section-toggle + .app-drawer__item,
+.app-drawer__section-toggle + .app-drawer__item-group {
+  margin-top: 8px;
+}

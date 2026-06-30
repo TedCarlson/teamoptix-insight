@@ -23,35 +23,48 @@ function itemOrChildIsActive(pathname: string, item: AppMenuItem) {
   return itemIsInBranch(pathname, item.href) || Boolean(item.children?.some((child) => itemIsInBranch(pathname, child.href)));
 }
 
-function activeExpandableKeys(pathname: string, sections: AppMenuSection[]) {
-  const keys: string[] = [];
-
+function activeSectionKey(pathname: string, sections: AppMenuSection[]) {
   for (const section of sections) {
     for (const item of section.items) {
-      if (item.children?.length && itemOrChildIsActive(pathname, item)) {
-        keys.push(item.key);
+      const itemActive = item.match ? item.match(pathname) : itemOrChildIsActive(pathname, item);
+
+      if (itemActive) {
+        return section.key;
       }
     }
   }
 
-  return keys;
+  return sections[0]?.key ?? null;
+}
+
+function activeExpandableKey(pathname: string, sections: AppMenuSection[]) {
+  for (const section of sections) {
+    for (const item of section.items) {
+      if (item.children?.length && itemOrChildIsActive(pathname, item)) {
+        return item.key;
+      }
+    }
+  }
+
+  return null;
 }
 
 export default function AppNavigationDrawer(props: Props) {
-  const activeKeys = useMemo(
-    () => activeExpandableKeys(props.pathname, props.sections),
+  const activeKey = useMemo(
+    () => activeExpandableKey(props.pathname, props.sections),
     [props.pathname, props.sections]
   );
-  const [expandedKeys, setExpandedKeys] = useState<string[]>(activeKeys);
+  const activeDrawerSectionKey = useMemo(
+    () => activeSectionKey(props.pathname, props.sections),
+    [props.pathname, props.sections]
+  );
+  const [expandedKey, setExpandedKey] = useState<string | null>(activeKey);
+  const [expandedSectionKey, setExpandedSectionKey] = useState<string | null>(activeDrawerSectionKey);
 
   if (!props.open) return null;
 
   function toggleKey(key: string) {
-    setExpandedKeys((current) =>
-      current.includes(key)
-        ? current.filter((item) => item !== key)
-        : [...current, key]
-    );
+    setExpandedKey((current) => (current === key ? null : key));
   }
 
   return (
@@ -75,15 +88,26 @@ export default function AppNavigationDrawer(props: Props) {
         </div>
 
         <div className="app-drawer__sections">
-          {props.sections.map((section) => (
-            <section key={section.key} className="app-drawer__section">
-              <p className="app-drawer__section-label">{section.label}</p>
+          {props.sections.map((section) => {
+            const sectionExpanded = (expandedSectionKey ?? activeDrawerSectionKey) === section.key;
 
-              {section.items.map((item) => {
+            return (
+              <section key={section.key} className="app-drawer__section">
+                <button
+                  type="button"
+                  className="app-drawer__section-toggle"
+                  aria-expanded={sectionExpanded}
+                  onClick={() => setExpandedSectionKey((current) => (current === section.key ? null : section.key))}
+                >
+                  <span>{section.label}</span>
+                  <span aria-hidden="true">{sectionExpanded ? "−" : "+"}</span>
+                </button>
+
+                {sectionExpanded ? section.items.map((item) => {
                 const hasChildren = Boolean(item.children?.length);
                 const current = item.match ? item.match(props.pathname) : itemIsActive(props.pathname, item.href);
                 const branchActive = itemOrChildIsActive(props.pathname, item);
-                const expanded = expandedKeys.includes(item.key) || branchActive;
+                const expanded = (expandedKey ?? activeKey) === item.key;
 
                 if (hasChildren) {
                   return (
@@ -132,9 +156,10 @@ export default function AppNavigationDrawer(props: Props) {
                     {item.label}
                   </Link>
                 );
-              })}
+              }) : null}
             </section>
-          ))}
+            );
+          })}
         </div>
       </aside>
     </div>
