@@ -1595,3 +1595,51 @@ body {
 .app-drawer__section-toggle + .app-drawer__item-group {
   margin-top: 8px;
 }
+
+.app-drawer__section-toggle {
+  border: 1px solid rgba(0, 155, 103, 0.24);
+  border-radius: 16px;
+  color: #0f172a;
+  min-height: 44px;
+  padding: 11px 12px;
+}
+
+.app-drawer__section-title,
+.app-drawer__item-label {
+  align-items: center;
+  display: inline-flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.app-drawer__icon {
+  color: #64748b;
+  fill: none;
+  flex: 0 0 auto;
+  height: 17px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  width: 17px;
+}
+
+.app-drawer__section-toggle[aria-expanded="true"],
+.app-drawer__section-toggle:hover {
+  border-color: rgba(0, 155, 103, 0.42);
+  color: #0f172a;
+}
+
+.app-drawer__section-toggle[aria-expanded="true"] .app-drawer__icon,
+.app-drawer__section-toggle:hover .app-drawer__icon,
+.app-drawer__item--active .app-drawer__icon,
+.app-drawer__item:hover .app-drawer__icon {
+  color: #009b67;
+}
+
+.app-drawer__chevron {
+  color: #64748b;
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1;
+}
