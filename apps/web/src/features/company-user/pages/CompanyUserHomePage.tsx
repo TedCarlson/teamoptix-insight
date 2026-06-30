@@ -1,9 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { useAccess } from "@/features/access/AccessProvider";
+import {
+  DriverSchedulePreviewCard,
+  type DriverSchedulePreviewDay,
+} from "@/features/company-user/components/DriverSchedulePreviewCard";
 import {
   IntentVerificationDrawer,
   type IntentVerificationAction,
@@ -37,11 +40,6 @@ type ScheduleRow = {
   schedule_pending?: boolean | null;
 };
 
-type PreviewDay = {
-  key: string;
-  label: string;
-  route: string;
-};
 
 type ActivityCurrentResponse = {
   ok?: boolean;
@@ -101,8 +99,8 @@ function routeForDate(row: ScheduleRow | null, date: Date) {
   return typeof rawRoute === "string" && rawRoute.trim() ? rawRoute.trim() : null;
 }
 
-function buildSchedulePreview(row: ScheduleRow | null): PreviewDay[] {
-  return Array.from({ length: 4 }, (_, index) => {
+function buildSchedulePreview(row: ScheduleRow | null): DriverSchedulePreviewDay[] {
+  return Array.from({ length: 7 }, (_, index) => {
     const date = new Date();
     date.setDate(date.getDate() + index);
 
@@ -342,24 +340,7 @@ export default function CompanyUserHomePage() {
           </span>
         </button>
 
-        <section className="app-card company-user-card">
-          <div className="company-user-section-header">
-            <div>
-              <p className="value-card__eyebrow">Schedule</p>
-              <h2>Upcoming work</h2>
-            </div>
-            <Link href={`/company/${slug}/schedule`}>View Calendar</Link>
-          </div>
-
-          <div className="company-user-preview-list">
-            {schedulePreview.map((day) => (
-              <div key={day.key} className="company-user-preview-row">
-                <span>{day.label}</span>
-                <strong>{day.route}</strong>
-              </div>
-            ))}
-          </div>
-        </section>
+        <DriverSchedulePreviewCard slug={slug} days={schedulePreview} />
 
         <section className="app-card company-user-card">
           <div className="company-user-section-header">
