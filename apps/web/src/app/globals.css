@@ -1741,3 +1741,325 @@ body {
     gap: 0.28rem;
   }
 }
+
+.driver-calendar-placeholder{
+  min-height:420px;
+  border:1px dashed rgba(15,23,42,.12);
+  border-radius:20px;
+  margin-top:1rem;
+  background:linear-gradient(
+      180deg,
+      rgba(248,250,252,.8),
+      rgba(255,255,255,1)
+  );
+}
+
+.driver-calendar-grid{
+  display:grid;
+  grid-template-columns:repeat(7,minmax(0,1fr));
+  gap:.45rem;
+  margin-top:1rem;
+}
+
+.driver-calendar-day{
+  display:grid;
+  justify-items:center;
+  gap:.2rem;
+  min-height:72px;
+  padding:.55rem .25rem;
+  border-radius:14px;
+  border:1px solid rgba(15,23,42,.08);
+  transition:.15s;
+}
+
+.driver-calendar-day span{
+  font-size:.68rem;
+  font-weight:700;
+  color:#64748b;
+}
+
+.driver-calendar-day strong{
+  font-size:1rem;
+  color:#0f172a;
+}
+
+.driver-calendar-day small{
+  font-size:.68rem;
+  font-weight:700;
+}
+
+.driver-calendar-day--route,
+.driver-calendar-day--on{
+  background:#e9f8ee;
+  border-color:#9ad7aa;
+}
+
+.driver-calendar-day--off{
+  background:#f3f4f6;
+  border-color:#e5e7eb;
+}
+
+.driver-calendar-day--call_out{
+  background:#fdecec;
+  border-color:#f5b5b5;
+}
+
+.driver-calendar-day--add_in{
+  background:#eaf4ff;
+  border-color:#b9d8ff;
+}
+
+.driver-calendar-day:hover{
+  transform:translateY(-1px);
+}
+
+@media (max-width:640px){
+  .driver-calendar-day{
+    min-height:64px;
+    padding:.45rem .15rem;
+  }
+
+  .driver-calendar-day strong{
+    font-size:.92rem;
+  }
+
+  .driver-calendar-day small{
+    font-size:.62rem;
+  }
+}
+
+.driver-calendar-card {
+  overflow: hidden;
+}
+
+.driver-calendar-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.driver-calendar-header h2 {
+  margin: 0.25rem 0 0;
+}
+
+.driver-calendar-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.driver-calendar-nav button {
+  min-height: 38px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 12px;
+  background: #ffffff;
+  color: #0f172a;
+  font-weight: 800;
+  padding: 0 0.8rem;
+  cursor: pointer;
+}
+
+.driver-calendar-nav button:nth-child(2) {
+  color: #2563eb;
+}
+
+.driver-calendar-shell {
+  margin-top: 1rem;
+}
+
+.driver-calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin-bottom: 0.45rem;
+}
+
+.driver-calendar-weekdays span {
+  border-radius: 12px;
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  padding: 0.35rem 0;
+  text-align: center;
+}
+
+.driver-calendar-weekdays .driver-calendar-weekend-column {
+  background: rgba(15, 23, 42, 0.025);
+}
+
+.driver-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin-top: 0;
+}
+
+.driver-calendar-day {
+  min-height: 76px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 0.3rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 0.45rem 0.2rem;
+  text-align: center;
+  cursor: pointer;
+  position: relative;
+}
+
+.driver-calendar-day strong {
+  color: #0f172a;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.driver-calendar-day small {
+  color: #475569;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.driver-calendar-day--route,
+.driver-calendar-day--on {
+  background: #e9f8ee;
+  border-color: #9ad7aa;
+}
+
+.driver-calendar-day--route small,
+.driver-calendar-day--on small {
+  color: #047857;
+}
+
+.driver-calendar-day--off {
+  background: #f8fafc;
+  border-color: #e5e7eb;
+}
+
+.driver-calendar-day--call_out {
+  background: #fdecec;
+  border-color: #f5b5b5;
+}
+
+.driver-calendar-day--call_out small {
+  color: #b91c1c;
+}
+
+.driver-calendar-day--add_in {
+  background: #eaf4ff;
+  border-color: #b9d8ff;
+}
+
+.driver-calendar-day--add_in small {
+  color: #2563eb;
+}
+
+.driver-calendar-day--weekend {
+  box-shadow: inset 0 0 0 999px rgba(15, 23, 42, 0.018);
+}
+
+.driver-calendar-day--muted {
+  opacity: 0.42;
+}
+
+.driver-calendar-day--today {
+  border-color: #059669;
+  box-shadow:
+    0 0 0 2px rgba(5, 150, 105, 0.16),
+    0 12px 22px rgba(15, 23, 42, 0.08);
+}
+
+.driver-calendar-day--today::after {
+  content: "TODAY";
+  position: absolute;
+  top: -0.55rem;
+  right: 0.45rem;
+  border-radius: 999px;
+  background: #059669;
+  color: #ffffff;
+  font-size: 0.56rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  padding: 0.2rem 0.45rem;
+}
+
+.driver-calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.driver-calendar-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 999px;
+  color: #475569;
+  font-size: 0.76rem;
+  font-weight: 800;
+  padding: 0.35rem 0.6rem;
+}
+
+.driver-calendar-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.driver-calendar-dot--route {
+  background: #059669;
+}
+
+.driver-calendar-dot--off {
+  background: #94a3b8;
+}
+
+.driver-calendar-dot--call-out {
+  background: #dc2626;
+}
+
+.driver-calendar-dot--add-in {
+  background: #2563eb;
+}
+
+@media (max-width: 680px) {
+  .driver-calendar-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .driver-calendar-nav {
+    width: 100%;
+  }
+
+  .driver-calendar-nav button {
+    flex: 1;
+  }
+
+  .driver-calendar-weekdays,
+  .driver-calendar-grid {
+    gap: 0.25rem;
+  }
+
+  .driver-calendar-day {
+    min-height: 58px;
+    border-radius: 13px;
+  }
+
+  .driver-calendar-day strong {
+    font-size: 0.92rem;
+  }
+
+  .driver-calendar-day small {
+    font-size: 0.58rem;
+  }
+}

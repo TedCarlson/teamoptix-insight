@@ -24,7 +24,7 @@ export function DriverSchedulePreviewCard({
           <p className="value-card__eyebrow">Schedule</p>
           <h2>Week at a glance</h2>
         </div>
-        <Link href={`/company/${slug}/schedule`}>View Calendar</Link>
+        <Link href={`/company/${slug}/driver/schedule`}>View Calendar</Link>
       </div>
 
       <div className="driver-schedule-week-row">
