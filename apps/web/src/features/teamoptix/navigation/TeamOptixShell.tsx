@@ -29,7 +29,12 @@ export default function TeamOptixShell(props: { children: React.ReactNode }) {
           <span className="brand-mark__name">Command Center</span>
         </Link>
 
-        <IdentityPill />
+        <div className="teamoptix-header__right">
+          <Link className="button" href="/companies">
+            Launch Insight
+          </Link>
+          <IdentityPill />
+        </div>
       </header>
 
       <AppNavigationDrawer

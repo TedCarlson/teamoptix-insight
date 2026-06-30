@@ -267,11 +267,7 @@ export default function CompanyPage() {
           </section>
         ) : null}
 
-        {activeSurface === "payroll" ? (
-          <SectionCard eyebrow="Payroll" title="Attendance Review">
-            <PayrollGrid />
-          </SectionCard>
-        ) : null}
+        {activeSurface === "payroll" ? <PayrollGrid /> : null}
 
         {activeSurface === "prior-day" ? (
           <SectionCard

@@ -30,6 +30,7 @@ export function buildTeamOptixMenu(): AppMenuSection[] {
           href: "/teamoptix/products",
           children: [
             { key: "product-insight", label: "Insight", href: "/teamoptix/products/insight" },
+            { key: "launch-insight-companies", label: "Launch Insight Companies", href: "/companies" },
             { key: "product-itg", label: "ITG v2.0", href: "/teamoptix/products/itg" },
           ],
         },
