@@ -25,7 +25,6 @@ export function DriverSchedulePreviewCard({
     >
       <div className="driver-schedule-preview-header">
         <p className="value-card__eyebrow">Schedule</p>
-        <span>View Calendar</span>
       </div>
 
       <div className="driver-schedule-week-row">

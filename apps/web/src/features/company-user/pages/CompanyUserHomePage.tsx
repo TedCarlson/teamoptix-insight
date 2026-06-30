@@ -5,6 +5,10 @@ import { useParams } from "next/navigation";
 import { useAccess } from "@/features/access/AccessProvider";
 import { DriverMobileShell } from "@/features/driver/shell/DriverMobileShell";
 import {
+  resolveDriverWorkdayPresentation,
+  type DriverWorkdayState,
+} from "@/features/driver/language/workday";
+import {
   DriverSchedulePreviewCard,
   type DriverSchedulePreviewDay,
 } from "@/features/company-user/components/DriverSchedulePreviewCard";
@@ -221,40 +225,32 @@ export default function CompanyUserHomePage() {
   const isClockedIn = activityState?.state === "CLOCKED_IN";
   const lastClockInTime = formatTime(activityState?.lastClockIn?.occurred_at);
 
-  const workdayTitle = activityLoading
-    ? "Checking workday"
+  const scheduledTodayForWorkday = isScheduledForDate(myScheduleRow, new Date());
+
+  const workdayState: DriverWorkdayState = activityLoading
+    ? "CHECKING"
     : isClockedIn
-      ? "You're Working"
-      : "Ready to Start";
+      ? "CLOCKED_IN"
+      : loading
+        ? "CHECKING"
+        : scheduledTodayForWorkday && todayRoute
+          ? "READY_TO_START"
+          : scheduledTodayForWorkday
+            ? "AWAITING_ASSIGNMENT"
+            : "DAY_OFF";
 
-  const workdaySubtitle = (() => {
-    if (isClockedIn) {
-      return lastClockInTime
-        ? `Started at ${lastClockInTime}`
-        : "Workday in progress";
-    }
+  const workdayPresentation = resolveDriverWorkdayPresentation({
+    state: workdayState,
+    lastClockInTime,
+    route: todayRoute,
+  });
 
-    if (loading) {
-      return "Loading workday...";
-    }
-
-    const scheduledToday = isScheduledForDate(myScheduleRow, new Date());
-
-    if (!scheduledToday) {
-      return "Today is your scheduled day off.";
-    }
-
-    if (todayRoute) {
-      return `Route ${todayRoute}`;
-    }
-
-    return "Report to Leadership for assignment.";
-  })();
-
-  const workdayAction = isClockedIn ? "Clock Out" : "Clock In";
+  const workdayTitle = workdayPresentation.title;
+  const workdaySubtitle = workdayPresentation.message;
+  const workdayAction = workdayPresentation.actionLabel;
 
   function handleWorkdayAction() {
-    if (!slug || activitySaving || activityLoading) return;
+    if (!slug || activitySaving || activityLoading || !workdayPresentation.actionEnabled) return;
 
     const eventType: IntentVerificationAction = isClockedIn ? "CLOCK_OUT" : "CLOCK_IN";
     setClockConfirm(eventType);
@@ -305,13 +301,6 @@ export default function CompanyUserHomePage() {
   return (
     <DriverMobileShell slug={slug}>
       <section className="company-user-home">
-        <section className="company-user-hero">
-          <div>
-            <h1 className="workspace-title">Hello, {firstName}.</h1>
-            <p className="workspace-subtitle">Let&apos;s get started.</p>
-          </div>
-        </section>
-
         {pageError ? (
           <section className="app-card company-user-card">
             <p style={{ color: "#c62828", margin: 0 }}>{pageError}</p>
@@ -324,8 +313,8 @@ export default function CompanyUserHomePage() {
             isClockedIn ? "company-user-workday-card--active" : ""
           }`}
           onClick={handleWorkdayAction}
-          disabled={activitySaving || activityLoading}
-          aria-label={workdayAction}
+          disabled={activitySaving || activityLoading || !workdayPresentation.actionEnabled}
+          aria-label={workdayPresentation.actionEnabled ? workdayAction : workdayTitle}
         >
           <div>
             <p className="value-card__eyebrow">Today&apos;s Workday</p>

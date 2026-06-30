@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CalendarDays, Home } from "lucide-react";
 import { usePathname } from "next/navigation";
 
 type DriverBottomNavProps = {
@@ -11,13 +12,13 @@ const navItems = [
   {
     key: "home",
     label: "Home",
-    icon: "⌂",
+    Icon: Home,
     href: (slug: string) => `/company/${slug}/home`,
   },
   {
     key: "schedule",
     label: "Schedule",
-    icon: "□",
+    Icon: CalendarDays,
     href: (slug: string) => `/company/${slug}/driver/schedule`,
   },
 ];
@@ -30,6 +31,7 @@ export function DriverBottomNav({ slug }: DriverBottomNavProps) {
       {navItems.map((item) => {
         const href = item.href(slug);
         const active = pathname === href;
+        const Icon = item.Icon;
 
         return (
           <Link
@@ -39,9 +41,7 @@ export function DriverBottomNav({ slug }: DriverBottomNavProps) {
               active ? "driver-bottom-nav__item--active" : ""
             }`}
           >
-            <span className="driver-bottom-nav__icon" aria-hidden="true">
-              {item.icon}
-            </span>
+            <Icon className="driver-bottom-nav__icon" aria-hidden="true" size={20} />
             <span>{item.label}</span>
           </Link>
         );
