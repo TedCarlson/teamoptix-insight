@@ -1643,3 +1643,52 @@ body {
   font-weight: 900;
   line-height: 1;
 }
+
+.company-user-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.34);
+  padding: 1rem;
+}
+
+.company-user-confirm-drawer {
+  width: min(100%, 520px);
+  border-radius: 26px 26px 18px 18px;
+  background: #ffffff;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.28);
+  padding: 1.25rem;
+}
+
+.company-user-confirm-drawer h2 {
+  margin: 0.2rem 0 0;
+  font-size: 1.35rem;
+}
+
+.company-user-confirm-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.company-user-confirm-options .button {
+  justify-content: center;
+  min-height: 52px;
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.company-user-confirm-cancel {
+  width: 100%;
+  margin-top: 0.85rem;
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font-weight: 700;
+  padding: 0.75rem;
+  cursor: pointer;
+}

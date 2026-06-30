@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { useAccess } from "@/features/access/AccessProvider";
 
@@ -16,6 +16,20 @@ type ScheduleRow = {
   default_route_w?: string | null;
   default_route_h?: string | null;
   default_route_f?: string | null;
+  preset_works_s?: boolean | null;
+  preset_works_u?: boolean | null;
+  preset_works_m?: boolean | null;
+  preset_works_t?: boolean | null;
+  preset_works_w?: boolean | null;
+  preset_works_h?: boolean | null;
+  preset_works_f?: boolean | null;
+  rotation_works_s?: boolean | null;
+  rotation_works_u?: boolean | null;
+  rotation_works_m?: boolean | null;
+  rotation_works_t?: boolean | null;
+  rotation_works_w?: boolean | null;
+  rotation_works_h?: boolean | null;
+  rotation_works_f?: boolean | null;
   schedule_pending?: boolean | null;
 };
 
@@ -23,6 +37,19 @@ type PreviewDay = {
   key: string;
   label: string;
   route: string;
+};
+
+type ActivityCurrentResponse = {
+  ok?: boolean;
+  state?: "CLOCKED_IN" | "CLOCKED_OUT" | string;
+  lastClockIn?: { occurred_at: string } | null;
+  lastClockOut?: { occurred_at: string } | null;
+};
+
+type ClockConfirmChallenge = {
+  eventType: "CLOCK_IN" | "CLOCK_OUT";
+  correctCode: string;
+  options: string[];
 };
 
 const routeByDayKey: Record<number, keyof ScheduleRow> = {
@@ -34,6 +61,35 @@ const routeByDayKey: Record<number, keyof ScheduleRow> = {
   5: "default_route_f",
   6: "default_route_u",
 };
+
+const presetWorksByDayKey: Record<number, keyof ScheduleRow> = {
+  0: "preset_works_s",
+  1: "preset_works_m",
+  2: "preset_works_t",
+  3: "preset_works_w",
+  4: "preset_works_h",
+  5: "preset_works_f",
+  6: "preset_works_u",
+};
+
+const rotationWorksByDayKey: Record<number, keyof ScheduleRow> = {
+  0: "rotation_works_s",
+  1: "rotation_works_m",
+  2: "rotation_works_t",
+  3: "rotation_works_w",
+  4: "rotation_works_h",
+  5: "rotation_works_f",
+  6: "rotation_works_u",
+};
+
+function isScheduledForDate(row: ScheduleRow | null, date: Date) {
+  if (!row || row.schedule_pending) return false;
+
+  const presetKey = presetWorksByDayKey[date.getDay()];
+  const rotationKey = rotationWorksByDayKey[date.getDay()];
+
+  return row[rotationKey] === true || row[presetKey] === true;
+}
 
 function firstNameFromDisplayName(displayName: string) {
   const first = displayName.trim().split(/\s+/)[0];
@@ -59,12 +115,43 @@ function buildSchedulePreview(row: ScheduleRow | null): PreviewDay[] {
           ? "Tomorrow"
           : date.toLocaleDateString(undefined, { weekday: "long" });
 
+    const scheduled = isScheduledForDate(row, date);
+    const route = routeForDate(row, date);
+
     return {
       key: date.toISOString(),
       label,
-      route: routeForDate(row, date) ?? "Off",
+      route: scheduled ? route ?? "Awaiting Assignment" : "Off",
     };
   });
+}
+
+function formatTime(value?: string | null) {
+  if (!value) return null;
+
+  return new Date(value).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function generateClockConfirmChallenge(
+  eventType: "CLOCK_IN" | "CLOCK_OUT"
+): ClockConfirmChallenge {
+  const correctNumber = Math.floor(100 + Math.random() * 900);
+  const optionSet = new Set<number>([correctNumber]);
+
+  while (optionSet.size < 3) {
+    optionSet.add(Math.floor(100 + Math.random() * 900));
+  }
+
+  return {
+    eventType,
+    correctCode: String(correctNumber),
+    options: Array.from(optionSet)
+      .map(String)
+      .sort(() => Math.random() - 0.5),
+  };
 }
 
 export default function CompanyUserHomePage() {
@@ -74,7 +161,35 @@ export default function CompanyUserHomePage() {
 
   const [rows, setRows] = useState<ScheduleRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activityLoading, setActivityLoading] = useState(true);
+  const [activitySaving, setActivitySaving] = useState(false);
+  const [activityState, setActivityState] = useState<ActivityCurrentResponse | null>(null);
+  const [clockConfirm, setClockConfirm] = useState<ClockConfirmChallenge | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
+
+  const loadActivity = useCallback(async () => {
+    if (!slug) return;
+
+    try {
+      setActivityLoading(true);
+
+      const res = await fetch(`/api/company/${slug}/driver/activity/current`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+
+      const data = (await res.json().catch(() => ({}))) as ActivityCurrentResponse;
+
+      if (!res.ok) {
+        setActivityState(null);
+        return;
+      }
+
+      setActivityState(data);
+    } finally {
+      setActivityLoading(false);
+    }
+  }, [slug]);
 
   useEffect(() => {
     let active = true;
@@ -109,12 +224,15 @@ export default function CompanyUserHomePage() {
       }
     }
 
-    if (slug) void loadSchedule();
+    if (slug) {
+      void loadSchedule();
+      void loadActivity();
+    }
 
     return () => {
       active = false;
     };
-  }, [slug]);
+  }, [loadActivity, slug]);
 
   const myScheduleRow = useMemo(() => {
     if (!access.profile_id) return null;
@@ -125,6 +243,96 @@ export default function CompanyUserHomePage() {
   const firstName = firstNameFromDisplayName(displayName);
   const todayRoute = routeForDate(myScheduleRow, new Date());
   const schedulePreview = buildSchedulePreview(myScheduleRow);
+  const isClockedIn = activityState?.state === "CLOCKED_IN";
+  const lastClockInTime = formatTime(activityState?.lastClockIn?.occurred_at);
+
+  const workdayTitle = activityLoading
+    ? "Checking workday"
+    : isClockedIn
+      ? "You're Working"
+      : "Ready to Start";
+
+  const workdaySubtitle = (() => {
+    if (isClockedIn) {
+      return lastClockInTime
+        ? `Started at ${lastClockInTime}`
+        : "Workday in progress";
+    }
+
+    if (loading) {
+      return "Loading workday...";
+    }
+
+    const scheduledToday = isScheduledForDate(myScheduleRow, new Date());
+
+    if (!scheduledToday) {
+      return "Today is your scheduled day off.";
+    }
+
+    if (todayRoute) {
+      return `Route ${todayRoute}`;
+    }
+
+    return "Report to Leadership for assignment.";
+  })();
+
+  const workdayAction = isClockedIn ? "Clock Out" : "Clock In";
+
+  function handleWorkdayAction() {
+    if (!slug || activitySaving || activityLoading) return;
+
+    const eventType = isClockedIn ? "CLOCK_OUT" : "CLOCK_IN";
+    setClockConfirm(generateClockConfirmChallenge(eventType));
+  }
+
+  async function commitWorkdayAction(selectedCode: string) {
+    if (!clockConfirm || selectedCode !== clockConfirm.correctCode) {
+      setClockConfirm(null);
+      return;
+    }
+
+    if (!slug || activitySaving || activityLoading) return;
+
+    const eventType = clockConfirm.eventType;
+
+    try {
+      setActivitySaving(true);
+
+      const res = await fetch(`/api/company/${slug}/driver/activity`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          event_type: eventType,
+          roster_member_id: myScheduleRow?.roster_member_id ?? null,
+          device_occurred_at: new Date().toISOString(),
+          event_payload: {
+            route: todayRoute,
+            source_surface: "driver_home",
+          },
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setPageError(data?.error ?? "Could not record workday activity.");
+        return;
+      }
+
+      setPageError(null);
+      setClockConfirm(null);
+      await loadActivity();
+    } catch {
+      setPageError("Could not record workday activity.");
+    } finally {
+      setActivitySaving(false);
+    }
+  }
+
+  const confirmActionLabel = clockConfirm?.eventType === "CLOCK_OUT" ? "Clock Out" : "Clock In";
 
   return (
     <main className="workspace-shell">
@@ -144,16 +352,22 @@ export default function CompanyUserHomePage() {
 
         <button
           type="button"
-          className="app-card company-user-card company-user-workday-card"
-          aria-label="Open today's workday"
+          className={`app-card company-user-card company-user-workday-card ${
+            isClockedIn ? "company-user-workday-card--active" : ""
+          }`}
+          onClick={handleWorkdayAction}
+          disabled={activitySaving || activityLoading}
+          aria-label={workdayAction}
         >
           <div>
             <p className="value-card__eyebrow">Today&apos;s Workday</p>
-            <h2>{todayRoute ?? (loading ? "Loading route" : "No route scheduled")}</h2>
-            <p>Start Time 8:00 AM</p>
+            <h2>{workdayTitle}</h2>
+            <p>{workdaySubtitle}</p>
           </div>
 
-          <span className="company-user-workday-status">Clock In</span>
+          <span className="company-user-workday-status">
+            {activitySaving ? "Saving..." : workdayAction}
+          </span>
         </button>
 
         <section className="app-card company-user-card">
@@ -210,6 +424,44 @@ export default function CompanyUserHomePage() {
             Performance score, rank, trends, attendance, and delivery history will live here.
           </p>
         </section>
+
+        {clockConfirm ? (
+          <div className="company-user-confirm-backdrop" role="presentation">
+            <section
+              className="company-user-confirm-drawer"
+              aria-label={`Confirm ${confirmActionLabel}`}
+            >
+              <p className="value-card__eyebrow">Confirm {confirmActionLabel}</p>
+              <h2>Select {clockConfirm.correctCode}</h2>
+              <p className="company-user-muted">
+                This quick check helps prevent accidental pocket taps.
+              </p>
+
+              <div className="company-user-confirm-options">
+                {clockConfirm.options.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    className="button button-secondary"
+                    onClick={() => void commitWorkdayAction(option)}
+                    disabled={activitySaving}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                className="company-user-confirm-cancel"
+                onClick={() => setClockConfirm(null)}
+                disabled={activitySaving}
+              >
+                Cancel
+              </button>
+            </section>
+          </div>
+        ) : null}
       </section>
     </main>
   );
