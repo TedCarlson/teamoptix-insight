@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { useAccess } from "@/features/access/AccessProvider";
+import { DriverMobileShell } from "@/features/driver/shell/DriverMobileShell";
 import {
   DriverSchedulePreviewCard,
   type DriverSchedulePreviewDay,
@@ -302,8 +303,8 @@ export default function CompanyUserHomePage() {
     }
   }
   return (
-    <main className="workspace-shell">
-      <section className="workspace-main company-user-home">
+    <DriverMobileShell slug={slug}>
+      <section className="company-user-home">
         <section className="company-user-hero">
           <div>
             <h1 className="workspace-title">Hello, {firstName}.</h1>
@@ -383,6 +384,6 @@ export default function CompanyUserHomePage() {
           />
         ) : null}
       </section>
-    </main>
+    </DriverMobileShell>
   );
 }

@@ -2101,30 +2101,82 @@ body {
   gap: 0.5rem;
 }
 
-.driver-calendar-actions .driver-calendar-home-link {
-  min-height: 38px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  border-radius: 12px;
-  background: #ffffff;
-  color: #2563eb;
-  font-size: 0.82rem;
-  font-weight: 800;
-  padding: 0 0.8rem;
+.driver-schedule-preview-card {
+  display: block;
+  color: inherit;
   text-decoration: none;
 }
 
-@media (max-width: 680px) {
-  .driver-calendar-actions {
-    width: 100%;
-    display: grid;
-    grid-template-columns: 0.8fr 2fr;
-    gap: 0.5rem;
-  }
+.driver-schedule-preview-card:hover {
+  transform: translateY(-1px);
+}
 
-  .driver-calendar-actions .driver-calendar-home-link {
-    width: 100%;
+.driver-schedule-preview-card .driver-schedule-preview-header > span {
+  color: #2563eb;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.driver-mobile-shell {
+  min-height: 100dvh;
+  padding-bottom: calc(5.25rem + env(safe-area-inset-bottom));
+}
+
+.driver-mobile-content {
+  width: 100%;
+}
+
+.driver-bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.25rem;
+  padding: 0.55rem 0.7rem calc(0.55rem + env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 -12px 32px rgba(15, 23, 42, 0.08);
+}
+
+.driver-bottom-nav__item {
+  min-height: 54px;
+  display: grid;
+  place-items: center;
+  gap: 0.18rem;
+  border-radius: 18px;
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.driver-bottom-nav__icon {
+  color: #0f172a;
+  font-size: 1.08rem;
+  line-height: 1;
+}
+
+.driver-bottom-nav__item--active {
+  background: rgba(37, 99, 235, 0.08);
+  color: #2563eb;
+}
+
+.driver-bottom-nav__item--active .driver-bottom-nav__icon {
+  color: #2563eb;
+}
+
+@media (min-width: 900px) {
+  .driver-bottom-nav {
+    left: 50%;
+    right: auto;
+    width: min(720px, calc(100% - 2rem));
+    transform: translateX(-50%);
+    bottom: 1rem;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 28px;
   }
 }

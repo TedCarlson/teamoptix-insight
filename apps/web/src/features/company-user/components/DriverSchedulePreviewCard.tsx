@@ -18,10 +18,14 @@ export function DriverSchedulePreviewCard({
   days,
 }: DriverSchedulePreviewCardProps) {
   return (
-    <section className="app-card company-user-card">
-      <div className="company-user-section-header driver-schedule-preview-header">
+    <Link
+      href={`/company/${slug}/driver/schedule`}
+      className="app-card company-user-card driver-schedule-preview-card"
+      aria-label="Open schedule calendar"
+    >
+      <div className="driver-schedule-preview-header">
         <p className="value-card__eyebrow">Schedule</p>
-        <Link href={`/company/${slug}/driver/schedule`}>View Calendar</Link>
+        <span>View Calendar</span>
       </div>
 
       <div className="driver-schedule-week-row">
@@ -32,6 +36,6 @@ export function DriverSchedulePreviewCard({
           </div>
         ))}
       </div>
-    </section>
+    </Link>
   );
 }
