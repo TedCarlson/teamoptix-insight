@@ -24,6 +24,30 @@ function asObject(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function numberOrNull(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function locationPayload(body: Record<string, unknown>) {
+  const location = asObject(body.location);
+  const latitude = numberOrNull(location.latitude);
+  const longitude = numberOrNull(location.longitude);
+
+  if (latitude == null || longitude == null) return null;
+
+  return {
+    latitude,
+    longitude,
+    accuracy_meters: numberOrNull(location.accuracy_meters),
+    device_captured_at:
+      typeof location.device_captured_at === "string" && location.device_captured_at.trim()
+        ? location.device_captured_at.trim()
+        : null,
+  };
+}
+
 async function resolveCompanyAndAccess(slug: string) {
   const supabase = await getSupabaseServerClient();
 
@@ -72,7 +96,7 @@ export async function POST(
   context: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await context.params;
-  const body = await req.json().catch(() => ({}));
+  const body = asObject(await req.json().catch(() => ({})));
 
   const eventType =
     typeof body.event_type === "string" ? body.event_type.trim().toUpperCase() : "";
@@ -144,5 +168,37 @@ export async function POST(
     return NextResponse.json({ error: insertError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, event });
+  const location = locationPayload(body);
+
+  if (location) {
+    const { error: breadcrumbError } = await supabase
+      .from("driver_breadcrumb_point_v")
+      .insert({
+        company_id: company.id,
+        profile_id: access?.profile_id ?? null,
+        person_id: access?.person_id ?? null,
+        roster_member_id: rosterMemberId,
+        service_date: serviceDate,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        accuracy_meters: location.accuracy_meters,
+        device_captured_at: location.device_captured_at,
+        source: "DRIVER_WEB",
+        tracking_context: eventType,
+        source_activity_event_id: event.id,
+        breadcrumb_payload: {
+          event_type: eventType,
+          source_surface: "driver_home",
+        },
+      });
+
+    if (breadcrumbError) {
+      return NextResponse.json(
+        { error: breadcrumbError.message, event },
+        { status: 500 }
+      );
+    }
+  }
+
+  return NextResponse.json({ ok: true, event, breadcrumb_recorded: Boolean(location) });
 }

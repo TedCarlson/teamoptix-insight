@@ -92,6 +92,34 @@ function isScheduledForDate(row: ScheduleRow | null, date: Date) {
   return row[rotationKey] === true || row[presetKey] === true;
 }
 
+function getBrowserLocation(): Promise<{
+  latitude: number;
+  longitude: number;
+  accuracy_meters: number | null;
+  device_captured_at: string;
+} | null> {
+  if (typeof navigator === "undefined" || !navigator.geolocation) {
+    return Promise.resolve(null);
+  }
+
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy_meters: Number.isFinite(position.coords.accuracy)
+            ? position.coords.accuracy
+            : null,
+          device_captured_at: new Date(position.timestamp).toISOString(),
+        });
+      },
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+    );
+  });
+}
+
 function firstNameFromDisplayName(displayName: string) {
   const first = displayName.trim().split(/\s+/)[0];
   return first || displayName;
@@ -265,6 +293,8 @@ export default function CompanyUserHomePage() {
     try {
       setActivitySaving(true);
 
+      const location = await getBrowserLocation();
+
       const res = await fetch(`/api/company/${slug}/driver/activity`, {
         method: "POST",
         credentials: "include",
@@ -278,7 +308,9 @@ export default function CompanyUserHomePage() {
           event_payload: {
             route: todayRoute,
             source_surface: "driver_home",
+            location_captured: Boolean(location),
           },
+          location,
         }),
       });
 
