@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import PayrollGrid from "@/features/payroll/components/PayrollGrid";
+import { PayrollTimeKeepingPage } from "@/features/payroll/components/PayrollTimeKeepingPage";
+import { defaultPayrollWeekEndFriday } from "@/features/payroll/lib/payroll.date";
 
 type PayrollWorkspaceView = "payroll" | "time-tracking";
 
@@ -10,8 +12,13 @@ function viewLabel(view: PayrollWorkspaceView) {
   return "Payroll";
 }
 
-export default function PayrollWorkspace() {
+type PayrollWorkspaceProps = {
+  slug: string;
+};
+
+export default function PayrollWorkspace({ slug }: PayrollWorkspaceProps) {
   const [view, setView] = useState<PayrollWorkspaceView>("payroll");
+  const [weekEnd] = useState(defaultPayrollWeekEndFriday);
 
   return (
     <section style={{ display: "grid", gap: 12 }}>
@@ -50,13 +57,7 @@ export default function PayrollWorkspace() {
       {view === "payroll" ? <PayrollGrid /> : null}
 
       {view === "time-tracking" ? (
-        <article className="value-card">
-          <p className="value-card__eyebrow">Time Tracking</p>
-          <h3 className="value-card__title">Workspace shell ready</h3>
-          <p style={{ margin: 0, color: "#64748b" }}>
-            Overview, Time Sheet, Duty Hours, and DOT Hours will mount here.
-          </p>
-        </article>
+        <PayrollTimeKeepingPage slug={slug} weekEnd={weekEnd} />
       ) : null}
     </section>
   );

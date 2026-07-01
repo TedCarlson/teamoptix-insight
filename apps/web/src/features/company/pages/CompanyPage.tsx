@@ -267,7 +267,7 @@ export default function CompanyPage() {
           </section>
         ) : null}
 
-        {activeSurface === "payroll" ? <PayrollWorkspace /> : null}
+        {activeSurface === "payroll" ? <PayrollWorkspace slug={slug} /> : null}
 
         {activeSurface === "prior-day" ? (
           <SectionCard
