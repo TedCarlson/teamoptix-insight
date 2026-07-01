@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 
-type OverrideType = "CALL_OUT" | "TIME_OFF" | "ADD_IN";
+type OverrideType = "CALL_OUT" | "TIME_OFF" | "ADD_IN" | "ADMIN_OFF";
 
 type WorkerRow = {
   roster_member_id: string;
@@ -36,6 +36,22 @@ type CommitResult = {
   add_in_insert_count?: number;
 };
 
+type TimeOffRequestRow = {
+  id: string;
+  roster_member_id: string;
+  requested_dates: string[];
+  start_date: string;
+  end_date: string;
+  day_count: number;
+  status: "PENDING" | "APPROVED" | "DENIED" | "WITHDRAWN";
+  request_note: string | null;
+  manager_note: string | null;
+  submitted_at: string;
+  reviewed_at: string | null;
+  full_name: string | null;
+  worker_type: string | null;
+};
+
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -61,6 +77,8 @@ export default function ScheduleOverridesPage() {
 
   const [workers, setWorkers] = useState<WorkerRow[]>([]);
   const [overrides, setOverrides] = useState<OverrideRow[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<TimeOffRequestRow[]>([]);
+  const [requestHistory, setRequestHistory] = useState<TimeOffRequestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,9 +113,6 @@ export default function ScheduleOverridesPage() {
 
     setWorkers(mapped);
 
-    if (!rosterMemberId && mapped.length > 0) {
-      setRosterMemberId(mapped[0].roster_member_id);
-    }
   }
 
   async function loadOverrides() {
@@ -114,12 +129,27 @@ export default function ScheduleOverridesPage() {
     setOverrides((data?.rows ?? []) as OverrideRow[]);
   }
 
+  async function loadTimeOffRequests() {
+    const res = await fetch(`/api/company/${slug}/schedule/time-off-requests`, {
+      credentials: "include",
+      cache: "no-store",
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data?.error ?? "Failed to load time off requests.");
+    }
+
+    setPendingRequests((data?.pending ?? []) as TimeOffRequestRow[]);
+    setRequestHistory((data?.history ?? []) as TimeOffRequestRow[]);
+  }
+
   async function refreshAll() {
     setLoading(true);
     setError(null);
 
     try {
-      await Promise.all([loadWorkers(), loadOverrides()]);
+      await Promise.all([loadWorkers(), loadOverrides(), loadTimeOffRequests()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load overrides.");
     } finally {
@@ -169,6 +199,46 @@ export default function ScheduleOverridesPage() {
       await refreshAll();
     } catch {
       setError("Failed to create override.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleReviewTimeOffRequest(
+    requestId: string,
+    decision: "APPROVED" | "DENIED"
+  ) {
+    try {
+      setBusy(true);
+      setError(null);
+      setMessage(null);
+
+      const res = await fetch(
+        `/api/company/${slug}/schedule/time-off-requests/${requestId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ decision }),
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data?.error ?? "Failed to review time off request.");
+        return;
+      }
+
+      setMessage(
+        decision === "APPROVED"
+          ? "Time off request approved. Schedule override created and schedule repainted."
+          : "Time off request denied."
+      );
+
+      await refreshAll();
+    } catch {
+      setError("Failed to review time off request.");
     } finally {
       setBusy(false);
     }
@@ -265,6 +335,84 @@ export default function ScheduleOverridesPage() {
           ) : null}
 
           <article className="value-card" style={{ gridColumn: "1 / -1" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+              <div>
+                <p className="value-card__eyebrow">Driver requests</p>
+                <h3 className="value-card__title">Pending time off requests</h3>
+              </div>
+              <strong style={{ color: "#d97706" }}>{pendingRequests.length} pending</strong>
+            </div>
+
+            {loading ? (
+              <div style={{ padding: "16px 0" }}>Loading requests...</div>
+            ) : pendingRequests.length === 0 ? (
+              <div style={{ padding: "16px 0" }}>No pending time off requests.</div>
+            ) : (
+              <div className="schedule-history-scroll" style={{ marginTop: 16 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 920 }}>
+                  <thead>
+                    <tr>
+                      {["Driver", "Dates", "Days", "Submitted", "Note", "Review"].map((label) => (
+                        <th
+                          key={label}
+                          style={{
+                            textAlign: "left",
+                            padding: "10px 12px",
+                            borderBottom: "1px solid #d6dfeb",
+                            fontSize: 12,
+                            letterSpacing: "0.04em",
+                            textTransform: "uppercase",
+                            color: "#5c6b84",
+                          }}
+                        >
+                          {label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingRequests.map((row) => (
+                      <tr key={row.id}>
+                        <td style={cellStyle}>
+                          <div style={{ fontWeight: 700 }}>{row.full_name ?? "Unknown driver"}</div>
+                          <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{row.worker_type ?? "—"}</div>
+                        </td>
+                        <td style={cellStyle}>{row.start_date} → {row.end_date}</td>
+                        <td style={cellStyle}>{row.day_count}</td>
+                        <td style={cellStyle}>{new Date(row.submitted_at).toLocaleString()}</td>
+                        <td style={cellStyle}>{row.request_note ?? "—"}</td>
+                        <td style={cellStyle}>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              className="button button-primary"
+                              disabled={busy}
+                              onClick={() => handleReviewTimeOffRequest(row.id, "APPROVED")}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              type="button"
+                              className="button"
+                              disabled={busy}
+                              onClick={() => handleReviewTimeOffRequest(row.id, "DENIED")}
+                            >
+                              Deny
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="schedule-history-footer">
+                  Showing {Math.min(requestHistory.length, 10)} of {requestHistory.length} reviewed requests
+                </div>
+              </div>
+            )}
+          </article>
+
+          <article className="value-card" style={{ gridColumn: "1 / -1" }}>
             <p className="value-card__eyebrow">Create override</p>
             <h3 className="value-card__title">Manager exception entry</h3>
 
@@ -289,6 +437,7 @@ export default function ScheduleOverridesPage() {
                   style={inputStyle}
                   disabled={busy || loading}
                 >
+                  <option value="">Select worker...</option>
                   {workers.map((worker) => (
                     <option
                       key={worker.roster_member_id}
@@ -310,6 +459,7 @@ export default function ScheduleOverridesPage() {
                 >
                   <option value="CALL_OUT">CALL_OUT</option>
                   <option value="TIME_OFF">TIME_OFF</option>
+                  <option value="ADMIN_OFF">ADMIN_OFF</option>
                   <option value="ADD_IN">ADD_IN</option>
                 </select>
 
@@ -353,7 +503,7 @@ export default function ScheduleOverridesPage() {
               }}
             >
               <div>
-                <p className="value-card__eyebrow">Active overrides</p>
+                <p className="value-card__eyebrow">Override history</p>
                 <h3 className="value-card__title">Current exception set</h3>
               </div>
 
@@ -371,7 +521,7 @@ export default function ScheduleOverridesPage() {
             ) : filteredOverrides.length === 0 ? (
               <div style={{ padding: "16px 0" }}>No active overrides.</div>
             ) : (
-              <div style={{ marginTop: 16, overflowX: "auto" }}>
+              <div className="schedule-history-scroll" style={{ marginTop: 16 }}>
                 <table
                   style={{
                     width: "100%",
@@ -408,7 +558,7 @@ export default function ScheduleOverridesPage() {
                   </thead>
 
                   <tbody>
-                    {filteredOverrides.map((row) => (
+                    {filteredOverrides.slice(0, 10).map((row) => (
                       <tr key={row.id}>
                         <td style={cellStyle}>
                           <div style={{ fontWeight: 700 }}>
@@ -438,9 +588,69 @@ export default function ScheduleOverridesPage() {
                     ))}
                   </tbody>
                 </table>
+                <div className="schedule-history-footer">
+                  Showing {Math.min(filteredOverrides.length, 10)} of {filteredOverrides.length} active overrides
+                </div>
               </div>
             )}
           </article>
+
+          <article className="value-card" style={{ gridColumn: "1 / -1" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+              <div>
+                <p className="value-card__eyebrow">Request history</p>
+                <h3 className="value-card__title">Reviewed driver requests</h3>
+              </div>
+              <span style={{ color: "#64748b", fontWeight: 700 }}>{requestHistory.length} records</span>
+            </div>
+
+            {loading ? (
+              <div style={{ padding: "16px 0" }}>Loading history...</div>
+            ) : requestHistory.length === 0 ? (
+              <div style={{ padding: "16px 0" }}>No reviewed requests yet.</div>
+            ) : (
+              <div style={{ marginTop: 16, overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 920 }}>
+                  <thead>
+                    <tr>
+                      {["Driver", "Dates", "Status", "Submitted", "Reviewed", "Manager note"].map((label) => (
+                        <th
+                          key={label}
+                          style={{
+                            textAlign: "left",
+                            padding: "10px 12px",
+                            borderBottom: "1px solid #d6dfeb",
+                            fontSize: 12,
+                            letterSpacing: "0.04em",
+                            textTransform: "uppercase",
+                            color: "#5c6b84",
+                          }}
+                        >
+                          {label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {requestHistory.slice(0, 10).map((row) => (
+                      <tr key={row.id}>
+                        <td style={cellStyle}>
+                          <div style={{ fontWeight: 700 }}>{row.full_name ?? "Unknown driver"}</div>
+                          <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{row.worker_type ?? "—"}</div>
+                        </td>
+                        <td style={cellStyle}>{row.start_date} → {row.end_date}</td>
+                        <td style={cellStyle}>{row.status}</td>
+                        <td style={cellStyle}>{new Date(row.submitted_at).toLocaleString()}</td>
+                        <td style={cellStyle}>{row.reviewed_at ? new Date(row.reviewed_at).toLocaleString() : "—"}</td>
+                        <td style={cellStyle}>{row.manager_note ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </article>
+
         </div>
       </section>
     </main>

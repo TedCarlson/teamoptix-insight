@@ -9,7 +9,7 @@ type RouteContext = {
 
 type OverridePayload = {
   roster_member_id?: string | null;
-  override_type?: "CALL_OUT" | "TIME_OFF" | "ADD_IN" | null;
+  override_type?: "CALL_OUT" | "TIME_OFF" | "ADD_IN" | "ADMIN_OFF" | null;
   start_date?: string | null;
   end_date?: string | null;
 };
@@ -132,7 +132,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
       );
     }
 
-    if (!["CALL_OUT", "TIME_OFF", "ADD_IN"].includes(overrideType)) {
+    if (!["CALL_OUT", "TIME_OFF", "ADD_IN", "ADMIN_OFF"].includes(overrideType)) {
       return NextResponse.json(
         { error: "Unsupported override_type." },
         { status: 400 }
