@@ -51,12 +51,13 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const mainItems: NavItem[] = isAdminUser
     ? [
         { label: "Home", href: homeBase, match: (path) => path === homeBase || path.startsWith(announcementsBase) },
-        { label: "Operations", href: operationsBase, match: (path) => path.startsWith(operationsBase) || path.startsWith(`${base}/dispatch`) },
+        { label: "Admin", href: base, match: (path) => path === base || path === `${base}/analytics` || path === `${base}/readiness` },
+        { label: "Operations", href: operationsBase, match: (path) => path.startsWith(operationsBase) || path.startsWith(`${base}/dispatch`) || path === `${base}/prior-day` },
         { label: "Payroll", href: payrollBase, match: (path) => path.startsWith(payrollBase) },
         { label: "People", href: peopleBase, match: (path) => path.startsWith(peopleBase) || path.startsWith(`${base}/hiring`) },
         { label: "Schedule", href: scheduleBase, match: (path) => path.startsWith(scheduleBase) },
         { label: "Routes", href: `${base}/routes`, match: (path) => path.startsWith(`${base}/routes`) },
-        { label: "Assets", href: assetsBase, match: (path) => path.startsWith(assetsBase) },
+        { label: "Assets", href: `${assetsBase}/scanners`, match: (path) => path.startsWith(assetsBase) },
         { label: "Config", href: configBase, match: (path) => path.startsWith(configBase) },
       ]
     : [
@@ -66,11 +67,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
 
   const overviewSubItems: NavItem[] = [
     { label: "Profile", href: base, match: (path) => path === base },
-    { label: "Payroll", href: payrollBase, match: (path) => path.startsWith(payrollBase) },
-    { label: "Ops Reports", href: `${base}/prior-day`, match: (path) => path === `${base}/prior-day` },
     { label: "Analytics", href: `${base}/analytics`, match: (path) => path === `${base}/analytics` || path === `${base}/readiness` },
-    { label: "Config", href: configBase, match: (path) => path.startsWith(configBase) },
-    { label: "Assets", href: assetsBase, match: (path) => path.startsWith(assetsBase) },
   ];
 
   const payrollSubItems: NavItem[] = [
@@ -99,6 +96,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     { label: "Dispatch", href: `${operationsBase}/dispatch`, match: (path) => path === operationsBase || path.startsWith(`${operationsBase}/dispatch`) || path.startsWith(`${base}/dispatch`) },
     { label: "Delivery Window", href: `${operationsBase}/delivery-window`, match: (path) => path.startsWith(`${operationsBase}/delivery-window`) },
     { label: "Planning", href: `${operationsBase}/planning`, match: (path) => path.startsWith(`${operationsBase}/planning`) },
+    { label: "Ops Reports", href: `${base}/prior-day`, match: (path) => path === `${base}/prior-day` },
   ];
 
   const homeSubItems: NavItem[] = [
@@ -107,7 +105,6 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   ];
 
   const configSubItems: NavItem[] = [
-    { label: "Back to Admin", href: base, match: () => false },
     { label: "Company", href: configBase, match: (path) => path === configBase || path === `${configBase}/company` },
     { label: "Leadership", href: `${configBase}/leadership`, match: (path) => path === `${configBase}/leadership` },
     { label: "Access", href: `${configBase}/access`, match: (path) => path === `${configBase}/access` },
@@ -116,7 +113,6 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   ];
 
   const assetsSubItems: NavItem[] = [
-    { label: "Back to Admin", href: base, match: () => false },
     { label: "Scanners", href: `${assetsBase}/scanners`, match: (path) => path === assetsBase || path === `${assetsBase}/scanners` },
     { label: "Fuel Cards", href: `${assetsBase}/fuel-cards`, match: (path) => path === `${assetsBase}/fuel-cards` },
     { label: "Asset Audit", href: `${assetsBase}/audit`, match: (path) => path === `${assetsBase}/audit` },
