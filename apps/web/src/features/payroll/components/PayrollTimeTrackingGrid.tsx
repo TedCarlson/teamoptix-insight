@@ -183,8 +183,12 @@ function breadcrumbKey(rosterMemberId: string | null, serviceDate: string) {
   return `${rosterMemberId ?? "unknown"}|${serviceDate}`;
 }
 
-function mapsHref(row: BreadcrumbRow) {
-  return `https://www.google.com/maps?q=${row.latitude},${row.longitude}`;
+function mapEmbedSrc(row: BreadcrumbRow) {
+  const delta = 0.002;
+  const lat = Number(row.latitude);
+  const lon = Number(row.longitude);
+
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${lon - delta},${lat - delta},${lon + delta},${lat + delta}&layer=mapnik&marker=${lat},${lon}`;
 }
 
 function locationLabel(rows: BreadcrumbRow[]) {
@@ -207,7 +211,8 @@ function locationLabel(rows: BreadcrumbRow[]) {
 function renderTimeSheetRows(
   rows: PayrollTimeKeepingRow[],
   days: string[],
-  breadcrumbs: BreadcrumbRow[]
+  breadcrumbs: BreadcrumbRow[],
+  setSelectedBreadcrumb: (row: BreadcrumbRow) => void
 ) {
   const weeklyRows = buildTimeSheetWeekRows(rows);
   const breadcrumbsByDriverDay = new Map<string, BreadcrumbRow[]>();
@@ -265,15 +270,22 @@ function renderTimeSheetRows(
                           <span style={{ color: "#475569", fontSize: 10 }}>{formatDuration(dayRow.clock_in, dayRow.clock_out)}</span>
                           <span style={{ color: "#94a3b8", fontSize: 9 }}>{stateLabel(dayRow.state)}</span>
                           {location ? (
-                            <a
-                              href={mapsHref(location.row)}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={{ color: "#2563eb", fontSize: 9, fontWeight: 900, textDecoration: "none" }}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedBreadcrumb(location.row)}
+                              style={{
+                                border: 0,
+                                background: "transparent",
+                                padding: 0,
+                                color: "#2563eb",
+                                fontSize: 9,
+                                fontWeight: 900,
+                                cursor: "pointer",
+                              }}
                               title={`${location.row.latitude}, ${location.row.longitude}`}
                             >
                               {location.label}{location.accuracy ? ` · ${location.accuracy}` : ""}
-                            </a>
+                            </button>
                           ) : null}
                         </div>
                       ) : (
@@ -471,6 +483,7 @@ export default function PayrollTimeTrackingGrid({
   const [driverRows, setDriverRows] = useState<PayrollTimeKeepingRow[]>([]);
   const [dswRows, setDswRows] = useState<DswTimeRow[]>([]);
   const [breadcrumbRows, setBreadcrumbRows] = useState<BreadcrumbRow[]>([]);
+  const [selectedBreadcrumb, setSelectedBreadcrumb] = useState<BreadcrumbRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -630,10 +643,65 @@ export default function PayrollTimeTrackingGrid({
       ) : view === "dot-hours" ? (
         renderDotRows(dotRows, days)
       ) : view === "time-sheet" ? (
-        renderTimeSheetRows(driverRows, days, breadcrumbRows)
+        renderTimeSheetRows(driverRows, days, breadcrumbRows, setSelectedBreadcrumb)
       ) : (
         renderDriverRows(driverRows)
       )}
+
+      {selectedBreadcrumb ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 80,
+            background: "rgba(15, 23, 42, 0.45)",
+            display: "grid",
+            placeItems: "center",
+            padding: 16,
+          }}
+          onClick={() => setSelectedBreadcrumb(null)}
+        >
+          <div
+            style={{
+              width: "min(920px, 100%)",
+              background: "#fff",
+              borderRadius: 16,
+              border: "1px solid #e6edf5",
+              boxShadow: "0 24px 80px rgba(15, 23, 42, 0.22)",
+              overflow: "hidden",
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div style={{ padding: 14, display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <p className="value-card__eyebrow" style={{ margin: 0 }}>Clock Location</p>
+                <h3 className="app-card__title" style={{ margin: "4px 0 0" }}>
+                  {selectedBreadcrumb.employee_name ?? "Employee location"}
+                </h3>
+                <div style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>
+                  {selectedBreadcrumb.tracking_context} · {formatClockTime(selectedBreadcrumb.captured_at)} · accuracy {selectedBreadcrumb.accuracy_meters ?? "—"}m
+                </div>
+              </div>
+              <button type="button" className="button button--secondary" onClick={() => setSelectedBreadcrumb(null)}>
+                Close
+              </button>
+            </div>
+
+            <iframe
+              title="Clock location map"
+              src={mapEmbedSrc(selectedBreadcrumb)}
+              style={{ width: "100%", height: 420, border: 0, display: "block" }}
+              loading="lazy"
+            />
+
+            <div style={{ padding: 12, color: "#64748b", fontSize: 12, fontWeight: 800 }}>
+              {selectedBreadcrumb.latitude}, {selectedBreadcrumb.longitude}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
