@@ -7,7 +7,7 @@ import { useAccess } from "@/features/access/AccessProvider";
 import { useLob } from "@/features/lob/hooks/useLob";
 import CompanyConfigWorkspace, { type CompanyConfigSection } from "@/features/company/config/CompanyConfigWorkspace";
 import DailyOperationsSummary from "@/features/company/components/DailyOperationsSummary";
-import PayrollGrid from "@/features/payroll/components/PayrollGrid";
+import PayrollWorkspace from "@/features/payroll/components/PayrollWorkspace";
 import OperationsReportUploadOverlay from "@/features/operations/components/OperationsReportUploadOverlay";
 
 type CompanyRecord = {
@@ -267,7 +267,7 @@ export default function CompanyPage() {
           </section>
         ) : null}
 
-        {activeSurface === "payroll" ? <PayrollGrid /> : null}
+        {activeSurface === "payroll" ? <PayrollWorkspace /> : null}
 
         {activeSurface === "prior-day" ? (
           <SectionCard
