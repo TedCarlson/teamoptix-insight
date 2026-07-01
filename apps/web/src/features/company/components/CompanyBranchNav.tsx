@@ -132,7 +132,8 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const inOperationsBranch =
     pathname === operationsBase ||
     pathname.startsWith(`${operationsBase}/`) ||
-    pathname.startsWith(`${base}/dispatch`);
+    pathname.startsWith(`${base}/dispatch`) ||
+    pathname === `${base}/prior-day`;
 
   const inConfigBranch = pathname === configBase || pathname.startsWith(`${configBase}/`);
   const inAssetsBranch = pathname === assetsBase || pathname.startsWith(`${assetsBase}/`);
@@ -155,7 +156,6 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
           ? configSubItems
           : pathname === base ||
               pathname === `${base}/payroll` ||
-              pathname === `${base}/prior-day` ||
               pathname === `${base}/analytics` ||
               pathname === `${base}/readiness`
             ? overviewSubItems

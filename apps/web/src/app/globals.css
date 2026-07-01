@@ -2564,7 +2564,8 @@ body {
 .app-workspace-rail--surfaces {
   padding-top: 4px;
   padding-bottom: 4px;
-  background: #ffffff;
+  background: transparent;
+  border-top: 1px solid #e6edf5;
   border-bottom: 1px solid #e6edf5;
 }
 

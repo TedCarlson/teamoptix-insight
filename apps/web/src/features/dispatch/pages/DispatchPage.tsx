@@ -637,7 +637,6 @@ export default function DispatchPage() {
           lastUpdatedAt={lastUpdatedAt}
           refreshing={loading}
           onRefresh={refreshWorkspace}
-          onUpload={() => setUploadOverlayOpen(true)}
         />
 
         {error ? (

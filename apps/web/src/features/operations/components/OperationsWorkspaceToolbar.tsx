@@ -4,7 +4,7 @@ type OperationsWorkspaceToolbarProps = {
   lastUpdatedAt: string | null;
   refreshing?: boolean;
   onRefresh: () => void;
-  onUpload: () => void;
+  onUpload?: () => void;
 };
 
 function formatLastUpdated(value: string | null) {
@@ -48,14 +48,16 @@ export default function OperationsWorkspaceToolbar(props: OperationsWorkspaceToo
           {refreshing ? "Refreshing..." : "Refresh"}
         </button>
 
-        <button
-          type="button"
-          className="button button-primary"
-          onClick={onUpload}
-          style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}
-        >
-          Upload Report
-        </button>
+        {onUpload ? (
+          <button
+            type="button"
+            className="button button-primary"
+            onClick={onUpload}
+            style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}
+          >
+            Upload Report
+          </button>
+        ) : null}
       </div>
     </div>
   );

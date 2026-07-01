@@ -99,7 +99,6 @@ export default function DeliveryWindowPage({ slug, serviceDate }: Props) {
         <OperationsWorkspaceToolbar
           lastUpdatedAt={lastUpdatedAt}
           onRefresh={refreshWorkspace}
-          onUpload={() => setUploadOverlayOpen(true)}
         />
 
         {error ? (
