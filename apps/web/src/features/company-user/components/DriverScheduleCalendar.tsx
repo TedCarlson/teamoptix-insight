@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { DriverTimeOffRequestDrawer } from "@/features/company-user/components/DriverTimeOffRequestDrawer";
+import { IntentVerificationDrawer } from "@/features/security/components/IntentVerificationDrawer";
+import {
+  buildRequestEyebrowMap,
+  isoForCalendarDate,
+} from "@/features/company-user/lib/driverCalendar";
 import { useAccess } from "@/features/access/AccessProvider";
 
 type DriverScheduleCalendarProps = {
@@ -37,6 +43,15 @@ type ScheduleRow = {
 
 type CalendarState = "ROUTE" | "ON" | "OFF" | "CALL_OUT" | "ADD_IN";
 
+type DriverRequestRow = {
+  id: string;
+  requested_dates: string[];
+  start_date: string;
+  end_date: string;
+  day_count: number;
+  status: "PENDING" | "APPROVED" | "DENIED" | "WITHDRAWN";
+};
+
 type CalendarCell = {
   key: string;
   date: Date;
@@ -46,6 +61,10 @@ type CalendarCell = {
   isWeekendColumn: boolean;
   status: CalendarState;
   label: string;
+  eyebrow?: {
+    token: string;
+    tone: string;
+  };
 };
 
 const routeByDayKey: Record<number, keyof ScheduleRow> = {
@@ -167,8 +186,33 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
   const access = useAccess();
   const [monthDate, setMonthDate] = useState(() => new Date());
   const [rows, setRows] = useState<ScheduleRow[]>([]);
+  const [requests, setRequests] = useState<DriverRequestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
+
+  const [selectedDates, setSelectedDates] = useState<string[]>([]);
+  const [requestNote, setRequestNote] = useState("");
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const [requestMessage, setRequestMessage] = useState<string | null>(null);
+  const [requestDrawerOpen, setRequestDrawerOpen] = useState(false);
+  const [requestSaving, setRequestSaving] = useState(false);
+  const [intentOpen, setIntentOpen] = useState(false);
+
+  async function loadDriverRequests() {
+    const requestRes = await fetch(
+      `/api/company/${slug}/driver/time-off-requests`,
+      {
+        credentials: "include",
+        cache: "no-store",
+      }
+    );
+
+    const requestData = await requestRes.json().catch(() => ({}));
+
+    if (requestRes.ok) {
+      setRequests(Array.isArray(requestData.rows) ? requestData.rows : []);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -194,6 +238,9 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
         }
 
         setRows(Array.isArray(data?.rows) ? data.rows : []);
+
+        await loadDriverRequests();
+
       } catch {
         if (!active) return;
         setRows([]);
@@ -208,6 +255,8 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
     return () => {
       active = false;
     };
+    // loadDriverRequests is intentionally called inside loadSchedule and after submit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
   const myScheduleRow = useMemo(() => {
@@ -215,10 +264,14 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
     return rows.find((row) => row.profile_id === access.profile_id) ?? null;
   }, [access.profile_id, rows]);
 
-  const calendarCells = useMemo(
-    () => buildCalendarCells(monthDate, myScheduleRow),
-    [monthDate, myScheduleRow]
-  );
+  const calendarCells = useMemo(() => {
+    const eyebrowMap = buildRequestEyebrowMap(requests);
+
+    return buildCalendarCells(monthDate, myScheduleRow).map((cell)=>({
+      ...cell,
+      eyebrow: eyebrowMap.get(isoForCalendarDate(cell.date)),
+    }));
+  },[monthDate, myScheduleRow,requests]);
 
   function moveMonth(direction: -1 | 1) {
     setMonthDate((current) => new Date(current.getFullYear(), current.getMonth() + direction, 1));
@@ -226,6 +279,60 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
 
   function returnToday() {
     setMonthDate(new Date());
+  }
+
+  function toggleRequestDate(date: Date) {
+    const iso = isoForCalendarDate(date);
+
+    setRequestDrawerOpen(true);
+    setRequestError(null);
+
+    setSelectedDates((current) => {
+      if (current.includes(iso)) {
+        return current.filter((value) => value != iso);
+      }
+
+      return [...current, iso].sort();
+    });
+  }
+
+  async function submitTimeOffRequest() {
+    try {
+      setRequestSaving(true);
+      setRequestError(null);
+      setRequestMessage(null);
+
+      const res = await fetch(`/api/company/${slug}/driver/time-off-requests`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          requested_dates: selectedDates,
+          request_note: requestNote,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setRequestError(data?.error ?? "Failed to submit time off request.");
+        setIntentOpen(false);
+        return;
+      }
+
+      await loadDriverRequests();
+
+      setRequestMessage("Time off request submitted for leadership review.");
+      setSelectedDates([]);
+      setRequestNote("");
+      setRequestDrawerOpen(false);
+      setIntentOpen(false);
+    } catch {
+      setRequestError("Failed to submit time off request.");
+      setIntentOpen(false);
+    } finally {
+      setRequestSaving(false);
+    }
   }
 
   return (
@@ -251,6 +358,10 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
         </div>
       </div>
 
+      {requestMessage ? (
+        <p className="driver-calendar-message">{requestMessage}</p>
+      ) : null}
+
       {pageError ? (
         <p className="company-user-muted">{pageError}</p>
       ) : (
@@ -267,24 +378,38 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
           </div>
 
           <div className="driver-calendar-grid">
-            {calendarCells.map((day) => (
-              <button
-                key={day.key}
-                type="button"
-                className={[
-                  "driver-calendar-day",
-                  `driver-calendar-day--${day.status.toLowerCase()}`,
-                  day.isToday ? "driver-calendar-day--today" : "",
-                  day.isCurrentMonth ? "" : "driver-calendar-day--muted",
-                  day.isWeekendColumn ? "driver-calendar-day--weekend" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-              >
-                <strong>{day.dayNumber}</strong>
-                <small>{day.label}</small>
-              </button>
-            ))}
+            {calendarCells.map((day) => {
+              const selected = selectedDates.includes(day.key);
+
+              return (
+                <button
+                  key={day.key}
+                  type="button"
+                  className={[
+                    "driver-calendar-day",
+                    `driver-calendar-day--${day.status.toLowerCase()}`,
+                    day.isToday ? "driver-calendar-day--today" : "",
+                    day.isCurrentMonth ? "" : "driver-calendar-day--muted",
+                    day.isWeekendColumn ? "driver-calendar-day--weekend" : "",
+                    selected ? "driver-calendar-day--selected" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  onClick={() => toggleRequestDate(day.date)}
+                >
+                  {day.eyebrow ? (
+                    <span
+                      className={`driver-calendar-eyebrow driver-calendar-eyebrow--${day.eyebrow.tone}`}
+                    >
+                      {day.eyebrow.token}
+                    </span>
+                  ) : null}
+
+                  <strong>{day.dayNumber}</strong>
+                  <small>{day.label}</small>
+                </button>
+              );
+            })}
           </div>
 
           <div className="driver-calendar-legend">
@@ -295,6 +420,34 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
           </div>
         </div>
       )}
+
+      {requestDrawerOpen ? (
+        <DriverTimeOffRequestDrawer
+          selectedDates={selectedDates}
+          note={requestNote}
+          busy={requestSaving}
+          error={requestError}
+          onNoteChange={setRequestNote}
+          onCancel={() => {
+            setRequestDrawerOpen(false);
+            setSelectedDates([]);
+            setRequestNote("");
+            setRequestError(null);
+          }}
+          onSubmit={() => {
+            setIntentOpen(true);
+          }}
+        />
+      ) : null}
+
+      {intentOpen ? (
+        <IntentVerificationDrawer
+          action="TIME_OFF_REQUEST"
+          busy={requestSaving}
+          onCancel={() => setIntentOpen(false)}
+          onConfirm={submitTimeOffRequest}
+        />
+      ) : null}
     </section>
   );
 }
