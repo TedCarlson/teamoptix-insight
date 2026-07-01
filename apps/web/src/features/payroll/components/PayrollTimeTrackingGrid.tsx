@@ -181,14 +181,13 @@ function renderDutyRows(rows: DswTimeRow[], days: string[]) {
               </th>
             ))}
             <th style={{ ...thStyle, textAlign: "right" }}>Duty</th>
-            <th style={{ ...thStyle, textAlign: "right" }}>Road</th>
             <th style={thStyle}>Signal</th>
           </tr>
         </thead>
         <tbody>
           {weeklyRows.length === 0 ? (
             <tr>
-              <td colSpan={days.length + 4} style={{ padding: 16, color: "#64748b", fontWeight: 800 }}>
+              <td colSpan={days.length + 3} style={{ padding: 16, color: "#64748b", fontWeight: 800 }}>
                 No finalized DSW duty-hour rows found for this week.
               </td>
             </tr>
@@ -216,7 +215,6 @@ function renderDutyRows(rows: DswTimeRow[], days: string[]) {
                   );
                 })}
                 <td style={{ ...tdStyle, textAlign: "right", fontWeight: 950 }}>{hours(row.total_duty_hours)}</td>
-                <td style={{ ...tdStyle, textAlign: "right" }}>{hours(row.total_road_hours)}</td>
                 <td style={tdStyle}>{weekDotSignal(row)}</td>
               </tr>
             ))
@@ -244,15 +242,14 @@ function renderDotRows(rows: DswTimeRow[], days: string[]) {
                 <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>{day.slice(5)}</div>
               </th>
             ))}
-            <th style={{ ...thStyle, textAlign: "right" }}>Duty</th>
-            <th style={{ ...thStyle, textAlign: "right" }}>DOT</th>
+            <th style={{ ...thStyle, textAlign: "right" }}>DOT Hours</th>
             <th style={thStyle}>70 / 8 Signal</th>
           </tr>
         </thead>
         <tbody>
           {weeklyRows.length === 0 ? (
             <tr>
-              <td colSpan={days.length + 4} style={{ padding: 16, color: "#64748b", fontWeight: 800 }}>
+              <td colSpan={days.length + 3} style={{ padding: 16, color: "#64748b", fontWeight: 800 }}>
                 No finalized DSW DOT-hour rows found for this week.
               </td>
             </tr>
@@ -270,7 +267,7 @@ function renderDotRows(rows: DswTimeRow[], days: string[]) {
                       {dayRow ? (
                         <div style={{ display: "grid", gap: 1, justifyItems: "center", lineHeight: 1.08 }}>
                           <strong>{dotRiskLabel(dayRow)}</strong>
-                          <span style={{ color: "#475569", fontSize: 10 }}>{hours(dayRow.on_duty_hours)} duty</span>
+                          <span style={{ color: "#475569", fontSize: 10 }}>{hours(dayRow.on_road_hours)} DOT</span>
                           <span style={{ color: "#94a3b8", fontSize: 9 }}>WA {dayRow.wa_number ?? "—"}</span>
                         </div>
                       ) : (
@@ -279,8 +276,7 @@ function renderDotRows(rows: DswTimeRow[], days: string[]) {
                     </td>
                   );
                 })}
-                <td style={{ ...tdStyle, textAlign: "right", fontWeight: 950 }}>{hours(row.total_duty_hours)}</td>
-                <td style={{ ...tdStyle, textAlign: "right" }}>{row.dot_violations || "—"}</td>
+                <td style={{ ...tdStyle, textAlign: "right", fontWeight: 950 }}>{hours(row.total_road_hours)}</td>
                 <td style={tdStyle}>{weekDotSignal(row)}</td>
               </tr>
             ))
