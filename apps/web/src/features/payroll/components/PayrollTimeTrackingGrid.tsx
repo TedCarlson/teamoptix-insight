@@ -17,6 +17,10 @@ type DswTimeRow = {
   batch_id: string;
   service_date: string;
   source_row_index: number;
+  roster_member_id: string | null;
+  person_name: string | null;
+  worker_type: string | null;
+  dswid: string | null;
   driver_name: string | null;
   route_name: string | null;
   wa_number: string | null;
@@ -87,7 +91,7 @@ function buildDswDriverWeekRows(rows: DswTimeRow[]) {
   const groups = new Map<string, DswTimeRow[]>();
 
   for (const row of rows) {
-    const key = row.driver_name ?? `unknown-${row.source_row_index}`;
+    const key = row.roster_member_id ?? row.person_name ?? row.driver_name ?? `unknown-${row.source_row_index}`;
     const current = groups.get(key) ?? [];
     current.push(row);
     groups.set(key, current);
@@ -102,7 +106,7 @@ function buildDswDriverWeekRows(rows: DswTimeRow[]) {
 
       return {
         key,
-        driver_name: sortedDays[0]?.driver_name ?? "Unknown driver",
+        driver_name: sortedDays[0]?.person_name ?? sortedDays[0]?.driver_name ?? "Unknown driver",
         total_duty_hours: sortedDays.reduce((sum, row) => sum + Number(row.on_duty_hours ?? 0), 0),
         total_road_hours: sortedDays.reduce((sum, row) => sum + Number(row.on_road_hours ?? 0), 0),
         dot_violations: sortedDays.reduce((sum, row) => sum + Number(row.potential_dot_hours_violations ?? 0), 0),
@@ -172,10 +176,10 @@ function renderDutyRows(rows: DswTimeRow[], days: string[]) {
         <thead>
           <tr>
             <th style={{ ...thStyle, position: "sticky", left: 0, zIndex: 3, background: "#f8fafc", minWidth: 220, boxShadow: "1px 0 0 #e6edf5" }}>
-              Driver
+              Employee
             </th>
             {days.map((day) => (
-              <th key={day} style={{ ...thStyle, textAlign: "center", minWidth: 92, padding: "7px 4px" }}>
+              <th key={day} style={{ ...thStyle, textAlign: "center", minWidth: 78, padding: "7px 4px" }}>
                 {compactDayCode(day)}
                 <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>{day.slice(5)}</div>
               </th>
@@ -193,7 +197,7 @@ function renderDutyRows(rows: DswTimeRow[], days: string[]) {
             </tr>
           ) : (
             weeklyRows.map((row) => (
-              <tr key={row.key}>
+              <tr key={row.key} style={{ background: "#fff" }}>
                 <td style={{ ...tdStyle, position: "sticky", left: 0, zIndex: 2, background: "#fff", minWidth: 220, boxShadow: "1px 0 0 #e6edf5" }}>
                   <strong>{row.driver_name}</strong>
                 </td>
@@ -234,10 +238,10 @@ function renderDotRows(rows: DswTimeRow[], days: string[]) {
         <thead>
           <tr>
             <th style={{ ...thStyle, position: "sticky", left: 0, zIndex: 3, background: "#f8fafc", minWidth: 220, boxShadow: "1px 0 0 #e6edf5" }}>
-              Driver
+              Employee
             </th>
             {days.map((day) => (
-              <th key={day} style={{ ...thStyle, textAlign: "center", minWidth: 92, padding: "7px 4px" }}>
+              <th key={day} style={{ ...thStyle, textAlign: "center", minWidth: 78, padding: "7px 4px" }}>
                 {compactDayCode(day)}
                 <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>{day.slice(5)}</div>
               </th>
@@ -255,7 +259,7 @@ function renderDotRows(rows: DswTimeRow[], days: string[]) {
             </tr>
           ) : (
             weeklyRows.map((row) => (
-              <tr key={row.key}>
+              <tr key={row.key} style={{ background: "#fff" }}>
                 <td style={{ ...tdStyle, position: "sticky", left: 0, zIndex: 2, background: "#fff", minWidth: 220, boxShadow: "1px 0 0 #e6edf5" }}>
                   <strong>{row.driver_name}</strong>
                 </td>

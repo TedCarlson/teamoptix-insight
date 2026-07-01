@@ -24,6 +24,10 @@ type DswDriverHourRow = {
   batch_id: string;
   service_date: string;
   source_row_index: number;
+  roster_member_id: string | null;
+  person_name: string | null;
+  worker_type: string | null;
+  dswid: string | null;
   driver_name: string | null;
   route_name: string | null;
   wa_number: string | null;
@@ -147,6 +151,10 @@ export async function GET(req: NextRequest, context: RouteContext) {
       batch_id: row.batch_id,
       service_date: row.service_date,
       source_row_index: row.source_row_index,
+      roster_member_id: row.roster_member_id,
+      person_name: row.person_name,
+      worker_type: row.worker_type,
+      dswid: row.dswid,
       driver_name: row.driver_name,
       route_name: row.route_name,
       wa_number: row.wa_number,
