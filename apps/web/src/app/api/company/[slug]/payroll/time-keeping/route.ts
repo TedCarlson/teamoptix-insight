@@ -20,6 +20,25 @@ type RosterRow = {
   worker_type: string | null;
 };
 
+type DswSnapshotRow = {
+  summary_scope: string;
+  summary_label: string;
+  contract_code: string | null;
+  terminal_code: string | null;
+  normalized_row_json: Record<string, unknown> | null;
+};
+
+function toNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function textOrNull(value: unknown) {
+  const text = String(value ?? "").trim();
+  return text ? text : null;
+}
+
 export async function GET(req: NextRequest, context: RouteContext) {
   try {
     const { slug } = await context.params;
@@ -104,10 +123,52 @@ export async function GET(req: NextRequest, context: RouteContext) {
       return (a.full_name ?? "").localeCompare(b.full_name ?? "");
     });
 
+    const dswRows: Array<{
+      service_date: string;
+      summary_scope: string;
+      summary_label: string;
+      contract_code: string | null;
+      terminal_code: string | null;
+      on_duty_hours: number | null;
+      potential_dot_hours_violations: number | null;
+      next_available_on_duty: string | null;
+    }> = [];
+
+    for (const serviceDate of Array.from(new Set(rows.map((row) => row.service_date)))) {
+      const { data: snapshotRows, error: snapshotError } = await sb.rpc(
+        "get_operations_dsw_service_snapshot",
+        {
+          p_company_id: company.id,
+          p_service_date: serviceDate,
+        }
+      );
+
+      if (snapshotError) {
+        return NextResponse.json({ error: snapshotError.message }, { status: 500 });
+      }
+
+      for (const snapshotRow of (snapshotRows ?? []) as DswSnapshotRow[]) {
+        const normalized = snapshotRow.normalized_row_json ?? {};
+
+        dswRows.push({
+          service_date: serviceDate,
+          summary_scope: snapshotRow.summary_scope,
+          summary_label: snapshotRow.summary_label,
+          contract_code: snapshotRow.contract_code,
+          terminal_code: snapshotRow.terminal_code,
+          on_duty_hours: toNumber(normalized.on_duty_hours),
+          potential_dot_hours_violations: toNumber(normalized.potential_dot_hours_violations),
+          next_available_on_duty: textOrNull(normalized.next_available_on_duty),
+        });
+      }
+    }
+
     return NextResponse.json({
       week_start: weekStart,
       week_end: weekEnd,
       rows,
+      driver_rows: rows,
+      dsw_rows: dswRows,
     });
   } catch (error) {
     return NextResponse.json(
