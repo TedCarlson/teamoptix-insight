@@ -2535,3 +2535,104 @@ body {
   font-size: 0.78rem;
   font-weight: 800;
 }
+
+/* Navigation v2: one tile language for workspace + surface rails */
+.app-nav-shell {
+  display: grid;
+  gap: 0 !important;
+  padding: 12px 20px 0;
+}
+
+.app-workspace-rail {
+  width: 100%;
+  max-width: var(--app-page);
+  margin: 0 auto !important;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 8px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e6edf5;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.app-workspace-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.app-workspace-rail--surfaces {
+  padding-top: 4px;
+  padding-bottom: 4px;
+  background: #ffffff;
+  border-bottom: 1px solid #e6edf5;
+}
+
+.app-workspace-tile {
+  flex: 0 0 auto;
+  min-width: 104px;
+  min-height: 40px;
+  display: grid;
+  place-items: center;
+  padding: 6px 12px;
+  border: 1px solid #dbe5ef;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 900;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.app-workspace-tile--surface {
+  min-width: auto;
+  min-height: 34px;
+  padding-inline: 14px;
+  font-size: 12px;
+}
+
+.app-workspace-tile:hover {
+  background: #f8fafc;
+  border-color: #b8c7d9;
+}
+
+.app-workspace-tile--active {
+  background: #eff6ff;
+  border-color: #1d4ed8;
+  color: #1d4ed8;
+}
+
+.app-nav-shell + .workspace-shell,
+.app-nav-shell + main.workspace-shell {
+  padding-top: 8px !important;
+}
+
+.app-nav-shell + .workspace-shell > .workspace-main,
+.app-nav-shell + main.workspace-shell > .workspace-main {
+  padding-top: 0 !important;
+}
+
+@media (max-width: 720px) {
+  .app-nav-shell {
+    padding: 8px 10px 0;
+  }
+
+  .app-workspace-rail {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .app-workspace-tile {
+    min-width: 92px;
+    min-height: 38px;
+    font-size: 12px;
+  }
+
+  .app-workspace-tile--surface {
+    min-width: auto;
+    min-height: 32px;
+    font-size: 11px;
+  }
+}
+

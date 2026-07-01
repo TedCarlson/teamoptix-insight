@@ -51,11 +51,13 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const mainItems: NavItem[] = isAdminUser
     ? [
         { label: "Home", href: homeBase, match: (path) => path === homeBase || path.startsWith(announcementsBase) },
-        { label: "Admin", href: base, match: (path) => path === base || path.startsWith(configBase) || path.startsWith(assetsBase) },
         { label: "Operations", href: operationsBase, match: (path) => path.startsWith(operationsBase) || path.startsWith(`${base}/dispatch`) },
-        { label: "Schedule", href: scheduleBase, match: (path) => path.startsWith(scheduleBase) },
+        { label: "Payroll", href: payrollBase, match: (path) => path.startsWith(payrollBase) },
         { label: "People", href: peopleBase, match: (path) => path.startsWith(peopleBase) || path.startsWith(`${base}/hiring`) },
+        { label: "Schedule", href: scheduleBase, match: (path) => path.startsWith(scheduleBase) },
         { label: "Routes", href: `${base}/routes`, match: (path) => path.startsWith(`${base}/routes`) },
+        { label: "Assets", href: assetsBase, match: (path) => path.startsWith(assetsBase) },
+        { label: "Config", href: configBase, match: (path) => path.startsWith(configBase) },
       ]
     : [
         { label: "Home", href: homeBase, match: (path) => path === homeBase || path.startsWith(announcementsBase) },
@@ -140,6 +142,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const inAssetsBranch = pathname === assetsBase || pathname.startsWith(`${assetsBase}/`);
   const inPayrollBranch = pathname === payrollBase || pathname.startsWith(`${payrollBase}/`);
 
+
   const subItems = !isAdminUser
     ? inHomeBranch
       ? homeSubItems
@@ -188,11 +191,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
         <IdentityPill />
       </div>
 
-      <div className="app-nav-group">
-        <Link href="/companies" className="app-nav-pill">
-          Switch Company
-        </Link>
-
+      <div className="app-workspace-rail">
         {mainItems.map((item) => {
           const active = item.match(pathname);
 
@@ -200,7 +199,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
             <Link
               key={item.href}
               href={item.href}
-              className={`app-nav-pill${active ? " app-nav-pill--active" : ""}`}
+              className={`app-workspace-tile${active ? " app-workspace-tile--active" : ""}`}
             >
               {item.label}
             </Link>
@@ -216,7 +215,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
       />
 
       {subItems.length > 0 ? (
-        <div className="company-subnav">
+        <div className="app-workspace-rail app-workspace-rail--surfaces" aria-label="Workspace surfaces">
           {subItems.map((item) => {
             const active = item.match(pathname);
 
@@ -224,7 +223,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`app-nav-pill${active ? " app-nav-pill--active" : ""}`}
+                className={`app-workspace-tile app-workspace-tile--surface${active ? " app-workspace-tile--active" : ""}`}
               >
                 {item.label}
               </Link>
