@@ -191,6 +191,10 @@ function mapEmbedSrc(row: BreadcrumbRow) {
   return `https://www.openstreetmap.org/export/embed.html?bbox=${lon - delta},${lat - delta},${lon + delta},${lat + delta}&layer=mapnik&marker=${lat},${lon}`;
 }
 
+function mapsHref(row: BreadcrumbRow) {
+  return `https://www.google.com/maps?q=${row.latitude},${row.longitude}`;
+}
+
 function locationLabel(rows: BreadcrumbRow[]) {
   const clockIn = rows.find((row) => row.tracking_context === "CLOCK_IN") ?? null;
   const clockOut = rows.find((row) => row.tracking_context === "CLOCK_OUT") ?? null;
@@ -665,7 +669,7 @@ export default function PayrollTimeTrackingGrid({
         >
           <div
             style={{
-              width: "min(920px, 100%)",
+              width: "min(1380px, 96vw)",
               background: "#fff",
               borderRadius: 16,
               border: "1px solid #e6edf5",
@@ -684,15 +688,25 @@ export default function PayrollTimeTrackingGrid({
                   {selectedBreadcrumb.tracking_context} · {formatClockTime(selectedBreadcrumb.captured_at)} · accuracy {selectedBreadcrumb.accuracy_meters ?? "—"}m
                 </div>
               </div>
-              <button type="button" className="button button--secondary" onClick={() => setSelectedBreadcrumb(null)}>
-                Close
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <a
+                  className="button button--secondary"
+                  href={mapsHref(selectedBreadcrumb)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open in Maps
+                </a>
+                <button type="button" className="button button--secondary" onClick={() => setSelectedBreadcrumb(null)}>
+                  Close
+                </button>
+              </div>
             </div>
 
             <iframe
               title="Clock location map"
               src={mapEmbedSrc(selectedBreadcrumb)}
-              style={{ width: "100%", height: 420, border: 0, display: "block" }}
+              style={{ width: "100%", height: "min(63vh, 640px)", border: 0, display: "block" }}
               loading="lazy"
             />
 
