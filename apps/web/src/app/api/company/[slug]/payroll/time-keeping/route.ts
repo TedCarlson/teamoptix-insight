@@ -20,24 +20,31 @@ type RosterRow = {
   worker_type: string | null;
 };
 
-type DswSnapshotRow = {
-  summary_scope: string;
-  summary_label: string;
-  contract_code: string | null;
-  terminal_code: string | null;
-  normalized_row_json: Record<string, unknown> | null;
+type DswDriverHourRow = {
+  batch_id: string;
+  service_date: string;
+  source_row_index: number;
+  driver_name: string | null;
+  route_name: string | null;
+  wa_number: string | null;
+  on_duty_hours: string | null;
+  on_road_hours: string | null;
+  potential_dot_hours_violations: number | null;
+  next_available_on_duty: string | null;
 };
 
-function toNumber(value: unknown) {
-  if (value === null || value === undefined || value === "") return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+function timeTextToHours(value: string | null) {
+  if (!value) return null;
+
+  const [hoursRaw, minutesRaw = "0"] = value.split(":");
+  const hours = Number(hoursRaw);
+  const minutes = Number(minutesRaw);
+
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+
+  return Number((hours + minutes / 60).toFixed(2));
 }
 
-function textOrNull(value: unknown) {
-  const text = String(value ?? "").trim();
-  return text ? text : null;
-}
 
 export async function GET(req: NextRequest, context: RouteContext) {
   try {
@@ -123,45 +130,31 @@ export async function GET(req: NextRequest, context: RouteContext) {
       return (a.full_name ?? "").localeCompare(b.full_name ?? "");
     });
 
-    const dswRows: Array<{
-      service_date: string;
-      summary_scope: string;
-      summary_label: string;
-      contract_code: string | null;
-      terminal_code: string | null;
-      on_duty_hours: number | null;
-      potential_dot_hours_violations: number | null;
-      next_available_on_duty: string | null;
-    }> = [];
-
-    for (const serviceDate of Array.from(new Set(rows.map((row) => row.service_date)))) {
-      const { data: snapshotRows, error: snapshotError } = await sb.rpc(
-        "get_operations_dsw_service_snapshot",
-        {
-          p_company_id: company.id,
-          p_service_date: serviceDate,
-        }
-      );
-
-      if (snapshotError) {
-        return NextResponse.json({ error: snapshotError.message }, { status: 500 });
+    const { data: dswDriverRows, error: dswDriverError } = await sb.rpc(
+      "get_payroll_time_tracking_dsw_rows",
+      {
+        p_company_id: company.id,
+        p_week_start: weekStart,
+        p_week_end: weekEnd,
       }
+    );
 
-      for (const snapshotRow of (snapshotRows ?? []) as DswSnapshotRow[]) {
-        const normalized = snapshotRow.normalized_row_json ?? {};
-
-        dswRows.push({
-          service_date: serviceDate,
-          summary_scope: snapshotRow.summary_scope,
-          summary_label: snapshotRow.summary_label,
-          contract_code: snapshotRow.contract_code,
-          terminal_code: snapshotRow.terminal_code,
-          on_duty_hours: toNumber(normalized.on_duty_hours),
-          potential_dot_hours_violations: toNumber(normalized.potential_dot_hours_violations),
-          next_available_on_duty: textOrNull(normalized.next_available_on_duty),
-        });
-      }
+    if (dswDriverError) {
+      return NextResponse.json({ error: dswDriverError.message }, { status: 500 });
     }
+
+    const dswRows = ((dswDriverRows ?? []) as DswDriverHourRow[]).map((row) => ({
+      batch_id: row.batch_id,
+      service_date: row.service_date,
+      source_row_index: row.source_row_index,
+      driver_name: row.driver_name,
+      route_name: row.route_name,
+      wa_number: row.wa_number,
+      on_duty_hours: timeTextToHours(row.on_duty_hours),
+      on_road_hours: timeTextToHours(row.on_road_hours),
+      potential_dot_hours_violations: row.potential_dot_hours_violations,
+      next_available_on_duty: row.next_available_on_duty,
+    }));
 
     return NextResponse.json({
       week_start: weekStart,
