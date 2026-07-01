@@ -26,6 +26,7 @@ export async function GET() {
     const { error: ensureError } = await supabase.rpc("ensure_access_context");
 
     if (ensureError) {
+
       return NextResponse.json(
         {
           ok: false,
@@ -44,6 +45,7 @@ export async function GET() {
     const { data, error } = await supabase.rpc("access_context");
 
     if (error) {
+
       return NextResponse.json(
         {
           ok: false,
@@ -64,9 +66,5 @@ export async function GET() {
     const message =
       error instanceof Error ? error.message : "unknown access context error";
 
-    return NextResponse.json(
-      { ok: false, stage: "catch", error: message },
-      { status: 500 }
-    );
   }
 }

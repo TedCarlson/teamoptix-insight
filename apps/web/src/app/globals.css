@@ -2238,3 +2238,59 @@ body {
     width: calc(100% - 1.25rem);
   }
 }
+
+.driver-mobile-brand small {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.driver-mobile-signout {
+  min-height: 36px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 0.74rem;
+  font-weight: 850;
+  padding: 0 0.8rem;
+}
+
+.driver-mobile-signout:disabled {
+  opacity: 0.6;
+}
+
+.driver-mobile-brand {
+  min-width: 0;
+}
+
+.driver-mobile-brand strong {
+  max-width: min(68vw, 520px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-drawer__section > .app-drawer__item,
+.app-drawer__section > .app-drawer__item-group {
+  width: calc(100% - 1.35rem);
+  margin-left: 1.35rem;
+}
+
+.app-drawer__section > .app-drawer__item,
+.app-drawer__section > .app-drawer__item-group > .app-drawer__item {
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+.app-drawer__section > .app-drawer__item .app-drawer__icon,
+.app-drawer__section > .app-drawer__item-group > .app-drawer__item .app-drawer__icon {
+  opacity: 0.72;
+}
+
+@media (max-width: 720px) {
+  .app-drawer__section > .app-drawer__item,
+  .app-drawer__section > .app-drawer__item-group {
+    width: calc(100% - 1rem);
+    margin-left: 1rem;
+  }
+}

@@ -1,39 +1,55 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAccess } from "@/features/access/AccessProvider";
 import { DriverBottomNav } from "@/features/driver/shell/DriverBottomNav";
+import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 type DriverMobileShellProps = {
   slug: string;
   children: ReactNode;
 };
 
-function initialsFromName(value: string) {
-  const parts = value.trim().split(/\s+/).filter(Boolean);
-
-  if (parts.length === 0) return "D";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-
-  return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-}
-
 export function DriverMobileShell({ slug, children }: DriverMobileShellProps) {
   const access = useAccess();
-  const displayName = access.display_name || access.first_name || access.email || "Driver";
-  const initials = initialsFromName(displayName);
+  const router = useRouter();
+  const [signingOut, setSigningOut] = useState(false);
+
+
+  const companyName =
+    access.memberships.find((item) => item.company_slug === slug)?.company_name ||
+    access.memberships[0]?.company_name ||
+    (access.loading ? "Loading workspace" : "Workspace");
+
+  async function handleSignOut() {
+    try {
+      setSigningOut(true);
+      const supabase = getSupabaseBrowserClient();
+      await supabase.auth.signOut();
+      router.replace("/sign-in");
+      router.refresh();
+    } finally {
+      setSigningOut(false);
+    }
+  }
 
   return (
     <main className="driver-mobile-shell">
       <header className="driver-mobile-topbar">
         <div className="driver-mobile-brand">
-          <span>TEAMOPTIX</span>
-          <strong>Insight</strong>
+          <span>TEAMOPTIX Insight</span>
+          <strong>{companyName}</strong>
         </div>
 
-        <div className="driver-mobile-identity" aria-label={displayName}>
-          {initials}
-        </div>
+        <button
+          type="button"
+          className="driver-mobile-signout"
+          onClick={handleSignOut}
+          disabled={signingOut}
+        >
+          {signingOut ? "Signing out…" : "Sign out"}
+        </button>
       </header>
 
       <section className="driver-mobile-content">{children}</section>
