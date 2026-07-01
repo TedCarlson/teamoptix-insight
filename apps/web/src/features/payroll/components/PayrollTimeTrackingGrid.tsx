@@ -36,6 +36,33 @@ type TimeTrackingPayload = {
   dsw_rows?: DswTimeRow[];
 };
 
+type BreadcrumbRow = {
+  id: string;
+  roster_member_id: string | null;
+  service_date: string;
+  captured_at: string;
+  device_captured_at: string | null;
+  latitude: number;
+  longitude: number;
+  accuracy_meters: number | null;
+  tracking_context: string;
+  source_activity_event_id: string | null;
+  employee_name: string | null;
+  worker_type: string | null;
+};
+
+type BreadcrumbPayload = {
+  rows?: BreadcrumbRow[];
+};
+
+type TimeSheetWeekRow = {
+  key: string;
+  employee_name: string;
+  worker_type: string | null;
+  days: PayrollTimeKeepingRow[];
+  byDate: Map<string, PayrollTimeKeepingRow>;
+};
+
 type PayrollTimeTrackingGridProps = {
   slug: string;
   weekEnd: string;
@@ -122,6 +149,150 @@ function weekDotSignal(row: DswDriverWeekRow) {
   if (row.total_duty_hours >= 60) return "Risk";
   if (row.total_duty_hours > 0) return "Clear";
   return "No signal";
+}
+
+function buildTimeSheetWeekRows(rows: PayrollTimeKeepingRow[]) {
+  const groups = new Map<string, PayrollTimeKeepingRow[]>();
+
+  for (const row of rows) {
+    const key = row.roster_member_id ?? row.full_name ?? "unknown";
+    const current = groups.get(key) ?? [];
+    current.push(row);
+    groups.set(key, current);
+  }
+
+  return Array.from(groups.entries())
+    .map(([key, rowDays]) => {
+      const byDate = new Map<string, PayrollTimeKeepingRow>();
+      const sortedDays = [...rowDays].sort((a, b) => a.service_date.localeCompare(b.service_date));
+
+      for (const row of sortedDays) byDate.set(row.service_date, row);
+
+      return {
+        key,
+        employee_name: sortedDays[0]?.full_name ?? "Unknown driver",
+        worker_type: sortedDays[0]?.worker_type ?? null,
+        days: sortedDays,
+        byDate,
+      };
+    })
+    .sort((a, b) => a.employee_name.localeCompare(b.employee_name));
+}
+
+function breadcrumbKey(rosterMemberId: string | null, serviceDate: string) {
+  return `${rosterMemberId ?? "unknown"}|${serviceDate}`;
+}
+
+function mapsHref(row: BreadcrumbRow) {
+  return `https://www.google.com/maps?q=${row.latitude},${row.longitude}`;
+}
+
+function locationLabel(rows: BreadcrumbRow[]) {
+  const clockIn = rows.find((row) => row.tracking_context === "CLOCK_IN") ?? null;
+  const clockOut = rows.find((row) => row.tracking_context === "CLOCK_OUT") ?? null;
+  const best = clockIn ?? clockOut ?? rows[0] ?? null;
+
+  if (!best) return null;
+
+  return {
+    row: best,
+    label: best.tracking_context === "CLOCK_OUT" ? "Out location" : "In location",
+    accuracy:
+      best.accuracy_meters == null
+        ? null
+        : `${Number(best.accuracy_meters).toLocaleString(undefined, { maximumFractionDigits: 0 })}m`,
+  };
+}
+
+function renderTimeSheetRows(
+  rows: PayrollTimeKeepingRow[],
+  days: string[],
+  breadcrumbs: BreadcrumbRow[]
+) {
+  const weeklyRows = buildTimeSheetWeekRows(rows);
+  const breadcrumbsByDriverDay = new Map<string, BreadcrumbRow[]>();
+
+  for (const row of breadcrumbs) {
+    const key = breadcrumbKey(row.roster_member_id, row.service_date);
+    const current = breadcrumbsByDriverDay.get(key) ?? [];
+    current.push(row);
+    breadcrumbsByDriverDay.set(key, current);
+  }
+
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1060 }}>
+        <thead>
+          <tr>
+            <th style={{ ...thStyle, position: "sticky", left: 0, zIndex: 3, background: "#f8fafc", minWidth: 220, boxShadow: "1px 0 0 #e6edf5" }}>
+              Employee
+            </th>
+            {days.map((day) => (
+              <th key={day} style={{ ...thStyle, textAlign: "center", minWidth: 92, padding: "7px 4px" }}>
+                {compactDayCode(day)}
+                <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>{day.slice(5)}</div>
+              </th>
+            ))}
+            <th style={{ ...thStyle, textAlign: "right" }}>Rows</th>
+            <th style={thStyle}>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {weeklyRows.length === 0 ? (
+            <tr>
+              <td colSpan={days.length + 3} style={{ padding: 16, color: "#64748b", fontWeight: 800 }}>
+                No clock activity found for this week.
+              </td>
+            </tr>
+          ) : (
+            weeklyRows.map((row) => (
+              <tr key={row.key} style={{ background: "#fff" }}>
+                <td style={{ ...tdStyle, position: "sticky", left: 0, zIndex: 2, background: "#fff", minWidth: 220, boxShadow: "1px 0 0 #e6edf5" }}>
+                  <strong>{row.employee_name}</strong>
+                  <div style={{ color: "#94a3b8", fontSize: 10, fontWeight: 800 }}>{row.worker_type ?? "—"}</div>
+                </td>
+                {days.map((day) => {
+                  const dayRow = row.byDate.get(day);
+                  const location = locationLabel(
+                    breadcrumbsByDriverDay.get(breadcrumbKey(dayRow?.roster_member_id ?? row.days[0]?.roster_member_id ?? null, day)) ?? []
+                  );
+
+                  return (
+                    <td key={day} style={{ ...tdStyle, textAlign: "center", verticalAlign: "top", padding: "7px 4px" }}>
+                      {dayRow ? (
+                        <div style={{ display: "grid", gap: 2, justifyItems: "center", lineHeight: 1.08 }}>
+                          <strong>{formatClockTime(dayRow.clock_in)} → {formatClockTime(dayRow.clock_out)}</strong>
+                          <span style={{ color: "#475569", fontSize: 10 }}>{formatDuration(dayRow.clock_in, dayRow.clock_out)}</span>
+                          <span style={{ color: "#94a3b8", fontSize: 9 }}>{stateLabel(dayRow.state)}</span>
+                          {location ? (
+                            <a
+                              href={mapsHref(location.row)}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{ color: "#2563eb", fontSize: 9, fontWeight: 900, textDecoration: "none" }}
+                              title={`${location.row.latitude}, ${location.row.longitude}`}
+                            >
+                              {location.label}{location.accuracy ? ` · ${location.accuracy}` : ""}
+                            </a>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <span style={{ color: "#94a3b8", fontWeight: 900 }}>—</span>
+                      )}
+                    </td>
+                  );
+                })}
+                <td style={{ ...tdStyle, textAlign: "right", fontWeight: 950 }}>
+                  {row.days.reduce((sum, item) => sum + item.event_count, 0)}
+                </td>
+                <td style={tdStyle}>{row.days.some((item) => item.state === "CLOCKED_IN") ? "Active" : "Closed"}</td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 function renderDriverRows(rows: PayrollTimeKeepingRow[]) {
@@ -299,6 +470,7 @@ export default function PayrollTimeTrackingGrid({
   const [view, setView] = useState<TimeTrackingView>("overview");
   const [driverRows, setDriverRows] = useState<PayrollTimeKeepingRow[]>([]);
   const [dswRows, setDswRows] = useState<DswTimeRow[]>([]);
+  const [breadcrumbRows, setBreadcrumbRows] = useState<BreadcrumbRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -333,6 +505,7 @@ export default function PayrollTimeTrackingGrid({
         if (!res.ok) {
           setDriverRows([]);
           setDswRows([]);
+          setBreadcrumbRows([]);
           setError(data?.error ?? "Failed to load time tracking.");
           return;
         }
@@ -345,10 +518,32 @@ export default function PayrollTimeTrackingGrid({
 
         setDriverRows(nextDriverRows);
         setDswRows(Array.isArray(data?.dsw_rows) ? data.dsw_rows : []);
+
+        const breadcrumbResults = await Promise.all(
+          days.map(async (day) => {
+            const breadcrumbRes = await fetch(
+              `/api/company/${slug}/driver/breadcrumbs?serviceDate=${day}`,
+              {
+                credentials: "include",
+                cache: "no-store",
+              }
+            );
+
+            const breadcrumbData = (await breadcrumbRes.json().catch(() => ({}))) as BreadcrumbPayload;
+
+            return breadcrumbRes.ok && Array.isArray(breadcrumbData.rows)
+              ? breadcrumbData.rows
+              : [];
+          })
+        );
+
+        if (!active) return;
+        setBreadcrumbRows(breadcrumbResults.flat());
       } catch {
         if (!active) return;
         setDriverRows([]);
         setDswRows([]);
+        setBreadcrumbRows([]);
         setError("Failed to load time tracking.");
       } finally {
         if (active) setLoading(false);
@@ -360,7 +555,7 @@ export default function PayrollTimeTrackingGrid({
     return () => {
       active = false;
     };
-  }, [slug, weekEnd]);
+  }, [slug, weekEnd, days]);
 
   const title =
     view === "overview"
@@ -434,6 +629,8 @@ export default function PayrollTimeTrackingGrid({
         renderDutyRows(dswDutyRows, days)
       ) : view === "dot-hours" ? (
         renderDotRows(dotRows, days)
+      ) : view === "time-sheet" ? (
+        renderTimeSheetRows(driverRows, days, breadcrumbRows)
       ) : (
         renderDriverRows(driverRows)
       )}
