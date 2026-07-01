@@ -1,64 +1,38 @@
 "use client";
 
 import { useState } from "react";
-import PayrollGrid from "@/features/payroll/components/PayrollGrid";
-import { PayrollTimeKeepingPage } from "@/features/payroll/components/PayrollTimeKeepingPage";
+import { usePathname } from "next/navigation";
+import PayrollGrid, { type PayrollView } from "@/features/payroll/components/PayrollGrid";
+import PayrollProductivityWorkspace from "@/features/payroll/components/PayrollProductivityWorkspace";
+import PayrollTimeTrackingWorkspace from "@/features/payroll/components/PayrollTimeTrackingWorkspace";
 import { defaultPayrollWeekEndFriday } from "@/features/payroll/lib/payroll.date";
-
-type PayrollWorkspaceView = "payroll" | "time-tracking";
-
-function viewLabel(view: PayrollWorkspaceView) {
-  if (view === "time-tracking") return "Time Tracking";
-  return "Payroll";
-}
 
 type PayrollWorkspaceProps = {
   slug: string;
 };
 
+function payrollViewFromPath(pathname: string): PayrollView {
+  if (pathname.includes("/payroll/adjustments")) return "adjustments";
+  if (pathname.includes("/payroll/productivity/row-detail")) return "row-detail";
+  if (pathname.includes("/payroll/productivity")) return "payroll-detail";
+  return "summary";
+}
+
 export default function PayrollWorkspace({ slug }: PayrollWorkspaceProps) {
-  const [view, setView] = useState<PayrollWorkspaceView>("payroll");
-  const [weekEnd] = useState(defaultPayrollWeekEndFriday);
+  const pathname = usePathname() ?? "";
+  const [weekEnd, setWeekEnd] = useState(defaultPayrollWeekEndFriday);
+  const isTimeTracking = pathname.includes("/payroll/time-tracking");
+  const isProductivity = pathname.includes("/payroll/productivity");
 
   return (
-    <section style={{ display: "grid", gap: 12 }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 12,
-          flexWrap: "wrap",
-          alignItems: "center",
-        }}
-      >
-        <div>
-          <p className="value-card__eyebrow">Workspace</p>
-          <h2 style={{ margin: 0 }}>{viewLabel(view)}</h2>
-        </div>
-
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            className={view === "payroll" ? "button button-primary" : "button"}
-            onClick={() => setView("payroll")}
-          >
-            Payroll
-          </button>
-          <button
-            type="button"
-            className={view === "time-tracking" ? "button button-primary" : "button"}
-            onClick={() => setView("time-tracking")}
-          >
-            Time Tracking
-          </button>
-        </div>
-      </div>
-
-      {view === "payroll" ? <PayrollGrid /> : null}
-
-      {view === "time-tracking" ? (
-        <PayrollTimeKeepingPage slug={slug} weekEnd={weekEnd} />
-      ) : null}
+    <section className="payroll-workspace">
+      {isTimeTracking ? (
+        <PayrollTimeTrackingWorkspace slug={slug} weekEnd={weekEnd} setWeekEnd={setWeekEnd} />
+      ) : isProductivity ? (
+        <PayrollProductivityWorkspace />
+      ) : (
+        <PayrollGrid view={payrollViewFromPath(pathname)} />
+      )}
     </section>
   );
 }

@@ -23,7 +23,7 @@ export function PayrollTimeKeepingTable({ rows }: PayrollTimeKeepingTableProps) 
     <section className="value-strip" style={{ paddingTop: 12 }}>
       <div className="value-grid">
         <article className="value-card">
-          <p className="value-card__eyebrow">Time Keeping</p>
+          <p className="value-card__eyebrow">Time Tracking</p>
           <h3 className="value-card__title">Workday records</h3>
           <p className="value-card__value">{summary.totalRows}</p>
         </article>
@@ -49,7 +49,7 @@ export function PayrollTimeKeepingTable({ rows }: PayrollTimeKeepingTableProps) 
         <article className="value-card" style={{ gridColumn: "1 / -1" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div>
-              <p className="value-card__eyebrow">Time Keeping</p>
+              <p className="value-card__eyebrow">Time Tracking</p>
               <h3 className="value-card__title">Clock activity by driver</h3>
             </div>
             <span style={{ color: "#64748b", fontWeight: 800 }}>

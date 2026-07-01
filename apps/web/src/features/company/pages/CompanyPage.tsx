@@ -28,7 +28,7 @@ type OverviewSurface = "profile" | "payroll" | "prior-day" | "analytics" | "conf
 const SIZE_OPTIONS = ["1-9", "10-49", "50-199", "200-999", "1000+"];
 
 function getSurfaceFromPath(pathname: string): OverviewSurface {
-  if (pathname.endsWith("/payroll")) return "payroll";
+  if (pathname.includes("/payroll")) return "payroll";
   if (pathname.endsWith("/prior-day")) return "prior-day";
   if (pathname.endsWith("/analytics") || pathname.endsWith("/readiness")) return "analytics";
   if (pathname.includes("/config")) return "config";

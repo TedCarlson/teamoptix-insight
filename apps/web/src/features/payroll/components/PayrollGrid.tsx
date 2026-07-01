@@ -43,7 +43,7 @@ import {
 
 
 
-type PayrollView = "attendance" | "summary" | "payroll-detail" | "row-detail" | "adjustments";
+export type PayrollView = "attendance" | "summary" | "payroll-detail" | "row-detail" | "adjustments";
 
 
 
@@ -73,7 +73,7 @@ type PayrollView = "attendance" | "summary" | "payroll-detail" | "row-detail" | 
 
 
 
-export default function PayrollGrid() {
+export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; viewPicker?: React.ReactNode }) {
   const params = useParams();
   const slug = String(params?.slug ?? "");
 
@@ -81,7 +81,8 @@ export default function PayrollGrid() {
   const [roster, setRoster] = useState<RosterRow[]>([]);
   const [eventsByDay, setEventsByDay] = useState<Record<string, DispatchEventRow[]>>({});
   const [payrollMetrics, setPayrollMetrics] = useState<PayrollMetrics | null>(null);
-  const [payrollView, setPayrollView] = useState<PayrollView>("attendance");
+  const [internalPayrollView, setPayrollView] = useState<PayrollView>("summary");
+  const payrollView = view ?? internalPayrollView;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rebuilding, setRebuilding] = useState(false);
@@ -315,20 +316,21 @@ export default function PayrollGrid() {
           </div>
 
           <div className="payroll-workspace-toolbar__actions">
-            <div className="workspace-view-picker">
-              <span>View</span>
-              <select
-                className="workspace-select"
-                value={payrollView}
-                onChange={(event) => setPayrollView(event.target.value as PayrollView)}
-              >
-                <option value="attendance">Attendance</option>
-                <option value="summary">Summary</option>
-                <option value="payroll-detail">Payroll Detail</option>
-                <option value="row-detail">Row Detail</option>
-                <option value="adjustments">Adjustments</option>
-              </select>
-            </div>
+            {viewPicker ?? (!view ? (
+              <div className="workspace-view-picker">
+                <span>View</span>
+                <select
+                  className="workspace-select"
+                  value={payrollView}
+                  onChange={(event) => setPayrollView(event.target.value as PayrollView)}
+                >
+                  <option value="summary">Summary</option>
+                  <option value="adjustments">Adjustments</option>
+                  <option value="payroll-detail">Payroll Detail</option>
+                  <option value="row-detail">Row Detail</option>
+                </select>
+              </div>
+            ) : null)}
 
             <PayrollWeekControls
               weekEnd={weekEnd}
