@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import OperationsReportUploadOverlay from "@/features/operations/components/OperationsReportUploadOverlay";
 import OperationsWorkspaceToolbar from "@/features/operations/components/OperationsWorkspaceToolbar";
 import { eyebrow, panel } from "@/features/dispatch/lib/dispatchSupport";
+import { timeCriticalColor } from "@/features/dispatch/lib/droPlanSignals";
 
 type Props = { slug: string };
 
@@ -71,10 +72,17 @@ function routeLabel(row: DroPlanRow) {
   return wa ? `${route} · ${wa}` : route;
 }
 
-function sortRows(rows: DroPlanRow[]) {
+function sortRows(rows: DroPlanRow[], routeSortKey: "route_name" | "current_wa_num") {
   return [...rows].sort((a, b) => {
-    const aValue = String(a.wa_number ?? a.route_name ?? "");
-    const bValue = String(b.wa_number ?? b.route_name ?? "");
+    const aValue =
+      routeSortKey === "current_wa_num"
+        ? String(a.wa_number ?? a.route_name ?? "")
+        : String(a.route_name ?? a.wa_number ?? "");
+
+    const bValue =
+      routeSortKey === "current_wa_num"
+        ? String(b.wa_number ?? b.route_name ?? "")
+        : String(b.route_name ?? b.wa_number ?? "");
 
     return aValue.localeCompare(bValue, undefined, {
       numeric: true,
@@ -92,6 +100,7 @@ export default function OperationsIntelligencePage({ slug }: Props) {
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string>(() => new Date().toISOString());
   const [payload, setPayload] = useState<DroPayload | null>(null);
   const [selectedRouteKey, setSelectedRouteKey] = useState<string | null>(null);
+  const [routeSortKey, setRouteSortKey] = useState<"route_name" | "current_wa_num">("route_name");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -99,6 +108,38 @@ export default function OperationsIntelligencePage({ slug }: Props) {
     setRefreshKey((current) => current + 1);
     setLastUpdatedAt(new Date().toISOString());
   }
+
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadOperationsConfig() {
+      try {
+        const res = await fetch(`/api/company/${slug}/config/operations`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if (!active || !res.ok) return;
+
+        setRouteSortKey(
+          data?.config?.route_sort_key === "current_wa_num"
+            ? "current_wa_num"
+            : "route_name"
+        );
+      } catch {
+        if (active) setRouteSortKey("route_name");
+      }
+    }
+
+    if (slug) void loadOperationsConfig();
+
+    return () => {
+      active = false;
+    };
+  }, [slug, refreshKey]);
 
   useEffect(() => {
     let active = true;
@@ -160,7 +201,7 @@ export default function OperationsIntelligencePage({ slug }: Props) {
     };
   }, [planningDate, refreshKey, slug, todayDate]);
 
-  const rows = useMemo(() => sortRows(payload?.rows ?? []), [payload?.rows]);
+  const rows = useMemo(() => sortRows(payload?.rows ?? [], routeSortKey), [payload?.rows, routeSortKey]);
 
   const totals = useMemo<DroTotals>(
     () =>
@@ -246,60 +287,83 @@ export default function OperationsIntelligencePage({ slug }: Props) {
                 <Metric label="Time commits" value={totals.timeCommits} />
               </div>
 
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                  <thead>
-                    <tr style={{ background: "#f8fafc", color: "#64748b", textAlign: "left" }}>
-                      <th style={th}>Route</th>
-                      <th style={th}>Stops</th>
-                      <th style={th}>Packages</th>
-                      <th style={th}>Time Commits</th>
-                      <th style={th}>Miles</th>
-                      <th style={th}>Mi / Stop</th>
-                      <th style={th}>Min / Stop</th>
-                    </tr>
-                  </thead>
+              <div style={{ display: "grid", gap: 8 }}>
+                {rows.map((row, index) => {
+                  const key =
+                    row.route_baseline_id ??
+                    row.wa_number ??
+                    row.route_name ??
+                    `dro-row-${index}`;
 
-                  <tbody>
-                    {rows.map((row, index) => {
-                      const key =
-                        row.route_baseline_id ??
-                        row.wa_number ??
-                        row.route_name ??
-                        `dro-row-${index}`;
+                  const selected =
+                    key ===
+                    (selectedRoute?.route_baseline_id ??
+                      selectedRoute?.wa_number ??
+                      selectedRoute?.route_name ??
+                      "");
 
-                      const selected = key === (selectedRoute?.route_baseline_id ?? selectedRoute?.wa_number ?? selectedRoute?.route_name ?? "");
-
-                      return (
-                        <tr
-                          key={key}
-                          onClick={() => setSelectedRouteKey(key)}
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setSelectedRouteKey(key)}
+                      style={{
+                        width: "100%",
+                        display: "grid",
+                        gridTemplateColumns: "minmax(180px, 1.15fr) minmax(0, 2.6fr) minmax(160px, 0.9fr)",
+                        gap: 10,
+                        alignItems: "center",
+                        padding: "10px 12px",
+                        borderRadius: 14,
+                        border: selected ? "1px solid #93c5fd" : "1px solid #e6edf5",
+                        background: selected ? "#eff6ff" : "#fff",
+                        textAlign: "left",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <strong
                           style={{
-                            borderBottom: "1px solid #eef2f7",
-                            background: selected ? "#eff6ff" : "#fff",
-                            cursor: "pointer",
+                            display: "block",
+                            color: "#0f172a",
+                            fontSize: 14,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
                           }}
                         >
-                          <td style={tdStrong}>{routeLabel(row)}</td>
-                          <td style={td}>{fmt(row.stops)}</td>
-                          <td style={td}>{fmt(row.packages)}</td>
-                          <td style={td}>{fmt(row.time_commits)}</td>
-                          <td style={td}>{row.miles == null ? "—" : fmt(row.miles, 1)}</td>
-                          <td style={td}>{row.miles_per_stop == null ? "—" : fmt(row.miles_per_stop, 2)}</td>
-                          <td style={td}>{row.minutes_per_stop == null ? "—" : fmt(row.minutes_per_stop, 1)}</td>
-                        </tr>
-                      );
-                    })}
+                          {routeLabel(row)}
+                        </strong>
+                        <span
+                          style={{
+                            display: "block",
+                            color: "#64748b",
+                            fontSize: 12,
+                            fontWeight: 800,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          WA {row.wa_number ?? "—"} · {payload?.source_frame ?? "DRO"} plan
+                        </span>
+                      </div>
 
-                    {rows.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} style={{ padding: 14, color: "#64748b", fontWeight: 850 }}>
-                          No DRO rows loaded for {payload?.source_date ?? planningDate}.
-                        </td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
+                      <DroPlanningSignal row={row} />
+
+                      <div style={{ display: "grid", gap: 3, color: "#64748b", fontSize: 11, fontWeight: 850 }}>
+                        <span style={{ textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 950 }}>Assigned Driver</span>
+                        <strong style={{ color: "#0f172a", fontSize: 13 }}>Pending schedule link</strong>
+                      </div>
+                    </button>
+                  );
+                })}
+
+                {rows.length === 0 ? (
+                  <div style={{ padding: 14, color: "#64748b", fontWeight: 850 }}>
+                    No DRO rows loaded for {payload?.source_date ?? planningDate}.
+                  </div>
+                ) : null}
               </div>
             </section>
 
@@ -365,16 +429,34 @@ function RailStat(props: { label: string; value: string | number }) {
   );
 }
 
-const th = {
-  padding: "9px 10px",
-  borderBottom: "1px solid #e6edf5",
-} as const;
-
-const td = {
-  padding: "8px 10px",
-} as const;
-
-const tdStrong = {
-  ...td,
-  fontWeight: 900,
-} as const;
+function DroPlanningSignal({ row }: { row: DroPlanRow }) {
+  return (
+    <span
+      title={[
+        `${fmt(row.stops)} stops`,
+        `${fmt(row.packages)} packages`,
+        `${fmt(row.time_commits)} time commits`,
+        row.miles == null ? null : `${fmt(row.miles, 1)} miles`,
+        row.miles_per_stop == null ? null : `${fmt(row.miles_per_stop, 2)} mi/stop`,
+        row.minutes_per_stop == null ? null : `${fmt(row.minutes_per_stop, 1)} min/stop`,
+      ].filter(Boolean).join(" · ")}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        flexWrap: "wrap",
+        color: "#334155",
+        fontSize: 12,
+        fontWeight: 900,
+        whiteSpace: "normal",
+      }}
+    >
+      <span>📍 {fmt(row.stops)}</span>
+      <span>📦 {fmt(row.packages)}</span>
+      <span style={{ color: timeCriticalColor(n(row.time_commits)) }}>🕒 {fmt(row.time_commits)}</span>
+      <span style={{ color: "#4d148c" }}>🚚 {row.miles == null ? "—" : fmt(row.miles, 1)}</span>
+      <span>⚡ {row.miles_per_stop == null ? "—" : fmt(row.miles_per_stop, 2)}</span>
+      <span>⏱ {row.minutes_per_stop == null ? "—" : fmt(row.minutes_per_stop, 1)}</span>
+    </span>
+  );
+}
