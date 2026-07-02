@@ -96,6 +96,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     { label: "Dispatch", href: `${operationsBase}/dispatch`, match: (path) => path === operationsBase || path.startsWith(`${operationsBase}/dispatch`) || path.startsWith(`${base}/dispatch`) },
     { label: "Delivery Window", href: `${operationsBase}/delivery-window`, match: (path) => path.startsWith(`${operationsBase}/delivery-window`) },
     { label: "Operations Intelligence", href: `${operationsBase}/intelligence`, match: (path) => path.startsWith(`${operationsBase}/intelligence`) || path.startsWith(`${operationsBase}/planning`) },
+    { label: "Mileage Audit", href: `${operationsBase}/mileage-audit`, match: (path) => path.startsWith(`${operationsBase}/mileage-audit`) },
     { label: "Ops Reports", href: `${base}/prior-day`, match: (path) => path === `${base}/prior-day` },
   ];
 
