@@ -32,6 +32,8 @@ export default function MileageAuditPage({ slug }: Props) {
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastAppliedCount, setLastAppliedCount] = useState<number | null>(null);
+  const [selectedActions, setSelectedActions] = useState<Record<string, "APPLY" | "IGNORE" | null>>({});
+  const [draftMiles, setDraftMiles] = useState<Record<string, string>>({});
 
   async function loadAudit(showLoading = true) {
     if (showLoading) setLoading(true);
@@ -51,11 +53,40 @@ export default function MileageAuditPage({ slug }: Props) {
       return;
     }
 
-    setRows(Array.isArray(data?.rows) ? data.rows : []);
+    const nextRows = Array.isArray(data?.rows) ? data.rows : [];
+    setRows(nextRows);
+    setSelectedActions({});
+    setDraftMiles(
+      Object.fromEntries(
+        nextRows.map((row: MileageAuditRow) => [
+          row.raw_row_id,
+          row.suggested_miles == null ? "" : String(row.suggested_miles),
+        ])
+      )
+    );
     setLoading(false);
   }
 
-  async function applySuggested() {
+  async function submitReview(action: "APPLY" | "IGNORE") {
+    const reviewItems = Object.entries(selectedActions)
+      .filter(([, selected]) => selected === action)
+      .map(([rawRowId]) => ({
+        rawRowId,
+        miles:
+          action === "APPLY"
+            ? Number(
+                draftMiles[rawRowId] ??
+                  rows.find((row) => row.raw_row_id === rawRowId)?.suggested_miles ??
+                  ""
+              )
+            : null,
+      }))
+      .filter((item) => action === "IGNORE" || Number.isFinite(item.miles));
+
+    const rawRowIds = reviewItems.map((item) => item.rawRowId);
+
+    if (!rawRowIds.length) return;
+
     setApplying(true);
     setError(null);
 
@@ -64,13 +95,13 @@ export default function MileageAuditPage({ slug }: Props) {
       credentials: "include",
       cache: "no-store",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ threshold: 500, minSampleSize: 1 }),
+      body: JSON.stringify({ action, reviewItems, threshold: 500 }),
     });
 
     const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {
-      setError(data?.error ?? "Failed to apply mileage corrections.");
+      setError(data?.error ?? "Failed to submit mileage review.");
       setApplying(false);
       return;
     }
@@ -78,6 +109,13 @@ export default function MileageAuditPage({ slug }: Props) {
     setLastAppliedCount(Number(data?.corrected_count ?? 0));
     await loadAudit();
     setApplying(false);
+  }
+
+  function setRowAction(rawRowId: string, action: "APPLY" | "IGNORE") {
+    setSelectedActions((current) => ({
+      ...current,
+      [rawRowId]: current[rawRowId] === action ? null : action,
+    }));
   }
 
   useEffect(() => {
@@ -117,11 +155,11 @@ export default function MileageAuditPage({ slug }: Props) {
   const summary = useMemo(() => {
     const impossible = rows.filter((row) => row.reason === "IMPOSSIBLE_MILEAGE").length;
     const missing = rows.filter((row) => row.reason === "MISSING_MILEAGE").length;
-    const healable = rows.filter((row) => row.suggested_miles != null).length;
-    const manual = rows.length - healable;
+    const applySelected = Object.values(selectedActions).filter((action) => action === "APPLY").length;
+    const ignoreSelected = Object.values(selectedActions).filter((action) => action === "IGNORE").length;
 
-    return { impossible, missing, healable, manual };
-  }, [rows]);
+    return { impossible, missing, applySelected, ignoreSelected };
+  }, [rows, selectedActions]);
 
   return (
     <main className="workspace-shell">
@@ -152,12 +190,11 @@ export default function MileageAuditPage({ slug }: Props) {
             <button type="button" className="button" onClick={() => void loadAudit()} disabled={loading || applying} style={{ minHeight: 36, padding: "0 12px", fontSize: 12 }}>
               Refresh
             </button>
-            <button type="button" className="button button-primary" onClick={applySuggested} disabled={loading || applying || summary.healable === 0} style={{ minHeight: 36, padding: "0 12px", fontSize: 12 }}>
-              {applying
-                ? "Applying..."
-                : summary.healable > 0
-                  ? `Apply Suggested (${summary.healable})`
-                  : `Manual Review Required (${rows.length})`}
+            <button type="button" className="button" onClick={() => void submitReview("IGNORE")} disabled={loading || applying || summary.ignoreSelected === 0} style={{ minHeight: 36, padding: "0 12px", fontSize: 12 }}>
+              Ignore Selected ({summary.ignoreSelected})
+            </button>
+            <button type="button" className="button button-primary" onClick={() => void submitReview("APPLY")} disabled={loading || applying || summary.applySelected === 0} style={{ minHeight: 36, padding: "0 12px", fontSize: 12 }}>
+              {applying ? "Submitting..." : `Apply Selected (${summary.applySelected})`}
             </button>
           </div>
         </header>
@@ -178,7 +215,7 @@ export default function MileageAuditPage({ slug }: Props) {
           <MetricCard label="Total Findings" value={rows.length} />
           <MetricCard label="Impossible" value={summary.impossible} />
           <MetricCard label="Missing" value={summary.missing} />
-          <MetricCard label="Manual Review" value={summary.manual} />
+          <MetricCard label="Selected Apply" value={summary.applySelected} />
         </section>
 
         <section style={{ border: "1px solid #d7e2f2", borderRadius: 14, background: "#fff", overflow: "hidden" }}>
@@ -198,6 +235,8 @@ export default function MileageAuditPage({ slug }: Props) {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr style={{ background: "#f8fafc", color: "#64748b", textAlign: "left" }}>
+                  <th style={th}>Apply</th>
+                  <th style={th}>Ignore</th>
                   <th style={th}>Date</th>
                   <th style={th}>Route</th>
                   <th style={th}>Driver</th>
@@ -211,7 +250,7 @@ export default function MileageAuditPage({ slug }: Props) {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={7} style={{ padding: 14, color: "#64748b", fontWeight: 850 }}>
+                    <td colSpan={9} style={{ padding: 14, color: "#64748b", fontWeight: 850 }}>
                       Loading mileage audit...
                     </td>
                   </tr>
@@ -219,13 +258,53 @@ export default function MileageAuditPage({ slug }: Props) {
 
                 {!loading && rows.map((row) => (
                   <tr key={row.raw_row_id} style={{ borderBottom: "1px solid #eef2f7" }}>
+                    <td style={td}>
+                      <input
+                        type="checkbox"
+                        checked={selectedActions[row.raw_row_id] === "APPLY"}
+                        onChange={() => setRowAction(row.raw_row_id, "APPLY")}
+                      />
+                    </td>
+                    <td style={td}>
+                      <input
+                        type="checkbox"
+                        checked={selectedActions[row.raw_row_id] === "IGNORE"}
+                        onChange={() => setRowAction(row.raw_row_id, "IGNORE")}
+                      />
+                    </td>
                     <td style={tdStrong}>{row.service_date}</td>
                     <td style={tdStrong}>
                       {row.route_name ?? "Unlabeled"}{row.wa_number ? ` · ${row.wa_number}` : ""}
                     </td>
                     <td style={tdMuted}>{row.driver_name || "—"}</td>
                     <td style={{ ...tdStrong, color: "#991b1b" }}>{row.recorded_miles_text ?? "Missing"}</td>
-                    <td style={{ ...tdStrong, color: "#166534" }}>{row.suggested_miles == null ? "—" : fmt(row.suggested_miles)}</td>
+                    <td style={td}>
+                      <input
+                        value={
+                          draftMiles[row.raw_row_id] ??
+                          (row.suggested_miles == null ? "" : String(row.suggested_miles))
+                        }
+                        onChange={(event) =>
+                          setDraftMiles((current) => ({
+                            ...current,
+                            [row.raw_row_id]: event.target.value,
+                          }))
+                        }
+                        inputMode="decimal"
+                        style={{
+                          width: 86,
+                          minHeight: 28,
+                          border: "1px solid #d7e2f2",
+                          borderRadius: 8,
+                          padding: "0 8px",
+                          color: "#166534",
+                          fontWeight: 900,
+                        }}
+                      />
+                      <span style={{ marginLeft: 6, color: "#64748b", fontSize: 11, fontWeight: 800 }}>
+                        computed {row.suggested_miles == null ? "—" : fmt(row.suggested_miles)}
+                      </span>
+                    </td>
                     <td style={td}>{row.reason}</td>
                     <td style={td}>{row.sample_size}</td>
                   </tr>
@@ -233,7 +312,7 @@ export default function MileageAuditPage({ slug }: Props) {
 
                 {!loading && rows.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ padding: 14, color: "#166534", fontWeight: 900 }}>
+                    <td colSpan={9} style={{ padding: 14, color: "#166534", fontWeight: 900 }}>
                       No mileage anomalies detected.
                     </td>
                   </tr>
