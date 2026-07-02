@@ -150,7 +150,7 @@ function sortRows(rows: DroPlanRow[], routeSortKey: "route_name" | "current_wa_n
   });
 }
 
-export default function OperationsIntelligencePage({ slug }: Props) {
+export default function PlanningPage({ slug }: Props) {
   const todayDate = todayNyIso();
   const planningDate = addDaysIso(todayDate, 1);
 
@@ -443,7 +443,7 @@ export default function OperationsIntelligencePage({ slug }: Props) {
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                 <div>
                   <p style={eyebrow}>Planning</p>
-                  <h2 style={{ margin: 0, fontSize: 18 }}>DRO planning snapshot</h2>
+                  <h2 style={{ margin: 0, fontSize: 18 }}>Planning snapshot</h2>
                   <p style={{ margin: "4px 0 0", color: "#64748b", fontWeight: 700 }}>
                     {payload?.source_mode === "PLANNING"
                       ? `Latest available planning DRO for ${payload?.source_date ?? planningDate}. PM is preferred when present.`
@@ -457,12 +457,22 @@ export default function OperationsIntelligencePage({ slug }: Props) {
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
-                <Metric label="Routes" value={totals.routes} />
-                <Metric label="Stops" value={totals.stops} />
-                <Metric label="Packages" value={totals.packages} />
-                <Metric label="Time commits" value={totals.timeCommits} />
-              </div>
+              <section
+                style={{
+                  border: "1px solid #edf2f7",
+                  borderRadius: 14,
+                  padding: 12,
+                  display: "grid",
+                  gap: 4,
+                  background: "#f8fafc",
+                }}
+              >
+                <p style={{ ...eyebrow, color: "#009b67" }}>Company Intelligence</p>
+                <strong style={{ fontSize: 15 }}>{planningSummary.readinessLabel}</strong>
+                <span style={{ color: "#64748b", fontSize: 12, fontWeight: 850 }}>
+                  Company-level historical demand, driver coverage confidence, and workload change signals will land here.
+                </span>
+              </section>
 
               <div style={{ display: "grid", gap: 8 }}>
                 {rows.map((row, index) => {
@@ -487,7 +497,7 @@ export default function OperationsIntelligencePage({ slug }: Props) {
                       style={{
                         width: "100%",
                         display: "grid",
-                        gridTemplateColumns: "minmax(180px, 1.15fr) minmax(0, 2.6fr) minmax(160px, 0.9fr)",
+                        gridTemplateColumns: "minmax(160px, 0.9fr) minmax(260px, 1.45fr) minmax(145px, 0.7fr) minmax(160px, 0.75fr)",
                         gap: 10,
                         alignItems: "center",
                         padding: "10px 12px",
@@ -569,6 +579,23 @@ export default function OperationsIntelligencePage({ slug }: Props) {
                           );
                         })()}
                       </div>
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 2,
+                          minWidth: 150,
+                          justifyItems: "start",
+                          color: "#64748b",
+                          fontSize: 11,
+                          fontWeight: 850,
+                        }}
+                      >
+                        <strong style={{ color: "#334155", fontSize: 13 }}>
+                          Intelligence pending
+                        </strong>
+                        <span>Historical signal next</span>
+                      </div>
                     </button>
                   );
                 })}
@@ -626,7 +653,7 @@ export default function OperationsIntelligencePage({ slug }: Props) {
   );
 }
 
-function Metric(props: { label: string; value: number }) {
+function Metric(props: { label: string; value: string | number }) {
   return (
     <div
       style={{
@@ -641,7 +668,7 @@ function Metric(props: { label: string; value: number }) {
       <span style={{ color: "#64748b", fontSize: 10, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.06em" }}>
         {props.label}
       </span>
-      <strong style={{ fontSize: 13 }}>{fmt(props.value)}</strong>
+      <strong style={{ fontSize: 13 }}>{typeof props.value === "number" ? fmt(props.value) : props.value}</strong>
     </div>
   );
 }

@@ -7,7 +7,7 @@ export function buildOperationsMenu(base: string): AppMenuSection {
     items: [
       { key: "dispatch", label: "Dispatch", href: `${base}/operations/dispatch` },
       { key: "delivery-window", label: "Delivery Window", href: `${base}/operations/delivery-window` },
-      { key: "operations-intelligence", label: "Planning", href: `${base}/operations/intelligence` },
+      { key: "planning", label: "Planning", href: `${base}/operations/planning` },
       { key: "ops-reports", label: "Ops Reports", href: `${base}/prior-day` },
     ],
   };

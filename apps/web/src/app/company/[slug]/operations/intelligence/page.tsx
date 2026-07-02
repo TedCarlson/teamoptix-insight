@@ -1,8 +1,8 @@
-import OperationsIntelligencePage from "@/features/operations-intelligence/pages/OperationsIntelligencePage";
+import { redirect } from "next/navigation";
 
-export default async function OperationsIntelligenceRoute(props: {
+export default async function IntelligenceRedirectPage(props: {
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await props.params;
-  return <OperationsIntelligencePage slug={slug} />;
+  redirect(`/company/${slug}/operations/planning`);
 }
