@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import DemandTrendCard from "../components/DemandTrendCard";
+import RouteHistoryGrid from "../components/RouteHistoryGrid";
 
 type Props = { slug: string };
 
@@ -29,8 +31,24 @@ type DayResult = {
   rows: DswRow[];
 };
 
+type IntelligenceSummary = {
+  demand?: {
+    latest_service_date?: string | null;
+    history_count?: number;
+    signal?: string;
+    latest?: { routes?: number; stops?: number; packages?: number };
+    average?: { routes?: number; stops?: number; packages?: number };
+    delta_pct?: { routes?: number; stops?: number; packages?: number };
+  };
+};
+
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 }
 
 function addDaysIso(dateIso: string, days: number) {
@@ -46,12 +64,25 @@ function weekdayLabel(dateIso: string) {
   }).format(new Date(`${dateIso}T12:00:00.000Z`));
 }
 
-function shortDate(dateIso: string) {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "numeric",
-    day: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(`${dateIso}T12:00:00.000Z`));
+
+const WEEKDAY_OPTIONS = [
+  { key: 1, label: "Mon" },
+  { key: 2, label: "Tue" },
+  { key: 3, label: "Wed" },
+  { key: 4, label: "Thu" },
+  { key: 5, label: "Fri" },
+  { key: 6, label: "Sat" },
+  { key: 0, label: "Sun" },
+] as const;
+
+function weekdayIndex(dateIso: string) {
+  return new Date(`${dateIso}T12:00:00.000Z`).getUTCDay();
+}
+
+function nextDateForWeekday(anchorDate: string, targetWeekday: number) {
+  const current = weekdayIndex(anchorDate);
+  const offset = (targetWeekday - current + 7) % 7;
+  return addDaysIso(anchorDate, offset === 0 ? 7 : offset);
 }
 
 function sameWeekdayHistory(targetDate: string, count = 14) {
@@ -114,11 +145,14 @@ function avg(values: number[]) {
 }
 
 export default function OperationsIntelligencePage({ slug }: Props) {
-  const targetDate = addDaysIso(todayIso(), 1);
+  const defaultTargetDate = addDaysIso(todayIso(), 1);
+  const [selectedWeekday, setSelectedWeekday] = useState(weekdayIndex(defaultTargetDate));
+  const targetDate = nextDateForWeekday(todayIso(), selectedWeekday);
   const historyDates = useMemo(() => sameWeekdayHistory(targetDate), [targetDate]);
 
   const [baselineRoutes, setBaselineRoutes] = useState<BaselineRoute[]>([]);
   const [days, setDays] = useState<DayResult[]>([]);
+  const [summary, setSummary] = useState<IntelligenceSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -173,10 +207,30 @@ export default function OperationsIntelligencePage({ slug }: Props) {
       setDays(historyDates.map((date) => ({ date, rows: rowsByDate.get(date) ?? [] })));
     }
 
+    async function loadSummary() {
+      const res = await fetch(`/api/company/${slug}/operations/intelligence/summary`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!active) return;
+
+      if (res.ok) {
+        setSummary(data);
+      }
+    }
+
     void loadHistory().catch((err) => {
       if (!active) return;
       setError(err instanceof Error ? err.message : "Failed to load route history.");
       setDays([]);
+    });
+
+    void loadSummary().catch(() => {
+      if (!active) return;
+      setSummary(null);
     });
 
     return () => {
@@ -246,9 +300,38 @@ export default function OperationsIntelligencePage({ slug }: Props) {
             </h1>
           </div>
 
-          <p style={{ margin: 0, color: "#64748b", fontSize: 13, fontWeight: 850, maxWidth: 680 }}>
-            Tomorrow is {weekdayLabel(targetDate)}. This grid shows the last 14 matching weekdays by route.
-          </p>
+          <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+            <p style={{ margin: 0, color: "#64748b", fontSize: 13, fontWeight: 850, maxWidth: 680 }}>
+              Viewing the next {weekdayLabel(targetDate)} pattern. This grid shows the last 14 matching weekdays by route.
+            </p>
+
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              {WEEKDAY_OPTIONS.map((option) => {
+                const active = option.key === selectedWeekday;
+
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => setSelectedWeekday(option.key)}
+                    className="button"
+                    style={{
+                      minHeight: 28,
+                      padding: "0 9px",
+                      borderRadius: 999,
+                      fontSize: 11,
+                      fontWeight: 950,
+                      borderColor: active ? "#009b67" : "#d7e2f2",
+                      background: active ? "#ecfdf5" : "#fff",
+                      color: active ? "#047857" : "#475569",
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </header>
 
         {error ? (
@@ -257,72 +340,14 @@ export default function OperationsIntelligencePage({ slug }: Props) {
           </section>
         ) : null}
 
-        <section style={{ border: "1px solid #d7e2f2", borderRadius: 14, background: "#fff", overflow: "hidden" }}>
-          <div style={{ padding: 12, borderBottom: "1px solid #e6edf5", display: "flex", justifyContent: "space-between", gap: 12 }}>
-            <div>
-              <p style={{ margin: "0 0 3px", color: "#009b67", fontSize: 11, fontWeight: 950, letterSpacing: "0.12em", textTransform: "uppercase" }}>
-                Dimension 1
-              </p>
-              <strong>Last 14 {weekdayLabel(targetDate)}s by route</strong>
-            </div>
-            <span style={{ color: "#64748b", fontSize: 12, fontWeight: 850 }}>
-              {grid.length} routes · {historyDates[historyDates.length - 1]} through {historyDates[0]}
-            </span>
-          </div>
 
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-              <thead>
-                <tr style={{ background: "#f8fafc", color: "#64748b", textAlign: "left" }}>
-                  <th style={{ padding: "9px 10px", borderBottom: "1px solid #e6edf5", minWidth: 190 }}>Route</th>
-                  <th style={{ padding: "9px 10px", borderBottom: "1px solid #e6edf5" }}>Runs</th>
-                  <th style={{ padding: "9px 10px", borderBottom: "1px solid #e6edf5" }}>Avg Stops</th>
-                  <th style={{ padding: "9px 10px", borderBottom: "1px solid #e6edf5" }}>Avg Pkgs</th>
-                  <th style={{ padding: "9px 10px", borderBottom: "1px solid #e6edf5" }}>Avg Miles</th>
-                  <th style={{ padding: "9px 10px", borderBottom: "1px solid #e6edf5" }}>Avg Duty</th>
-                  {historyDates.map((date) => (
-                    <th key={date} style={{ padding: "9px 10px", borderBottom: "1px solid #e6edf5", minWidth: 82 }}>
-                      {shortDate(date)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
+        <DemandTrendCard summary={summary} />
 
-              <tbody>
-                {grid.map((row) => (
-                  <tr key={row.key} style={{ borderBottom: "1px solid #eef2f7" }}>
-                    <td style={{ padding: "8px 10px", fontWeight: 950 }}>{row.label}</td>
-                    <td style={{ padding: "8px 10px", fontWeight: 850 }}>{row.runs}/14</td>
-                    <td style={{ padding: "8px 10px" }}>{fmt(row.avgStops, 1)}</td>
-                    <td style={{ padding: "8px 10px" }}>{fmt(row.avgPackages, 1)}</td>
-                    <td style={{ padding: "8px 10px" }}>{fmt(row.avgMiles, 1)}</td>
-                    <td style={{ padding: "8px 10px" }}>{fmt(row.avgDuty, 1)}</td>
-                    {row.cells.map((cell) => (
-                      <td key={cell.date} style={{ padding: "8px 10px", color: cell.stops ? "#0f172a" : "#94a3b8" }}>
-                        {cell.stops ? (
-                          <span>
-                            <strong>{fmt(cell.stops)}</strong>
-                            <span style={{ color: "#64748b" }}> / {fmt(cell.packages)}</span>
-                          </span>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-
-                {!grid.length ? (
-                  <tr>
-                    <td colSpan={20} style={{ padding: 14, color: "#64748b", fontWeight: 850 }}>
-                      Loading baseline routes and same-weekday DSW history.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <RouteHistoryGrid
+          grid={grid}
+          historyDates={historyDates}
+          weekdayLabel={weekdayLabel(targetDate)}
+        />
       </section>
     </main>
   );
