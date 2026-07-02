@@ -27,7 +27,7 @@ export function DriverTimeOffRequestDrawer({
   const eligibility = evaluateDriverTimeOffRequestEligibility(selectedDates);
 
   return (
-    <div className="driver-timeoff-drawer" role="dialog" aria-label="Time off request">
+    <div className="driver-timeoff-drawer" role="region" aria-label="Time off request">
       <div>
         <p className="value-card__eyebrow">Time Off Request</p>
         <h3>{selectedDatesLabel(selectedDates)}</h3>

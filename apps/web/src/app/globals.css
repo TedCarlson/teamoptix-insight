@@ -2296,19 +2296,14 @@ body {
 }
 
 .driver-timeoff-drawer {
-  position: fixed;
-  left: 50%;
-  bottom: calc(5.75rem + env(safe-area-inset-bottom));
-  z-index: 70;
-  width: min(680px, calc(100% - 1.25rem));
+  margin-top: 14px;
+  border: 1px solid #dbeafe;
+  border-radius: 18px;
+  padding: 14px;
+  background: #f8fbff;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
   display: grid;
-  gap: 0.85rem;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  border-radius: 24px;
-  background: #ffffff;
-  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.22);
-  padding: 1rem;
-  transform: translateX(-50%);
+  gap: 12px;
 }
 
 .driver-timeoff-drawer h3 {
@@ -2345,11 +2340,11 @@ body {
   gap: 0.65rem;
 }
 
-@media (max-width: 680px) {
+@media (max-width: 640px) {
   .driver-timeoff-drawer {
-    bottom: calc(5.25rem + env(safe-area-inset-bottom));
-    border-radius: 22px 22px 0 0;
-    width: 100%;
+    margin-top: 12px;
+    border-radius: 16px;
+    padding: 12px;
   }
 }
 
