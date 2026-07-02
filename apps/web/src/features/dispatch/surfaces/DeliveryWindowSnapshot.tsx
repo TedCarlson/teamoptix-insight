@@ -62,6 +62,7 @@ type DeliveryWindowSnapshotProps = {
   serviceDate: string;
   routes: DispatchRoute[];
   routeLabelForDisplay: (route: DispatchRoute) => string;
+  onRefresh?: () => void;
 };
 
 function normalizeWaNumber(value: string | null | undefined) {
@@ -279,7 +280,7 @@ function driverSignal(
 }
 
 export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
-  const { slug, serviceDate, routes, routeLabelForDisplay } = props;
+  const { slug, serviceDate, routes, routeLabelForDisplay, onRefresh } = props;
   const [payload, setPayload] = useState<DswPayload | null>(null);
   const [fccPayload, setFccPayload] = useState<FccPayload | null>(null);
   const [serviceSnapshotPayload, setServiceSnapshotPayload] = useState<any>(null);
@@ -686,16 +687,21 @@ console.log(
       <section style={{ ...panel, padding: 14, display: "grid", gap: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
-            <p style={eyebrow}>Delivery Window</p>
-            <h2 style={{ margin: 0, fontSize: 18 }}>DSW/FCC sourced execution overview</h2>
-            <p style={{ margin: "4px 0 0", color: "#64748b", fontWeight: 700 }}>
-              Live operational snapshot of route progress, service completion, and delivery health.
-            </p>
+            <p style={eyebrow}>Service</p>
+            <h2 style={{ margin: 0, fontSize: 18 }}>Service Line Up</h2>
           </div>
 
-          <div style={{ textAlign: "right", color: "#64748b", fontSize: 12, fontWeight: 900 }}>
-            <div>{payload?.terminal_identity ?? "No terminal"}</div>
-            <div>{payload?.generated_at_text ?? "No DSW loaded"}</div>
+          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center" }}>
+            {onRefresh ? (
+              <button
+                type="button"
+                className="button"
+                onClick={onRefresh}
+                style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}
+              >
+                Refresh
+              </button>
+            ) : null}
           </div>
         </div>
 

@@ -94,8 +94,8 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
 
   const operationsSubItems: NavItem[] = [
     { label: "Dispatch", href: `${operationsBase}/dispatch`, match: (path) => path === operationsBase || path.startsWith(`${operationsBase}/dispatch`) || path.startsWith(`${base}/dispatch`) },
-    { label: "Delivery Window", href: `${operationsBase}/delivery-window`, match: (path) => path.startsWith(`${operationsBase}/delivery-window`) },
-    { label: "Planning", href: `${operationsBase}/intelligence`, match: (path) => path.startsWith(`${operationsBase}/intelligence`) || path.startsWith(`${operationsBase}/planning`) },
+    { label: "Service", href: `${operationsBase}/service`, match: (path) => path.startsWith(`${operationsBase}/service`) || path.startsWith(`${operationsBase}/delivery-window`) },
+    { label: "Planning", href: `${operationsBase}/planning`, match: (path) => path.startsWith(`${operationsBase}/planning`) || path.startsWith(`${operationsBase}/intelligence`) },
     { label: "Mileage Audit", href: `${operationsBase}/mileage-audit`, match: (path) => path.startsWith(`${operationsBase}/mileage-audit`) },
     { label: "Ops Reports", href: `${base}/prior-day`, match: (path) => path === `${base}/prior-day` },
   ];
@@ -221,6 +221,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
                 key={item.href}
                 href={item.href}
                 className={`app-workspace-tile app-workspace-tile--surface${active ? " app-workspace-tile--active" : ""}`}
+                style={item.label === "Mileage Audit" ? { marginLeft: 18 } : undefined}
               >
                 {item.label}
               </Link>

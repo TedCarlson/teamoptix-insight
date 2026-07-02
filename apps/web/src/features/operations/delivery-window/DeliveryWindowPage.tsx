@@ -2,8 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import OperationsReportUploadOverlay from "@/features/operations/components/OperationsReportUploadOverlay";
-import OperationsWorkspaceToolbar from "@/features/operations/components/OperationsWorkspaceToolbar";
-import OperationsIntelligenceFeed from "@/features/operations/components/OperationsIntelligenceFeed";
 import { DeliveryWindowSnapshot } from "@/features/dispatch/surfaces/DeliveryWindowSnapshot";
 import type { DispatchRoute } from "@/features/dispatch/lib/dispatchSupport";
 import { useDeliveryWindowData } from "./hooks/useDeliveryWindowData";
@@ -90,17 +88,11 @@ export default function DeliveryWindowPage({ slug, serviceDate }: Props) {
   );
   function refreshWorkspace() {
     setRefreshKey((current) => current + 1);
-    setLastUpdatedAt(new Date().toISOString());
   }
 
   return (
     <main className="workspace-shell">
       <section className="workspace-main" style={{ paddingTop: 12 }}>
-        <OperationsWorkspaceToolbar
-          lastUpdatedAt={lastUpdatedAt}
-          onRefresh={refreshWorkspace}
-        />
-
         {error ? (
           <section className="panel" style={{ marginTop: 12, padding: 12, color: "#991b1b", fontWeight: 800 }}>
             {error}
@@ -109,7 +101,7 @@ export default function DeliveryWindowPage({ slug, serviceDate }: Props) {
 
         {loading ? (
           <section className="panel" style={{ marginTop: 12, padding: 12, color: "#64748b", fontWeight: 800 }}>
-            Loading delivery window...
+            Loading service...
           </section>
         ) : (
           <DeliveryWindowSnapshot
@@ -118,6 +110,7 @@ export default function DeliveryWindowPage({ slug, serviceDate }: Props) {
             serviceDate={serviceDate}
             routes={sortedRoutes}
             routeLabelForDisplay={(route) => routeLabelForDisplay(route, routeSortKey)}
+            onRefresh={refreshWorkspace}
           />
         )}
       </section>
