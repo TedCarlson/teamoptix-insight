@@ -195,21 +195,44 @@ function mapsHref(row: BreadcrumbRow) {
   return `https://www.google.com/maps?q=${row.latitude},${row.longitude}`;
 }
 
-function locationLabel(rows: BreadcrumbRow[]) {
-  const clockIn = rows.find((row) => row.tracking_context === "CLOCK_IN") ?? null;
-  const clockOut = rows.find((row) => row.tracking_context === "CLOCK_OUT") ?? null;
-  const best = clockIn ?? clockOut ?? rows[0] ?? null;
+function breadcrumbForContext(
+  rows: BreadcrumbRow[],
+  context: "CLOCK_IN" | "CLOCK_OUT"
+) {
+  return rows.find((row) => row.tracking_context === context) ?? null;
+}
 
-  if (!best) return null;
+function TimeEvidenceButton(props: {
+  time: string;
+  breadcrumb: BreadcrumbRow | null;
+  onSelect: (row: BreadcrumbRow) => void;
+}) {
+  if (!props.breadcrumb) {
+    return <span>{props.time}</span>;
+  }
 
-  return {
-    row: best,
-    label: best.tracking_context === "CLOCK_OUT" ? "Out location" : "In location",
-    accuracy:
-      best.accuracy_meters == null
-        ? null
-        : `${Number(best.accuracy_meters).toLocaleString(undefined, { maximumFractionDigits: 0 })}m`,
-  };
+  return (
+    <button
+      type="button"
+      onClick={() => props.onSelect(props.breadcrumb!)}
+      style={{
+        border: 0,
+        background: "transparent",
+        padding: 0,
+        color: "#0f172a",
+        font: "inherit",
+        fontWeight: 900,
+        cursor: "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 3,
+      }}
+      title="View location evidence"
+    >
+      <span>{props.time}</span>
+      <span style={{ color: "#2563eb", fontSize: 10 }}>📍</span>
+    </button>
+  );
 }
 
 function renderTimeSheetRows(
@@ -262,35 +285,36 @@ function renderTimeSheetRows(
                 </td>
                 {days.map((day) => {
                   const dayRow = row.byDate.get(day);
-                  const location = locationLabel(
-                    breadcrumbsByDriverDay.get(breadcrumbKey(dayRow?.roster_member_id ?? row.days[0]?.roster_member_id ?? null, day)) ?? []
-                  );
+                  const breadcrumbRows =
+                    breadcrumbsByDriverDay.get(
+                      breadcrumbKey(
+                        dayRow?.roster_member_id ?? row.days[0]?.roster_member_id ?? null,
+                        day
+                      )
+                    ) ?? [];
+
+                  const clockInBreadcrumb = breadcrumbForContext(breadcrumbRows, "CLOCK_IN");
+                  const clockOutBreadcrumb = breadcrumbForContext(breadcrumbRows, "CLOCK_OUT");
 
                   return (
                     <td key={day} style={{ ...tdStyle, textAlign: "center", verticalAlign: "top", padding: "7px 4px" }}>
                       {dayRow ? (
                         <div style={{ display: "grid", gap: 2, justifyItems: "center", lineHeight: 1.08 }}>
-                          <strong>{formatClockTime(dayRow.clock_in)} → {formatClockTime(dayRow.clock_out)}</strong>
+                          <strong style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                            <TimeEvidenceButton
+                              time={formatClockTime(dayRow.clock_in)}
+                              breadcrumb={clockInBreadcrumb}
+                              onSelect={setSelectedBreadcrumb}
+                            />
+                            <span style={{ color: "#94a3b8" }}>→</span>
+                            <TimeEvidenceButton
+                              time={formatClockTime(dayRow.clock_out)}
+                              breadcrumb={clockOutBreadcrumb}
+                              onSelect={setSelectedBreadcrumb}
+                            />
+                          </strong>
                           <span style={{ color: "#475569", fontSize: 10 }}>{formatDuration(dayRow.clock_in, dayRow.clock_out)}</span>
                           <span style={{ color: "#94a3b8", fontSize: 9 }}>{stateLabel(dayRow.state)}</span>
-                          {location ? (
-                            <button
-                              type="button"
-                              onClick={() => setSelectedBreadcrumb(location.row)}
-                              style={{
-                                border: 0,
-                                background: "transparent",
-                                padding: 0,
-                                color: "#2563eb",
-                                fontSize: 9,
-                                fontWeight: 900,
-                                cursor: "pointer",
-                              }}
-                              title={`${location.row.latitude}, ${location.row.longitude}`}
-                            >
-                              {location.label}{location.accuracy ? ` · ${location.accuracy}` : ""}
-                            </button>
-                          ) : null}
                         </div>
                       ) : (
                         <span style={{ color: "#94a3b8", fontWeight: 900 }}>—</span>
