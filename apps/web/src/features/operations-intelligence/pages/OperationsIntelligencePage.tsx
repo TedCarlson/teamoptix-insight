@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import OperationsReportUploadOverlay from "@/features/operations/components/OperationsReportUploadOverlay";
 import OperationsWorkspaceToolbar from "@/features/operations/components/OperationsWorkspaceToolbar";
 import {
@@ -365,7 +365,7 @@ export default function OperationsIntelligencePage({ slug }: Props) {
     [rows]
   );
 
-  function assignmentForRow(row: DroPlanRow | null) {
+  const assignmentForRow = useCallback((row: DroPlanRow | null) => {
     if (!row) return null;
 
     for (const key of assignmentKeysForDroRow(row)) {
@@ -374,7 +374,7 @@ export default function OperationsIntelligencePage({ slug }: Props) {
     }
 
     return null;
-  }
+  }, [assignmentsByRouteKey]);
 
   const selectedRoute =
     rows.find((row) => {
@@ -384,7 +384,31 @@ export default function OperationsIntelligencePage({ slug }: Props) {
     rows[0] ??
     null;
 
-  const selectedAssignment = assignmentForRow(selectedRoute);
+  const planningSummary = useMemo(() => {
+    const assignmentRows = rows.map((row) => assignmentForRow(row));
+    const dispatchAssignments = assignmentRows.filter((item) => item?.source === "Dispatch").length;
+    const scheduleAssignments = assignmentRows.filter((item) => item?.source === "Schedule").length;
+    const assignedRoutes = dispatchAssignments + scheduleAssignments;
+    const openSeats = Math.max(0, rows.length - assignedRoutes);
+    const avgStops = rows.length ? totals.stops / rows.length : 0;
+    const peakRoute = rows.reduce<DroPlanRow | null>((peak, row) => {
+      if (!peak) return row;
+      return n(row.stops) > n(peak.stops) ? row : peak;
+    }, null);
+    const routesAboveAverage = rows.filter((row) => avgStops > 0 && n(row.stops) > avgStops * 1.15).length;
+
+    return {
+      assignedRoutes,
+      openSeats,
+      dispatchAssignments,
+      scheduleAssignments,
+      unassignedRoutes: openSeats,
+      avgStops,
+      peakRoute,
+      routesAboveAverage,
+      readinessLabel: openSeats === 0 ? "Driver coverage ready" : `${openSeats} open driver ${openSeats === 1 ? "seat" : "seats"}`,
+    };
+  }, [rows, totals.stops, assignmentForRow]);
 
   return (
     <main className="workspace-shell">
@@ -558,22 +582,34 @@ export default function OperationsIntelligencePage({ slug }: Props) {
             </section>
 
             <aside style={{ ...panel, padding: 14, display: "grid", gap: 10 }}>
-              <p style={eyebrow}>Planning rail</p>
-              <strong>{selectedRoute ? routeLabel(selectedRoute) : "No route selected"}</strong>
-
-              <RailStat label="Planning date" value={planningDate} />
-              <RailStat label="DRO source date" value={payload?.source_date ?? "—"} />
-              <RailStat label="DRO mode" value={payload?.source_mode ?? "—"} />
-              <RailStat label="DRO frame" value={payload?.source_frame ?? "—"} />
-              <RailStat label="Stops" value={selectedRoute ? fmt(selectedRoute.stops) : "—"} />
-              <RailStat label="Packages" value={selectedRoute ? fmt(selectedRoute.packages) : "—"} />
-              <RailStat label="Miles" value={selectedRoute?.miles == null ? "—" : fmt(selectedRoute.miles, 1)} />
-              <RailStat label="Assigned driver" value={selectedAssignment?.driver.full_name ?? "Open driver seat"} />
-              <RailStat label="Assignment source" value={selectedAssignment?.source ?? "Unassigned"} />
-
-              <div style={{ borderTop: "1px solid #e6edf5", paddingTop: 10, color: "#64748b", fontSize: 12, fontWeight: 850 }}>
-                Route readiness detail placeholder. Historical comparison and driver readiness will land here after the DRO table shape is stable.
+              <div>
+                <p style={eyebrow}>Planning Readiness</p>
+                <strong>{planningSummary.readinessLabel}</strong>
+                <p style={{ margin: "5px 0 0", color: "#64748b", fontSize: 12, fontWeight: 850 }}>
+                  Plan {payload?.source_date ?? "—"} · Report {planningDate}
+                </p>
               </div>
+
+              <RailSection title="DRO Facts">
+                <RailStat label="Routes" value={totals.routes} />
+                <RailStat label="Stops" value={fmt(totals.stops)} />
+                <RailStat label="Packages" value={fmt(totals.packages)} />
+                <RailStat label="Time commits" value={fmt(totals.timeCommits)} />
+              </RailSection>
+
+              <RailSection title="Driver Coverage">
+                <RailStat label="Assigned" value={`${planningSummary.assignedRoutes}/${totals.routes}`} />
+                <RailStat label="Open seats" value={planningSummary.openSeats} />
+                <RailStat label="Dispatch" value={planningSummary.dispatchAssignments} />
+                <RailStat label="Schedule" value={planningSummary.scheduleAssignments} />
+              </RailSection>
+
+              <RailSection title="Workload Scan">
+                <RailStat label="Avg stops / route" value={fmt(planningSummary.avgStops, 1)} />
+                <RailStat label="Peak route" value={planningSummary.peakRoute ? routeLabel(planningSummary.peakRoute) : "—"} />
+                <RailStat label="Peak stops" value={planningSummary.peakRoute ? fmt(planningSummary.peakRoute.stops) : "—"} />
+                <RailStat label="Above avg routes" value={planningSummary.routesAboveAverage} />
+              </RailSection>
             </aside>
           </section>
         )}
@@ -607,6 +643,15 @@ function Metric(props: { label: string; value: number }) {
       </span>
       <strong style={{ fontSize: 13 }}>{fmt(props.value)}</strong>
     </div>
+  );
+}
+
+function RailSection(props: { title: string; children: React.ReactNode }) {
+  return (
+    <section style={{ borderTop: "1px solid #e6edf5", paddingTop: 10, display: "grid", gap: 8 }}>
+      <p style={{ ...eyebrow, color: "#009b67" }}>{props.title}</p>
+      {props.children}
+    </section>
   );
 }
 
