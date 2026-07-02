@@ -48,6 +48,16 @@ type PlanningAssignment = {
   source: "Dispatch" | "Schedule";
 };
 
+type RouteHistoryRow = {
+  service_date?: string | null;
+  route_baseline_id?: string | null;
+  route_name?: string | null;
+  wa_number?: string | null;
+  actual_delivery_stops?: number | string | null;
+  actual_delivery_packages?: number | string | null;
+  miles?: number | string | null;
+};
+
 type DroTotals = {
   routes: number;
   stops: number;
@@ -118,11 +128,16 @@ function scheduleSeat(row: GeneratedScheduleRow) {
   return "driver";
 }
 
-function assignmentKeysForDroRow(row: DroPlanRow) {
+function routeLookupKeys(row: { route_baseline_id?: string | null; wa_number?: string | null; route_name?: string | null }) {
   return [
+    row.route_baseline_id ? cleanRouteKey(String(row.route_baseline_id)) : "",
     row.wa_number ? cleanRouteKey(String(row.wa_number)) : "",
     row.route_name ? cleanRouteKey(String(row.route_name)) : "",
   ].filter(Boolean);
+}
+
+function assignmentKeysForDroRow(row: DroPlanRow) {
+  return routeLookupKeys(row);
 }
 
 function routeLabel(row: DroPlanRow) {
@@ -158,9 +173,9 @@ export default function PlanningPage({ slug }: Props) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string>(() => new Date().toISOString());
   const [payload, setPayload] = useState<DroPayload | null>(null);
-  const [selectedRouteKey, setSelectedRouteKey] = useState<string | null>(null);
   const [routeSortKey, setRouteSortKey] = useState<"route_name" | "current_wa_num">("route_name");
   const [assignmentsByRouteKey, setAssignmentsByRouteKey] = useState<Record<string, PlanningAssignment>>({});
+  const [routeHistoryRows, setRouteHistoryRows] = useState<RouteHistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -341,6 +356,50 @@ export default function PlanningPage({ slug }: Props) {
     };
   }, [planningDate, refreshKey, slug]);
 
+
+  const historyDates = useMemo(() => {
+    return Array.from({ length: 14 }, (_, index) =>
+      addDaysIso(planningDate, -7 * (index + 1))
+    );
+  }, [planningDate]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadRouteHistory() {
+      try {
+        const params = new URLSearchParams();
+        for (const date of historyDates) {
+          params.append("date", date);
+        }
+
+        const res = await fetch(
+          `/api/company/${slug}/operations/intelligence/route-history?${params.toString()}`,
+          { credentials: "include", cache: "no-store" }
+        );
+
+        const data = await res.json().catch(() => ({}));
+
+        if (!active) return;
+
+        if (!res.ok) {
+          setRouteHistoryRows([]);
+          return;
+        }
+
+        setRouteHistoryRows(Array.isArray(data?.rows) ? data.rows : []);
+      } catch {
+        if (active) setRouteHistoryRows([]);
+      }
+    }
+
+    if (slug && historyDates.length) void loadRouteHistory();
+
+    return () => {
+      active = false;
+    };
+  }, [historyDates, refreshKey, slug]);
+
   const rows = useMemo(() => sortRows(payload?.rows ?? [], routeSortKey), [payload?.rows, routeSortKey]);
 
   const totals = useMemo<DroTotals>(
@@ -376,13 +435,108 @@ export default function PlanningPage({ slug }: Props) {
     return null;
   }, [assignmentsByRouteKey]);
 
-  const selectedRoute =
-    rows.find((row) => {
-      const key = row.route_baseline_id ?? row.wa_number ?? row.route_name ?? "";
-      return key === selectedRouteKey;
-    }) ??
-    rows[0] ??
-    null;
+  const historyByRouteKey = useMemo(() => {
+    const map = new Map<string, RouteHistoryRow[]>();
+
+    for (const historyRow of routeHistoryRows) {
+      for (const key of routeLookupKeys(historyRow)) {
+        const bucket = map.get(key) ?? [];
+        bucket.push(historyRow);
+        map.set(key, bucket);
+      }
+    }
+
+    return map;
+  }, [routeHistoryRows]);
+
+  const routeIntelligenceForRow = useCallback((row: DroPlanRow | null) => {
+    if (!row) {
+      return {
+        label: "No route selected",
+        detail: "Select a route",
+        tone: "#64748b",
+        deltaPct: 0,
+        sampleSize: 0,
+        status: "NO_ROUTE" as const,
+      };
+    }
+
+    const historyRows = routeLookupKeys(row).flatMap((key) => historyByRouteKey.get(key) ?? []);
+    const unique = new Map<string, RouteHistoryRow>();
+
+    for (const historyRow of historyRows) {
+      const id = [
+        historyRow.service_date,
+        historyRow.route_baseline_id,
+        historyRow.wa_number,
+        historyRow.route_name,
+      ].filter(Boolean).join("|");
+
+      if (id) unique.set(id, historyRow);
+    }
+
+    const samples = Array.from(unique.values())
+      .map((historyRow) => n(historyRow.actual_delivery_stops))
+      .filter((value) => value > 0);
+
+    if (samples.length < 4) {
+      return {
+        label: "Limited history",
+        detail: `${samples.length} comparable days`,
+        tone: "#64748b",
+        deltaPct: 0,
+        sampleSize: samples.length,
+        status: "LIMITED" as const,
+      };
+    }
+
+    const avgStops = samples.reduce((sum, value) => sum + value, 0) / samples.length;
+    const plannedStops = n(row.stops);
+    const deltaPct = avgStops > 0 ? ((plannedStops - avgStops) / avgStops) * 100 : 0;
+    const absDelta = Math.abs(deltaPct);
+
+    if (deltaPct >= 20) {
+      return {
+        label: "Heavy demand",
+        detail: `+${fmt(deltaPct, 1)}% vs history`,
+        tone: "#b45309",
+        deltaPct,
+        sampleSize: samples.length,
+        status: "HEAVY" as const,
+      };
+    }
+
+    if (deltaPct <= -20) {
+      return {
+        label: "Light demand",
+        detail: `${fmt(deltaPct, 1)}% vs history`,
+        tone: "#0369a1",
+        deltaPct,
+        sampleSize: samples.length,
+        status: "LIGHT" as const,
+      };
+    }
+
+    if (absDelta >= 10) {
+      return {
+        label: deltaPct > 0 ? "Above normal" : "Below normal",
+        detail: `${deltaPct > 0 ? "+" : ""}${fmt(deltaPct, 1)}% vs history`,
+        tone: "#475569",
+        deltaPct,
+        sampleSize: samples.length,
+        status: "SHIFTED" as const,
+      };
+    }
+
+    return {
+      label: "Normal demand",
+      detail: `${fmt(plannedStops)} vs ${fmt(avgStops, 1)} avg`,
+      tone: "#166534",
+      deltaPct,
+      sampleSize: samples.length,
+      status: "NORMAL" as const,
+    };
+  }, [historyByRouteKey]);
 
   const planningSummary = useMemo(() => {
     const assignmentRows = rows.map((row) => assignmentForRow(row));
@@ -395,7 +549,11 @@ export default function PlanningPage({ slug }: Props) {
       if (!peak) return row;
       return n(row.stops) > n(peak.stops) ? row : peak;
     }, null);
-    const routesAboveAverage = rows.filter((row) => avgStops > 0 && n(row.stops) > avgStops * 1.15).length;
+    const routeSignals = rows.map((row) => routeIntelligenceForRow(row));
+    const routesAboveAverage = routeSignals.filter((signal) => signal.status === "HEAVY" || signal.status === "SHIFTED" && signal.deltaPct > 0).length;
+    const heavyRoutes = routeSignals.filter((signal) => signal.status === "HEAVY").length;
+    const normalRoutes = routeSignals.filter((signal) => signal.status === "NORMAL").length;
+    const limitedHistoryRoutes = routeSignals.filter((signal) => signal.status === "LIMITED").length;
 
     return {
       assignedRoutes,
@@ -406,9 +564,18 @@ export default function PlanningPage({ slug }: Props) {
       avgStops,
       peakRoute,
       routesAboveAverage,
+      heavyRoutes,
+      normalRoutes,
+      limitedHistoryRoutes,
       readinessLabel: openSeats === 0 ? "Driver coverage ready" : `${openSeats} open driver ${openSeats === 1 ? "seat" : "seats"}`,
+      intelligenceLabel:
+        heavyRoutes > 0
+          ? "Tomorrow looks manageable, with localized workload pressure."
+          : limitedHistoryRoutes > 0
+            ? "Tomorrow looks manageable, with a few routes still building history."
+            : "Tomorrow is shaping up as a normal operating day.",
     };
-  }, [rows, totals.stops, assignmentForRow]);
+  }, [rows, totals.stops, assignmentForRow, routeIntelligenceForRow]);
 
   return (
     <main className="workspace-shell">
@@ -444,11 +611,6 @@ export default function PlanningPage({ slug }: Props) {
                 <div>
                   <p style={eyebrow}>Planning</p>
                   <h2 style={{ margin: 0, fontSize: 18 }}>Planning snapshot</h2>
-                  <p style={{ margin: "4px 0 0", color: "#64748b", fontWeight: 700 }}>
-                    {payload?.source_mode === "PLANNING"
-                      ? `Latest available planning DRO for ${payload?.source_date ?? planningDate}. PM is preferred when present.`
-                      : `Baseline read surface from latest available DRO for ${payload?.source_date ?? todayDate}. Upload PM DRO when the planning file is ready.`}
-                  </p>
                 </div>
 
                 <div style={{ textAlign: "right", color: "#64748b", fontSize: 12, fontWeight: 900 }}>
@@ -468,9 +630,13 @@ export default function PlanningPage({ slug }: Props) {
                 }}
               >
                 <p style={{ ...eyebrow, color: "#009b67" }}>Company Intelligence</p>
-                <strong style={{ fontSize: 15 }}>{planningSummary.readinessLabel}</strong>
+                <strong style={{ fontSize: 15 }}>{planningSummary.intelligenceLabel}</strong>
                 <span style={{ color: "#64748b", fontSize: 12, fontWeight: 850 }}>
-                  Company-level historical demand, driver coverage confidence, and workload change signals will land here.
+                  {planningSummary.heavyRoutes > 0
+                    ? "Several routes are trending above historical workload. Driver assignment should stay in focus before dispatch."
+                    : planningSummary.limitedHistoryRoutes > 0
+                      ? "Most routes align with history. A few routes need more operating history before Insight can compare with confidence."
+                      : "The imported plan aligns with recent route history. Continue monitoring assignment coverage before dispatch."}
                 </span>
               </section>
 
@@ -482,19 +648,13 @@ export default function PlanningPage({ slug }: Props) {
                     row.route_name ??
                     `dro-row-${index}`;
 
-                  const selected =
-                    key ===
-                    (selectedRoute?.route_baseline_id ??
-                      selectedRoute?.wa_number ??
-                      selectedRoute?.route_name ??
-                      "");
+                  const intelligence = routeIntelligenceForRow(row);
+                  const rowStyle = planningRowStyle(intelligence.status, false);
 
                   return (
-                    <button
+                    <div
                       key={key}
-                      type="button"
-                      onClick={() => setSelectedRouteKey(key)}
-                      style={{
+                                                                  style={{
                         width: "100%",
                         display: "grid",
                         gridTemplateColumns: "minmax(160px, 0.9fr) minmax(260px, 1.45fr) minmax(145px, 0.7fr) minmax(160px, 0.75fr)",
@@ -502,11 +662,10 @@ export default function PlanningPage({ slug }: Props) {
                         alignItems: "center",
                         padding: "10px 12px",
                         borderRadius: 14,
-                        border: selected ? "1px solid #93c5fd" : "1px solid #e6edf5",
-                        background: selected ? "#eff6ff" : "#fff",
+                        border: rowStyle.border,
+                        background: rowStyle.background,
                         textAlign: "left",
-                        cursor: "pointer",
-                      }}
+                                              }}
                     >
                       <div style={{ minWidth: 0 }}>
                         <strong
@@ -580,23 +739,8 @@ export default function PlanningPage({ slug }: Props) {
                         })()}
                       </div>
 
-                      <div
-                        style={{
-                          display: "grid",
-                          gap: 2,
-                          minWidth: 150,
-                          justifyItems: "start",
-                          color: "#64748b",
-                          fontSize: 11,
-                          fontWeight: 850,
-                        }}
-                      >
-                        <strong style={{ color: "#334155", fontSize: 13 }}>
-                          Intelligence pending
-                        </strong>
-                        <span>Historical signal next</span>
-                      </div>
-                    </button>
+                      <RouteIntelligenceCell signal={intelligence} />
+                    </div>
                   );
                 })}
 
@@ -652,6 +796,84 @@ export default function PlanningPage({ slug }: Props) {
     </main>
   );
 }
+
+
+function planningRowStyle(
+  status: RouteIntelligenceSignal["status"],
+  selected: boolean,
+) {
+  if (selected) {
+    return {
+      background: "#eff6ff",
+      border: "1px solid #93c5fd",
+    };
+  }
+
+  switch (status) {
+    case "HEAVY":
+      return {
+        background: "#fff7ed",
+        border: "1px solid #fdba74",
+      };
+
+    case "SHIFTED":
+      return {
+        background: "#fffbeb",
+        border: "1px solid #fcd34d",
+      };
+
+    case "LIGHT":
+      return {
+        background: "#f0f9ff",
+        border: "1px solid #7dd3fc",
+      };
+
+    case "LIMITED":
+      return {
+        background: "#f8fafc",
+        border: "1px solid #cbd5e1",
+      };
+
+    default:
+      return {
+        background: "#ffffff",
+        border: "1px solid #e6edf5",
+      };
+  }
+}
+
+
+function RouteIntelligenceCell(props: {
+  signal: RouteIntelligenceSignal;
+}) {
+  const { signal } = props;
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gap: 2,
+        minWidth: 150,
+        justifyItems: "start",
+        color: "#64748b",
+        fontSize: 11,
+        fontWeight: 850,
+      }}
+    >
+      <strong style={{ color: signal.tone, fontSize: 13 }}>{signal.label}</strong>
+      <span>{signal.detail}</span>
+    </div>
+  );
+}
+
+type RouteIntelligenceSignal = {
+  label: string;
+  detail: string;
+  tone: string;
+  deltaPct: number;
+  sampleSize: number;
+  status: "NO_ROUTE" | "LIMITED" | "HEAVY" | "LIGHT" | "SHIFTED" | "NORMAL";
+};
 
 function Metric(props: { label: string; value: string | number }) {
   return (
