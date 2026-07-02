@@ -3,7 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import OperationsReportUploadOverlay from "@/features/operations/components/OperationsReportUploadOverlay";
 import OperationsWorkspaceToolbar from "@/features/operations/components/OperationsWorkspaceToolbar";
-import { eyebrow, panel } from "@/features/dispatch/lib/dispatchSupport";
+import {
+  cleanRouteKey,
+  eyebrow,
+  panel,
+  type DispatchPerson,
+  type GeneratedScheduleRow,
+} from "@/features/dispatch/lib/dispatchSupport";
 import { timeCriticalColor } from "@/features/dispatch/lib/droPlanSignals";
 
 type Props = { slug: string };
@@ -26,6 +32,20 @@ type DroPayload = {
   source_date?: string | null;
   source_mode?: "PLANNING" | "BASELINE" | string | null;
   rows?: DroPlanRow[];
+};
+
+type DispatchEventRow = {
+  event_code: string;
+  route_key: string | null;
+  to_route_key?: string | null;
+  person_roster_member_id: string | null;
+  person_name: string | null;
+  created_at: string;
+};
+
+type PlanningAssignment = {
+  driver: DispatchPerson;
+  source: "Dispatch" | "Schedule";
 };
 
 type DroTotals = {
@@ -66,6 +86,45 @@ function fmt(value: unknown, digits = 0) {
   });
 }
 
+function driverFromScheduleRow(row: GeneratedScheduleRow): DispatchPerson {
+  return {
+    roster_member_id: row.roster_member_id,
+    full_name: row.full_name?.trim() || "Unnamed worker",
+    worker_type: row.worker_type,
+    source_kind: row.source_kind,
+    override_type: row.override_type,
+  };
+}
+
+function driverFromDispatchEvent(event: DispatchEventRow): DispatchPerson | null {
+  if (!event.person_roster_member_id || !event.person_name) return null;
+
+  return {
+    roster_member_id: event.person_roster_member_id,
+    full_name: event.person_name,
+    worker_type: null,
+    source_kind: "DISPATCH_EVENT",
+    override_type: null,
+  };
+}
+
+function scheduleSeat(row: GeneratedScheduleRow) {
+  const worker = (row.worker_type ?? "").toLowerCase();
+  const name = (row.full_name ?? "").toLowerCase();
+  const combined = `${worker} ${name}`;
+
+  if (combined.includes("trainee")) return "trainee";
+  if (combined.includes("helper") || combined.includes("jumper")) return "helper";
+  return "driver";
+}
+
+function assignmentKeysForDroRow(row: DroPlanRow) {
+  return [
+    row.wa_number ? cleanRouteKey(String(row.wa_number)) : "",
+    row.route_name ? cleanRouteKey(String(row.route_name)) : "",
+  ].filter(Boolean);
+}
+
 function routeLabel(row: DroPlanRow) {
   const route = String(row.route_name ?? "Unlabeled route").trim();
   const wa = String(row.wa_number ?? "").trim();
@@ -101,6 +160,7 @@ export default function OperationsIntelligencePage({ slug }: Props) {
   const [payload, setPayload] = useState<DroPayload | null>(null);
   const [selectedRouteKey, setSelectedRouteKey] = useState<string | null>(null);
   const [routeSortKey, setRouteSortKey] = useState<"route_name" | "current_wa_num">("route_name");
+  const [assignmentsByRouteKey, setAssignmentsByRouteKey] = useState<Record<string, PlanningAssignment>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -201,6 +261,86 @@ export default function OperationsIntelligencePage({ slug }: Props) {
     };
   }, [planningDate, refreshKey, slug, todayDate]);
 
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadAssignments() {
+      try {
+        const [scheduleRes, dispatchRes] = await Promise.all([
+          fetch(`/api/company/${slug}/schedule/generated?date=${planningDate}`, {
+            credentials: "include",
+            cache: "no-store",
+          }),
+          fetch(`/api/company/${slug}/dispatch/day?date=${planningDate}`, {
+            credentials: "include",
+            cache: "no-store",
+          }),
+        ]);
+
+        const [scheduleData, dispatchData] = await Promise.all([
+          scheduleRes.json().catch(() => ({})),
+          dispatchRes.json().catch(() => ({})),
+        ]);
+
+        if (!active) return;
+
+        const next: Record<string, PlanningAssignment> = {};
+
+        if (scheduleRes.ok) {
+          for (const row of (scheduleData?.rows ?? []) as GeneratedScheduleRow[]) {
+            if (row.service_date !== planningDate || !row.planned_on) continue;
+            if (scheduleSeat(row) !== "driver") continue;
+            if (!row.route_name) continue;
+
+            next[cleanRouteKey(row.route_name)] = {
+              driver: driverFromScheduleRow(row),
+              source: "Schedule",
+            };
+          }
+        }
+
+        if (dispatchRes.ok) {
+          const events = [...((dispatchData?.events ?? []) as DispatchEventRow[])].sort((a, b) =>
+            a.created_at.localeCompare(b.created_at)
+          );
+
+          for (const event of events) {
+            const routeKey = event.route_key ?? event.to_route_key ?? null;
+            const driver = driverFromDispatchEvent(event);
+
+            if (event.event_code === "ASSIGN_DRIVER" && routeKey && driver) {
+              for (const [key, assignment] of Object.entries(next)) {
+                if (assignment.driver.roster_member_id === driver.roster_member_id) {
+                  delete next[key];
+                }
+              }
+
+              next[routeKey] = {
+                driver,
+                source: "Dispatch",
+              };
+            }
+
+            if (event.event_code === "UNASSIGN_DRIVER" && routeKey) {
+              delete next[routeKey];
+            }
+          }
+        }
+
+        setAssignmentsByRouteKey(next);
+      } catch {
+        if (active) setAssignmentsByRouteKey({});
+      }
+    }
+
+    if (slug && planningDate) void loadAssignments();
+
+    return () => {
+      active = false;
+    };
+  }, [planningDate, refreshKey, slug]);
+
   const rows = useMemo(() => sortRows(payload?.rows ?? [], routeSortKey), [payload?.rows, routeSortKey]);
 
   const totals = useMemo<DroTotals>(
@@ -225,6 +365,17 @@ export default function OperationsIntelligencePage({ slug }: Props) {
     [rows]
   );
 
+  function assignmentForRow(row: DroPlanRow | null) {
+    if (!row) return null;
+
+    for (const key of assignmentKeysForDroRow(row)) {
+      const assignment = assignmentsByRouteKey[key];
+      if (assignment) return assignment;
+    }
+
+    return null;
+  }
+
   const selectedRoute =
     rows.find((row) => {
       const key = row.route_baseline_id ?? row.wa_number ?? row.route_name ?? "";
@@ -232,6 +383,8 @@ export default function OperationsIntelligencePage({ slug }: Props) {
     }) ??
     rows[0] ??
     null;
+
+  const selectedAssignment = assignmentForRow(selectedRoute);
 
   return (
     <main className="workspace-shell">
@@ -351,9 +504,46 @@ export default function OperationsIntelligencePage({ slug }: Props) {
 
                       <DroPlanningSignal row={row} />
 
-                      <div style={{ display: "grid", gap: 3, color: "#64748b", fontSize: 11, fontWeight: 850 }}>
-                        <span style={{ textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 950 }}>Assigned Driver</span>
-                        <strong style={{ color: "#0f172a", fontSize: 13 }}>Pending schedule link</strong>
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 2,
+                          minWidth: 150,
+                          justifyItems: "start",
+                        }}
+                      >
+                        {(() => {
+                          const assignment = assignmentForRow(row);
+
+                          return (
+                            <>
+                              <strong
+                                style={{
+                                  color: assignment ? "#0f172a" : "#64748b",
+                                  fontSize: 13,
+                                  fontWeight: assignment ? 800 : 650,
+                                }}
+                              >
+                                {assignment?.driver.full_name ?? "Open driver seat"}
+                              </strong>
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  color:
+                                    assignment?.source === "Dispatch"
+                                      ? "#2563eb"
+                                      : assignment?.source === "Schedule"
+                                        ? "#64748b"
+                                        : "#94a3b8",
+                                }}
+                              >
+                                {assignment?.source ?? "Unassigned"}
+                              </span>
+                            </>
+                          );
+                        })()}
                       </div>
                     </button>
                   );
@@ -378,6 +568,8 @@ export default function OperationsIntelligencePage({ slug }: Props) {
               <RailStat label="Stops" value={selectedRoute ? fmt(selectedRoute.stops) : "—"} />
               <RailStat label="Packages" value={selectedRoute ? fmt(selectedRoute.packages) : "—"} />
               <RailStat label="Miles" value={selectedRoute?.miles == null ? "—" : fmt(selectedRoute.miles, 1)} />
+              <RailStat label="Assigned driver" value={selectedAssignment?.driver.full_name ?? "Open driver seat"} />
+              <RailStat label="Assignment source" value={selectedAssignment?.source ?? "Unassigned"} />
 
               <div style={{ borderTop: "1px solid #e6edf5", paddingTop: 10, color: "#64748b", fontSize: 12, fontWeight: 850 }}>
                 Route readiness detail placeholder. Historical comparison and driver readiness will land here after the DRO table shape is stable.
