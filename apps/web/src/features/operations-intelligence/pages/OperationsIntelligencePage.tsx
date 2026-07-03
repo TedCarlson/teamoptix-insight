@@ -11,6 +11,20 @@ import {
   type GeneratedScheduleRow,
 } from "@/features/dispatch/lib/dispatchSupport";
 import { timeCriticalColor } from "@/features/dispatch/lib/droPlanSignals";
+import {
+  formatOperationalDate,
+  planningFrameLabel,
+  resolvePlanningFrame,
+  getDroCandidateOrder,
+  summarizeServiceCompletion,
+  type DswCurrentPayload,
+} from "../lib/planning-frame";
+import {
+  buildHistoryByRouteKey,
+  buildPlanningIntelligence,
+  buildRouteDemandSignal,
+  routeLookupKeys,
+} from "../lib/planning-intelligence";
 
 type Props = { slug: string };
 
@@ -128,14 +142,6 @@ function scheduleSeat(row: GeneratedScheduleRow) {
   return "driver";
 }
 
-function routeLookupKeys(row: { route_baseline_id?: string | null; wa_number?: string | null; route_name?: string | null }) {
-  return [
-    row.route_baseline_id ? cleanRouteKey(String(row.route_baseline_id)) : "",
-    row.wa_number ? cleanRouteKey(String(row.wa_number)) : "",
-    row.route_name ? cleanRouteKey(String(row.route_name)) : "",
-  ].filter(Boolean);
-}
-
 function assignmentKeysForDroRow(row: DroPlanRow) {
   return routeLookupKeys(row);
 }
@@ -173,6 +179,7 @@ export default function PlanningPage({ slug }: Props) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string>(() => new Date().toISOString());
   const [payload, setPayload] = useState<DroPayload | null>(null);
+  const [dswPayload, setDswPayload] = useState<DswCurrentPayload | null>(null);
   const [routeSortKey, setRouteSortKey] = useState<"route_name" | "current_wa_num">("route_name");
   const [assignmentsByRouteKey, setAssignmentsByRouteKey] = useState<Record<string, PlanningAssignment>>({});
   const [routeHistoryRows, setRouteHistoryRows] = useState<RouteHistoryRow[]>([]);
@@ -224,11 +231,7 @@ export default function PlanningPage({ slug }: Props) {
         setLoading(true);
         setError(null);
 
-        const candidates = [
-          { date: planningDate, frame: "PM", mode: "PLANNING" },
-          { date: todayDate, frame: "AM", mode: "BASELINE" },
-          { date: todayDate, frame: "PM", mode: "BASELINE" },
-        ] as const;
+        const candidates = getDroCandidateOrder({ todayDate, planningDate });
 
         let selectedPayload: DroPayload | null = null;
 
@@ -276,6 +279,49 @@ export default function PlanningPage({ slug }: Props) {
     };
   }, [planningDate, refreshKey, slug, todayDate]);
 
+  useEffect(() => {
+    let active = true;
+
+    async function loadServiceSnapshot() {
+      try {
+        const res = await fetch(`/api/company/${slug}/operations/reports/dsw-current?date=${todayDate}`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if (!active) return;
+
+        setDswPayload(res.ok ? data : null);
+      } catch {
+        if (active) setDswPayload(null);
+      }
+    }
+
+    if (slug && todayDate) void loadServiceSnapshot();
+
+    return () => {
+      active = false;
+    };
+  }, [refreshKey, slug, todayDate]);
+
+  const serviceCompletionPct = useMemo(() => {
+    return summarizeServiceCompletion(dswPayload?.rows ?? []);
+  }, [dswPayload?.rows]);
+
+  const planningFrame = useMemo(() => {
+    return resolvePlanningFrame({
+      todayDate,
+      planningDate,
+      activeDroDate: payload?.source_date ?? null,
+      activeDroFrame: payload?.source_frame ?? null,
+      serviceCompletionPct,
+    });
+  }, [payload?.source_date, payload?.source_frame, planningDate, serviceCompletionPct, todayDate]);
+
+  const operationalDate = planningFrame.operationalDate;
+
 
   useEffect(() => {
     let active = true;
@@ -283,11 +329,11 @@ export default function PlanningPage({ slug }: Props) {
     async function loadAssignments() {
       try {
         const [scheduleRes, dispatchRes] = await Promise.all([
-          fetch(`/api/company/${slug}/schedule/generated?date=${planningDate}`, {
+          fetch(`/api/company/${slug}/schedule/generated?date=${operationalDate}`, {
             credentials: "include",
             cache: "no-store",
           }),
-          fetch(`/api/company/${slug}/dispatch/day?date=${planningDate}`, {
+          fetch(`/api/company/${slug}/dispatch/day?date=${operationalDate}`, {
             credentials: "include",
             cache: "no-store",
           }),
@@ -304,7 +350,7 @@ export default function PlanningPage({ slug }: Props) {
 
         if (scheduleRes.ok) {
           for (const row of (scheduleData?.rows ?? []) as GeneratedScheduleRow[]) {
-            if (row.service_date !== planningDate || !row.planned_on) continue;
+            if (row.service_date !== operationalDate || !row.planned_on) continue;
             if (scheduleSeat(row) !== "driver") continue;
             if (!row.route_name) continue;
 
@@ -349,19 +395,19 @@ export default function PlanningPage({ slug }: Props) {
       }
     }
 
-    if (slug && planningDate) void loadAssignments();
+    if (slug && operationalDate) void loadAssignments();
 
     return () => {
       active = false;
     };
-  }, [planningDate, refreshKey, slug]);
+  }, [operationalDate, refreshKey, slug]);
 
 
   const historyDates = useMemo(() => {
     return Array.from({ length: 14 }, (_, index) =>
-      addDaysIso(planningDate, -7 * (index + 1))
+      addDaysIso(operationalDate, -7 * (index + 1))
     );
-  }, [planningDate]);
+  }, [operationalDate]);
 
   useEffect(() => {
     let active = true;
@@ -435,147 +481,36 @@ export default function PlanningPage({ slug }: Props) {
     return null;
   }, [assignmentsByRouteKey]);
 
-  const historyByRouteKey = useMemo(() => {
-    const map = new Map<string, RouteHistoryRow[]>();
+  const historyByRouteKey = useMemo(
+    () => buildHistoryByRouteKey(routeHistoryRows),
+    [routeHistoryRows]
+  );
 
-    for (const historyRow of routeHistoryRows) {
-      for (const key of routeLookupKeys(historyRow)) {
-        const bucket = map.get(key) ?? [];
-        bucket.push(historyRow);
-        map.set(key, bucket);
-      }
-    }
+  const routeIntelligenceForRow = useCallback(
+    (row: DroPlanRow | null) =>
+      buildRouteDemandSignal({
+        row,
+        historyByRouteKey,
+      }),
+    [historyByRouteKey]
+  );
 
-    return map;
-  }, [routeHistoryRows]);
+  const routeSignals = useMemo(
+    () => rows.map((row) => routeIntelligenceForRow(row)),
+    [routeIntelligenceForRow, rows]
+  );
 
-  const routeIntelligenceForRow = useCallback((row: DroPlanRow | null) => {
-    if (!row) {
-      return {
-        label: "No route selected",
-        detail: "Select a route",
-        tone: "#64748b",
-        deltaPct: 0,
-        sampleSize: 0,
-        status: "NO_ROUTE" as const,
-      };
-    }
+  const planningSummary = useMemo(
+    () =>
+      buildPlanningIntelligence({
+        rows,
+        routeSignals,
+        assignmentForRow,
+        planningFrame: planningFrame.frame,
+      }),
+    [assignmentForRow, planningFrame.frame, routeSignals, rows]
+  );
 
-    const historyRows = routeLookupKeys(row).flatMap((key) => historyByRouteKey.get(key) ?? []);
-    const unique = new Map<string, RouteHistoryRow>();
-
-    for (const historyRow of historyRows) {
-      const id = [
-        historyRow.service_date,
-        historyRow.route_baseline_id,
-        historyRow.wa_number,
-        historyRow.route_name,
-      ].filter(Boolean).join("|");
-
-      if (id) unique.set(id, historyRow);
-    }
-
-    const samples = Array.from(unique.values())
-      .map((historyRow) => n(historyRow.actual_delivery_stops))
-      .filter((value) => value > 0);
-
-    if (samples.length < 4) {
-      return {
-        label: "Limited history",
-        detail: `${samples.length} comparable days`,
-        tone: "#64748b",
-        deltaPct: 0,
-        sampleSize: samples.length,
-        status: "LIMITED" as const,
-      };
-    }
-
-    const avgStops = samples.reduce((sum, value) => sum + value, 0) / samples.length;
-    const plannedStops = n(row.stops);
-    const deltaPct = avgStops > 0 ? ((plannedStops - avgStops) / avgStops) * 100 : 0;
-    const absDelta = Math.abs(deltaPct);
-
-    if (deltaPct >= 20) {
-      return {
-        label: "Heavy demand",
-        detail: `+${fmt(deltaPct, 1)}% vs history`,
-        tone: "#b45309",
-        deltaPct,
-        sampleSize: samples.length,
-        status: "HEAVY" as const,
-      };
-    }
-
-    if (deltaPct <= -20) {
-      return {
-        label: "Light demand",
-        detail: `${fmt(deltaPct, 1)}% vs history`,
-        tone: "#0369a1",
-        deltaPct,
-        sampleSize: samples.length,
-        status: "LIGHT" as const,
-      };
-    }
-
-    if (absDelta >= 10) {
-      return {
-        label: deltaPct > 0 ? "Above normal" : "Below normal",
-        detail: `${deltaPct > 0 ? "+" : ""}${fmt(deltaPct, 1)}% vs history`,
-        tone: "#475569",
-        deltaPct,
-        sampleSize: samples.length,
-        status: "SHIFTED" as const,
-      };
-    }
-
-    return {
-      label: "Normal demand",
-      detail: `${fmt(plannedStops)} vs ${fmt(avgStops, 1)} avg`,
-      tone: "#166534",
-      deltaPct,
-      sampleSize: samples.length,
-      status: "NORMAL" as const,
-    };
-  }, [historyByRouteKey]);
-
-  const planningSummary = useMemo(() => {
-    const assignmentRows = rows.map((row) => assignmentForRow(row));
-    const dispatchAssignments = assignmentRows.filter((item) => item?.source === "Dispatch").length;
-    const scheduleAssignments = assignmentRows.filter((item) => item?.source === "Schedule").length;
-    const assignedRoutes = dispatchAssignments + scheduleAssignments;
-    const openSeats = Math.max(0, rows.length - assignedRoutes);
-    const avgStops = rows.length ? totals.stops / rows.length : 0;
-    const peakRoute = rows.reduce<DroPlanRow | null>((peak, row) => {
-      if (!peak) return row;
-      return n(row.stops) > n(peak.stops) ? row : peak;
-    }, null);
-    const routeSignals = rows.map((row) => routeIntelligenceForRow(row));
-    const routesAboveAverage = routeSignals.filter((signal) => signal.status === "HEAVY" || signal.status === "SHIFTED" && signal.deltaPct > 0).length;
-    const heavyRoutes = routeSignals.filter((signal) => signal.status === "HEAVY").length;
-    const normalRoutes = routeSignals.filter((signal) => signal.status === "NORMAL").length;
-    const limitedHistoryRoutes = routeSignals.filter((signal) => signal.status === "LIMITED").length;
-
-    return {
-      assignedRoutes,
-      openSeats,
-      dispatchAssignments,
-      scheduleAssignments,
-      unassignedRoutes: openSeats,
-      avgStops,
-      peakRoute,
-      routesAboveAverage,
-      heavyRoutes,
-      normalRoutes,
-      limitedHistoryRoutes,
-      readinessLabel: openSeats === 0 ? "Driver coverage ready" : `${openSeats} open driver ${openSeats === 1 ? "seat" : "seats"}`,
-      intelligenceLabel:
-        heavyRoutes > 0
-          ? "Tomorrow looks manageable, with localized workload pressure."
-          : limitedHistoryRoutes > 0
-            ? "Tomorrow looks manageable, with a few routes still building history."
-            : "Tomorrow is shaping up as a normal operating day.",
-    };
-  }, [rows, totals.stops, assignmentForRow, routeIntelligenceForRow]);
 
   return (
     <main className="workspace-shell">
@@ -609,7 +544,7 @@ export default function PlanningPage({ slug }: Props) {
             <section style={{ ...panel, padding: 14, display: "grid", gap: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                 <div>
-                  <p style={eyebrow}>Planning</p>
+                  <p style={eyebrow}>{planningFrameLabel(planningFrame.frame)}</p>
                   <h2 style={{ margin: 0, fontSize: 18 }}>Planning snapshot</h2>
                 </div>
 
@@ -632,11 +567,7 @@ export default function PlanningPage({ slug }: Props) {
                 <p style={{ ...eyebrow, color: "#009b67" }}>Company Intelligence</p>
                 <strong style={{ fontSize: 15 }}>{planningSummary.intelligenceLabel}</strong>
                 <span style={{ color: "#64748b", fontSize: 12, fontWeight: 850 }}>
-                  {planningSummary.heavyRoutes > 0
-                    ? "Several routes are trending above historical workload. Driver assignment should stay in focus before dispatch."
-                    : planningSummary.limitedHistoryRoutes > 0
-                      ? "Most routes align with history. A few routes need more operating history before Insight can compare with confidence."
-                      : "The imported plan aligns with recent route history. Continue monitoring assignment coverage before dispatch."}
+                  {planningSummary.intelligenceDetail}
                 </span>
               </section>
 
@@ -746,7 +677,7 @@ export default function PlanningPage({ slug }: Props) {
 
                 {rows.length === 0 ? (
                   <div style={{ padding: 14, color: "#64748b", fontWeight: 850 }}>
-                    No DRO rows loaded for {payload?.source_date ?? planningDate}.
+                    No DRO rows loaded for {payload?.source_date ?? operationalDate}.
                   </div>
                 ) : null}
               </div>
@@ -757,7 +688,13 @@ export default function PlanningPage({ slug }: Props) {
                 <p style={eyebrow}>Planning Readiness</p>
                 <strong>{planningSummary.readinessLabel}</strong>
                 <p style={{ margin: "5px 0 0", color: "#64748b", fontSize: 12, fontWeight: 850 }}>
-                  Plan {payload?.source_date ?? "—"} · Report {planningDate}
+                  Operational Date · {formatOperationalDate(operationalDate)}
+                </p>
+                <p style={{ margin: "3px 0 0", color: "#64748b", fontSize: 12, fontWeight: 850 }}>
+                  Planning Session · {planningFrame.planningSessionDate ?? "—"} {planningFrame.planningSessionFrame ?? ""}
+                </p>
+                <p style={{ margin: "3px 0 0", color: "#94a3b8", fontSize: 11, fontWeight: 800 }}>
+                  Service Completion · {serviceCompletionPct === null ? "No signal" : `${serviceCompletionPct}%`}
                 </p>
               </div>
 
