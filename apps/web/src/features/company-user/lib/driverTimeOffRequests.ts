@@ -1,5 +1,58 @@
 import { calendarDaysFromToday } from "./driverCalendar";
 
+
+export type DriverTimeOffSelectionMode = "RANGE" | "SELECTED_ONLY";
+
+function addIsoDays(isoDate: string, days: number) {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+export function datesBetweenInclusive(startDate: string, endDate: string) {
+  const dates: string[] = [];
+  let current = startDate;
+
+  while (current <= endDate) {
+    dates.push(current);
+    current = addIsoDays(current, 1);
+  }
+
+  return dates;
+}
+
+export function normalizeSelectedDates(selectedDates: string[]) {
+  return Array.from(new Set(selectedDates)).sort();
+}
+
+export function rangeDatesForSelection(selectedDates: string[]) {
+  const normalized = normalizeSelectedDates(selectedDates);
+  if (normalized.length < 2) return normalized;
+
+  return datesBetweenInclusive(normalized[0], normalized[normalized.length - 1]);
+}
+
+export function selectionHasRangeGap(selectedDates: string[]) {
+  const normalized = normalizeSelectedDates(selectedDates);
+  if (normalized.length < 2) return false;
+
+  return rangeDatesForSelection(normalized).length !== normalized.length;
+}
+
+export function resolveTimeOffRequestedDates(
+  selectedDates: string[],
+  mode: DriverTimeOffSelectionMode
+) {
+  const normalized = normalizeSelectedDates(selectedDates);
+
+  if (mode === "RANGE" && selectionHasRangeGap(normalized)) {
+    return rangeDatesForSelection(normalized);
+  }
+
+  return normalized;
+}
+
 export type DriverTimeOffRequestEligibility = {
   canSubmit: boolean;
   reason: string | null;
@@ -9,10 +62,18 @@ export const DRIVER_TIME_OFF_MIN_NOTICE_DAYS = 10;
 export const DRIVER_TIME_OFF_MAX_SELECTED_DAYS = 15;
 
 export function selectedDatesLabel(selectedDates: string[]) {
-  if (selectedDates.length === 0) return "No days selected.";
-  if (selectedDates.length === 1) return selectedDates[0];
+  const normalized = normalizeSelectedDates(selectedDates);
 
-  return `${selectedDates[0]} → ${selectedDates[selectedDates.length - 1]} · ${selectedDates.length} days`;
+  if (normalized.length === 0) return "No days selected.";
+  if (normalized.length === 1) return normalized[0];
+
+  const rangeDates = rangeDatesForSelection(normalized);
+
+  if (rangeDates.length !== normalized.length) {
+    return `${normalized[0]} → ${normalized[normalized.length - 1]} · ${normalized.length} selected / ${rangeDates.length} in range`;
+  }
+
+  return `${normalized[0]} → ${normalized[normalized.length - 1]} · ${normalized.length} days`;
 }
 
 export function evaluateDriverTimeOffRequestEligibility(

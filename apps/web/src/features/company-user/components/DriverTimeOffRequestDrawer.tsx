@@ -2,7 +2,11 @@
 
 import {
   evaluateDriverTimeOffRequestEligibility,
+  rangeDatesForSelection,
+  resolveTimeOffRequestedDates,
   selectedDatesLabel,
+  selectionHasRangeGap,
+  type DriverTimeOffSelectionMode,
 } from "@/features/company-user/lib/driverTimeOffRequests";
 
 type DriverTimeOffRequestDrawerProps = {
@@ -10,6 +14,8 @@ type DriverTimeOffRequestDrawerProps = {
   note: string;
   busy?: boolean;
   error?: string | null;
+  selectionMode: DriverTimeOffSelectionMode;
+  onSelectionModeChange: (value: DriverTimeOffSelectionMode) => void;
   onNoteChange: (value: string) => void;
   onCancel: () => void;
   onSubmit: () => void;
@@ -20,11 +26,16 @@ export function DriverTimeOffRequestDrawer({
   note,
   busy = false,
   error = null,
+  selectionMode,
+  onSelectionModeChange,
   onNoteChange,
   onCancel,
   onSubmit,
 }: DriverTimeOffRequestDrawerProps) {
-  const eligibility = evaluateDriverTimeOffRequestEligibility(selectedDates);
+  const resolvedDates = resolveTimeOffRequestedDates(selectedDates, selectionMode);
+  const rangeDates = rangeDatesForSelection(selectedDates);
+  const hasRangeGap = selectionHasRangeGap(selectedDates);
+  const eligibility = evaluateDriverTimeOffRequestEligibility(resolvedDates);
 
   return (
     <div className="driver-timeoff-drawer" role="region" aria-label="Time off request">
@@ -35,6 +46,30 @@ export function DriverTimeOffRequestDrawer({
           Select up to 15 eligible days. Requests inside 10 days or longer than 15 days should be discussed directly with leadership.
         </p>
       </div>
+
+      {hasRangeGap ? (
+        <div className="driver-timeoff-range-helper">
+          <strong>You selected {selectedDates.length} dates across a {rangeDates.length}-day span.</strong>
+          <label>
+            <input
+              type="radio"
+              name="time-off-selection-mode"
+              checked={selectionMode === "RANGE"}
+              onChange={() => onSelectionModeChange("RANGE")}
+            />
+            Request all dates in range ({rangeDates.length} days)
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="time-off-selection-mode"
+              checked={selectionMode === "SELECTED_ONLY"}
+              onChange={() => onSelectionModeChange("SELECTED_ONLY")}
+            />
+            Request only selected dates ({selectedDates.length} days)
+          </label>
+        </div>
+      ) : null}
 
       {error ? <p className="driver-timeoff-error">{error}</p> : null}
       {eligibility.reason ? <p className="driver-timeoff-error">{eligibility.reason}</p> : null}

@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { DriverTimeOffRequestDrawer } from "@/features/company-user/components/DriverTimeOffRequestDrawer";
+import {
+  resolveTimeOffRequestedDates,
+  type DriverTimeOffSelectionMode,
+} from "@/features/company-user/lib/driverTimeOffRequests";
 import { IntentVerificationDrawer } from "@/features/security/components/IntentVerificationDrawer";
 import {
   buildRequestEyebrowMap,
@@ -191,6 +195,12 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
   const [pageError, setPageError] = useState<string | null>(null);
 
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
+  const [timeOffSelectionMode, setTimeOffSelectionMode] = useState<DriverTimeOffSelectionMode>("RANGE");
+
+  const resolvedTimeOffDates = useMemo(
+    () => resolveTimeOffRequestedDates(selectedDates, timeOffSelectionMode),
+    [selectedDates, timeOffSelectionMode]
+  );
   const [requestNote, setRequestNote] = useState("");
   const [requestError, setRequestError] = useState<string | null>(null);
   const [requestMessage, setRequestMessage] = useState<string | null>(null);
@@ -307,7 +317,7 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          requested_dates: selectedDates,
+          requested_dates: resolveTimeOffRequestedDates(selectedDates, timeOffSelectionMode),
           request_note: requestNote,
         }),
       });
@@ -324,6 +334,7 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
 
       setRequestMessage("Time off request submitted for leadership review.");
       setSelectedDates([]);
+      setTimeOffSelectionMode("RANGE");
       setRequestNote("");
       setRequestDrawerOpen(false);
       setIntentOpen(false);
@@ -379,7 +390,9 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
 
           <div className="driver-calendar-grid">
             {calendarCells.map((day) => {
-              const selected = selectedDates.includes(day.key);
+              const dayIso = isoForCalendarDate(day.date);
+              const selected = selectedDates.includes(dayIso);
+              const rangeIncluded = !selected && resolvedTimeOffDates.includes(dayIso);
 
               return (
                 <button
@@ -391,6 +404,7 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
                     day.isToday ? "driver-calendar-day--today" : "",
                     day.isCurrentMonth ? "" : "driver-calendar-day--muted",
                     day.isWeekendColumn ? "driver-calendar-day--weekend" : "",
+                    rangeIncluded ? "driver-calendar-day--range-included" : "",
                     selected ? "driver-calendar-day--selected" : "",
                   ]
                     .filter(Boolean)
@@ -427,10 +441,14 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
           note={requestNote}
           busy={requestSaving}
           error={requestError}
+          selectionMode={timeOffSelectionMode}
+          onSelectionModeChange={setTimeOffSelectionMode}
           onNoteChange={setRequestNote}
           onCancel={() => {
             setRequestDrawerOpen(false);
             setSelectedDates([]);
+            setTimeOffSelectionMode("RANGE");
+      setTimeOffSelectionMode("RANGE");
             setRequestNote("");
             setRequestError(null);
           }}
