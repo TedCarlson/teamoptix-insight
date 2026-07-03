@@ -40,8 +40,8 @@ export default function CompanyAnnouncementsPage() {
               Later this can support pinned posts, read receipts, audience targeting, and admin posting controls.
             </p>
             <div className="cta-row" style={{ marginTop: 12 }}>
-              <a className="button" href={`/company/${slug}/home`}>
-                Back to company home
+              <a className="button" href={`/company/${slug}/announcements`}>
+                Back to Home
               </a>
             </div>
           </aside>

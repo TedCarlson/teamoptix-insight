@@ -103,7 +103,6 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
 
   const homeSubItems: NavItem[] = [
     { label: "Announcements", href: announcementsBase, match: (path) => path.startsWith(announcementsBase) },
-    { label: "Driver Home", href: driverHomeBase, match: (path) => path === driverHomeBase },
   ];
 
   const configSubItems: NavItem[] = [
