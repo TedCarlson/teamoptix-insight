@@ -1,123 +1,115 @@
-"use client";
+import FoyerCtaBand from "@/features/foyer/components/FoyerCtaBand";
+import FoyerDoorCard from "@/features/foyer/components/FoyerDoorCard";
+import FoyerHeader from "@/features/foyer/components/FoyerHeader";
+import FoyerProofStrip from "@/features/foyer/components/FoyerProofStrip";
 
-import Link from "next/link";
-import { useAccess } from "@/features/access/AccessProvider";
-import SiteHeader from "@/features/landing/components/SiteHeader";
-import ValueCard from "@/features/landing/components/ValueCard";
+const doors = [
+  {
+    eyebrow: "Owner path",
+    title: "I Own a Company",
+    body: "Explore how Insight helps contractors lead with clarity, control, and confidence.",
+    href: "/company-owner",
+    cta: "Enter",
+  },
+  {
+    eyebrow: "Employee path",
+    title: "I Work Here",
+    body: "Access the tools and information you need to get the job done.",
+    href: "/employee",
+    cta: "Employee Entry",
+  },
+  {
+    eyebrow: "Product path",
+    title: "Explore Insight",
+    body: "See how Insight brings your operation together in one connected platform.",
+    href: "/explore",
+    cta: "A Day with Insight",
+  },
+  {
+    eyebrow: "Company path",
+    title: "About Team Optix",
+    body: "Our purpose, our principles, and the operators we build for.",
+    href: "/teamoptix",
+    cta: "Our Story",
+  },
+];
 
 export default function HomePage() {
-  const access = useAccess();
-
-  const signedIn = Boolean(access.auth_user_id);
-  const hasProfile = Boolean(access.profile_id);
-  const membershipCount = access.memberships.length;
-  const canCreateCompany = Boolean(access.is_platform_owner);
-
-  const primaryHref = !signedIn
-    ? "/sign-in"
-    : !hasProfile
-      ? "/profile/setup"
-      : canCreateCompany
-        ? "/command-center"
-        : membershipCount > 0
-          ? "/companies"
-          : "/profile";
-
-  const primaryLabel = !signedIn
-    ? "Sign in"
-    : !hasProfile
-      ? "Complete profile"
-      : canCreateCompany
-        ? "Open Command Center"
-        : membershipCount > 0
-          ? "Go to companies"
-          : "Go to profile";
-
   return (
-    <main className="landing-page">
-      <SiteHeader />
+    <main className="foyer-page">
+      <section className="foyer-hero">
+        <FoyerHeader />
 
-      <section className="hero">
-        <div className="hero__grid">
-          <section className="hero-card hero-card--primary">
-            <p className="eyebrow">TeamOptix</p>
-            <h1>Insight</h1>
-            <p className="lede">
-              A modern operations platform built for standalone companies,
-              portable user identity, and future-ready multi-industry growth.
-            </p>
-
-            <div className="cta-row">
-              <Link className="button button-primary" href={primaryHref}>
-                {primaryLabel}
-              </Link>
-
-              {signedIn && membershipCount > 0 ? (
-                <Link className="button" href="/companies">
-                  Company directory
-                </Link>
-              ) : null}
-
-              {signedIn && membershipCount === 0 && canCreateCompany ? (
-                <Link className="button" href="/company/setup">
-                  Create company
-                </Link>
-              ) : null}
-
-              {!signedIn ? (
-                <Link className="button" href="/profile/setup">
-                  Create profile
-                </Link>
-              ) : null}
-            </div>
-          </section>
-
-          <aside className="hero-card hero-card--secondary">
-            <p className="eyebrow">Platform posture</p>
-
-            <div className="hero-stat">
-              <span className="hero-stat__label">Identity</span>
-              <strong>One user, many company relationships</strong>
-            </div>
-
-            <div className="hero-stat">
-              <span className="hero-stat__label">Company model</span>
-              <strong>Standalone first, relationships later</strong>
-            </div>
-
-            <div className="hero-stat">
-              <span className="hero-stat__label">Current state</span>
-              <strong>
-                {!signedIn
-                  ? "Signed out"
-                  : membershipCount > 0
-                    ? "Company context available"
-                    : "No company memberships yet"}
-              </strong>
-            </div>
-          </aside>
+        <div className="foyer-hero__content">
+          <p className="foyer-kicker">Insight is our flagship product.</p>
+          <h1>Run the Business.</h1>
+          <p className="foyer-lede">
+            We respect that a lot goes on between talking about a thing and doing a thing.
+            More if you&apos;re doing that thing the right way.
+          </p>
+          <p className="foyer-welcome">Welcome to Team Optix.</p>
         </div>
       </section>
 
-      <section className="value-strip">
-        <div className="value-grid">
-          <ValueCard
-            eyebrow="Company"
-            title="Standalone workspace"
-            body="Each company gets its own clean starting point inside the platform."
-          />
-          <ValueCard
-            eyebrow="User"
-            title="Portable profile"
-            body="Users keep one platform identity and move across opportunities cleanly."
-          />
-          <ValueCard
-            eyebrow="Governance"
-            title="Owner-gated creation"
-            body="Company creation is controlled intentionally instead of being open to every signed-in user."
-          />
+
+      <section className="foyer-insight-is" aria-label="What Insight is">
+        <p className="foyer-kicker">Insight is...</p>
+        <div className="foyer-insight-is__grid">
+          {[
+            "Planning",
+            "Dispatch",
+            "Scheduling",
+            "Payroll Support",
+            "Compliance",
+            "Data Collection",
+            "Historical Context",
+            "Decision Support",
+          ].map((item) => (
+            <span key={item}>{item}</span>
+          ))}
+        </div>
+        <h2>
+          Connecting the front line
+          <br />
+          with the bottom line.
+        </h2>
+        <p>Operators wear many hats. Insight puts them on one hook.</p>
+      </section>
+
+      <section className="foyer-section">
+        <h2>How can Insight help you?</h2>
+        <div className="foyer-door-grid">
+          {doors.map((door) => (
+            <FoyerDoorCard key={door.href} {...door} />
+          ))}
         </div>
       </section>
+
+      <FoyerProofStrip />
+
+      <section className="foyer-product">
+        <div>
+          <p className="foyer-kicker">Our flagship product</p>
+          <h2>Insight.</h2>
+          <p>
+            Operations intelligence for contractors who need their business to run better today
+            and scale with confidence tomorrow.
+          </p>
+          <ul>
+            <li>Operational clarity across every function</li>
+            <li>Real-time visibility into what matters</li>
+            <li>Historical context that supports better decisions</li>
+            <li>Tools that empower operators and their teams</li>
+          </ul>
+        </div>
+
+        <aside className="foyer-product__placeholder">
+          <span>Insight workspace preview</span>
+          <strong>Planning · Dispatch · Payroll · Intelligence</strong>
+        </aside>
+      </section>
+
+      <FoyerCtaBand />
     </main>
   );
 }
