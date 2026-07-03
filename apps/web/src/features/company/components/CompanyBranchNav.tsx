@@ -39,8 +39,9 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const menuSections = buildCompanyMenu({ slug, isAdminUser });
 
   const base = `/company/${slug}`;
-  const homeBase = `${base}/home`;
   const announcementsBase = `${base}/announcements`;
+  const homeBase = announcementsBase;
+  const driverHomeBase = `${base}/home`;
   const peopleBase = `${base}/people`;
   const scheduleBase = `${base}/schedule`;
   const operationsBase = `${base}/operations`;
@@ -101,8 +102,8 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   ];
 
   const homeSubItems: NavItem[] = [
-    { label: "Company Home", href: homeBase, match: (path) => path === homeBase },
     { label: "Announcements", href: announcementsBase, match: (path) => path.startsWith(announcementsBase) },
+    { label: "Driver Home", href: driverHomeBase, match: (path) => path === driverHomeBase },
   ];
 
   const configSubItems: NavItem[] = [
@@ -120,7 +121,9 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   ];
 
   const inHomeBranch =
-    pathname === homeBase || pathname.startsWith(`${homeBase}/`) || pathname.startsWith(announcementsBase);
+    pathname === homeBase ||
+    pathname.startsWith(announcementsBase) ||
+    pathname === driverHomeBase;
 
   const inPeopleBranch =
     pathname === peopleBase ||
