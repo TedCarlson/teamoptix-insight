@@ -1,5 +1,6 @@
 import FoyerCtaBand from "@/features/foyer/components/FoyerCtaBand";
 import FoyerHeader from "@/features/foyer/components/FoyerHeader";
+import FoyerConversationPreview from "@/features/foyer/components/FoyerConversationPreview";
 
 export default function CompanyOwnerPage() {
   return (
@@ -29,6 +30,8 @@ export default function CompanyOwnerPage() {
           </article>
         ))}
       </section>
+
+      <FoyerConversationPreview />
 
       <section className="foyer-form-placeholder">
         <p className="foyer-kicker">Request foundation</p>
