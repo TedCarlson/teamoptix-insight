@@ -2752,9 +2752,11 @@ body {
   padding: 28px 28px 96px;
   color: #ffffff;
   background:
-    linear-gradient(90deg, rgba(2, 8, 23, 0.88), rgba(15, 23, 42, 0.58), rgba(15, 23, 42, 0.22)),
-    radial-gradient(circle at 82% 30%, rgba(20, 184, 166, 0.18), transparent 28%),
-    linear-gradient(135deg, #020617, #0f2746 52%, #1e3a5f);
+    linear-gradient(90deg, rgba(2, 8, 23, 0.9), rgba(15, 23, 42, 0.62), rgba(15, 23, 42, 0.18)),
+    url("/foyer/images/hero-terminal-sunrise.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
 .foyer-header {
