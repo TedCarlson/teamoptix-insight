@@ -12,6 +12,7 @@ type OverridePayload = {
   override_type?: "CALL_OUT" | "TIME_OFF" | "ADD_IN" | "ADMIN_OFF" | null;
   start_date?: string | null;
   end_date?: string | null;
+  manager_note?: string | null;
 };
 
 function cleanText(value: unknown): string | null {
@@ -41,7 +42,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     const { data: overrides, error: overrideErr } = await sb
       .from("schedule_override")
       .select(
-        "id, company_id, roster_member_id, override_type, start_date, end_date, is_active, created_at"
+        "id, company_id, roster_member_id, override_type, start_date, end_date, manager_note, is_active, created_at"
       )
       .eq("company_id", company.id)
       .eq("is_active", true)
@@ -124,6 +125,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     const overrideType = cleanText(body.override_type);
     const startDate = cleanText(body.start_date);
     const endDate = cleanText(body.end_date);
+    const managerNote = cleanText(body.manager_note)?.slice(0, 500) ?? null;
 
     if (!rosterMemberId || !overrideType || !startDate || !endDate) {
       return NextResponse.json(
@@ -147,6 +149,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
       start_date: startDate,
       end_date: endDate,
       route_name_override: null,
+      manager_note: managerNote,
       is_active: true,
     });
 

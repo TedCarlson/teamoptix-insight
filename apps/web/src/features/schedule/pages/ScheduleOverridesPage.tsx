@@ -24,6 +24,7 @@ type OverrideRow = {
   override_type: OverrideType;
   start_date: string;
   end_date: string;
+  manager_note: string | null;
   is_active: boolean;
   created_at: string;
   full_name: string | null;
@@ -89,6 +90,7 @@ export default function ScheduleOverridesPage() {
   const [startDate, setStartDate] = useState(todayIso());
   const [endDate, setEndDate] = useState(todayIso());
   const [search, setSearch] = useState("");
+  const [managerNote, setManagerNote] = useState("");
 
   async function loadWorkers() {
     const res = await fetch(`/api/company/${slug}/schedule`, {
@@ -180,6 +182,7 @@ export default function ScheduleOverridesPage() {
           override_type: overrideType,
           start_date: startDate,
           end_date: endDate,
+          manager_note: managerNote,
         }),
       });
 
@@ -196,6 +199,7 @@ export default function ScheduleOverridesPage() {
         `Override saved. Generated ${commit.generated_count ?? 0} rows, applied ${commit.override_count ?? 0} overrides, inserted ${commit.add_in_insert_count ?? 0} add-ins.`
       );
 
+      setManagerNote("");
       await refreshAll();
     } catch {
       setError("Failed to create override.");
@@ -289,7 +293,8 @@ export default function ScheduleOverridesPage() {
         (row.worker_type ?? "").toLowerCase().includes(q) ||
         row.override_type.toLowerCase().includes(q) ||
         row.start_date.toLowerCase().includes(q) ||
-        row.end_date.toLowerCase().includes(q)
+        row.end_date.toLowerCase().includes(q) ||
+        (row.manager_note ?? "").toLowerCase().includes(q)
       );
     });
   }, [overrides, search]);
@@ -480,6 +485,24 @@ export default function ScheduleOverridesPage() {
                 />
               </div>
 
+              <textarea
+                value={managerNote}
+                onChange={(e) => setManagerNote(e.target.value)}
+                placeholder="Manager note / context. Example: ADMIN_OFF due to termination, job abandonment, or leadership decision."
+                maxLength={500}
+                disabled={busy}
+                style={{
+                  width: "100%",
+                  minHeight: 96,
+                  padding: "12px",
+                  borderRadius: 12,
+                  border: "1px solid #d6dfeb",
+                  background: "#fff",
+                  font: "inherit",
+                  resize: "vertical",
+                }}
+              />
+
               <div className="cta-row" style={{ marginTop: 0 }}>
                 <button
                   type="submit"
@@ -536,6 +559,7 @@ export default function ScheduleOverridesPage() {
                         "Type",
                         "Start",
                         "End",
+                        "Note",
                         "Created",
                         "Actions",
                       ].map((label) => (
@@ -571,6 +595,7 @@ export default function ScheduleOverridesPage() {
                         <td style={cellStyle}>{row.override_type}</td>
                         <td style={cellStyle}>{row.start_date}</td>
                         <td style={cellStyle}>{row.end_date}</td>
+                        <td style={cellStyle}>{row.manager_note ?? "—"}</td>
                         <td style={cellStyle}>
                           {new Date(row.created_at).toLocaleString()}
                         </td>
