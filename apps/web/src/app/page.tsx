@@ -45,7 +45,7 @@ export default function HomePage() {
           <h1>Run the Business.</h1>
           <p className="foyer-lede">
             We respect that a lot goes on between talking about a thing and doing a thing.
-            More if you&apos;re doing that thing the right way.
+            Even more when people are counting on you to do it well.
           </p>
           <p className="foyer-welcome">Welcome to Team Optix.</p>
         </div>
