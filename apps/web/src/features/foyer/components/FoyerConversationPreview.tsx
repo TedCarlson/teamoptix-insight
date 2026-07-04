@@ -27,6 +27,8 @@ export default function FoyerConversationPreview() {
   );
   const [answer, setAnswer] = useState("");
   const [requestOpen, setRequestOpen] = useState(false);
+  const [requestStatus, setRequestStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [requestError, setRequestError] = useState("");
 
   const currentQuestion = getCurrentFoyerQuestion(state);
   const stories = useMemo(() => routeFoyerExperience(state), [state]);
@@ -49,6 +51,43 @@ export default function FoyerConversationPreview() {
 
     setState((current) => answerFoyerQuestion(current, cleaned));
     setAnswer("");
+  }
+
+  async function handleWorkspaceRequestSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setRequestStatus("sending");
+    setRequestError("");
+
+    const formData = new FormData(e.currentTarget);
+
+    const response = await fetch("/api/foyer/workspace-request", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        companyName: String(formData.get("companyName") ?? ""),
+        ownerName: String(formData.get("ownerName") ?? ""),
+        email: String(formData.get("email") ?? ""),
+        phone: String(formData.get("phone") ?? ""),
+        terminal: String(formData.get("terminal") ?? ""),
+        routeCount: String(formData.get("routeCount") ?? ""),
+        employeeCount: String(formData.get("employeeCount") ?? ""),
+        currentSystems: String(formData.get("currentSystems") ?? ""),
+        operation: String(formData.get("operation") ?? ""),
+        priorities: String(formData.get("priorities") ?? ""),
+      }),
+    });
+
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      setRequestStatus("error");
+      setRequestError(result?.error ?? "Unable to send workspace request.");
+      return;
+    }
+
+    setRequestStatus("sent");
   }
 
   return (
@@ -158,7 +197,7 @@ export default function FoyerConversationPreview() {
               </button>
             </div>
 
-            <form className="foyer-request-form">
+            <form className="foyer-request-form" onSubmit={handleWorkspaceRequestSubmit}>
               <label>
                 Company name
                 <input name="companyName" placeholder="Company name" />
@@ -193,6 +232,16 @@ export default function FoyerConversationPreview() {
                 />
               </label>
 
+              <label>
+                Employees
+                <input name="employeeCount" placeholder="How many employees?" />
+              </label>
+
+              <label>
+                Current systems
+                <input name="currentSystems" placeholder="Spreadsheets, GroundCloud, payroll tools..." />
+              </label>
+
               <label className="foyer-request-form__wide">
                 Operation notes
                 <textarea
@@ -218,9 +267,23 @@ export default function FoyerConversationPreview() {
                   We&apos;ll use this to prepare a focused introduction around your
                   operation. No obligation.
                 </p>
-                <button type="button" className="button button-primary">
-                  Send Workspace Request
-                </button>
+                {requestStatus === "sent" ? (
+                  <strong>Workspace request sent. We&apos;ll review it and reach out.</strong>
+                ) : (
+                  <button
+                    type="submit"
+                    className="button button-primary"
+                    disabled={requestStatus === "sending"}
+                  >
+                    {requestStatus === "sending" ? "Sending..." : "Send Workspace Request"}
+                  </button>
+                )}
+
+                {requestStatus === "error" ? (
+                  <p role="alert" style={{ color: "#b91c1c", fontWeight: 800 }}>
+                    {requestError}
+                  </p>
+                ) : null}
               </div>
             </form>
           </section>
