@@ -49,6 +49,7 @@ export type PayrollActivityRow = {
   adjustment_amount?: number | null;
   adjustment_labels?: string[] | null;
   review_flags?: string[] | null;
+  metadata_json?: Record<string, unknown> | null;
 };
 
 export type PayrollMetrics = {

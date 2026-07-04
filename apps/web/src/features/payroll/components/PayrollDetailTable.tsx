@@ -85,7 +85,9 @@ export default function PayrollDetailTable({
                             <strong>WA {dayRow.dominant_route?.wa_number ?? "—"}</strong>
                             <span style={{ color: "#475569", fontSize: 10 }}>{dayRow.total_stops} stops</span>
                             <span style={{ color: "#475569", fontSize: 10 }}>TSH {money(dayRow.threshold_pay_amount)}</span>
-                            <span style={{ color: "#94a3b8", fontSize: 9 }}>{dayRow.source_row_count} row{dayRow.source_row_count === 1 ? "" : "s"}</span>
+                            <span style={{ color: "#94a3b8", fontSize: 9 }}>
+                              {dayRow.source_row_count} source row{dayRow.source_row_count === 1 ? "" : "s"}
+                            </span>
                           </div>
                         ) : (
                           <span style={{ color: "#94a3b8", fontWeight: 900 }}>—</span>

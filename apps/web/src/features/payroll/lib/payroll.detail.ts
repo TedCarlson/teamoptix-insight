@@ -24,6 +24,12 @@ function numberValue(value: unknown) {
 }
 
 
+function sourceRowCount(row: PayrollActivityRow) {
+  const raw = row.metadata_json?.source_row_count;
+  const n = Number(raw ?? 1);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
 function isDswPayrollSource(sourceKind: string | null | undefined) {
   return (
     sourceKind === "DSW_ACTUAL" ||
@@ -93,16 +99,20 @@ export function buildPayrollDriverDayDetails(
       const nonZeroRoutes = routeCollection.filter((route) => route.total_stops > 0);
       const dominantRoute = nonZeroRoutes[0] ?? routeCollection[0] ?? null;
 
-      // Payroll Detail V1 intentionally pays threshold from the dominant route only.
-      // Secondary DSW rows often represent scanner/vehicle noise or route handoff evidence,
-      // not additional route ownership.
-      const totalStops = dominantRoute?.total_stops ?? 0;
+      // Payroll activity facts already carry the row-level payroll truth.
+      // Route collections are display evidence only; do not recompute threshold
+      // in the UI because the warehouse has already applied payroll policy.
+      const totalStops = routeCollection.reduce((sum, route) => sum + route.total_stops, 0);
       const thresholdStops = dominantRoute?.threshold_stops ?? null;
       const thresholdRate = dominantRoute?.threshold_rate ?? null;
-      const thresholdOverage =
-        thresholdStops == null ? 0 : Math.max(totalStops - thresholdStops, 0);
-      const thresholdPayAmount =
-        thresholdRate == null ? 0 : thresholdOverage * thresholdRate;
+      const thresholdOverage = rows.reduce(
+        (sum, row) => sum + numberValue(row.threshold_overage),
+        0
+      );
+      const thresholdPayAmount = rows.reduce(
+        (sum, row) => sum + numberValue(row.threshold_pay_amount),
+        0
+      );
 
       const dailyPayRate = rows.reduce((max, row) => {
         if (!row.daily_pay_eligible || row.daily_pay_rate == null) return max;
@@ -147,7 +157,7 @@ export function buildPayrollDriverDayDetails(
           thresholdPayAmount +
           (dailyPayRate > 0 ? dailyPayRate : 0) +
           adjustmentPayAmount,
-        source_row_count: rows.length,
+        source_row_count: rows.reduce((sum, row) => sum + sourceRowCount(row), 0),
         flags: Array.from(flags).sort(),
       };
     })

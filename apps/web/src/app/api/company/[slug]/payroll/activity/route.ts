@@ -100,6 +100,7 @@ export async function GET(
           "threshold_overage",
           "threshold_pay_amount",
           "review_flags",
+          "metadata_json",
         ].join(",")
       )
       .eq("company_id", company.id)
