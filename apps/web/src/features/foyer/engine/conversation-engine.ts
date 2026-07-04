@@ -9,6 +9,9 @@ export function createFoyerConversationState(): FoyerConversationState {
   return {
     currentQuestionId: openingQuestions[0]?.id ?? "",
     entries: [],
+    response: {
+      decision: "CONTINUE",
+    },
   };
 }
 
@@ -38,9 +41,28 @@ export function answerFoyerQuestion(
   );
 
   const nextQuestion = openingQuestions[currentIndex + 1] ?? null;
+  const answerText = Array.isArray(answer) ? answer.join(", ") : answer;
+
+  const acknowledgement =
+    currentQuestion.id === "route_count"
+      ? `${answerText} routes is a meaningful operation. At that size, consistency becomes just as important as growth.`
+      : currentQuestion.id === "primary_pressure"
+        ? "Thank you. Those priorities tell us where Insight can provide the most value."
+        : "Thank you. That gives us a better understanding of your operation.";
+
+  const decision =
+    currentQuestion.id === "primary_pressure"
+      ? "RECOMMEND_EXPERIENCES"
+      : "CONTINUE";
 
   return {
-    currentQuestionId: nextQuestion?.id ?? currentQuestion.id,
+    currentQuestionId: decision === "RECOMMEND_EXPERIENCES"
+      ? ""
+      : nextQuestion?.id ?? currentQuestion.id,
     entries: [...state.entries, entry],
+    response: {
+      acknowledgement,
+      decision,
+    },
   };
 }

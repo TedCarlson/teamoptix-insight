@@ -14,7 +14,19 @@ export type FoyerConversationEntry = {
   answeredAt: string;
 };
 
+export type FoyerConversationDecision =
+  | "CONTINUE"
+  | "COLLECT_PRIORITIES"
+  | "RECOMMEND_EXPERIENCES";
+
+export type FoyerConversationResponse = {
+  acknowledgement?: string;
+  storyId?: string;
+  decision: FoyerConversationDecision;
+};
+
 export type FoyerConversationState = {
   currentQuestionId: string;
   entries: FoyerConversationEntry[];
+  response: FoyerConversationResponse;
 };

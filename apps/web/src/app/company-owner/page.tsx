@@ -1,4 +1,4 @@
-import FoyerCtaBand from "@/features/foyer/components/FoyerCtaBand";
+import Image from "next/image";
 import FoyerHeader from "@/features/foyer/components/FoyerHeader";
 import FoyerConversationPreview from "@/features/foyer/components/FoyerConversationPreview";
 
@@ -7,22 +7,42 @@ export default function CompanyOwnerPage() {
     <main className="foyer-page foyer-page--light">
       <FoyerHeader />
 
-      <section className="foyer-detail">
-        <p className="foyer-kicker">Company owners</p>
-        <h1>Let&apos;s build your workspace.</h1>
-        <p>
-          Insight is built for operators who carry the responsibility of routes, drivers,
-          payroll, compliance, reports, and tomorrow&apos;s decisions.
-        </p>
+      <section className="foyer-owner-hero">
+        <div className="foyer-detail">
+          <p className="foyer-kicker">Company owners</p>
+          <h1>Before we build anything...</h1>
+
+          <p>
+            Every operation is different, but the responsibilities are familiar.
+            Payroll. Planning. Service reports. Hiring. Scheduling. Maintenance.
+            Some days it&apos;s all of them before lunch.
+          </p>
+
+          <p>
+            <strong>
+              Tell us about your operation. We&apos;ll start there.
+            </strong>
+          </p>
+        </div>
+
+        <aside className="foyer-owner-hero__visual" aria-label="Insight workspace concept">
+          <Image
+            src="/foyer/images/build-the-workspace.png"
+            alt="Logistics terminal with Insight operational overlays"
+            width={1200}
+            height={675}
+            priority
+          />
+        </aside>
       </section>
 
       <section className="foyer-steps">
         {[
-          "Schedule an introduction",
+          "Start the conversation",
           "We learn your operation",
-          "We configure your company",
-          "Import workforce and routes",
-          "Launch Insight with your leadership team",
+          "Choose two priorities",
+          "See the right Insight paths",
+          "Plan your first 30 days",
         ].map((step, index) => (
           <article key={step}>
             <span>{index + 1}</span>
@@ -32,17 +52,6 @@ export default function CompanyOwnerPage() {
       </section>
 
       <FoyerConversationPreview />
-
-      <section className="foyer-form-placeholder">
-        <p className="foyer-kicker">Request foundation</p>
-        <h2>Lead request form will live here.</h2>
-        <p>
-          This will capture company name, owner contact, terminal, route count,
-          employee count, current tools, and biggest operational challenge.
-        </p>
-      </section>
-
-      <FoyerCtaBand />
     </main>
   );
 }

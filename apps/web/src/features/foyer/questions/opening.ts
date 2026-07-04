@@ -18,7 +18,7 @@ export const openingQuestions: FoyerQuestion[] = [
   },
   {
     id: "primary_pressure",
-    prompt: "What keeps you up at night?",
+    prompt: "If we could improve two things over the next six months, what would you choose?",
     mode: "text",
   },
 ];
