@@ -41,13 +41,16 @@ export default function HomePage() {
         <FoyerHeader />
 
         <div className="foyer-hero__content">
-          <p className="foyer-kicker">Insight is our flagship product.</p>
+          <p className="foyer-kicker">Built for FedEx Pickup &amp; Delivery contractors.</p>
           <h1>Run the Business.</h1>
           <p className="foyer-lede">
-            We respect that a lot goes on between talking about a thing and doing a thing.
-            Even more when people are counting on you to do it well.
+            Running a FedEx Pickup &amp; Delivery business means balancing people,
+            routes, payroll, service performance, hiring, scheduling, and constant
+            operational decisions.
           </p>
-          <p className="foyer-welcome">Welcome to Team Optix.</p>
+          <p className="foyer-welcome">
+            Purpose-built for Last Mile operators. Built by Team Optix.
+          </p>
         </div>
       </section>
 
