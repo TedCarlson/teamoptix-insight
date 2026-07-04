@@ -1,6 +1,6 @@
 import Image from "next/image";
 import FoyerHeader from "@/features/foyer/components/FoyerHeader";
-import FoyerConversationPreview from "@/features/foyer/components/FoyerConversationPreview";
+import FoyerWorkspaceRequestCard from "@/features/foyer/components/FoyerWorkspaceRequestCard";
 
 export default function CompanyOwnerPage() {
   return (
@@ -38,20 +38,19 @@ export default function CompanyOwnerPage() {
 
       <section className="foyer-steps">
         {[
-          "Start the conversation",
+          "Tell us about your operation",
           "We learn your operation",
           "Choose two priorities",
           "See the right Insight paths",
           "Plan your first 30 days",
-        ].map((step, index) => (
+        ].map((step) => (
           <article key={step}>
-            <span>{index + 1}</span>
             <h3>{step}</h3>
           </article>
         ))}
       </section>
 
-      <FoyerConversationPreview />
+      <FoyerWorkspaceRequestCard />
     </main>
   );
 }
