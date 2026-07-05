@@ -3875,9 +3875,16 @@ body {
 .explore-journey {
   width: min(1400px, calc(100% - 40px));
   margin: 34px auto 0;
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  display: flex;
   gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.explore-journey::-webkit-scrollbar {
+  display: none;
 }
 
 .explore-journey article {
@@ -4004,6 +4011,7 @@ body {
 }
 
 .explore-journey article {
+  flex: 0 0 180px;
   min-height: 96px;
   display: grid;
   align-content: center;

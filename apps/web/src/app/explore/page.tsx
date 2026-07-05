@@ -23,10 +23,10 @@ export default function ExplorePage() {
 
       <section className="explore-narrative">
         <p className="foyer-kicker">One day. One system.</p>
-        <h2>Planning informs dispatch. Dispatch creates operations. Operations become payroll. History becomes intelligence.</h2>
+        <h2>Every part of the operation contributes to one connected story.</h2>
         <p>
-          Insight keeps the day connected so your team can move forward with
-          context instead of chasing yesterday&apos;s missing pieces.
+          Planning becomes dispatch. Dispatch becomes operations.
+          Operations become payroll. Every day becomes intelligence for tomorrow.
         </p>
       </section>
 
