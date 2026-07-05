@@ -1,3 +1,4 @@
+import Image from "next/image";
 import FoyerCtaBand from "@/features/foyer/components/FoyerCtaBand";
 import FoyerDoorCard from "@/features/foyer/components/FoyerDoorCard";
 import FoyerHeader from "@/features/foyer/components/FoyerHeader";
@@ -41,15 +42,27 @@ export default function HomePage() {
         <FoyerHeader />
 
         <div className="foyer-hero__content">
-          <p className="foyer-kicker">Built for FedEx Pickup &amp; Delivery contractors.</p>
+          <div className="foyer-product-lockup">
+            <Image
+              src="/icons/logo-2-insight-cutout.png"
+              alt="Insight"
+              width={188}
+              height={188}
+              priority
+            />
+            <div className="foyer-product-lockup__text">
+              <strong>Insight</strong>
+              <span>by Team Optix</span>
+            </div>
+          </div>
+
+          <div className="foyer-product-lockup__rule" />
+
           <h1>Run the Business.</h1>
-          <p className="foyer-lede">
-            Running a FedEx Pickup &amp; Delivery business means balancing people,
-            routes, payroll, service performance, hiring, scheduling, and constant
-            operational decisions.
-          </p>
           <p className="foyer-welcome">
-            Purpose-built for Last Mile operators. Built by Team Optix.
+            Built for FedEx Pickup &amp; Delivery Contractors.
+            <br />
+            Designed by operators.
           </p>
         </div>
       </section>
