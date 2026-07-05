@@ -3061,6 +3061,79 @@ body {
   padding: 32px;
 }
 
+
+
+
+.teamoptix-about-shell {
+  width: min(1400px, 100%);
+  margin: 0 auto;
+}
+
+.teamoptix-about-shell > .foyer-detail,
+.teamoptix-about-shell > .teamoptix-about-story,
+.teamoptix-about-shell > .foyer-workspace-request-card--standalone {
+  width: 100%;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.teamoptix-about-hero {
+  max-width: none;
+  padding-bottom: 44px;
+}
+
+.teamoptix-about-hero h1,
+.teamoptix-about-hero p {
+  max-width: none;
+}
+
+.teamoptix-about-story {
+  margin: 18px 0 0;
+  display: grid;
+  gap: 0;
+}
+
+.teamoptix-about-story article {
+  width: 100%;
+  padding: 42px 0;
+  border-top: 1px solid #d6dfeb;
+}
+
+.teamoptix-about-story article:last-child {
+  border-bottom: 1px solid #d6dfeb;
+}
+
+.teamoptix-about-story h2 {
+  margin: 0 0 14px;
+  color: #0f172a;
+  font-size: clamp(28px, 4vw, 46px);
+  line-height: 1;
+  letter-spacing: -0.055em;
+}
+
+.teamoptix-about-story p {
+  margin: 14px 0 0;
+  color: #475569;
+  font-size: 19px;
+  line-height: 1.62;
+}
+
+.teamoptix-about-story blockquote {
+  margin: 22px 0;
+  padding: 22px 26px;
+  border-left: 4px solid #10b981;
+  border-radius: 0 16px 16px 0;
+  background: #ecfdf5;
+  color: #064e3b;
+  font-size: 22px;
+  font-weight: 850;
+  line-height: 1.42;
+}
+
+.teamoptix-about-shell > .foyer-workspace-request-card--standalone {
+  margin-top: 28px;
+}
+
 @media (max-width: 980px) {
   .foyer-header,
   .foyer-cta {
