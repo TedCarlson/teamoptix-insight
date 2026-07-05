@@ -24,7 +24,7 @@ export default function TeamOptixShell(props: { children: React.ReactNode }) {
           ☰
         </button>
 
-        <Link className="brand-mark" href="/teamoptix">
+        <Link className="brand-mark" href="/teamoptix/command-center">
           <span className="brand-mark__kicker">TeamOptix</span>
           <span className="brand-mark__name">Command Center</span>
         </Link>

@@ -6,7 +6,7 @@ export function buildTeamOptixMenu(): AppMenuSection[] {
       key: "teamoptix",
       label: "TeamOptix",
       items: [
-        { key: "command-center", label: "Command Center", href: "/teamoptix" },
+        { key: "command-center", label: "Command Center", href: "/teamoptix/command-center" },
       ],
     },
     {

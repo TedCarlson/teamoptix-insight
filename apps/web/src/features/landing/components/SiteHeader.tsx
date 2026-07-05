@@ -38,7 +38,7 @@ export default function SiteHeader() {
           <nav className="site-nav" aria-label="Primary">
             {access.is_platform_owner ? (
               <>
-                <NavLink href="/teamoptix">Command Center</NavLink>
+                <NavLink href="/teamoptix/command-center">Command Center</NavLink>
                 <NavLink href="/companies">Companies</NavLink>
                 <NavLink href="/commercial">Commercial</NavLink>
                 <NavLink href="/configuration">Configuration</NavLink>
