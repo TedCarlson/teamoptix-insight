@@ -82,6 +82,7 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         from: `${emailFromName} <${emailFrom}>`,
         to: [to],
+        cc: [payload.email],
         reply_to: payload.email,
         subject: `New Insight workspace request: ${payload.companyName}`,
         html: `

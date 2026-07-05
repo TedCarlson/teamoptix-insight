@@ -155,7 +155,10 @@ export default function FoyerWorkspaceRequestCard({
                 </p>
 
                 {requestStatus === "sent" ? (
-                  <strong>Workspace request sent. We&apos;ll review it and reach out.</strong>
+                  <strong>
+                    Workspace request sent. A copy was sent to your email.
+                    We&apos;ll review it and reach out.
+                  </strong>
                 ) : (
                   <button
                     type="submit"
