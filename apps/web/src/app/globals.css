@@ -4123,24 +4123,12 @@ body {
   font-size: 15px;
 }
 
-/* Explore clock: true circular placement */
-.explore-clock__node {
-  left: 50%;
-  top: 50%;
-  transform:
-    translate(-50%, -50%)
-    rotate(var(--angle))
-    translateY(-250px)
-    rotate(calc(var(--angle) * -1));
-}
-
-@media (max-width: 1120px) {
+/* Explore clock: desktop nodes are pinned to the same center architecture */
+@media (min-width: 721px) {
   .explore-clock__node {
-    transform:
-      translate(-50%, -50%)
-      rotate(var(--angle))
-      translateY(-220px)
-      rotate(calc(var(--angle) * -1));
+    left: var(--node-x);
+    top: var(--node-y);
+    transform: translate(-50%, -50%);
   }
 }
 
@@ -4410,4 +4398,44 @@ body {
     font-weight: 950;
     letter-spacing: -0.04em;
   }
+}
+
+/* Explore clock: pin the visual node dot, not the label box */
+@media (min-width: 721px) {
+  .explore-clock__node {
+    width: 120px;
+    min-height: 92px;
+    display: block;
+    text-align: center;
+    transform: translate(-50%, -26px);
+  }
+
+  .explore-clock__node-icon {
+    margin: 0 auto;
+  }
+
+  .explore-clock__node h3 {
+    position: absolute;
+    left: 50%;
+    top: 62px;
+    width: 150px;
+    margin: 0;
+    transform: translateX(-50%);
+    text-align: center;
+  }
+}
+
+/* Explore clock: final desktop label balance */
+@media (min-width: 721px) {
+  .explore-clock__node h3 {
+    top: 66px;
+    width: 170px;
+    line-height: 1.05;
+  }
+}
+
+/* Explore journey ribbon: center tile labels */
+.explore-journey article {
+  place-items: center;
+  text-align: center;
 }

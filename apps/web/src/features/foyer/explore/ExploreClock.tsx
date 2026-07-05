@@ -6,6 +6,17 @@ import type { CSSProperties } from "react";
 import { exploreMoments } from "./exploreDay.model";
 
 const STEP_MS = 2000;
+const NODE_RADIUS_PERCENT = 38;
+
+function nodePosition(angle: number): CSSProperties {
+  const radians = (angle * Math.PI) / 180;
+
+  return {
+    "--angle": `${angle}deg`,
+    "--node-x": `${50 + Math.sin(radians) * NODE_RADIUS_PERCENT}%`,
+    "--node-y": `${50 - Math.cos(radians) * NODE_RADIUS_PERCENT}%`,
+  } as CSSProperties;
+}
 
 export default function ExploreClock() {
   const [activeIndex, setActiveIndex] = useState(0);
@@ -55,7 +66,7 @@ export default function ExploreClock() {
             className={`explore-clock__node${
               index === safeIndex ? " explore-clock__node--active" : ""
             }`}
-            style={{ "--angle": `${moment.angle}deg` } as CSSProperties}
+            style={nodePosition(moment.angle)}
           >
             <div className="explore-clock__node-icon" />
             <h3>{moment.title}</h3>
