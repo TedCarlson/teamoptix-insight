@@ -3930,9 +3930,6 @@ body {
     width: min(720px, 100%);
   }
 
-  .explore-journey {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 720px) {
@@ -3983,8 +3980,22 @@ body {
   }
 
   .explore-journey {
-    width: min(100% - 28px, 640px);
-    grid-template-columns: 1fr;
+    width: 100%;
+    padding: 0 14px 8px;
+    gap: 10px;
+  }
+
+  .explore-journey article {
+    flex: 0 0 132px;
+    min-height: 72px;
+    padding: 12px;
+    border-radius: 16px;
+  }
+
+  .explore-journey h3 {
+    margin: 0;
+    font-size: 15px;
+    line-height: 1.15;
   }
 }
 
