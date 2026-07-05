@@ -3665,3 +3665,22 @@ body {
     width: 132px;
   }
 }
+
+.foyer-steps article p {
+  margin: 12px 0 0;
+  color: #475569;
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.foyer-steps article {
+  min-height: 150px;
+}
+
+@media (max-width: 720px) {
+  .foyer-product-lockup__text span {
+    color: #38d9e8;
+    text-shadow: 0 1px 18px rgba(2, 8, 23, 0.55);
+  }
+}

@@ -1,8 +1,8 @@
 import Image from "next/image";
-import FoyerCtaBand from "@/features/foyer/components/FoyerCtaBand";
 import FoyerDoorCard from "@/features/foyer/components/FoyerDoorCard";
 import FoyerHeader from "@/features/foyer/components/FoyerHeader";
 import FoyerProofStrip from "@/features/foyer/components/FoyerProofStrip";
+import FoyerWorkspaceRequestCard from "@/features/foyer/components/FoyerWorkspaceRequestCard";
 
 const doors = [
   {
@@ -68,39 +68,6 @@ export default function HomePage() {
       </section>
 
 
-      <section className="foyer-insight-is" aria-label="What Insight is">
-        <p className="foyer-kicker">Insight is...</p>
-        <div className="foyer-insight-is__grid">
-          {[
-            "Planning",
-            "Dispatch",
-            "Scheduling",
-            "Payroll Support",
-            "Compliance",
-            "Data Collection",
-            "Historical Context",
-            "Decision Support",
-          ].map((item) => (
-            <span key={item}>{item}</span>
-          ))}
-        </div>
-        <h2>
-          Connecting the front line
-          <br />
-          with the bottom line.
-        </h2>
-        <p>Operators wear many hats. Insight puts them on one hook.</p>
-      </section>
-
-      <section className="foyer-section">
-        <h2>How can Insight help you?</h2>
-        <div className="foyer-door-grid">
-          {doors.map((door) => (
-            <FoyerDoorCard key={door.href} {...door} />
-          ))}
-        </div>
-      </section>
-
       <FoyerProofStrip />
 
       <section className="foyer-product">
@@ -120,12 +87,22 @@ export default function HomePage() {
         </div>
 
         <aside className="foyer-product__placeholder">
-          <span>Insight workspace preview</span>
+          <span>Insight is...</span>
           <strong>Planning · Dispatch · Payroll · Intelligence</strong>
+          <p>Operators wear many hats. Insight puts them on one hook.</p>
         </aside>
       </section>
 
-      <FoyerCtaBand />
+      <section className="foyer-section">
+        <h2>How can Insight help you?</h2>
+        <div className="foyer-door-grid">
+          {doors.map((door) => (
+            <FoyerDoorCard key={door.href} {...door} />
+          ))}
+        </div>
+      </section>
+
+      <FoyerWorkspaceRequestCard />
     </main>
   );
 }

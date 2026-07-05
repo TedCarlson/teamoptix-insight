@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 
-export default function FoyerWorkspaceRequestCard() {
+export default function FoyerWorkspaceRequestCard({
+  buttonLabel = "Start with Insight",
+}: {
+  buttonLabel?: string;
+}) {
   const [requestOpen, setRequestOpen] = useState(false);
   const [requestStatus, setRequestStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [requestError, setRequestError] = useState("");
@@ -46,11 +50,14 @@ export default function FoyerWorkspaceRequestCard() {
 
   return (
     <section className="foyer-workspace-request-card foyer-workspace-request-card--standalone">
-      <p className="foyer-kicker">Start when you are ready</p>
-      <h3>Let&apos;s build your workspace.</h3>
+      <p className="foyer-kicker">When you are ready...</p>
+      <h3>Start with Insight.</h3>
       <p>
         Tell us a little about your operation. We&apos;ll use what you share to prepare
         a focused introduction around your business.
+      </p>
+      <p>
+        You don&apos;t need to be great to start. You do have to start to be great.
       </p>
       <div className="cta-row" style={{ marginTop: 0 }}>
         <button
@@ -58,7 +65,7 @@ export default function FoyerWorkspaceRequestCard() {
           className="button button-primary"
           onClick={() => setRequestOpen(true)}
         >
-          Start My Workspace
+          {buttonLabel}
         </button>
       </div>
 
@@ -75,7 +82,7 @@ export default function FoyerWorkspaceRequestCard() {
             <div className="foyer-request-overlay__header">
               <div>
                 <p className="foyer-kicker">Workspace request</p>
-                <h2>Let&apos;s build your workspace.</h2>
+                <h2>Start with Insight.</h2>
               </div>
               <button type="button" className="button" onClick={() => setRequestOpen(false)}>
                 Close

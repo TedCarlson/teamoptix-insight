@@ -38,14 +38,30 @@ export default function CompanyOwnerPage() {
 
       <section className="foyer-steps">
         {[
-          "Tell us about your operation",
-          "We learn your operation",
-          "Choose two priorities",
-          "See the right Insight paths",
-          "Plan your first 30 days",
+          {
+            title: "Tell us your story.",
+            body: "Every operation has one.",
+          },
+          {
+            title: "Show us your priorities.",
+            body: "What’s keeping you from running even better?",
+          },
+          {
+            title: "We’ll connect the dots.",
+            body: "See how Insight fits your business—not someone else’s.",
+          },
+          {
+            title: "Build your roadmap.",
+            body: "Know exactly where you’d start.",
+          },
+          {
+            title: "Move forward with confidence.",
+            body: "Whether that’s next week or next season.",
+          },
         ].map((step) => (
-          <article key={step}>
-            <h3>{step}</h3>
+          <article key={step.title}>
+            <h3>{step.title}</h3>
+            <p>{step.body}</p>
           </article>
         ))}
       </section>
