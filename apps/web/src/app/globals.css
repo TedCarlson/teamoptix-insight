@@ -4207,3 +4207,115 @@ body {
     transition: none;
   }
 }
+
+/* Explore clock mobile correction: preserve the clock concept instead of becoming an inline list */
+.explore-clock__active-label {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  .explore-clock {
+    min-height: auto;
+    padding: 18px 0 4px;
+  }
+
+  .explore-clock__orbit {
+    width: min(360px, calc(100vw - 44px));
+    aspect-ratio: 1;
+    margin: 0 auto;
+  }
+
+  .explore-clock__ring,
+  .explore-clock__hand {
+    display: block;
+  }
+
+  .explore-clock__ring {
+    inset: 23%;
+  }
+
+  .explore-clock__hand {
+    width: 24%;
+    height: 6px;
+  }
+
+  .explore-clock__center {
+    position: absolute;
+    inset: 34%;
+    width: auto;
+    height: auto;
+    margin: 0;
+  }
+
+  .explore-clock__center img {
+    width: 50px;
+  }
+
+  .explore-clock__center strong {
+    font-size: 20px;
+  }
+
+  .explore-clock__center span {
+    font-size: 10px;
+  }
+
+  .explore-clock__node {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 56px;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    transform:
+      translate(-50%, -50%)
+      rotate(var(--angle))
+      translateY(-142px)
+      rotate(calc(var(--angle) * -1));
+  }
+
+  .explore-clock__node-icon {
+    width: 28px;
+    height: 28px;
+    box-shadow:
+      0 0 0 4px rgba(255, 255, 255, 0.82),
+      0 8px 22px rgba(15, 23, 42, 0.16);
+  }
+
+  .explore-clock__node-icon::after {
+    width: 6px;
+    height: 6px;
+  }
+
+  .explore-clock__node h3 {
+    display: none;
+  }
+
+  .explore-clock__active-label {
+    position: absolute;
+    left: 50%;
+    bottom: 5%;
+    display: grid;
+    min-width: 190px;
+    transform: translateX(-50%);
+    text-align: center;
+  }
+
+  .explore-clock__active-label span {
+    color: #10b981;
+    font-size: 11px;
+    font-weight: 950;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .explore-clock__active-label strong {
+    color: #0f172a;
+    font-size: 22px;
+    font-weight: 950;
+    letter-spacing: -0.04em;
+  }
+}

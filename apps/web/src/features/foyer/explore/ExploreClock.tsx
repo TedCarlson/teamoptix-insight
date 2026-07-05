@@ -61,6 +61,11 @@ export default function ExploreClock() {
             <h3>{moment.title}</h3>
           </article>
         ))}
+
+        <div className="explore-clock__active-label" aria-live="polite">
+          <span>Now connecting</span>
+          <strong>{activeMoment.title}</strong>
+        </div>
       </div>
     </section>
   );
