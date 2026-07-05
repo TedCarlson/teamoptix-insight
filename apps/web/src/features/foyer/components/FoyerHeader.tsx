@@ -9,10 +9,10 @@ export default function FoyerHeader() {
       </Link>
 
       <nav className="foyer-nav" aria-label="Public navigation">
-        <Link href="/company-owner">I Own a Company</Link>
-        <Link href="/employee">I Work Here</Link>
-        <Link href="/explore">Explore Insight</Link>
-        <Link href="/teamoptix">About Team Optix</Link>
+        <Link href="/company-owner">Contractors</Link>
+        <Link href="/drivers">Drivers</Link>
+        <Link href="/explore">Explore</Link>
+        <Link href="/teamoptix">About</Link>
       </nav>
 
       <Link className="foyer-signin" href="/sign-in">

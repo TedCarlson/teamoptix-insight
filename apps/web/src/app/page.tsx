@@ -6,29 +6,29 @@ import FoyerWorkspaceRequestCard from "@/features/foyer/components/FoyerWorkspac
 
 const doors = [
   {
-    eyebrow: "Owner path",
-    title: "I Own a Company",
+    eyebrow: "Contractor path",
+    title: "Contractors",
     body: "Explore how Insight helps contractors lead with clarity, control, and confidence.",
     href: "/company-owner",
     cta: "Enter",
   },
   {
-    eyebrow: "Employee path",
-    title: "I Work Here",
-    body: "Access the tools and information you need to get the job done.",
-    href: "/employee",
-    cta: "Employee Entry",
+    eyebrow: "Driver path",
+    title: "Drivers",
+    body: "See how Insight connects schedules, time off, KPIs, and scorecards through a driver-focused experience.",
+    href: "/drivers",
+    cta: "Driver Experience",
   },
   {
     eyebrow: "Product path",
-    title: "Explore Insight",
+    title: "Explore",
     body: "See how Insight brings your operation together in one connected platform.",
     href: "/explore",
     cta: "A Day with Insight",
   },
   {
     eyebrow: "Company path",
-    title: "About Team Optix",
+    title: "About",
     body: "Our purpose, our principles, and the operators we build for.",
     href: "/teamoptix",
     cta: "Our Story",
