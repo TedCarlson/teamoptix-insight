@@ -1,6 +1,6 @@
 const proofItems = [
   {
-    title: "Built for Contractors",
+    title: "Built for Operators",
     body: "We understand the work because we have lived it.",
   },
   {
