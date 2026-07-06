@@ -6,9 +6,9 @@ import FoyerWorkspaceRequestCard from "@/features/foyer/components/FoyerWorkspac
 
 const doors = [
   {
-    eyebrow: "Contractor path",
-    title: "Contractors",
-    body: "Explore how Insight helps contractors lead with clarity, control, and confidence.",
+    eyebrow: "Operator path",
+    title: "Operators",
+    body: "Explore how Insight helps operators lead with clarity, control, and confidence.",
     href: "/company-owner",
     cta: "Enter",
   },
@@ -60,7 +60,7 @@ export default function HomePage() {
 
           <h1>Run the Business.</h1>
           <p className="foyer-welcome">
-            Built for FedEx Pickup &amp; Delivery Contractors.
+            Built for FedEx Pickup &amp; Delivery Operators.
             <br />
             Designed by operators.
           </p>
@@ -75,7 +75,7 @@ export default function HomePage() {
           <p className="foyer-kicker">Our flagship product</p>
           <h2>Insight.</h2>
           <p>
-            Operations intelligence for contractors who need their business to run better today
+            Operations intelligence for operators who need their business to run better today
             and scale with confidence tomorrow.
           </p>
           <ul>

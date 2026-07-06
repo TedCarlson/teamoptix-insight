@@ -9,14 +9,14 @@ export default function FoyerHeader() {
       </Link>
 
       <nav className="foyer-nav" aria-label="Public navigation">
-        <Link href="/company-owner">Contractors</Link>
+        <Link href="/company-owner">Operators</Link>
         <Link href="/drivers">Drivers</Link>
         <Link href="/explore">Explore</Link>
         <Link href="/teamoptix">About</Link>
       </nav>
 
       <Link className="foyer-signin" href="/sign-in">
-        Sign In
+        Insight User Sign In
       </Link>
     </header>
   );

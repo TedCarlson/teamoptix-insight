@@ -34,6 +34,27 @@ export async function POST(req: Request) {
 
     const admin = getSupabaseAdminClient();
 
+    const { data: users, error: listError } = await admin.auth.admin.listUsers();
+
+    if (listError) {
+      return NextResponse.json({ error: listError.message }, { status: 500 });
+    }
+
+    const target = users.users.find(
+      (item) => item.email?.toLowerCase() === email
+    );
+
+    if (!target) {
+      return NextResponse.json(
+        {
+          error:
+            "We could not find an Insight user account for that email. If you are not already an Insight user, start with Team Optix and request an Insight workspace.",
+          redirectTo: "/teamoptix",
+        },
+        { status: 404 }
+      );
+    }
+
     const { data, error } = await admin.auth.admin.generateLink({
       type: "magiclink",
       email,
