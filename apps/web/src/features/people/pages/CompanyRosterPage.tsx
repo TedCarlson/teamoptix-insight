@@ -364,6 +364,20 @@ export default function CompanyRosterPage() {
         return;
       }
 
+      const optimistic = {
+        ...managedPerson,
+        ...draft,
+      };
+
+      setRows((current) =>
+        current.map((row) =>
+          row.roster_member_id === managedPerson.roster_member_id
+            ? optimistic
+            : row
+        )
+      );
+      setManagedPerson(optimistic);
+
       await hydrateRosterPerson(managedPerson.roster_member_id);
     } catch {
       setError("Failed to save person details.");
@@ -386,6 +400,7 @@ export default function CompanyRosterPage() {
   }) {
     if (!managedPerson) return;
 
+    setSavingOperations(true);
     setError(null);
 
     try {
@@ -406,9 +421,25 @@ export default function CompanyRosterPage() {
         return;
       }
 
+      const optimistic = {
+        ...managedPerson,
+        ...draft,
+      };
+
+      setRows((current) =>
+        current.map((row) =>
+          row.roster_member_id === managedPerson.roster_member_id
+            ? optimistic
+            : row
+        )
+      );
+      setManagedPerson(optimistic);
+
       await hydrateRosterPerson(managedPerson.roster_member_id);
     } catch {
       setError("Failed to save operations.");
+    } finally {
+      setSavingOperations(false);
     }
   }
 
