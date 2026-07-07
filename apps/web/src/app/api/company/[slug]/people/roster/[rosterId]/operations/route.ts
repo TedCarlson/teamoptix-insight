@@ -50,7 +50,45 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       );
     }
 
-    return NextResponse.json({ ok: true, roster: data }, { status: 200 });
+    const { data: hydratedOps, error: hydrateError } = await supabase
+      .from("company_roster_operations_fact_v")
+      .select(
+        "roster_id, fx_id, dswid, scanner_serial, dot_exp, qual_cert_exp, daily_pay_effective_date, daily_pay_rate, fuel_card, pin_id_no"
+      )
+      .eq("roster_id", rosterId)
+      .maybeSingle();
+
+    if (hydrateError) {
+      return NextResponse.json(
+        {
+          error: "Operations saved, but failed to hydrate updated record.",
+          detail: hydrateError.message,
+          code: hydrateError.code ?? null,
+        },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        ok: true,
+        roster: {
+          roster_id: rosterId,
+          id: rosterId,
+          fx_id: hydratedOps?.fx_id ?? null,
+          dswid: hydratedOps?.dswid ?? null,
+          scanner_serial: hydratedOps?.scanner_serial ?? null,
+          dot_expiration_date: hydratedOps?.dot_exp ?? null,
+          qual_cert_expiration_date: hydratedOps?.qual_cert_exp ?? null,
+          daily_pay_effective_date:
+            hydratedOps?.daily_pay_effective_date ?? null,
+          daily_pay_rate: hydratedOps?.daily_pay_rate ?? null,
+          fuel_card: hydratedOps?.fuel_card ?? null,
+          pin_id_no: hydratedOps?.pin_id_no ?? null,
+        },
+      },
+      { status: 200 }
+    );
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to update operations.";
