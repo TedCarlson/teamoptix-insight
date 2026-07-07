@@ -219,7 +219,6 @@ export default function CompanyRosterPage() {
     const data = await res.json();
 
     if (!res.ok || !data?.roster) {
-      setError(data?.error ?? "Failed to hydrate person record.");
       return null;
     }
 
