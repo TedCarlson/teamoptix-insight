@@ -154,7 +154,7 @@ function OutcomeColumn(props: {
 }
 
 export default function OperationsIntelligenceFeed(props: Props) {
-  const { slug, serviceDate, surface, frozen = false, title = "Operations Intelligence" } = props;
+  const { slug, serviceDate, surface, frozen = false, title = "Automated File System" } = props;
   const [sources, setSources] = useState<IntelligenceSource[]>([]);
   const [runs, setRuns] = useState<AutomationRun[]>([]);
   const [overlayOpen, setOverlayOpen] = useState(false);

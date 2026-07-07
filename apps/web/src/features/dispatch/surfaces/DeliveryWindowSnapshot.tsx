@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { DispatchRoute } from "../lib/dispatchSupport";
 import { eyebrow, panel } from "../lib/dispatchSupport";
 import OperationsIntelligenceFeed from "@/features/operations/components/OperationsIntelligenceFeed";
+import OperationsUploadCard from "@/features/operations/components/OperationsUploadCard";
 import ServiceSnapshotCard from "@/features/operations/components/ServiceSnapshotCard";
 import RouteHealthSignal from "@/features/operations/delivery-window/components/RouteHealthSignal";
 import {
@@ -63,6 +64,7 @@ type DeliveryWindowSnapshotProps = {
   routes: DispatchRoute[];
   routeLabelForDisplay: (route: DispatchRoute) => string;
   onRefresh?: () => void;
+  onUploadReport?: () => void;
 };
 
 function normalizeWaNumber(value: string | null | undefined) {
@@ -280,7 +282,7 @@ function driverSignal(
 }
 
 export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
-  const { slug, serviceDate, routes, routeLabelForDisplay, onRefresh } = props;
+  const { slug, serviceDate, routes, routeLabelForDisplay, onRefresh, onUploadReport } = props;
   const [payload, setPayload] = useState<DswPayload | null>(null);
   const [fccPayload, setFccPayload] = useState<FccPayload | null>(null);
   const [serviceSnapshotPayload, setServiceSnapshotPayload] = useState<any>(null);
@@ -905,6 +907,10 @@ console.log(
       </section>
 
       <aside style={{ display: "grid", gap: 12 }}>
+        {onUploadReport ? (
+          <OperationsUploadCard onUpload={onUploadReport} />
+        ) : null}
+
         <OperationsIntelligenceFeed
           slug={slug}
           serviceDate={serviceDate}

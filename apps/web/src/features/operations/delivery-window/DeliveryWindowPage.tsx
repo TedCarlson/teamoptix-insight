@@ -111,6 +111,7 @@ export default function DeliveryWindowPage({ slug, serviceDate }: Props) {
             routes={sortedRoutes}
             routeLabelForDisplay={(route) => routeLabelForDisplay(route, routeSortKey)}
             onRefresh={refreshWorkspace}
+            onUploadReport={() => setUploadOverlayOpen(true)}
           />
         )}
       </section>

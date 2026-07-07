@@ -279,7 +279,7 @@ export default function CompanyPage() {
                 className="button button-primary"
                 onClick={() => setUploadOpen(true)}
               >
-                Upload Operations Report
+                Upload Final Report
               </button>
             }
           >

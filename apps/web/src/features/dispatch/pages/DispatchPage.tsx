@@ -33,6 +33,7 @@ import { useDispatchWorkspaceData } from "../hooks/useDispatchWorkspaceData";
 import OperationsReportUploadOverlay from "@/features/operations/components/OperationsReportUploadOverlay";
 import OperationsWorkspaceToolbar from "@/features/operations/components/OperationsWorkspaceToolbar";
 import OperationsIntelligenceFeed from "@/features/operations/components/OperationsIntelligenceFeed";
+import OperationsUploadCard from "@/features/operations/components/OperationsUploadCard";
 import { DispatchEventOverlay } from "../components/DispatchEventOverlay";
 import { DispatchRightRail } from "../components/DispatchRightRail";
 import { DispatchRouteQueue } from "../components/DispatchRouteQueue";
@@ -677,6 +678,10 @@ export default function DispatchPage() {
             />
 
             <div style={{ display: "grid", gap: 12 }}>
+              {!dispatchLocked ? (
+                <OperationsUploadCard onUpload={() => setUploadOverlayOpen(true)} />
+              ) : null}
+
               <OperationsIntelligenceFeed
                 key={`dispatch-feed-${refreshKey}-${dispatchLocked ? "locked" : "open"}`}
                 slug={slug}
