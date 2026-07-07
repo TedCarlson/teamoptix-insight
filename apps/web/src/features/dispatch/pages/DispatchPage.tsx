@@ -468,19 +468,58 @@ export default function DispatchPage() {
     route_key?: string | null;
     route_label?: string | null;
     event_payload?: Record<string, unknown>;
+    walk_on_full_name?: string | null;
   }) => {
     try {
       setSavingEvent(true);
       setError(null);
+
+      let walkOnRosterId: string | null = null;
+      const walkOnName = payload.walk_on_full_name?.trim();
+
+      if (walkOnName) {
+        const walkOnRes = await fetch(`/api/company/${slug}/dispatch/walk-on`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            full_name: walkOnName,
+            seen_date: serviceDate,
+          }),
+        });
+
+        const walkOnData = await walkOnRes.json().catch(() => ({}));
+
+        if (!walkOnRes.ok) {
+          setError(walkOnData?.error ?? "Failed to save walk-on driver.");
+          return;
+        }
+
+        walkOnRosterId =
+          typeof walkOnData?.roster_member_id === "string"
+            ? walkOnData.roster_member_id
+            : null;
+      }
 
       const { ok, data } = await recordDispatchEvent({
         slug,
         dispatchDate: serviceDate,
         payload: {
           ...payload,
+          event_code: walkOnName ? "ADD_DRIVER" : payload.event_code,
+          event_label: walkOnName ? "Walk-on driver added" : payload.event_label,
+          person_roster_member_id: walkOnRosterId || payload.person_roster_member_id,
+          person_name: walkOnName || payload.person_name,
           route_key: payload.route_key ?? null,
           route_label: payload.route_label ?? null,
-          event_payload: payload.event_payload ?? {},
+          event_payload: walkOnName
+            ? {
+                ...(payload.event_payload ?? {}),
+                source: "dispatch_walk_on_driver",
+                assignment_source: "WALK_ON",
+                roster_member_id: walkOnRosterId,
+              }
+            : payload.event_payload ?? {},
         },
       });
 

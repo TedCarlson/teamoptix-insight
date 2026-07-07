@@ -286,7 +286,7 @@ export function buildUnscheduledDrivers(params: {
     .filter((row) => !scheduledOrAdded.has(row.roster_member_id))
     .filter((row) => {
       const status = (row.employment_status ?? "").toLowerCase();
-      if (status && status !== "active") return false;
+      if (status && status !== "active" && status !== "candidate") return false;
 
       const worker = `${row.worker_type ?? ""} ${row.full_name ?? ""}`.toLowerCase();
       return !worker.includes("helper") && !worker.includes("trainee");
@@ -422,7 +422,7 @@ export function findUnscheduledDriverCandidates(params: {
     .filter((row) => !scheduledOrAdded.has(row.roster_member_id))
     .filter((row) => {
       const status = (row.employment_status ?? "").toLowerCase();
-      if (status && status !== "active") return false;
+      if (status && status !== "active" && status !== "candidate") return false;
 
       const worker = `${row.worker_type ?? ""} ${row.full_name ?? ""}`.toLowerCase();
       return !worker.includes("helper") && !worker.includes("trainee");

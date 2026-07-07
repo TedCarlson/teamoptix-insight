@@ -237,7 +237,7 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
             <p className="eyebrow">Hiring</p>
             <h2 className="app-card__title">Add candidate</h2>
             <p className="app-card__body">
-              Minimum save requires name, email, phone, and driver license details.
+              Minimum save requires a name. Email, phone, license, and operations details can be completed later.
             </p>
           </div>
 
@@ -256,11 +256,11 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
 
         <form onSubmit={handleSubmit} style={{ marginTop: 16, display: "grid", gap: 14 }}>
           <section style={bucketStyle}>
-            <p className="workspace-eyebrow" style={{ margin: 0 }}>Required to save</p>
+            <p className="workspace-eyebrow" style={{ margin: 0 }}>Candidate identity</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
               <Field label="Full name" value={fullName} onChange={setFullName} required />
-              <Field label="Email" value={email} onChange={setEmail} type="email" required />
-              <Field label="Phone" value={phone} onChange={setPhone} required />
+              <Field label="Email" value={email} onChange={setEmail} type="email" />
+              <Field label="Phone" value={phone} onChange={setPhone} />
               <Field label="DOB" value={dateOfBirth} onChange={setDateOfBirth} type="date" />
               <Field label="Role / worker type" value={workerType} onChange={setWorkerType} />
               <Field label="Market / terminal code" value={marketCode} onChange={setMarketCode} />
@@ -270,10 +270,10 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
           <section style={bucketStyle}>
             <p className="workspace-eyebrow" style={{ margin: 0 }}>Driver license · Required</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
-              <Field label="Driver's License" value={licenseNumber} onChange={setLicenseNumber} required />
-              <Field label="Issuing State" value={issuingState} onChange={setIssuingState} required />
-              <Field label="Issue Date" value={licenseIssueDate} onChange={setLicenseIssueDate} type="date" required />
-              <Field label="Expiration Date" value={licenseExpirationDate} onChange={setLicenseExpirationDate} type="date" required />
+              <Field label="Driver's License" value={licenseNumber} onChange={setLicenseNumber} />
+              <Field label="Issuing State" value={issuingState} onChange={setIssuingState} />
+              <Field label="Issue Date" value={licenseIssueDate} onChange={setLicenseIssueDate} type="date" />
+              <Field label="Expiration Date" value={licenseExpirationDate} onChange={setLicenseExpirationDate} type="date" />
             </div>
           </section>
 

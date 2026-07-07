@@ -8,7 +8,7 @@ import type {
 } from "../lib/dispatchSupport";
 import { cleanRouteKey, compactButton, selectedButton } from "../lib/dispatchSupport";
 
-type DispatchActionKind = "event" | "add_driver" | "add_route";
+type DispatchActionKind = "event" | "add_driver" | "add_walk_on" | "add_route";
 
 type DispatchActionOption = {
   kind: DispatchActionKind;
@@ -16,7 +16,7 @@ type DispatchActionOption = {
   event_label: string;
   event_category: string;
   requiresNote: boolean;
-  targetMode: "none" | "scheduled_person" | "unscheduled_driver" | "route" | "active_route";
+  targetMode: "none" | "scheduled_person" | "unscheduled_driver" | "walk_on_name" | "route" | "active_route";
 };
 
 type DispatchEventOverlayProps = {
@@ -38,6 +38,7 @@ type DispatchEventOverlayProps = {
     route_key?: string | null;
     route_label?: string | null;
     event_payload?: Record<string, unknown>;
+    walk_on_full_name?: string | null;
   }) => Promise<void>;
 };
 
@@ -48,6 +49,15 @@ const addDriverAction: DispatchActionOption = {
   event_category: "WORKFORCE",
   requiresNote: false,
   targetMode: "unscheduled_driver",
+};
+
+const addWalkOnAction: DispatchActionOption = {
+  kind: "add_walk_on",
+  event_code: "ADD_WALK_ON_DRIVER",
+  event_label: "Walk-On",
+  event_category: "WORKFORCE",
+  requiresNote: false,
+  targetMode: "walk_on_name",
 };
 
 const addRouteAction: DispatchActionOption = {
@@ -114,6 +124,7 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
   const workforceActions = useMemo(
     () => [
       addDriverAction,
+      addWalkOnAction,
       ...manualEventActions.filter((action) => action.event_category === "WORKFORCE"),
     ],
     [manualEventActions]
@@ -152,6 +163,7 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
 
   const [eventCode, setEventCode] = useState("");
   const [selectedTargetId, setSelectedTargetId] = useState("");
+  const [walkOnName, setWalkOnName] = useState("");
   const [note, setNote] = useState("");
 
   const selected = useMemo(() => {
@@ -175,8 +187,10 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
     e.preventDefault();
     if (!selected) return;
 
-    const needsTarget = selected.targetMode !== "none";
+    const needsTarget =
+      selected.targetMode !== "none" && selected.targetMode !== "walk_on_name";
     if (needsTarget && !selectedTargetId) return;
+    if (selected.targetMode === "walk_on_name" && !walkOnName.trim()) return;
     if (selected.requiresNote && !note.trim()) return;
 
     const selectedPerson =
@@ -202,8 +216,15 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
       person_name: selectedPerson?.full_name ?? null,
       route_key: selectedRoute?.route_key ?? null,
       route_label: selectedRoute ? routeDropdownLabel(selectedRoute) : null,
+      walk_on_full_name:
+        selected.targetMode === "walk_on_name" ? walkOnName.trim() : null,
       event_payload:
-        selected.kind === "add_route" && selectedRoute
+        selected.kind === "add_walk_on"
+          ? {
+              source: "dispatch_action_overlay",
+              assignment_source: "WALK_ON",
+            }
+          : selected.kind === "add_route" && selectedRoute
           ? {
               route_name: selectedRoute.route_name,
               current_wa_num: selectedRoute.current_wa_num,
@@ -233,6 +254,7 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
 
     setEventCode("");
     setSelectedTargetId("");
+    setWalkOnName("");
     setNote("");
   }
 
@@ -252,6 +274,7 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
               onClick={() => {
                 setEventCode(option.event_code);
                 setSelectedTargetId("");
+                setWalkOnName("");
               }}
             >
               {option.event_label}
@@ -323,7 +346,21 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
               {selected?.targetMode === "none" ? "(not required)" : "(required)"}
             </label>
 
-            {selected?.targetMode === "none" ? (
+            {selected?.targetMode === "walk_on_name" ? (
+              <input
+                value={walkOnName}
+                onChange={(e) => setWalkOnName(e.target.value)}
+                required
+                placeholder="Enter walk-on driver full name"
+                style={{
+                  height: 42,
+                  padding: "0 12px",
+                  borderRadius: 12,
+                  border: "1px solid #d6dfeb",
+                  background: "#fff",
+                }}
+              />
+            ) : selected?.targetMode === "none" ? (
               <div
                 style={{
                   minHeight: 42,
@@ -382,6 +419,8 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
             <p className="app-card__body">
               {selected.targetMode === "scheduled_person"
                 ? "This action links to scheduled workforce. "
+                : selected.targetMode === "walk_on_name"
+                  ? "This action creates a Candidate roster record for a walk-on driver verified by the operator. "
                 : selected.targetMode === "unscheduled_driver"
                   ? "This action adds a non-scheduled driver into today's dispatch pool. "
                   : selected.targetMode === "route"

@@ -335,8 +335,14 @@ export async function POST(
     const phone = cleanText(body.phone);
 
     if (!fullName) return NextResponse.json({ error: "Candidate name is required." }, { status: 400 });
-    if (!email) return NextResponse.json({ error: "Candidate email is required." }, { status: 400 });
-    if (!phone) return NextResponse.json({ error: "Candidate phone is required." }, { status: 400 });
+
+    const inviteAction = cleanText(body.invite_action) ?? "SAVE_ONLY";
+    if (inviteAction === "SEND_INVITE" && !email) {
+      return NextResponse.json(
+        { error: "Candidate email is required before sending an invite." },
+        { status: 400 }
+      );
+    }
 
     const { data, error } = await supabase.rpc("create_company_candidate_from_overlay", {
       p_company_slug: slug,
@@ -363,7 +369,7 @@ export async function POST(
       p_dot_expiration_date: dateOrNull(body.dot_expiration_date),
       p_qual_cert_expiration_date: dateOrNull(body.qual_cert_expiration_date),
       p_daily_pay_rate: numericOrDefault(body.daily_pay_rate, 130),
-      p_invite_action: cleanText(body.invite_action) ?? "SAVE_ONLY",
+      p_invite_action: inviteAction,
     });
 
     if (error) {
