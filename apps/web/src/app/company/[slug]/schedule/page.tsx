@@ -1,5 +1,5 @@
-import GeneratedSchedulePage from "@/features/schedule/pages/GeneratedSchedulePage";
+import ScheduleCalendarPage from "@/features/schedule/pages/ScheduleCalendarPage";
 
 export default function Page() {
-  return <GeneratedSchedulePage />;
+  return <ScheduleCalendarPage />;
 }
