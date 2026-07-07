@@ -90,7 +90,14 @@ export default function PersonCoreSection({ person, saving, onSave }: Props) {
   }
 
   async function save() {
-    await onSave(draft);
+    const original = buildDraft(person);
+    const dirty = Object.fromEntries(
+      Object.entries(draft).filter(
+        ([key, value]) => value !== original[key as keyof CoreDraft]
+      )
+    ) as Partial<CoreDraft>;
+
+    await onSave(dirty as CoreDraft);
     setEditing(false);
   }
 

@@ -29,10 +29,13 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     }
 
     const { data: roster, error: rosterError } = await supabase
-      .from("company_roster_view")
-      .select("*")
+      .schema("core")
+      .from("company_roster")
+      .select(
+        "id, company_id, profile_id, person_id, full_name, email, phone, worker_type, job_title, employment_status, market_code, hire_date, separation_date, reports_to_roster_id, invite_status, compliance_summary, notes"
+      )
       .eq("company_id", company.id)
-      .eq("roster_member_id", rosterId)
+      .eq("id", rosterId)
       .single();
 
     if (rosterError || !roster) {
@@ -43,8 +46,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     }
 
     const { data: operations } = await supabase
-      .schema("core")
-      .from("company_roster_operations_fact")
+      .from("company_roster_operations_fact_v")
       .select("*")
       .eq("roster_id", rosterId)
       .maybeSingle();
@@ -78,7 +80,22 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     return NextResponse.json(
       {
         roster: {
-          ...roster,
+          roster_member_id: roster.id,
+          company_id: roster.company_id,
+          profile_id: roster.profile_id,
+          person_id: roster.person_id,
+          full_name: roster.full_name,
+          email: roster.email,
+          phone: roster.phone,
+          worker_type: roster.worker_type,
+          job_title: roster.job_title,
+          employment_status: roster.employment_status,
+          market_code: roster.market_code,
+          reports_to_name: null,
+          hire_date: roster.hire_date,
+          separation_date: roster.separation_date,
+          invite_status: roster.invite_status,
+          compliance_summary: roster.compliance_summary,
           notes: roster.notes ?? null,
 
           scanner_serial: operations?.scanner_serial ?? null,

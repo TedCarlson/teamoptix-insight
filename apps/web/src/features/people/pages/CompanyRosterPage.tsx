@@ -32,7 +32,19 @@ type ApiRosterRow = {
   employment_status: "Active" | "Candidate" | "Trainee" | "Former" | null;
   market_code: string | null;
   reports_to_name: string | null;
+  notes?: string | null;
   hire_date: string | null;
+  separation_date?: string | null;
+  date_of_birth?: string | null;
+  address_line_1?: string | null;
+  address_line_2?: string | null;
+  city?: string | null;
+  state_region?: string | null;
+  postal_code?: string | null;
+  license_number?: string | null;
+  issuing_state?: string | null;
+  license_issue_date?: string | null;
+  license_expiration_date?: string | null;
   invite_status: string | null;
   compliance_summary: string | null;
   fx_id?: string | null;
@@ -63,7 +75,19 @@ function normalizeRosterRow(row: ApiRosterRow): RosterRow {
     employment_status: row.employment_status ?? "Candidate",
     market_code: row.market_code ?? "—",
     reports_to_name: row.reports_to_name ?? "—",
+    notes: row.notes ?? null,
     hire_date: row.hire_date ?? "—",
+    separation_date: row.separation_date ?? null,
+    date_of_birth: row.date_of_birth ?? null,
+    address_line_1: row.address_line_1 ?? null,
+    address_line_2: row.address_line_2 ?? null,
+    city: row.city ?? null,
+    state_region: row.state_region ?? null,
+    postal_code: row.postal_code ?? null,
+    license_number: row.license_number ?? null,
+    issuing_state: row.issuing_state ?? null,
+    license_issue_date: row.license_issue_date ?? null,
+    license_expiration_date: row.license_expiration_date ?? null,
     invite_status: row.invite_status ?? "Not Invited",
     compliance_summary: row.compliance_summary ?? "Missing",
     fx_id: row.fx_id ?? null,
@@ -186,6 +210,34 @@ export default function CompanyRosterPage() {
     });
   }
 
+  async function hydrateRosterPerson(rosterId: string) {
+    const res = await fetch(`/api/company/${slug}/people/roster/${rosterId}`, {
+      credentials: "include",
+      cache: "no-store",
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || !data?.roster) {
+      setError(data?.error ?? "Failed to hydrate person record.");
+      return null;
+    }
+
+    const hydrated = normalizeRosterRow(data.roster as ApiRosterRow);
+
+    setRows((current) =>
+      current.map((row) =>
+        row.roster_member_id === hydrated.roster_member_id ? hydrated : row
+      )
+    );
+
+    setManagedPerson((current) =>
+      current?.roster_member_id === hydrated.roster_member_id ? hydrated : current
+    );
+
+    return hydrated;
+  }
+
   const filteredRows = useMemo(() => {
     const byTab =
       tab === "all"
@@ -231,6 +283,10 @@ export default function CompanyRosterPage() {
     (r) => r.compliance_summary !== "Compliant"
   ).length;
 
+  async function hydrateManagedPerson(row: RosterRow) {
+    await hydrateRosterPerson(row.roster_member_id);
+  }
+
   function openWorkflowDrawer(row: RosterRow) {
     if (row.employment_status === "Candidate") {
       setCandidateWorkflowPerson(row);
@@ -240,6 +296,7 @@ export default function CompanyRosterPage() {
 
     setManagedPerson(row);
     setCandidateWorkflowPerson(null);
+    void hydrateManagedPerson(row);
   }
 
   async function loadTimeline(rosterId: string) {
@@ -308,15 +365,7 @@ export default function CompanyRosterPage() {
         return;
       }
 
-      if (data?.roster) {
-        const updated = normalizeRosterRow(data.roster as ApiRosterRow);
-        setRows((current) =>
-          current.map((row) =>
-            row.roster_member_id === updated.roster_member_id ? updated : row
-          )
-        );
-        setManagedPerson(updated);
-      }
+      await hydrateRosterPerson(managedPerson.roster_member_id);
     } catch {
       setError("Failed to save person details.");
     } finally {
@@ -358,57 +407,7 @@ export default function CompanyRosterPage() {
         return;
       }
 
-      setRows((current) =>
-        current.map((row) =>
-          row.roster_member_id === managedPerson.roster_member_id
-            ? {
-                ...row,
-                fx_id: data?.roster?.fx_id ?? draft.fx_id,
-                dswid: data?.roster?.dswid ?? draft.dswid,
-                scanner_serial:
-                  data?.roster?.scanner_serial ?? draft.scanner_serial,
-                dot_expiration_date:
-                  data?.roster?.dot_expiration_date ??
-                  draft.dot_expiration_date,
-                qual_cert_expiration_date:
-                  data?.roster?.qual_cert_expiration_date ??
-                  draft.qual_cert_expiration_date,
-                daily_pay_effective_date:
-                  data?.roster?.daily_pay_effective_date ??
-                  draft.daily_pay_effective_date,
-                daily_pay_rate:
-                data?.roster?.daily_pay_rate ?? draft.daily_pay_rate,
-              fuel_card: data?.roster?.fuel_card ?? draft.fuel_card,
-              pin_id_no: data?.roster?.pin_id_no ?? draft.pin_id_no,
-              }
-            : row
-        )
-      );
-
-      await refreshRoster();
-
-      setManagedPerson((current) =>
-        current
-          ? {
-              ...current,
-              fx_id: data?.roster?.fx_id ?? draft.fx_id,
-              dswid: data?.roster?.dswid ?? draft.dswid,
-              scanner_serial:
-                data?.roster?.scanner_serial ?? draft.scanner_serial,
-              dot_expiration_date:
-                data?.roster?.dot_expiration_date ??
-                draft.dot_expiration_date,
-              qual_cert_expiration_date:
-                data?.roster?.qual_cert_expiration_date ??
-                draft.qual_cert_expiration_date,
-              daily_pay_effective_date:
-                data?.roster?.daily_pay_effective_date ??
-                draft.daily_pay_effective_date,
-              fuel_card: data?.roster?.fuel_card ?? draft.fuel_card,
-              pin_id_no: data?.roster?.pin_id_no ?? draft.pin_id_no,
-            }
-          : current
-      );
+      await hydrateRosterPerson(managedPerson.roster_member_id);
     } catch {
       setError("Failed to save operations.");
     }
@@ -525,16 +524,9 @@ export default function CompanyRosterPage() {
         )
       );
 
-      await refreshRoster();
-
-      const updatedManagedPerson = managedPerson
-        ? {
-            ...managedPerson,
-            employment_status: nextStatus,
-          }
-        : null;
-
-      setManagedPerson(updatedManagedPerson);
+      const updatedManagedPerson = await hydrateRosterPerson(
+        managedPerson.roster_member_id
+      );
 
       if (nextStatus === "Trainee" && updatedManagedPerson) {
         setTraineePayEffectiveDate(draft.effective_date);

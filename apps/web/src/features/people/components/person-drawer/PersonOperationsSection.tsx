@@ -55,7 +55,14 @@ export default function PersonOperationsSection({
   }
 
   async function save() {
-    await onSave(draft);
+    const original = buildDraft(person);
+    const dirty = Object.fromEntries(
+      Object.entries(draft).filter(
+        ([key, value]) => value !== original[key as keyof OperationsDraft]
+      )
+    ) as Partial<OperationsDraft>;
+
+    await onSave(dirty as OperationsDraft);
     setEditing(false);
   }
 

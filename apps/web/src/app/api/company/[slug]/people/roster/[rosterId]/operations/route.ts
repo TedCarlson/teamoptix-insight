@@ -25,18 +25,46 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     const body = await req.json().catch(() => ({}));
     const supabase = await getSupabaseServerClient();
 
+    const { data: currentOps, error: currentOpsError } = await supabase
+      .from("company_roster_operations_fact_v")
+      .select("*")
+      .eq("roster_id", rosterId)
+      .maybeSingle();
+
+    if (currentOpsError) {
+      return NextResponse.json(
+        {
+          error: "Failed to load current operations record.",
+          detail: currentOpsError.message,
+        },
+        { status: 500 }
+      );
+    }
+
+    const has = (key: string) => Object.prototype.hasOwnProperty.call(body, key);
+    const pickText = (key: string, currentKey = key) =>
+      has(key) ? textOrNull(body[key]) : (currentOps?.[currentKey] ?? null);
+    const pickDate = (key: string, currentKey = key) =>
+      has(key) ? dateOrNull(body[key]) : (currentOps?.[currentKey] ?? null);
+    const pickNumber = (key: string, currentKey = key) =>
+      has(key)
+        ? body[key] === "" || body[key] == null
+          ? null
+          : Number(body[key])
+        : (currentOps?.[currentKey] ?? null);
+
     const { data, error } = await supabase.rpc("update_company_roster_operations", {
       p_company_slug: slug,
       p_roster_id: rosterId,
-      p_fx_id: textOrNull(body.fx_id),
-      p_dswid: textOrNull(body.dswid),
-      p_scanner_serial: textOrNull(body.scanner_serial),
-      p_dot_exp: dateOrNull(body.dot_expiration_date),
-      p_qual_cert_exp: dateOrNull(body.qual_cert_expiration_date),
-      p_daily_pay_effective_date: dateOrNull(body.daily_pay_effective_date),
-      p_daily_pay_rate: body.daily_pay_rate === "" || body.daily_pay_rate == null ? null : Number(body.daily_pay_rate),
-      p_fuel_card: textOrNull(body.fuel_card),
-      p_pin_id_no: textOrNull(body.pin_id_no),
+      p_fx_id: pickText("fx_id"),
+      p_dswid: pickText("dswid"),
+      p_scanner_serial: pickText("scanner_serial"),
+      p_dot_exp: pickDate("dot_expiration_date", "dot_exp"),
+      p_qual_cert_exp: pickDate("qual_cert_expiration_date", "qual_cert_exp"),
+      p_daily_pay_effective_date: pickDate("daily_pay_effective_date"),
+      p_daily_pay_rate: pickNumber("daily_pay_rate"),
+      p_fuel_card: pickText("fuel_card"),
+      p_pin_id_no: pickText("pin_id_no"),
     });
 
     if (error) {

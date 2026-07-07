@@ -97,6 +97,8 @@ export async function GET(
 
         return {
           ...row,
+          fx_id: ops?.fx_id ?? row.fx_id ?? null,
+          dswid: ops?.dswid ?? row.dswid ?? null,
           scanner_serial: ops?.scanner_serial ?? null,
           dot_expiration_date: ops?.dot_exp ?? null,
           qual_cert_expiration_date: ops?.qual_cert_exp ?? null,
