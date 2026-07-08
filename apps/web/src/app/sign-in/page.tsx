@@ -93,7 +93,6 @@ function SignInInner() {
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
-        options: captchaToken ? { captchaToken } : undefined,
       });
 
       if (error) {
@@ -256,7 +255,7 @@ function SignInInner() {
               <button
                 className="button button-primary"
                 type="submit"
-                disabled={submitting || !email || !password || (!!turnstileSiteKey && !captchaToken)}
+                disabled={submitting || !email || !password}
               >
                 {submitting ? "Signing in..." : "Sign in"}
               </button>
