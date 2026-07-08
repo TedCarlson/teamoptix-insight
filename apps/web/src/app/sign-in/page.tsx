@@ -23,7 +23,11 @@ function SignInInner() {
   const turnstileRef = useRef<HTMLDivElement | null>(null);
   const turnstileWidgetId = useRef<string | null>(null);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
-  const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
+  const turnstileEnabled =
+    process.env.NEXT_PUBLIC_TURNSTILE_ENABLED === "true";
+  const turnstileSiteKey = turnstileEnabled
+    ? process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? ""
+    : "";
 
   useEffect(() => {
     if (invitedEmail) {

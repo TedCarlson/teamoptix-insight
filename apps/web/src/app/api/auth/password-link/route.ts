@@ -27,24 +27,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Email is required." }, { status: 400 });
     }
 
-    if (!captchaToken) {
-      return NextResponse.json(
-        { error: "Security verification is required." },
-        { status: 400 }
-      );
-    }
+    const turnstileRequired = process.env.TURNSTILE_REQUIRED === "true";
 
-    const remoteIp =
-      req.headers.get("cf-connecting-ip") ??
-      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+    if (turnstileRequired) {
+      if (!captchaToken) {
+        return NextResponse.json(
+          { error: "Security verification is required." },
+          { status: 400 }
+        );
+      }
 
-    const verified = await verifyTurnstile(captchaToken, remoteIp);
+      const remoteIp =
+        req.headers.get("cf-connecting-ip") ??
+        req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
 
-    if (!verified) {
-      return NextResponse.json(
-        { error: "Security verification failed. Please try again." },
-        { status: 403 }
-      );
+      const verified = await verifyTurnstile(captchaToken, remoteIp);
+
+      if (!verified) {
+        return NextResponse.json(
+          { error: "Security verification failed. Please try again." },
+          { status: 403 }
+        );
+      }
     }
 
     const appBaseUrl = requireEnv("APP_BASE_URL").replace(/\/$/, "");
