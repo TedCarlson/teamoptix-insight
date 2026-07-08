@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { verifyTurnstile } from "@/lib/security/turnstile";
 
 export const runtime = "nodejs";
 
@@ -24,6 +25,32 @@ function escapeHtml(value: string) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+
+    const captchaToken = clean(body.captchaToken);
+
+    const turnstileRequired = process.env.TURNSTILE_REQUIRED === "true";
+
+    if (turnstileRequired) {
+      if (!captchaToken) {
+        return NextResponse.json(
+          { error: "Security verification is required." },
+          { status: 400 }
+        );
+      }
+
+      const remoteIp =
+        req.headers.get("cf-connecting-ip") ??
+        req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+
+      const verified = await verifyTurnstile(captchaToken, remoteIp);
+
+      if (!verified) {
+        return NextResponse.json(
+          { error: "Security verification failed. Please try again." },
+          { status: 403 }
+        );
+      }
+    }
 
     const payload = {
       companyName: clean(body.companyName),

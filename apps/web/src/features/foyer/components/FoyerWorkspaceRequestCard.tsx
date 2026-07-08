@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function FoyerWorkspaceRequestCard({
   buttonLabel = "Start with Insight",
@@ -10,6 +10,54 @@ export default function FoyerWorkspaceRequestCard({
   const [requestOpen, setRequestOpen] = useState(false);
   const [requestStatus, setRequestStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [requestError, setRequestError] = useState("");
+  const turnstileRef = useRef<HTMLDivElement | null>(null);
+  const turnstileWidgetId = useRef<string | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const turnstileEnabled = process.env.NEXT_PUBLIC_TURNSTILE_ENABLED === "true";
+  const turnstileSiteKey = turnstileEnabled
+    ? process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? ""
+    : "";
+
+  useEffect(() => {
+    if (!requestOpen || !turnstileSiteKey || !turnstileRef.current) return;
+
+    function renderTurnstile() {
+      const turnstile = window.turnstile;
+      if (!turnstile || !turnstileRef.current || turnstileWidgetId.current) return;
+
+      turnstileWidgetId.current = turnstile.render(turnstileRef.current, {
+        sitekey: turnstileSiteKey,
+        callback: (token: string) => setCaptchaToken(token),
+        "expired-callback": () => setCaptchaToken(null),
+        "error-callback": () => setCaptchaToken(null),
+      });
+    }
+
+    if (window.turnstile) {
+      renderTurnstile();
+      return;
+    }
+
+    const existingScript = document.querySelector<HTMLScriptElement>(
+      'script[src="https://challenges.cloudflare.com/turnstile/v0/api.js"]'
+    );
+
+    if (existingScript) {
+      existingScript.addEventListener("load", renderTurnstile, { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+    script.async = true;
+    script.defer = true;
+    script.addEventListener("load", renderTurnstile, { once: true });
+    document.body.appendChild(script);
+
+    return () => {
+      script.removeEventListener("load", renderTurnstile);
+    };
+  }, [requestOpen, turnstileSiteKey]);
 
   async function handleWorkspaceRequestSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -34,6 +82,7 @@ export default function FoyerWorkspaceRequestCard({
         currentSystems: String(formData.get("currentSystems") ?? ""),
         operation: String(formData.get("operation") ?? ""),
         priorities: String(formData.get("priorities") ?? ""),
+        captchaToken,
       }),
     });
 
@@ -148,6 +197,14 @@ export default function FoyerWorkspaceRequestCard({
                 />
               </label>
 
+              {turnstileSiteKey ? (
+                <div
+                  ref={turnstileRef}
+                  className="signin-bridge__captcha"
+                  aria-label="Security verification"
+                />
+              ) : null}
+
               <div className="foyer-request-overlay__footer">
                 <p>
                   We&apos;ll use this to prepare a focused introduction around your
@@ -163,7 +220,7 @@ export default function FoyerWorkspaceRequestCard({
                   <button
                     type="submit"
                     className="button button-primary"
-                    disabled={requestStatus === "sending"}
+                    disabled={requestStatus === "sending" || (!!turnstileSiteKey && !captchaToken)}
                   >
                     {requestStatus === "sending" ? "Sending..." : "Send Workspace Request"}
                   </button>
