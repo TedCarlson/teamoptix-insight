@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
@@ -20,12 +20,57 @@ function SignInInner() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(urlError || null);
   const [unknownAccountEmail, setUnknownAccountEmail] = useState<string | null>(null);
+  const turnstileRef = useRef<HTMLDivElement | null>(null);
+  const turnstileWidgetId = useRef<string | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
 
   useEffect(() => {
     if (invitedEmail) {
       setEmail(invitedEmail);
     }
   }, [invitedEmail]);
+
+  useEffect(() => {
+    if (!turnstileSiteKey || !turnstileRef.current) return;
+
+    function renderTurnstile() {
+      const turnstile = window.turnstile;
+      if (!turnstile || !turnstileRef.current || turnstileWidgetId.current) return;
+
+      turnstileWidgetId.current = turnstile.render(turnstileRef.current, {
+        sitekey: turnstileSiteKey,
+        callback: (token: string) => setCaptchaToken(token),
+        "expired-callback": () => setCaptchaToken(null),
+        "error-callback": () => setCaptchaToken(null),
+      });
+    }
+
+    if (window.turnstile) {
+      renderTurnstile();
+      return;
+    }
+
+    const existingScript = document.querySelector<HTMLScriptElement>(
+      'script[src="https://challenges.cloudflare.com/turnstile/v0/api.js"]'
+    );
+
+    if (existingScript) {
+      existingScript.addEventListener("load", renderTurnstile, { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+    script.async = true;
+    script.defer = true;
+    script.addEventListener("load", renderTurnstile, { once: true });
+    document.body.appendChild(script);
+
+    return () => {
+      script.removeEventListener("load", renderTurnstile);
+    };
+  }, [turnstileSiteKey]);
 
   const nextHref = useMemo(() => {
     return returnTo || "/profile";
@@ -44,10 +89,13 @@ function SignInInner() {
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
+        options: captchaToken ? { captchaToken } : undefined,
       });
 
       if (error) {
         setError(error.message);
+        window.turnstile?.reset(turnstileWidgetId.current ?? undefined);
+        setCaptchaToken(null);
         return;
       }
 
@@ -76,6 +124,7 @@ function SignInInner() {
         body: JSON.stringify({
           email,
           returnTo: nextHref,
+          captchaToken,
         }),
       });
 
@@ -83,6 +132,8 @@ function SignInInner() {
 
       if (!res.ok) {
         setError(data?.error ?? fallbackError);
+        window.turnstile?.reset(turnstileWidgetId.current ?? undefined);
+        setCaptchaToken(null);
         if (data?.redirectTo) {
           setUnknownAccountEmail(email);
           window.setTimeout(() => router.push(data.redirectTo), 3200);
@@ -91,7 +142,11 @@ function SignInInner() {
       }
 
       setMessage(successMessage);
+      window.turnstile?.reset(turnstileWidgetId.current ?? undefined);
+      setCaptchaToken(null);
     } catch {
+      window.turnstile?.reset(turnstileWidgetId.current ?? undefined);
+      setCaptchaToken(null);
       setError(fallbackError);
     } finally {
       setSubmitting(false);
@@ -167,6 +222,14 @@ function SignInInner() {
               style={inputStyle}
             />
 
+            {turnstileSiteKey ? (
+              <div
+                ref={turnstileRef}
+                className="signin-bridge__captcha"
+                aria-label="Security verification"
+              />
+            ) : null}
+
             {unknownAccountEmail ? (
               <div className="signin-bridge__notice" role="status">
                 <strong>We could not find an Insight account for {unknownAccountEmail}.</strong>
@@ -189,7 +252,7 @@ function SignInInner() {
               <button
                 className="button button-primary"
                 type="submit"
-                disabled={submitting || !email || !password}
+                disabled={submitting || !email || !password || (!!turnstileSiteKey && !captchaToken)}
               >
                 {submitting ? "Signing in..." : "Sign in"}
               </button>
@@ -203,7 +266,7 @@ function SignInInner() {
                     "Unable to send magic link."
                   )
                 }
-                disabled={submitting || !email}
+                disabled={submitting || !email || (!!turnstileSiteKey && !captchaToken)}
               >
                 Send magic link
               </button>
@@ -217,7 +280,7 @@ function SignInInner() {
                     "Unable to send password setup link."
                   )
                 }
-                disabled={submitting || !email}
+                disabled={submitting || !email || (!!turnstileSiteKey && !captchaToken)}
               >
                 Set or reset password
               </button>
@@ -251,6 +314,23 @@ export default function SignInPage() {
       <SignInInner />
     </Suspense>
   );
+}
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (
+        container: HTMLElement,
+        options: {
+          sitekey: string;
+          callback: (token: string) => void;
+          "expired-callback": () => void;
+          "error-callback": () => void;
+        }
+      ) => string;
+      reset: (widgetId?: string) => void;
+    };
+  }
 }
 
 const inputStyle: React.CSSProperties = {

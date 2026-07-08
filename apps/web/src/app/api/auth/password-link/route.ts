@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { verifyTurnstile } from "@/lib/security/turnstile";
 
 export const runtime = "nodejs";
 
@@ -19,9 +20,31 @@ export async function POST(req: Request) {
       typeof body?.returnTo === "string" && body.returnTo.startsWith("/")
         ? body.returnTo
         : "/profile";
+    const captchaToken =
+      typeof body?.captchaToken === "string" ? body.captchaToken.trim() : "";
 
     if (!email) {
       return NextResponse.json({ error: "Email is required." }, { status: 400 });
+    }
+
+    if (!captchaToken) {
+      return NextResponse.json(
+        { error: "Security verification is required." },
+        { status: 400 }
+      );
+    }
+
+    const remoteIp =
+      req.headers.get("cf-connecting-ip") ??
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+
+    const verified = await verifyTurnstile(captchaToken, remoteIp);
+
+    if (!verified) {
+      return NextResponse.json(
+        { error: "Security verification failed. Please try again." },
+        { status: 403 }
+      );
     }
 
     const appBaseUrl = requireEnv("APP_BASE_URL").replace(/\/$/, "");
