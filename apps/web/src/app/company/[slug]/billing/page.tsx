@@ -35,6 +35,15 @@ export default async function CompanyBillingPage(props: PageProps) {
     .maybeSingle();
 
 
+  const { data: operatorTiers } = await supabase
+    .schema("commercial")
+    .from("operator_tier")
+    .select("*")
+    .eq("active", true)
+    .order("sort_order");
+
+
+
 
 
 
@@ -66,6 +75,7 @@ export default async function CompanyBillingPage(props: PageProps) {
             <CommercialProfileForm
               billingEmail={company.contact_email ?? ""}
               profile={commercialProfile}
+              tiers={operatorTiers ?? []}
             />
           </section>
 

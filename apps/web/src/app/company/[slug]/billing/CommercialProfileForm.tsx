@@ -3,48 +3,26 @@
 import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 
-const TIERS = [
-  {
-    key: "",
-    label: "Select operator tier...",
-    implementation: "",
-    weekly: "",
-  },
-  {
-    key: "operator_1",
-    label: "Operator 1 (1–10 Routes)",
-    implementation: "$118",
-    weekly: "$59/week",
-  },
-  {
-    key: "operator_2",
-    label: "Operator 2 (11–15 Routes)",
-    implementation: "$198",
-    weekly: "$99/week",
-  },
-  {
-    key: "operator_3",
-    label: "Operator 3 (16–25 Routes)",
-    implementation: "$398",
-    weekly: "$199/week",
-  },
-  {
-    key: "operator_4",
-    label: "Operator 4 (26–50 Routes)",
-    implementation: "$698",
-    weekly: "$349/week",
-  },
-  {
-    key: "operator_5",
-    label: "Operator 5 (51+ Routes)",
-    implementation: "Custom",
-    weekly: "Custom",
-  },
-];
+
+function tierOptions(tiers: any) {
+  const rows = Array.isArray(tiers) ? tiers : [];
+
+  return [
+    {
+      tier_key: "",
+      display_name: "Select operator tier...",
+      implementation_fee: null,
+      weekly_subscription: null,
+    },
+    ...rows,
+  ];
+}
+
 
 export default function CommercialProfileForm(props: {
   billingEmail: string;
   profile: any;
+  tiers: any[];
 }) {
   const params = useParams<{ slug: string }>();
   const slug = String(params.slug);
@@ -55,8 +33,10 @@ export default function CommercialProfileForm(props: {
   const [saving, setSaving] = useState(false);
 
   const selected = useMemo(
-    () => TIERS.find((x) => x.key === tier) ?? TIERS[0],
-    [tier]
+    () =>
+      tierOptions(props.tiers).find((x: any) => x.tier_key === tier) ??
+      tierOptions(props.tiers)[0],
+    [props.tiers, tier]
   );
 
 
@@ -65,14 +45,10 @@ export default function CommercialProfileForm(props: {
       setSaving(true);
 
       const implementation =
-        selected.implementation && selected.implementation !== "Custom"
-          ? Number(selected.implementation.replace(/[$,]/g, ""))
-          : null;
+        selected.implementation_fee == null ? null : Number(selected.implementation_fee);
 
       const weekly =
-        selected.weekly && selected.weekly !== "Custom"
-          ? Number(selected.weekly.replace(/[$,/week]/g, ""))
-          : null;
+        selected.weekly_subscription == null ? null : Number(selected.weekly_subscription);
 
       const res = await fetch(`/api/company/${slug}/commercial/profile`, {
         method: "PATCH",
@@ -117,9 +93,9 @@ export default function CommercialProfileForm(props: {
                 onChange={(e) => setTier(e.target.value)}
                 style={inputStyle}
               >
-                {TIERS.map((tier) => (
-                  <option key={tier.key} value={tier.key}>
-                    {tier.label}
+                {tierOptions(props.tiers).map((tier: any) => (
+                  <option key={tier.tier_key} value={tier.tier_key}>
+                    {tier.display_name}
                   </option>
                 ))}
               </select>
@@ -128,12 +104,12 @@ export default function CommercialProfileForm(props: {
 
           <Row
             label="Implementation Fee"
-            value={selected.implementation || "Pending"}
+            value={formatCurrency(selected.implementation_fee)}
           />
 
           <Row
             label="Weekly Subscription"
-            value={selected.weekly || "Pending"}
+            value={formatWeekly(selected.weekly_subscription)}
           />
 
           <Row
@@ -190,6 +166,16 @@ export default function CommercialProfileForm(props: {
       </div>
     </>
   );
+}
+
+function formatCurrency(value: unknown) {
+  if (value == null || value === "") return "Pending";
+  return `$${Number(value).toFixed(0)}`;
+}
+
+function formatWeekly(value: unknown) {
+  if (value == null || value === "") return "Pending";
+  return `$${Number(value).toFixed(0)}/week`;
 }
 
 function Row(props: { label: string; value: React.ReactNode }) {
