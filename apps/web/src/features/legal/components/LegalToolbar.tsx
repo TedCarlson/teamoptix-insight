@@ -1,46 +1,80 @@
+import Link from "next/link";
 import styles from "./legal-workspace.module.css";
 
 type Props = {
   document?: unknown;
   draftMode: boolean;
+  exitHref: string;
   onToggleDraft: () => void;
+  onOpenReview: () => void;
 };
 
-function documentValue(document: unknown, key: "title" | "status" | "version") {
+function documentValue(document: unknown, key: string) {
   if (!document || typeof document !== "object") return null;
-
   const value = (document as Record<string, unknown>)[key];
-  return typeof value === "string" || typeof value === "number" ? value : null;
+  return typeof value === "string" || typeof value === "number" ? String(value) : null;
+}
+
+function documentVersion(document: unknown) {
+  const currentVersion = documentValue(document, "current_version");
+  if (currentVersion) return currentVersion;
+
+  const major = documentValue(document, "version_major") ?? "0";
+  const minor = documentValue(document, "version_minor") ?? "1";
+  const patch = documentValue(document, "version_patch") ?? "0";
+
+  return `${major}.${minor}.${patch}`;
 }
 
 export function LegalToolbar({
   document,
   draftMode,
+  exitHref,
   onToggleDraft,
+  onOpenReview,
 }: Props) {
-  const title = documentValue(document, "title") ?? "Master Service Agreement";
-  const status = documentValue(document, "status");
-  const version = documentValue(document, "version");
+  const title = documentValue(document, "title") ?? "Document";
+  const status = documentValue(document, "status") ?? "DRAFT";
+  const version = documentVersion(document);
 
   return (
     <header className={styles.toolbar}>
       <div>
-        <p className={styles.eyebrow}>Document Workspace</p>
-        <h2 className={styles.title}>{title}</h2>
+        <p className={styles.eyebrow}>Document Workbench</p>
+        <h1 className={styles.title}>{title}</h1>
         <p className={styles.toolbarMeta}>
-          {[status, version ? `v${version}` : null].filter(Boolean).join(" · ") ||
-            "Draft document"}
+          Version {version} · {status}
         </p>
       </div>
 
       <div className={styles.toolbarActions}>
-        <button
-          className={styles.secondaryButton}
-          type="button"
-          onClick={onToggleDraft}
-        >
+        <button className={styles.secondaryButton} type="button" onClick={onToggleDraft}>
           {draftMode ? "Exit Draft" : "Draft Mode"}
         </button>
+
+        <button className={styles.secondaryButton} type="button" disabled>
+          Save Draft
+        </button>
+
+        <button className={styles.secondaryButton} type="button" onClick={onOpenReview}>
+          Review Document
+        </button>
+
+        <button className={styles.secondaryButton} type="button" disabled>
+          Export
+        </button>
+
+        <button className={styles.secondaryButton} type="button" disabled>
+          Stage for Legal Review
+        </button>
+
+        <button className={styles.secondaryButton} type="button" disabled>
+          Publish
+        </button>
+
+        <Link className={styles.primaryButton} href={exitHref}>
+          Exit Document
+        </Link>
       </div>
     </header>
   );

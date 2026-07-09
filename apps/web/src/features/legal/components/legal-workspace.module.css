@@ -52,11 +52,16 @@
 
 .primaryButton,
 .secondaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: var(--radius-pill, 999px);
   min-height: 40px;
   padding: 0 16px;
   font-size: 13px;
   font-weight: 800;
+  line-height: 1;
+  text-decoration: none;
   cursor: pointer;
 }
 
@@ -328,4 +333,65 @@
   .editorTextarea {
     padding: 18px;
   }
+}
+
+
+.reviewBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.56);
+}
+
+.reviewPanel {
+  width: min(1100px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border: 1px solid var(--line, #d6dfeb);
+  border-radius: var(--radius-xl, 24px);
+  background: var(--surface, #ffffff);
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.22);
+}
+
+.reviewHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  border-bottom: 1px solid var(--line, #d6dfeb);
+}
+
+.reviewDocument {
+  overflow-y: auto;
+  padding: 28px;
+  color: var(--text, #13203a);
+}
+
+.reviewSection {
+  padding-bottom: 28px;
+  margin-bottom: 28px;
+  border-bottom: 1px solid var(--line, #d6dfeb);
+}
+
+.reviewSection:last-child {
+  border-bottom: 0;
+  margin-bottom: 0;
+}
+
+.reviewSection h3 {
+  margin: 8px 0 14px;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+}
+
+.reviewSection p {
+  font-size: 15px;
+  line-height: 1.8;
 }

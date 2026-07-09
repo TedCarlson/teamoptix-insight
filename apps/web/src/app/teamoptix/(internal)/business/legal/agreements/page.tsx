@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
-export default function AgreementsRedirectPage() {
+export default function LegalAgreementsRedirectPage() {
   redirect("/teamoptix/business/contracts/agreements");
 }

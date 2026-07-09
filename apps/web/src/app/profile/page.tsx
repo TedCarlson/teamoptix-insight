@@ -1,21 +1,21 @@
 "use client";
 
 import Link from "next/link";
+import IdentityPill from "@/features/access/components/IdentityPill";
 import { useAccess } from "@/features/access/AccessProvider";
-import SiteHeader from "@/features/landing/components/SiteHeader";
 
-function StatusCard(props: {
+function WorkspaceCard(props: {
   eyebrow: string;
   title: string;
   body: string;
+  action?: React.ReactNode;
 }) {
-  const { eyebrow, title, body } = props;
-
   return (
     <article className="app-card">
-      <p className="value-card__eyebrow">{eyebrow}</p>
-      <h3 className="app-card__title">{title}</h3>
-      <p className="app-card__body">{body}</p>
+      <p className="value-card__eyebrow">{props.eyebrow}</p>
+      <h3 className="app-card__title">{props.title}</h3>
+      <p className="app-card__body">{props.body}</p>
+      {props.action ? <div className="cta-row" style={{ marginTop: 14 }}>{props.action}</div> : null}
     </article>
   );
 }
@@ -27,108 +27,106 @@ export default function ProfilePage() {
     access.display_name ||
     [access.first_name, access.last_name].filter(Boolean).join(" ") ||
     access.email ||
-    "User";
+    "there";
 
   const membershipCount = access.memberships.length;
-  const canCreateCompany = Boolean(access.is_platform_owner);
+  const hasMemberships = membershipCount > 0;
+  const primaryMembership = access.memberships[0] ?? null;
+  const primaryCompanyHref = primaryMembership?.company_slug
+    ? `/company/${primaryMembership.company_slug}/home`
+    : "/companies";
+  const workEntranceTitle = access.is_platform_owner
+    ? "TeamOptix"
+    : primaryMembership?.company_name ?? "Company workspace";
+  const workEntranceBody = access.is_platform_owner
+    ? "Enter the gated TeamOptix workspace to govern products, customers, engineering, and company operations."
+    : hasMemberships
+      ? "Enter your company workspace to continue your assigned work."
+      : "When a company invites you, your workspace entrance will appear here.";
+  const workEntranceHref = access.is_platform_owner ? "/teamoptix/command-center" : primaryCompanyHref;
 
   return (
     <main className="workspace-shell">
-      <SiteHeader />
+      <header className="teamoptix-header">
+        <Link className="brand-mark" href="/profile">
+          <span className="brand-mark__kicker">Insight</span>
+          <span className="brand-mark__name">My Workspace</span>
+        </Link>
+
+        <div className="teamoptix-header__right">
+          <IdentityPill />
+        </div>
+      </header>
 
       <section className="workspace-main">
         <header className="workspace-header">
           <div style={{ display: "grid", gap: 10, alignContent: "center" }}>
-            <p className="eyebrow">Profile</p>
-            <h1 className="workspace-title">{access.loading ? "Loading" : name}</h1>
+            <p className="eyebrow">My Workspace</p>
+            <h1 className="workspace-title">
+              {access.loading ? "Loading your workspace" : `Good to see you, ${name}.`}
+            </h1>
             <p className="workspace-subtitle">
-              Review your identity, access posture, and available workspaces without forcing onboarding progression.
+              Manage your identity, pending actions, and personal services across Insight.
             </p>
-
-            <div className="cta-row">
-              {canCreateCompany ? (
-                <Link className="button button-primary" href="/command-center">
-                  Open Command Center
-                </Link>
-              ) : membershipCount > 0 ? (
-                <Link className="button button-primary" href="/companies">
-                  Go to companies
-                </Link>
-              ) : null}
-
-              {membershipCount === 0 && canCreateCompany ? (
-                <Link className="button" href="/company/setup">
-                  Create company
-                </Link>
-              ) : null}
-
-              <Link className="button" href="/">
-                Back to home
-              </Link>
-            </div>
           </div>
-
-          <aside className="context-grid">
-            <div className="context-stat">
-              <span className="context-stat__label">Email</span>
-              <strong>{access.email ?? "Not available"}</strong>
-            </div>
-
-            <div className="context-stat">
-              <span className="context-stat__label">Profile status</span>
-              <strong>{access.profile_status ?? "Unknown"}</strong>
-            </div>
-
-            <div className="context-stat">
-              <span className="context-stat__label">Role posture</span>
-              <strong>
-                {access.is_platform_owner ? "Platform Owner" : "Standard User"}
-              </strong>
-            </div>
-
-            <div className="context-stat">
-              <span className="context-stat__label">Memberships</span>
-              <strong>{membershipCount}</strong>
-            </div>
-          </aside>
         </header>
 
         <section className="summary-grid">
-          <StatusCard
+          <WorkspaceCard
             eyebrow="Identity"
-            title={access.profile_id ? "Profile exists" : "Profile missing"}
-            body={
-              access.profile_id
-                ? "Your platform identity is active and resolving through access context."
-                : "Your platform profile has not been resolved yet."
+            title="Personal information"
+            body="Review the identity details and employment documents that belong to you and can be shared with company workspaces when needed."
+            action={
+              <>
+                <button className="button" type="button" disabled>
+                  Personal details
+                </button>
+                <button className="button" type="button" disabled>
+                  Documents
+                </button>
+              </>
             }
           />
 
-          <StatusCard
-            eyebrow="Memberships"
-            title={`${membershipCount} company ${membershipCount === 1 ? "membership" : "memberships"}`}
-            body={
-              membershipCount > 0
-                ? "You already have company context available in the platform."
-                : "You do not belong to a company yet."
+          <WorkspaceCard
+            eyebrow="Work"
+            title={workEntranceTitle}
+            body={workEntranceBody}
+            action={
+              access.is_platform_owner || hasMemberships ? (
+                <>
+                  <Link className="button button-primary" href={workEntranceHref}>
+                    Enter workspace
+                  </Link>
+                  {hasMemberships && !access.is_platform_owner ? (
+                    <Link className="button" href="/companies">
+                      Switch company
+                    </Link>
+                  ) : null}
+                </>
+              ) : null
             }
           />
 
-          <StatusCard
-            eyebrow="Company access"
-            title={
-              membershipCount > 0
-                ? "Directory available"
-                : canCreateCompany
-                  ? "Owner-gated access granted"
-                  : "Restricted to platform owner"
-            }
-            body={
-              membershipCount > 0
-                ? "Use the company directory to enter a workspace and inspect modules."
-                : canCreateCompany
-                  ? "You can provision the first company workspace from this account."
-                  : "Company creation is intentionally gated and not available from this account."
+          <WorkspaceCard
+            eyebrow="Action Center"
+            title="Pending actions"
+            body="Onboarding tasks, company requests, document renewals, and required acknowledgements will appear here when they need your attention."
+          />
+
+          <WorkspaceCard
+            eyebrow="Services"
+            title="Account services"
+            body="Manage platform services that belong to you, including security, passkeys, notifications, appearance, and future personal preferences."
+            action={
+              <>
+                <button className="button" type="button" disabled>
+                  Set up passkey
+                </button>
+                <button className="button" type="button" disabled>
+                  Appearance
+                </button>
+              </>
             }
           />
         </section>

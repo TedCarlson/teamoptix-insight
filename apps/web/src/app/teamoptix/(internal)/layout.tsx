@@ -12,15 +12,13 @@ export default async function TeamOptixLayout({
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
+  if (!user?.id) {
     redirect("/sign-in");
   }
 
-  const { data: access } = await supabase
-    .from("user_access_context_v")
-    .select("is_platform_owner")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
+  await supabase.rpc("ensure_access_context");
+
+  const { data: access } = await supabase.rpc("access_context");
 
   if (!access?.is_platform_owner) {
     redirect("/");

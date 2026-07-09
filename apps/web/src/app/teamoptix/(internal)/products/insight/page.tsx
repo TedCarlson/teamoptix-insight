@@ -37,10 +37,10 @@ export default function TeamOptixInsightProductPage() {
             description="Access the commercial agreement surfaces currently attached to Insight."
             action={
               <div className="cta-row">
-                <Link className="button" href="/commercial/agreements">
+                <Link className="button" href="/teamoptix/business/contracts/agreements">
                   Agreements
                 </Link>
-                <Link className="button" href="/commercial/agreements/master-service-agreement">
+                <Link className="button" href="/teamoptix/business/contracts/documents/master-service-agreement">
                   MSA Editor
                 </Link>
               </div>

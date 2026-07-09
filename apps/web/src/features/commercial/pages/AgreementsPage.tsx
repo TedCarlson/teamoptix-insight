@@ -1,10 +1,10 @@
 import Link from "next/link";
-import SiteHeader from "@/features/landing/components/SiteHeader";
 import PlatformPillarCard from "@/features/platform/components/PlatformPillarCard";
+import TeamOptixShell from "@/features/teamoptix/navigation/TeamOptixShell";
 
 const agreements = [
   {
-    href: "/commercial/agreements/master-service-agreement",
+    href: "/teamoptix/business/contracts/documents/master-service-agreement",
     eyebrow: "Agreement",
     title: "Master Service Agreement",
     body: "Draft v0.1 governing the commercial relationship for Insight customers.",
@@ -31,10 +31,9 @@ const agreements = [
 
 export default function AgreementsPage() {
   return (
-    <main className="workspace-shell">
-      <SiteHeader />
-
-      <section className="workspace-main">
+    <TeamOptixShell>
+      <main className="workspace-shell">
+        <section className="workspace-main">
         <header className="directory-header">
           <div>
             <p className="eyebrow">Commercial</p>
@@ -44,8 +43,8 @@ export default function AgreementsPage() {
             </p>
           </div>
 
-          <Link className="button" href="/commercial">
-            Back to Commercial
+          <Link className="button" href="/teamoptix/business/contracts">
+            Back to Contracts
           </Link>
         </header>
 
@@ -72,7 +71,8 @@ export default function AgreementsPage() {
             );
           })}
         </section>
-      </section>
-    </main>
+        </section>
+      </main>
+    </TeamOptixShell>
   );
 }

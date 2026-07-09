@@ -1,9 +1,5 @@
-import Link from "next/link";
 import TeamOptixShell from "@/features/teamoptix/navigation/TeamOptixShell";
-import {
-  WorkspaceHeader,
-  WorkspaceSection,
-} from "@/features/ui/workspace";
+import { WorkspaceHeader, WorkspaceSection } from "@/features/ui/workspace";
 
 export default function TeamOptixLegalPage() {
   return (
@@ -13,27 +9,24 @@ export default function TeamOptixLegalPage() {
           <WorkspaceHeader
             eyebrow="TeamOptix · Business"
             title="Legal"
-            description="Commercial agreements, legal templates, and contract operations."
+            description="Entity governance, registrations, insurance, compliance, and internal policy operations."
           />
 
-          <WorkspaceSection
-            eyebrow="Active Workspace"
-            title="Master Service Agreement"
-            description="Continue editing the MSA workspace without burying it under product placeholders."
-            action={
-              <div className="cta-row">
-                <Link className="button button-primary" href="/commercial/agreements/master-service-agreement">
-                  Open MSA Editor
-                </Link>
-
-                <Link className="button" href="/commercial/agreements">
-                  View Agreements
-                </Link>
-              </div>
-            }
-          >
-            <div />
-          </WorkspaceSection>
+          <section className="workspace-grid">
+            {[
+              ["Corporate Governance", "Company records, resolutions, ownership posture, and governance decisions."],
+              ["LLC", "Formation documents, state records, and entity maintenance."],
+              ["Registered Agent", "Registered agent records, address posture, and change tracking."],
+              ["EIN", "IRS confirmation, tax identity, and federal entity records."],
+              ["Insurance", "Business insurance records, renewals, and coverage posture."],
+              ["Compliance", "Internal compliance obligations and operating requirements."],
+              ["Policies", "Internal company policies and administrative standards."],
+            ].map(([title, body]) => (
+              <WorkspaceSection key={title} eyebrow="Legal" title={title} description={body}>
+                <div />
+              </WorkspaceSection>
+            ))}
+          </section>
         </section>
       </main>
     </TeamOptixShell>

@@ -71,3 +71,17 @@ export async function getHistory(sectionId: string) {
   if (error) throw error;
   return data ?? [];
 }
+
+
+/**
+ * DOCUMENTS
+ */
+export async function getDocuments() {
+  const { data, error } = await db
+    .from("legal_document_v")
+    .select("*")
+    .order("title");
+
+  if (error) throw error;
+  return data ?? [];
+}

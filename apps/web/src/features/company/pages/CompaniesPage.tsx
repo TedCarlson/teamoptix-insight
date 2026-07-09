@@ -13,11 +13,17 @@ type Membership = {
   title: string | null;
 };
 
-function CompanyCard(props: {
-  membership: Membership;
-  isPlatformOwner: boolean;
-}) {
-  const { membership, isPlatformOwner } = props;
+function label(value: string | null | undefined) {
+  if (!value) return "Not assigned";
+  return value
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function CompanyCard(props: { membership: Membership }) {
+  const { membership } = props;
 
   return (
     <article className="app-card" style={{ display: "grid", gap: 14 }}>
@@ -25,25 +31,17 @@ function CompanyCard(props: {
         <p className="value-card__eyebrow">Company</p>
         <h3 className="app-card__title">{membership.company_name}</h3>
         <p className="app-card__body">
-          {membership.relationship_type} · {membership.membership_status}
+          {label(membership.relationship_type)} · {label(membership.membership_status)}
         </p>
       </div>
 
       <div style={{ display: "grid", gap: 8, fontSize: 14 }}>
         <div>
-          <strong>Slug:</strong> {membership.company_slug}
+          <strong>Role:</strong> {membership.title ?? label(membership.relationship_type)}
         </div>
         <div>
-          <strong>Status:</strong> {membership.company_status}
+          <strong>Workspace status:</strong> {label(membership.company_status)}
         </div>
-        <div>
-          <strong>Title:</strong> {membership.title ?? "Not assigned"}
-        </div>
-        {isPlatformOwner ? (
-          <div>
-            <strong>Company ID:</strong> {membership.company_id}
-          </div>
-        ) : null}
       </div>
 
       <div className="cta-row" style={{ marginTop: 4 }}>
@@ -61,46 +59,27 @@ function CompanyCard(props: {
 export default function CompaniesPage() {
   const access = useAccess();
   const memberships = (access.memberships ?? []) as Membership[];
+  const backHref = access.is_platform_owner ? "/teamoptix/command-center" : "/profile";
+  const backLabel = access.is_platform_owner ? "Back to TeamOptix" : "Back to My Workspace";
 
   return (
     <main className="directory-shell">
       <section className="directory-main">
         <header className="directory-header">
           <div style={{ display: "grid", gap: 8 }}>
-            <p className="eyebrow">Companies</p>
-            <h1 className="directory-title">Choose a workspace</h1>
+            <p className="eyebrow">Directory</p>
+            <h1 className="directory-title">Company Directory</h1>
             <p className="directory-subtitle">
-              Select a company to enter its operational workspace.
+              Enter an authorized company workspace.
             </p>
           </div>
 
           <div className="cta-row" style={{ marginTop: 0 }}>
-            <Link className="button" href="/profile">
-              Back to profile
+            <Link className="button" href={backHref}>
+              {backLabel}
             </Link>
           </div>
         </header>
-
-        <section className="summary-grid">
-          <article className="app-card">
-            <p className="value-card__eyebrow">User</p>
-            <h3 className="app-card__title">
-              {access.display_name || access.email || "Unknown user"}
-            </h3>
-          </article>
-
-          <article className="app-card">
-            <p className="value-card__eyebrow">Memberships</p>
-            <h3 className="app-card__title">{memberships.length}</h3>
-          </article>
-
-          <article className="app-card">
-            <p className="value-card__eyebrow">Privilege</p>
-            <h3 className="app-card__title">
-              {access.is_platform_owner ? "Platform Owner" : "Standard User"}
-            </h3>
-          </article>
-        </section>
 
         {memberships.length > 0 ? (
           <section className="directory-grid">
@@ -108,28 +87,21 @@ export default function CompaniesPage() {
               <CompanyCard
                 key={`${membership.company_id}:${membership.relationship_type}`}
                 membership={membership}
-                isPlatformOwner={Boolean(access.is_platform_owner)}
               />
             ))}
           </section>
         ) : (
           <section className="directory-grid">
             <article className="app-card">
-              <p className="value-card__eyebrow">No memberships</p>
-              <h3 className="app-card__title">No company access yet</h3>
+              <p className="value-card__eyebrow">No access</p>
+              <h3 className="app-card__title">No company workspaces yet</h3>
               <p className="app-card__body">
-                This account does not currently have any company memberships.
+                Company access will appear here after an invitation or membership is active.
               </p>
 
               <div className="cta-row" style={{ marginTop: 18 }}>
-                {access.is_platform_owner ? (
-                  <Link className="button button-primary" href="/company/setup">
-                    Create company
-                  </Link>
-                ) : null}
-
-                <Link className="button" href="/profile">
-                  Back to profile
+                <Link className="button" href={backHref}>
+                  {backLabel}
                 </Link>
               </div>
             </article>

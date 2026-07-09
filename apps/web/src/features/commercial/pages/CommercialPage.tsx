@@ -26,7 +26,7 @@ export default function CommercialPage() {
 
         <section className="workspace-grid">
           <Link
-            href="/commercial/agreements"
+            href="/teamoptix/business/contracts/agreements"
             style={{ textDecoration: "none", color: "inherit" }}
           >
             <PlatformPillarCard

@@ -28,7 +28,7 @@ export const commandCenterSections: TeamOptixRegistrySection[] = [
     signals: [
       { label: "TeamOptix", value: "Umbrella", detail: "Runs the business above Insight" },
       { label: "Insight", value: "Product", detail: "Customer operating platform" },
-      { label: "Navigation", value: "Drawer-first", detail: "Shared platform principle" },
+      { label: "Navigation", value: "Rail-first", detail: "Drawer remains secondary for compact navigation" },
       { label: "Legal", value: "Business", detail: "MSA workspace preserved" },
     ],
   },

@@ -1,3 +1,5 @@
-import CommercialPage from "@/features/commercial/pages/CommercialPage";
+import { redirect } from "next/navigation";
 
-export default CommercialPage;
+export default function CommercialRedirectPage() {
+  redirect("/teamoptix/business/legal");
+}
