@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import CommercialProfileForm from "./CommercialProfileForm";
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -26,16 +27,16 @@ export default async function CompanyBillingPage(props: PageProps) {
     .eq("company_id", company.id)
     .maybeSingle();
 
-  const rows = [
-    ["Company", company.company_name ?? "—"],
-    ["Billing Contact", company.contact_email ?? "Missing"],
-    ["Operator Tier", "Not assigned"],
-    ["Implementation Fee", "Pending tier"],
-    ["Weekly Subscription", "Pending tier"],
-    ["Billing Status", formatStatus(billingCustomer?.billing_status ?? "not_started")],
-    ["Stripe Customer", billingCustomer?.provider_customer_id ?? "Not created"],
-    ["Subscription", formatStatus(billingCustomer?.subscription_status ?? "not_started")],
-  ];
+  const { data: commercialProfile } = await supabase
+    .schema("commercial")
+    .from("profile")
+    .select("*")
+    .eq("company_id", company.id)
+    .maybeSingle();
+
+
+
+
 
   return (
     <main className="workspace-shell">
@@ -62,16 +63,10 @@ export default async function CompanyBillingPage(props: PageProps) {
               <div style={statusPill}>Not Ready</div>
             </div>
 
-            <table style={table}>
-              <tbody>
-                {rows.map(([label, value]) => (
-                  <tr key={label} style={tr}>
-                    <th style={th}>{label}</th>
-                    <td style={td}>{value}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <CommercialProfileForm
+              billingEmail={company.contact_email ?? ""}
+              profile={commercialProfile}
+            />
           </section>
 
           <section style={panel}>
