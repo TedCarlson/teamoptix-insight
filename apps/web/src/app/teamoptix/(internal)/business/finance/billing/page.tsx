@@ -60,7 +60,7 @@ async function loadStripeBillingStatus() {
           status: price.active && product?.active !== false ? "Active" : "Inactive",
         };
       })
-      .sort((a, b) => a.productName.localeCompare(b.productName));
+      .sort((a, b) => catalogSortKey(a).localeCompare(catalogSortKey(b)));
 
     return {
       connected: true,
@@ -84,6 +84,21 @@ async function loadStripeBillingStatus() {
       catalog: [] as BillingCatalogItem[],
     };
   }
+}
+
+
+function catalogSortKey(item: BillingCatalogItem) {
+  const name = item.productName.toLowerCase();
+
+  let tier = 99;
+  if (name.includes("up to 10") || name.includes("1-10")) tier = 10;
+  else if (name.includes("11 to 15") || name.includes("11-15")) tier = 20;
+  else if (name.includes("16 to 25") || name.includes("16-25")) tier = 30;
+  else if (name.includes("26 to 50") || name.includes("26-50")) tier = 40;
+
+  const kind = item.cadence.toLowerCase().includes("week") ? 0 : 1;
+
+  return `${String(tier).padStart(2, "0")}-${kind}-${name}`;
 }
 
 export default async function Page() {
