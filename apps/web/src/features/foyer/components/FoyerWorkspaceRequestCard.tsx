@@ -106,7 +106,7 @@ export default function FoyerWorkspaceRequestCard({
         a focused introduction around your business.
       </p>
       <p>
-        You don&apos;t need to be great to start. You do have to start to be great.
+        You don&apos;t need to be great to start. You do need to start to be great.
       </p>
       <div className="cta-row" style={{ marginTop: 0 }}>
         <button
