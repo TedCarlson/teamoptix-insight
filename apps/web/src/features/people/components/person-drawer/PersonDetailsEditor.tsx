@@ -9,6 +9,7 @@ type Draft = {
   phone: string;
   worker_type: string;
   market_code: string;
+  hire_date: string;
 };
 
 type Props = {
@@ -43,6 +44,7 @@ function getDraft(person: RosterRow): Draft {
     phone: person.phone ?? "",
     worker_type: person.worker_type ?? "",
     market_code: person.market_code ?? "",
+    hire_date: person.hire_date ?? "",
   };
 }
 
@@ -79,11 +81,12 @@ export default function PersonDetailsEditor({ person, saving, onSave }: Props) {
           <ViewRow label="Phone" value={person.phone} />
           <ViewRow label="Role" value={person.worker_type} />
           <ViewRow label="Market" value={person.market_code} />
+          <ViewRow label="Hire Date" value={person.hire_date} />
           <ViewRow label="Reports to" value={person.reports_to_name} />
         </div>
       ) : (
         <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-          {(["full_name", "email", "phone", "worker_type", "market_code"] as const).map((key) => (
+          {(["full_name", "email", "phone", "worker_type", "market_code", "hire_date"] as const).map((key) => (
             <input
               key={key}
               value={draft[key]}

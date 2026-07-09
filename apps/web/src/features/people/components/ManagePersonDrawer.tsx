@@ -13,6 +13,7 @@ type CoreDraft = {
   worker_type: string;
   market_code: string;
   notes: string;
+  hire_date: string;
 
   date_of_birth: string;
   address_line_1: string;

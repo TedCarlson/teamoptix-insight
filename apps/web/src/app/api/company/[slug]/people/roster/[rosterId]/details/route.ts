@@ -62,6 +62,7 @@ export async function PATCH(
       p_notes: pickText("notes"),
 
       p_date_of_birth: pickDate("date_of_birth"),
+      p_hire_date: pickDate("hire_date"),
       p_address_line_1: pickText("address_line_1"),
       p_address_line_2: pickText("address_line_2"),
       p_city: pickText("city"),

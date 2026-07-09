@@ -11,6 +11,7 @@ export type CoreDraft = {
   worker_type: string;
   market_code: string;
   notes: string;
+  hire_date: string;
 
   date_of_birth: string;
   address_line_1: string;
@@ -44,6 +45,7 @@ function buildDraft(person: RosterRow): CoreDraft {
     worker_type: person.worker_type ?? "",
     market_code: person.market_code ?? "",
     notes: person.notes ?? "",
+    hire_date: toInputDate(person.hire_date),
 
     date_of_birth: toInputDate(person.date_of_birth),
     address_line_1: person.address_line_1 ?? "",
@@ -176,6 +178,12 @@ export default function PersonCoreSection({ person, saving, onSave }: Props) {
               label="Market"
               value={draft.market_code}
               onChange={(value) => setDraft((d) => ({ ...d, market_code: value }))}
+            />
+            <TextInput
+              label="Hire Date"
+              type="date"
+              value={draft.hire_date}
+              onChange={(value) => setDraft((d) => ({ ...d, hire_date: value }))}
             />
             <TextInput
               label="DOB"
