@@ -48,6 +48,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const configBase = `${base}/config`;
   const assetsBase = `${base}/assets`;
   const payrollBase = `${base}/payroll`;
+  const billingBase = `${base}/billing`;
 
   const mainItems: NavItem[] = isAdminUser
     ? [
@@ -69,6 +70,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const overviewSubItems: NavItem[] = [
     { label: "Profile", href: base, match: (path) => path === base },
     { label: "Analytics", href: `${base}/analytics`, match: (path) => path === `${base}/analytics` || path === `${base}/readiness` },
+    { label: "Billing", href: billingBase, match: (path) => path.startsWith(billingBase) },
   ];
 
   const payrollSubItems: NavItem[] = [
@@ -159,6 +161,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
           ? configSubItems
           : pathname === base ||
               pathname === `${base}/payroll` ||
+              pathname === billingBase ||
               pathname === `${base}/analytics` ||
               pathname === `${base}/readiness`
             ? overviewSubItems
