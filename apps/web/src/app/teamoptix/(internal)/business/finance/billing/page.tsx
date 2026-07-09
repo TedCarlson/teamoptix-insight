@@ -7,6 +7,15 @@ type BillingMetric = {
   value: string;
 };
 
+type BillingCatalogItem = {
+  productId: string;
+  productName: string;
+  priceId: string;
+  amount: string;
+  cadence: string;
+  status: string;
+};
+
 async function loadStripeBillingStatus() {
   const secretKey = process.env.STRIPE_SECRET_KEY;
   const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
@@ -17,6 +26,7 @@ async function loadStripeBillingStatus() {
       connected: false,
       error: "Stripe API keys are not configured.",
       metrics: [] as BillingMetric[],
+      catalog: [] as BillingCatalogItem[],
       webhookConfigured: Boolean(webhookSecret),
     };
   }
@@ -32,6 +42,26 @@ async function loadStripeBillingStatus() {
       stripe.invoices.list({ limit: 100 }),
     ]);
 
+    const productById = new Map(products.data.map((product) => [product.id, product]));
+
+    const catalog: BillingCatalogItem[] = prices.data
+      .map((price) => {
+        const productId = typeof price.product === "string" ? price.product : price.product.id;
+        const product = productById.get(productId);
+        const unitAmount = price.unit_amount ?? 0;
+        const amount = `$${(unitAmount / 100).toFixed(2)}`;
+
+        return {
+          productId,
+          productName: product?.name ?? productId,
+          priceId: price.id,
+          amount,
+          cadence: price.recurring?.interval ? `Per ${price.recurring.interval}` : "One-time",
+          status: price.active && product?.active !== false ? "Active" : "Inactive",
+        };
+      })
+      .sort((a, b) => a.productName.localeCompare(b.productName));
+
     return {
       connected: true,
       error: null,
@@ -43,6 +73,7 @@ async function loadStripeBillingStatus() {
         { label: "Subscriptions", value: String(subscriptions.data.length) },
         { label: "Invoices", value: String(invoices.data.length) },
       ],
+      catalog,
     };
   } catch (error) {
     return {
@@ -50,6 +81,7 @@ async function loadStripeBillingStatus() {
       error: error instanceof Error ? error.message : "Stripe connection failed.",
       webhookConfigured: Boolean(webhookSecret),
       metrics: [] as BillingMetric[],
+      catalog: [] as BillingCatalogItem[],
     };
   }
 }
@@ -106,6 +138,40 @@ export default async function Page() {
             >
               {status.metrics.map((metric) => (
                 <BillingStatusCard key={metric.label} label={metric.label} value={metric.value} />
+              ))}
+            </div>
+          </WorkspaceSection>
+
+          <WorkspaceSection
+            eyebrow="Catalog"
+            title="Stripe Commercial Catalog"
+            description="Active Stripe sandbox products and prices available for Insight billing workflows."
+          >
+            <div style={{ display: "grid", gap: 10 }}>
+              {status.catalog.map((item) => (
+                <div
+                  key={item.priceId}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(260px, 1fr) 120px 120px 100px",
+                    gap: 12,
+                    alignItems: "center",
+                    border: "1px solid #dbe3ef",
+                    borderRadius: 16,
+                    padding: 14,
+                    background: "#fff",
+                  }}
+                >
+                  <div>
+                    <p style={{ margin: 0, color: "#0f172a", fontWeight: 900 }}>{item.productName}</p>
+                    <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 12 }}>{item.priceId}</p>
+                  </div>
+                  <strong>{item.amount}</strong>
+                  <span>{item.cadence}</span>
+                  <strong style={{ color: item.status === "Active" ? "#059669" : "#b91c1c" }}>
+                    {item.status}
+                  </strong>
+                </div>
               ))}
             </div>
           </WorkspaceSection>
