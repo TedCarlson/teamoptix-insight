@@ -6,6 +6,7 @@ export type DriverSchedulePreviewDay = {
   key: string;
   label: string;
   route: string;
+  scheduled: boolean;
 };
 
 type DriverSchedulePreviewCardProps = {
@@ -29,7 +30,15 @@ export function DriverSchedulePreviewCard({
 
       <div className="driver-schedule-week-row">
         {days.map((day) => (
-          <div key={day.key} className="driver-schedule-day-chip">
+          <div
+            key={day.key}
+            className={[
+              "driver-schedule-day-chip",
+              day.scheduled
+                ? "driver-schedule-day-chip--on"
+                : "driver-schedule-day-chip--off",
+            ].join(" ")}
+          >
             <span>{day.label}</span>
             <strong>{day.route}</strong>
           </div>

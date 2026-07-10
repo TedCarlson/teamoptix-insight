@@ -1851,6 +1851,20 @@ body {
   line-height: 1.1;
 }
 
+.driver-schedule-day-chip--on {
+  background: #e9f8ee;
+  border-color: #9ad7aa;
+}
+
+.driver-schedule-day-chip--on strong {
+  color: #047857;
+}
+
+.driver-schedule-day-chip--off {
+  background: #f8fafc;
+  border-color: #e5e7eb;
+}
+
 @media (max-width: 680px) {
   .driver-schedule-week-row {
     grid-template-columns: repeat(7, minmax(0, 1fr));

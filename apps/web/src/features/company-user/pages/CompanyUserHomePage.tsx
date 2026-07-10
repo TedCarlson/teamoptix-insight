@@ -54,33 +54,33 @@ type ActivityCurrentResponse = {
 };
 
 const routeByDayKey: Record<number, keyof ScheduleRow> = {
-  0: "default_route_s",
+  0: "default_route_u",
   1: "default_route_m",
   2: "default_route_t",
   3: "default_route_w",
   4: "default_route_h",
   5: "default_route_f",
-  6: "default_route_u",
+  6: "default_route_s",
 };
 
 const presetWorksByDayKey: Record<number, keyof ScheduleRow> = {
-  0: "preset_works_s",
+  0: "preset_works_u",
   1: "preset_works_m",
   2: "preset_works_t",
   3: "preset_works_w",
   4: "preset_works_h",
   5: "preset_works_f",
-  6: "preset_works_u",
+  6: "preset_works_s",
 };
 
 const rotationWorksByDayKey: Record<number, keyof ScheduleRow> = {
-  0: "rotation_works_s",
+  0: "rotation_works_u",
   1: "rotation_works_m",
   2: "rotation_works_t",
   3: "rotation_works_w",
   4: "rotation_works_h",
   5: "rotation_works_f",
-  6: "rotation_works_u",
+  6: "rotation_works_s",
 };
 
 function isScheduledForDate(row: ScheduleRow | null, date: Date) {
@@ -147,7 +147,8 @@ function buildSchedulePreview(row: ScheduleRow | null): DriverSchedulePreviewDay
     return {
       key: date.toISOString(),
       label,
-      route: scheduled ? route ?? "Awaiting Assignment" : "Off",
+      route: scheduled ? route ?? "ON" : "OFF",
+      scheduled,
     };
   });
 }
