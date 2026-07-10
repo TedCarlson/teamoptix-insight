@@ -226,6 +226,10 @@ export async function GET(
 
         return {
           roster_member_id: roster.roster_member_id,
+          profile_id:
+            typeof roster.profile_id === "string"
+              ? roster.profile_id
+              : null,
           full_name:
             typeof roster.full_name === "string" && roster.full_name.trim()
               ? roster.full_name.trim()

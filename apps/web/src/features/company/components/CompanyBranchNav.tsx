@@ -1,12 +1,10 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
 import { usePathname } from "next/navigation";
 import IdentityPill from "@/features/access/components/IdentityPill";
 import { useAccess } from "@/features/access/AccessProvider";
-import AppNavigationDrawer from "@/features/navigation/AppNavigationDrawer";
-import { buildCompanyMenu } from "@/features/navigation/appMenu.model";
 
 type CompanyBranchNavProps = {
   slug: string;
@@ -26,7 +24,6 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     pathname.startsWith(`/company/${slug}/driver/`);
 
   const access = useAccess();
-  const [drawerOpen, setDrawerOpen] = useState(false);
 
   if (isDriverShellRoute) {
     return null;
@@ -35,8 +32,6 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const isAdminUser =
     Boolean(access.is_platform_owner) ||
     (membership?.relationship_type === "admin" && membership?.membership_status === "active");
-
-  const menuSections = buildCompanyMenu({ slug, isAdminUser });
 
   const base = `/company/${slug}`;
   const announcementsBase = `${base}/announcements`;
@@ -176,21 +171,35 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   return (
     <nav className="app-nav-shell" aria-label="Company workspace">
       <div className="app-nav-inner">
-        <button
-          type="button"
-          className="app-menu-button"
-          aria-label="Open navigation menu"
-          onClick={() => setDrawerOpen(true)}
+        <Link
+          className="app-nav-brand"
+          href={homeBase}
+          aria-label="Open Insight workspace home"
         >
-          ☰
-        </button>
+          <Image
+            className="app-nav-brand__logo"
+            src="/icons/logo-2-insight-cutout-xsm.png"
+            alt=""
+            width={320}
+            height={208}
+            priority
+          />
 
-        <Link className="brand-mark" href="/">
-          <span className="brand-mark__kicker">TeamOptix</span>
-          <span className="brand-mark__name">Insight</span>
+          <span className="app-nav-brand__copy">
+            <span className="app-nav-brand__product">Insight</span>
+            <span className="app-nav-brand__owner">by Team Optix</span>
+          </span>
         </Link>
 
-        <IdentityPill />
+        <div className="app-nav-actions">
+          {access.is_platform_owner ? (
+            <Link className="button" href="/teamoptix/command-center">
+              My Workspace
+            </Link>
+          ) : null}
+
+          <IdentityPill />
+        </div>
       </div>
 
       <div className="app-workspace-rail">
@@ -208,13 +217,6 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
           );
         })}
       </div>
-
-      <AppNavigationDrawer
-        open={drawerOpen}
-        pathname={pathname}
-        sections={menuSections}
-        onClose={() => setDrawerOpen(false)}
-      />
 
       {subItems.length > 0 ? (
         <div className="app-workspace-rail app-workspace-rail--surfaces" aria-label="Workspace surfaces">
