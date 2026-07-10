@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import CommercialProfileForm from "./CommercialProfileForm";
+import BillingWorkflowActions from "./BillingWorkflowActions";
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -69,7 +70,9 @@ export default async function CompanyBillingPage(props: PageProps) {
                   Stripe customer status, implementation fee, and subscription setup for {company.company_name}.
                 </p>
               </div>
-              <div style={statusPill}>Not Ready</div>
+              <div style={statusPill}>
+                {formatStatus(commercialProfile?.commercial_status ?? "draft")}
+              </div>
             </div>
 
             <CommercialProfileForm
@@ -87,14 +90,11 @@ export default async function CompanyBillingPage(props: PageProps) {
               </div>
             </div>
 
-            <div style={actionRow}>
-              <button type="button" disabled style={disabledButton}>
-                Create Stripe Customer
-              </button>
-              <button type="button" disabled style={disabledButton}>
-                Launch Stripe Checkout
-              </button>
-            </div>
+            <BillingWorkflowActions
+              slug={slug}
+              commercialStatus={commercialProfile?.commercial_status ?? "draft"}
+              stripeCustomerId={billingCustomer?.provider_customer_id ?? null}
+            />
           </section>
         </div>
       </section>
@@ -199,22 +199,6 @@ const statusPill = {
   background: "#fffbeb",
   fontSize: 12,
   fontWeight: 900,
-};
-
-const actionRow = {
-  display: "flex",
-  gap: 10,
-  padding: 18,
-};
-
-const disabledButton = {
-  border: "1px solid #cbd5e1",
-  borderRadius: 8,
-  padding: "9px 12px",
-  background: "#e2e8f0",
-  color: "#64748b",
-  fontWeight: 900,
-  cursor: "not-allowed",
 };
 
 const backLink = {

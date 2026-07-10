@@ -149,7 +149,7 @@ export default function CommercialProfileForm(props: {
 
           <Row
             label="Commercial Status"
-            value="Draft"
+            value={formatCommercialStatus(props.profile?.commercial_status ?? "draft")}
           />
         </tbody>
       </table>
@@ -166,6 +166,13 @@ export default function CommercialProfileForm(props: {
       </div>
     </>
   );
+}
+
+function formatCommercialStatus(value: string) {
+  return value
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function formatCurrency(value: unknown) {
