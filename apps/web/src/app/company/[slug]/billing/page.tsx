@@ -70,7 +70,11 @@ export default async function CompanyBillingPage(props: PageProps) {
                   Stripe customer status, implementation fee, and subscription setup for {company.company_name}.
                 </p>
               </div>
-              <div style={statusPill}>
+              <div
+                style={statusPillStyle(
+                  commercialProfile?.commercial_status ?? "draft"
+                )}
+              >
                 {formatStatus(commercialProfile?.commercial_status ?? "draft")}
               </div>
             </div>
@@ -191,15 +195,54 @@ const td = {
   fontWeight: 800,
 };
 
-const statusPill = {
-  border: "1px solid #f59e0b",
-  borderRadius: 999,
-  padding: "6px 10px",
-  color: "#92400e",
-  background: "#fffbeb",
-  fontSize: 12,
-  fontWeight: 900,
-};
+function statusPillStyle(status: string) {
+  const base = {
+    borderRadius: 999,
+    padding: "6px 10px",
+    fontSize: 12,
+    fontWeight: 900,
+  };
+
+  if (
+    status === "implementation_paid" ||
+    status === "subscription_active"
+  ) {
+    return {
+      ...base,
+      border: "1px solid #10b981",
+      color: "#047857",
+      background: "#ecfdf5",
+    };
+  }
+
+  if (
+    status === "ready_for_stripe" ||
+    status === "stripe_customer_created"
+  ) {
+    return {
+      ...base,
+      border: "1px solid #f59e0b",
+      color: "#92400e",
+      background: "#fffbeb",
+    };
+  }
+
+  if (status === "suspended" || status === "cancelled") {
+    return {
+      ...base,
+      border: "1px solid #ef4444",
+      color: "#b91c1c",
+      background: "#fef2f2",
+    };
+  }
+
+  return {
+    ...base,
+    border: "1px solid #cbd5e1",
+    color: "#475569",
+    background: "#f8fafc",
+  };
+}
 
 const backLink = {
   color: "#0f172a",

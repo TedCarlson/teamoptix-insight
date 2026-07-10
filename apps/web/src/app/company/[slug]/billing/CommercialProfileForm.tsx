@@ -62,7 +62,11 @@ export default function CommercialProfileForm(props: {
           billing_contact_name: contactName,
           billing_email: email,
           billing_phone: billingPhone,
-          commercial_status: "profile_complete",
+          commercial_status:
+            props.profile?.commercial_status === "draft" ||
+            !props.profile?.commercial_status
+              ? "profile_complete"
+              : props.profile.commercial_status,
         }),
       });
 
@@ -169,10 +173,22 @@ export default function CommercialProfileForm(props: {
 }
 
 function formatCommercialStatus(value: string) {
-  return value
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+  switch (value) {
+    case "stripe_customer_created":
+      return "Implementation payment required.";
+
+    case "implementation_paid":
+      return "Implementation paid; awaiting Go Live.";
+
+    case "subscription_active":
+      return "Subscription activated.";
+
+    default:
+      return value
+        .split("_")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+  }
 }
 
 function formatCurrency(value: unknown) {
