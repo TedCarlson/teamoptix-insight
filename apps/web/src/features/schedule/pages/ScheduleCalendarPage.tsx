@@ -2,11 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import {
+  resolveDailyScheduleCapacity,
+  scheduleRouteLabel,
+  type ScheduleCapacityRoute,
+} from "@/features/schedule/lib/scheduleCapacity";
 
 type GeneratedScheduleRow = {
   id: string;
   service_date: string;
+  roster_member_id: string;
   full_name: string | null;
+  worker_type: string | null;
   planned_on: boolean;
   route_name: string | null;
   override_type: string | null;
@@ -32,13 +39,14 @@ function addDays(date: Date, days: number) {
 }
 
 
-function getDeltaTone(
+function getDeltaSignal(
   delta: number,
   workforce: number,
-  routes: number
+  routeDemand: number
 ) {
-  if (workforce === 0 && routes === 0) {
+  if (workforce === 0 && routeDemand === 0) {
     return {
+      label: "No operation",
       background: "#f1f5f9",
       border: "#cbd5e1",
       color: "#64748b",
@@ -47,6 +55,7 @@ function getDeltaTone(
 
   if (delta < 0) {
     return {
+      label: "Service risk",
       background: "#fee2e2",
       border: "#fca5a5",
       color: "#b91c1c",
@@ -55,6 +64,7 @@ function getDeltaTone(
 
   if (delta === 0) {
     return {
+      label: "No contingency",
       background: "#fef3c7",
       border: "#fcd34d",
       color: "#92400e",
@@ -63,16 +73,27 @@ function getDeltaTone(
 
   if (delta <= 2) {
     return {
-      background: "#dbeafe",
-      border: "#93c5fd",
-      color: "#1d4ed8",
+      label: "Target range",
+      background: "#dcfce7",
+      border: "#86efac",
+      color: "#166534",
+    };
+  }
+
+  if (delta <= 5) {
+    return {
+      label: "Labor high",
+      background: "#fef3c7",
+      border: "#fcd34d",
+      color: "#92400e",
     };
   }
 
   return {
-    background: "#dcfce7",
-    border: "#86efac",
-    color: "#166534",
+    label: "Profitability risk",
+    background: "#fee2e2",
+    border: "#fca5a5",
+    color: "#b91c1c",
   };
 }
 
@@ -83,6 +104,7 @@ export default function ScheduleCalendarPage() {
   const slug = String(params?.slug ?? "");
 
   const [rows, setRows] = useState<GeneratedScheduleRow[]>([]);
+  const [routes, setRoutes] = useState<ScheduleCapacityRoute[]>([]);
   const [month, setMonth] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -99,22 +121,48 @@ export default function ScheduleCalendarPage() {
       const start = toIsoDate(calendarDays[0]);
       const end = toIsoDate(calendarDays[41]);
 
-      const res = await fetch(
-        `/api/company/${slug}/schedule/generated?start_date=${start}&end_date=${end}`,
-        {
+      const [scheduleRes, routesRes] = await Promise.all([
+        fetch(
+          `/api/company/${slug}/schedule/generated?start_date=${start}&end_date=${end}`,
+          {
+            credentials: "include",
+            cache: "no-store",
+          }
+        ),
+        fetch(`/api/company/${slug}/routes`, {
           credentials: "include",
           cache: "no-store",
-        }
-      );
+        }),
+      ]);
 
-      const data = await res.json();
+      const [scheduleData, routesData] = await Promise.all([
+        scheduleRes.json().catch(() => ({})),
+        routesRes.json().catch(() => ({})),
+      ]);
 
-      if (!res.ok) {
-        setError(data?.error ?? "Failed loading schedule.");
+      if (!scheduleRes.ok) {
+        setError(scheduleData?.error ?? "Failed loading schedule.");
         return;
       }
 
-      setRows(data.rows ?? []);
+      if (!routesRes.ok) {
+        setError(routesData?.error ?? "Failed loading route demand.");
+        return;
+      }
+
+      setRows(
+        Array.isArray(scheduleData?.rows)
+          ? (scheduleData.rows as GeneratedScheduleRow[])
+          : []
+      );
+
+      setRoutes(
+        Array.isArray(routesData?.routes)
+          ? (routesData.routes as ScheduleCapacityRoute[])
+          : []
+      );
+
+      setError(null);
     }
 
     if (slug) load();
@@ -204,22 +252,22 @@ export default function ScheduleCalendarPage() {
             const iso = toIsoDate(day);
             const dayRows = byDate.get(iso) ?? [];
 
-            const workforce = dayRows.filter(
-              (row) => row.planned_on
-            ).length;
-
-            const routes = new Set(
-              dayRows
-                .map((row) => row.route_name)
-                .filter(Boolean)
-            ).size;
+            const capacity = resolveDailyScheduleCapacity({
+              serviceDate: iso,
+              routes,
+              scheduleRows: dayRows,
+            });
 
             const overrides = dayRows.filter(
               (row) => row.override_type
             ).length;
 
-            const delta = workforce - routes;
-            const deltaTone = getDeltaTone(delta, workforce, routes);
+            const delta = capacity.capacityDelta;
+            const deltaSignal = getDeltaSignal(
+              delta,
+              capacity.scheduledDrivers,
+              capacity.routeDemand
+            );
             const isToday = iso === toIsoDate(new Date());
 
             return (
@@ -286,11 +334,11 @@ export default function ScheduleCalendarPage() {
 
                 <div style={{ marginTop: 12, fontSize: 13 }}>
                   <div>
-                    <strong>{workforce}</strong> scheduled
+                    <strong>{capacity.routeDemand}</strong> routes
                   </div>
 
                   <div>
-                    <strong>{routes}</strong> routes
+                    <strong>{capacity.scheduledDrivers}</strong> drivers
                   </div>
 
                   <div
@@ -301,13 +349,13 @@ export default function ScheduleCalendarPage() {
                       borderRadius: 999,
                       fontWeight: 700,
                       fontSize: 12,
-                      background: deltaTone.background,
-                      border: `1px solid ${deltaTone.border}`,
-                      color: deltaTone.color,
+                      background: deltaSignal.background,
+                      border: `1px solid ${deltaSignal.border}`,
+                      color: deltaSignal.color,
                     }}
                   >
                     {delta >= 0 ? "+" : ""}
-                    {delta} coverage
+                    {delta} · {deltaSignal.label}
                   </div>
 
                   {overrides > 0 ? (
@@ -331,22 +379,29 @@ export default function ScheduleCalendarPage() {
           (() => {
             const selectedRows = byDate.get(selectedDate) ?? [];
 
-            const workers = selectedRows.filter(
-              (row) => row.planned_on
-            ).length;
+            const capacity = resolveDailyScheduleCapacity({
+              serviceDate: selectedDate,
+              routes,
+              scheduleRows: selectedRows,
+            });
 
-            const routes = new Set(
-              selectedRows
-                .map((row) => row.route_name)
-                .filter(Boolean)
-            ).size;
+            const assignedDrivers = selectedRows.filter((row) => {
+              const workerType = String(row.worker_type ?? "").toLowerCase();
 
-            const assignedDrivers = selectedRows.filter(
-              (row) => row.planned_on && row.route_name
-            );
+              return (
+                row.planned_on &&
+                Boolean(row.route_name?.trim()) &&
+                !workerType.includes("helper") &&
+                !workerType.includes("jumper") &&
+                !workerType.includes("trainee")
+              );
+            });
 
-            const unassignedDrivers = selectedRows.filter(
-              (row) => row.planned_on && !row.route_name
+            const unassignedDrivers = capacity.standbyDrivers;
+            const drawerSignal = getDeltaSignal(
+              capacity.capacityDelta,
+              capacity.scheduledDrivers,
+              capacity.routeDemand
             );
 
             const offOrOverrides = selectedRows.filter(
@@ -403,11 +458,16 @@ export default function ScheduleCalendarPage() {
                     </h2>
 
                     <div style={{ marginTop: 20 }}>
-                      <div>Workforce: {workers}</div>
-                      <div>Routes: {routes}</div>
+                      <div>Routes running: {capacity.routeDemand}</div>
+                      <div>Drivers scheduled: {capacity.scheduledDrivers}</div>
+                      <div>Routes assigned: {capacity.assignedRoutes}</div>
+                      <div>Routes open: {capacity.openRoutes.length}</div>
                       <div>
-                        Delta: {workers - routes >= 0 ? "+" : ""}
-                        {workers - routes}
+                        Delta: {capacity.capacityDelta >= 0 ? "+" : ""}
+                        {capacity.capacityDelta}
+                      </div>
+                      <div style={{ fontWeight: 700, color: drawerSignal.color }}>
+                        {drawerSignal.label}
                       </div>
                     </div>
                   </div>
@@ -470,6 +530,47 @@ export default function ScheduleCalendarPage() {
                             </span>
                           </div>
                         ))}
+                      </section>
+
+                      <section
+                        style={{
+                          border: "1px solid #e2e8f0",
+                          borderRadius: 10,
+                          padding: 12,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            marginBottom: 8,
+                          }}
+                        >
+                          <strong style={{ color: "#b91c1c" }}>
+                            Routes Without Drivers
+                          </strong>
+                          <span style={{ color: "#64748b" }}>
+                            {capacity.openRoutes.length}
+                          </span>
+                        </div>
+
+                        {capacity.openRoutes.length === 0 ? (
+                          <div style={{ color: "#64748b" }}>None</div>
+                        ) : (
+                          capacity.openRoutes.map((route) => (
+                            <div
+                              key={route.id}
+                              style={{
+                                padding: "6px 0",
+                                borderBottom: "1px solid #e2e8f0",
+                                fontSize: 14,
+                                fontWeight: 600,
+                              }}
+                            >
+                              {scheduleRouteLabel(route)}
+                            </div>
+                          ))
+                        )}
                       </section>
 
                       <section
