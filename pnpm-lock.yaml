@@ -6,11 +6,7 @@ settings:
 
 importers:
 
-  .:
-    devDependencies:
-      baseline-browser-mapping:
-        specifier: ^2.10.40
-        version: 2.10.40
+  .: {}
 
   apps/automation-worker:
     dependencies:
@@ -97,9 +93,6 @@ importers:
       '@types/yauzl':
         specifier: ^3.4.0
         version: 3.4.0
-      baseline-browser-mapping:
-        specifier: ^2.10.40
-        version: 2.10.40
       eslint:
         specifier: ^9.0.0
         version: 9.39.4

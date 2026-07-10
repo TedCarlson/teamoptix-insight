@@ -30,7 +30,6 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/yauzl": "^3.4.0",
-    "baseline-browser-mapping": "^2.10.40",
     "eslint": "^9.0.0",
     "eslint-config-next": "16.0.0",
     "typescript": "^5.0.0"
