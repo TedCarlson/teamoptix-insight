@@ -4756,3 +4756,34 @@ body {
   place-items: center;
   text-align: center;
 }
+
+.schedule-override-review-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(320px, 0.8fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.schedule-override-left-stack {
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+}
+
+.schedule-override-impact-card {
+  min-width: 0;
+  align-self: stretch;
+}
+
+@media (max-width: 1050px) {
+  .schedule-override-review-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .schedule-override-left-stack form > div:first-child {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+

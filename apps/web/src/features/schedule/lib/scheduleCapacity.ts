@@ -134,3 +134,188 @@ export function scheduleRouteLabel(route: ScheduleCapacityRoute) {
   if (wa && name) return `${wa} · ${name}`;
   return wa || name || "Unnamed route";
 }
+
+export type TimeOffImpactScheduleRow = ScheduleCapacityPerson & {
+  service_date: string;
+};
+
+export type TimeOffImpactDay = {
+  serviceDate: string;
+  routeDemand: number;
+  currentScheduledDrivers: number;
+  projectedScheduledDrivers: number;
+  currentDelta: number;
+  projectedDelta: number;
+  affectsSchedule: boolean;
+  signalLabel: string;
+};
+
+export type TimeOffRequestImpact = {
+  days: TimeOffImpactDay[];
+  affectedDayCount: number;
+  unchangedDayCount: number;
+};
+
+export function scheduleCapacitySignalLabel(delta: number) {
+  if (delta < 0) return "Service risk";
+  if (delta === 0) return "No contingency";
+  if (delta <= 2) return "Target range";
+  if (delta <= 5) return "Labor high";
+  return "Profitability risk";
+}
+
+export function resolveTimeOffRequestImpact(params: {
+  requestedDates: string[];
+  rosterMemberId: string;
+  routes: ScheduleCapacityRoute[];
+  scheduleRows: TimeOffImpactScheduleRow[];
+}): TimeOffRequestImpact {
+  const {
+    requestedDates,
+    rosterMemberId,
+    routes,
+    scheduleRows,
+  } = params;
+
+  const days = requestedDates.map((serviceDate) => {
+    const rowsForDate = scheduleRows.filter(
+      (row) => row.service_date === serviceDate
+    );
+
+    const current = resolveDailyScheduleCapacity({
+      serviceDate,
+      routes,
+      scheduleRows: rowsForDate,
+    });
+
+    const projectedRows = rowsForDate.filter(
+      (row) =>
+        !(
+          row.roster_member_id === rosterMemberId &&
+          row.planned_on
+        )
+    );
+
+    const projected = resolveDailyScheduleCapacity({
+      serviceDate,
+      routes,
+      scheduleRows: projectedRows,
+    });
+
+    const affectsSchedule =
+      projected.scheduledDrivers !== current.scheduledDrivers;
+
+    return {
+      serviceDate,
+      routeDemand: current.routeDemand,
+      currentScheduledDrivers: current.scheduledDrivers,
+      projectedScheduledDrivers: projected.scheduledDrivers,
+      currentDelta: current.capacityDelta,
+      projectedDelta: projected.capacityDelta,
+      affectsSchedule,
+      signalLabel: scheduleCapacitySignalLabel(projected.capacityDelta),
+    };
+  });
+
+  return {
+    days,
+    affectedDayCount: days.filter((day) => day.affectsSchedule).length,
+    unchangedDayCount: days.filter((day) => !day.affectsSchedule).length,
+  };
+}
+
+export type ScheduleOverrideImpactType =
+  | "TIME_OFF"
+  | "CALL_OUT"
+  | "ADMIN_OFF"
+  | "ADD_IN";
+
+export function resolveScheduleOverrideImpact(params: {
+  requestedDates: string[];
+  rosterMemberId: string;
+  overrideType: ScheduleOverrideImpactType;
+  routes: ScheduleCapacityRoute[];
+  scheduleRows: TimeOffImpactScheduleRow[];
+  worker: {
+    full_name: string | null;
+    worker_type: string | null;
+  };
+}): TimeOffRequestImpact {
+  const {
+    requestedDates,
+    rosterMemberId,
+    overrideType,
+    routes,
+    scheduleRows,
+    worker,
+  } = params;
+
+  const days = requestedDates.map((serviceDate) => {
+    const rowsForDate = scheduleRows.filter(
+      (row) => row.service_date === serviceDate
+    );
+
+    const current = resolveDailyScheduleCapacity({
+      serviceDate,
+      routes,
+      scheduleRows: rowsForDate,
+    });
+
+    const currentWorkerRow =
+      rowsForDate.find(
+        (row) => row.roster_member_id === rosterMemberId
+      ) ?? null;
+
+    let projectedRows = rowsForDate;
+    let affectsSchedule = false;
+
+    if (overrideType === "ADD_IN") {
+      if (!currentWorkerRow?.planned_on) {
+        projectedRows = [
+          ...rowsForDate,
+          {
+            id: `draft-add-in:${serviceDate}:${rosterMemberId}`,
+            service_date: serviceDate,
+            roster_member_id: rosterMemberId,
+            full_name: worker.full_name,
+            worker_type: worker.worker_type,
+            planned_on: true,
+            route_name: null,
+          },
+        ];
+
+        affectsSchedule = true;
+      }
+    } else if (currentWorkerRow?.planned_on) {
+      projectedRows = rowsForDate.filter(
+        (row) => row.roster_member_id !== rosterMemberId
+      );
+
+      affectsSchedule = true;
+    }
+
+    const projected = resolveDailyScheduleCapacity({
+      serviceDate,
+      routes,
+      scheduleRows: projectedRows,
+    });
+
+    return {
+      serviceDate,
+      routeDemand: current.routeDemand,
+      currentScheduledDrivers: current.scheduledDrivers,
+      projectedScheduledDrivers: projected.scheduledDrivers,
+      currentDelta: current.capacityDelta,
+      projectedDelta: projected.capacityDelta,
+      affectsSchedule,
+      signalLabel: scheduleCapacitySignalLabel(projected.capacityDelta),
+    };
+  });
+
+  return {
+    days,
+    affectedDayCount: days.filter((day) => day.affectsSchedule).length,
+    unchangedDayCount: days.filter((day) => !day.affectsSchedule).length,
+  };
+}
+
