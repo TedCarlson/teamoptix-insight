@@ -8,6 +8,7 @@ import time
 import urllib.error
 import urllib.request
 import urllib.parse
+from datetime import date, timedelta
 from pathlib import Path
 
 APP_DIR = Path(__file__).resolve().parents[1]
@@ -25,6 +26,32 @@ def service_date_folder(service_date: str | None) -> str:
         return time.strftime("%m-%d-%Y")
     yyyy, mm, dd = service_date.split("-")
     return f"{mm}-{dd}-{yyyy}"
+
+
+def request_service_dates(request: dict) -> list[str]:
+    service_date = str(request.get("service_date") or "").strip()
+    if service_date:
+        return [service_date]
+
+    start_text = str(request.get("service_date_start") or "").strip()
+    end_text = str(request.get("service_date_end") or "").strip()
+
+    if not start_text or not end_text:
+        return [time.strftime("%Y-%m-%d")]
+
+    start = date.fromisoformat(start_text)
+    end = date.fromisoformat(end_text)
+
+    if end < start:
+        raise RuntimeError("Historical end date must be on or after start date.")
+
+    dates = []
+    current = start
+    while current <= end:
+        dates.append(current.isoformat())
+        current += timedelta(days=1)
+
+    return dates
 
 def infer_report_identity(filename: str) -> dict:
     name = filename.lower()
@@ -62,7 +89,7 @@ def storage_slug(value: str) -> str:
 
 def local_storage_path(request: dict, artifact: dict) -> str:
     company_slug = request.get("company_slug") or "unknown-company"
-    service_date = request.get("service_date") or time.strftime("%Y-%m-%d")
+    service_date = artifact.get("service_date") or request.get("service_date") or time.strftime("%Y-%m-%d")
     request_id = request.get("id") or "unknown-request"
     family = artifact.get("report_family_key") or "unknown"
     original_filename = artifact.get("filename") or "artifact"
@@ -133,29 +160,39 @@ def artifact_matches_targets(request: dict, artifact: dict) -> bool:
     return False
 
 def collect_artifacts(request: dict, run_started_at: float) -> list[dict]:
-    folder_name = service_date_folder(request.get("service_date"))
-    excel_dir = SCRAPER_HOME / "Excels" / folder_name
     artifacts = []
 
-    if excel_dir.exists():
+    for service_date in request_service_dates(request):
+        folder_name = service_date_folder(service_date)
+        excel_dir = SCRAPER_HOME / "Excels" / folder_name
+
+        if not excel_dir.exists():
+            continue
+
         for file in sorted(excel_dir.iterdir()):
-            if file.is_file():
-                if file.stat().st_mtime < run_started_at - 2:
-                    continue
-                identity = infer_report_identity(file.name)
-                artifact = {
-                    "kind": "REPORT_FILE",
-                    "path": str(file),
-                    "filename": file.name,
-                    "size_bytes": file.stat().st_size,
-                    "content_type": "application/vnd.ms-excel" if file.suffix.lower() == ".xls" else "application/octet-stream",
-                    **identity,
-                }
-                if not artifact_matches_targets(request, artifact):
-                    continue
-                artifact["storage_bucket"] = "automation-artifacts"
-                artifact["storage_path"] = local_storage_path(request, artifact)
-                artifacts.append(artifact)
+            if not file.is_file():
+                continue
+
+            if file.stat().st_mtime < run_started_at - 2:
+                continue
+
+            identity = infer_report_identity(file.name)
+            artifact = {
+                "kind": "REPORT_FILE",
+                "service_date": service_date,
+                "path": str(file),
+                "filename": file.name,
+                "size_bytes": file.stat().st_size,
+                "content_type": "application/vnd.ms-excel" if file.suffix.lower() == ".xls" else "application/octet-stream",
+                **identity,
+            }
+
+            if not artifact_matches_targets(request, artifact):
+                continue
+
+            artifact["storage_bucket"] = "automation-artifacts"
+            artifact["storage_path"] = local_storage_path(request, artifact)
+            artifacts.append(artifact)
 
     return artifacts
 
@@ -199,7 +236,7 @@ def register_artifact(request: dict, artifact: dict) -> dict:
     return rpc("register_operations_collection_artifact", {
         "p_collection_request_id": request["id"],
         "p_company_id": request["company_id"],
-        "p_service_date": request.get("service_date"),
+        "p_service_date": artifact.get("service_date") or request.get("service_date"),
         "p_artifact_kind": artifact.get("kind") or "REPORT_FILE",
         "p_report_family_key": artifact.get("report_family_key"),
         "p_report_shape_key": artifact.get("report_shape_key"),
@@ -330,6 +367,9 @@ def main() -> int:
         child_env["FCMS_COMPANY_ID"] = request["company_id"]
         child_env["FCMS_COMPANY_SLUG"] = request.get("company_slug") or ""
         child_env["FCMS_SERVICE_DATE"] = request.get("service_date") or ""
+        child_env["FCMS_SERVICE_DATE_START"] = request.get("service_date_start") or ""
+        child_env["FCMS_SERVICE_DATE_END"] = request.get("service_date_end") or ""
+        child_env["FCMS_REQUEST_TYPE"] = request.get("request_type") or ""
         child_env["FCMS_COLLECTION_SCOPE"] = (request.get("request_payload") or {}).get("collect_scope") or ""
         child_env["FCMS_TARGET_SECTIONS"] = ",".join(target_runner_sections(request))
         child_env["FCMS_TARGET_ARTIFACT_KEYS"] = ",".join(sorted(target_artifact_keys(request)))

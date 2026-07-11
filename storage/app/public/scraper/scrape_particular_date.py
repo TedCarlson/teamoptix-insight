@@ -44,28 +44,49 @@ SCRAP_INFO = getScrapingConfig(CONNECTION, CURSOR)
 SCRAPE_DATE = ''
 START_TIME = time.time()
 
+runtime_service_date = os.environ.get("FCMS_SERVICE_DATE", "").strip()
+INSIGHT_HISTORICAL_MODE = bool(runtime_service_date)
+
 logging.info(SCRAP_INFO)
 
-if SCRAP_INFO['scrape_on_active'] and SCRAP_INFO['scrape_on'] and not SCRAP_INFO['scrape_on_progress']:
+if INSIGHT_HISTORICAL_MODE:
+    try:
+        current_date = datetime.strptime(runtime_service_date, "%Y-%m-%d")
+    except ValueError as exc:
+        closeConnection(CONNECTION)
+        raise RuntimeError(
+            f"Invalid FCMS_SERVICE_DATE {runtime_service_date!r}; expected YYYY-MM-DD."
+        ) from exc
+
     if not SCRAP_INFO['can_scrape'] or len(SCRAP_INFO['username']) == 0 or len(SCRAP_INFO['password']) == 0:
-        logging.info("No permission to scrape as per admin panel or username and/or password not configured on admin panel")
+        logging.info("No permission to scrape or runtime credentials are unavailable")
         closeConnection(CONNECTION)
         sys.exit()
-    SCRAPE_DATE = SCRAP_INFO['scrape_on'].strftime('%m/%d/%Y')
-    logging.info("Scraping Date: " + SCRAPE_DATE)
+
+    SCRAPE_DATE = current_date.strftime('%m/%d/%Y')
+    logging.info("Insight historical service date: " + SCRAPE_DATE)
 else:
-    closeConnection(CONNECTION)
-    sys.exit()
+    if SCRAP_INFO['scrape_on_active'] and SCRAP_INFO['scrape_on'] and not SCRAP_INFO['scrape_on_progress']:
+        if not SCRAP_INFO['can_scrape'] or len(SCRAP_INFO['username']) == 0 or len(SCRAP_INFO['password']) == 0:
+            logging.info("No permission to scrape as per admin panel or username and/or password not configured on admin panel")
+            closeConnection(CONNECTION)
+            sys.exit()
+
+        current_date = SCRAP_INFO['scrape_on']
+        SCRAPE_DATE = current_date.strftime('%m/%d/%Y')
+        logging.info("Scraping Date: " + SCRAPE_DATE)
+    else:
+        closeConnection(CONNECTION)
+        sys.exit()
 
 closeConnection(CONNECTION)
 # 
 
-current_date = SCRAP_INFO['scrape_on']
 formatted_date = current_date.strftime("%m-%d-%Y")
 
 DOWNLOAD_FOLDER = os.path.join(MAIN_FOLDER, formatted_date)
 
-logging.info(current_date + " " + formatted_date + " " + DOWNLOAD_FOLDER)
+logging.info(f"{current_date} {formatted_date} {DOWNLOAD_FOLDER}")
 
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.mkdir(DOWNLOAD_FOLDER)
@@ -513,17 +534,18 @@ def main(section_='', option_=0, retry=1):
 
     extractDataFromFolder(os.path.basename(DOWNLOAD_FOLDER))
 
-    CONNECTION, CURSOR = getConnection()
+    if not INSIGHT_HISTORICAL_MODE:
+        CONNECTION, CURSOR = getConnection()
 
-    query = f'UPDATE scraper_config SET scrape_on_active=0, continue_on_selection="", continue_on_option=0 LIMIT 1'
+        query = f'UPDATE scraper_config SET scrape_on_active=0, continue_on_selection="", continue_on_option=0 LIMIT 1'
 
-    try:
-        CURSOR.execute(query)
-        CONNECTION.commit()
-    except Exception as e:
-        logging.info(e)
+        try:
+            CURSOR.execute(query)
+            CONNECTION.commit()
+        except Exception as e:
+            logging.info(e)
 
-    closeConnection(CONNECTION)
+        closeConnection(CONNECTION)
 
 def scrapeAll(CONNECTION, CURSOR, S_INFO):
     logging.info("Scraping for specific date...")
@@ -538,5 +560,5 @@ def scrapeAll(CONNECTION, CURSOR, S_INFO):
     main(S_INFO['continue_on_selection'], S_INFO['continue_on_selection_option'])
 
 if __name__ == "__main__":
-    main()
+    main("Daily Service" if INSIGHT_HISTORICAL_MODE else "")
     # main('SCH')

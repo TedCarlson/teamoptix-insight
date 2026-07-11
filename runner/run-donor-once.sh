@@ -57,40 +57,93 @@ export FCMS_SCRAPER_HOME="$SCRAPER_DIR"
 overall_status=0
 produced_total=0
 
-IFS=',' read -ra TARGET_SECTIONS <<< "${FCMS_TARGET_SECTIONS:-}"
+if [ "${FCMS_REQUEST_TYPE:-}" = "HISTORICAL_BACKFILL" ] \
+  && [ -n "${FCMS_SERVICE_DATE_START:-}" ] \
+  && [ -n "${FCMS_SERVICE_DATE_END:-}" ]; then
 
-if [ "${#TARGET_SECTIONS[@]}" -eq 0 ] || [ -z "${FCMS_TARGET_SECTIONS:-}" ]; then
-  TARGET_SECTIONS=("ALL")
+  mapfile -t HISTORICAL_DATES < <(
+    FCMS_RANGE_START="$FCMS_SERVICE_DATE_START" \
+    FCMS_RANGE_END="$FCMS_SERVICE_DATE_END" \
+    python3 - <<'PYDATES'
+from datetime import date, timedelta
+import os
+
+start = date.fromisoformat(os.environ["FCMS_RANGE_START"])
+end = date.fromisoformat(os.environ["FCMS_RANGE_END"])
+
+if end < start:
+    raise SystemExit("Historical end date must be on or after start date.")
+
+current = start
+while current <= end:
+    print(current.isoformat())
+    current += timedelta(days=1)
+PYDATES
+  )
+
+  echo "[runner] historical range start=$FCMS_SERVICE_DATE_START end=$FCMS_SERVICE_DATE_END dates=${#HISTORICAL_DATES[@]}"
+
+  for service_date in "${HISTORICAL_DATES[@]}"; do
+    before_count="$(find "$SCRAPER_DIR/Excels" -type f -mmin -120 2>/dev/null | wc -l | tr -d ' ')"
+    date_started_at="$(date +%s)"
+
+    echo "[runner] historical date start: $service_date"
+
+    set +e
+    FCMS_SERVICE_DATE="$service_date" "$PY" "$SCRAPER_DIR/scrape_particular_date.py"
+    status=$?
+    set -e
+
+    after_count="$(find "$SCRAPER_DIR/Excels" -type f -mmin -120 2>/dev/null | wc -l | tr -d ' ')"
+    produced_count="$((after_count - before_count))"
+    [ "$produced_count" -lt 0 ] && produced_count=0
+    produced_total="$((produced_total + produced_count))"
+    elapsed_seconds="$(($(date +%s) - date_started_at))"
+
+    echo "[runner] historical date exit status=$status service_date=$service_date produced_count=$produced_count elapsed_seconds=$elapsed_seconds"
+
+    if [ "$status" -ne 0 ]; then
+      overall_status="$status"
+      break
+    fi
+  done
+
+else
+  IFS=',' read -ra TARGET_SECTIONS <<< "${FCMS_TARGET_SECTIONS:-}"
+
+  if [ "${#TARGET_SECTIONS[@]}" -eq 0 ] || [ -z "${FCMS_TARGET_SECTIONS:-}" ]; then
+    TARGET_SECTIONS=("ALL")
+  fi
+
+  for section in "${TARGET_SECTIONS[@]}"; do
+    section="$(echo "$section" | xargs)"
+    [ -z "$section" ] && continue
+
+    before_count="$(find "$SCRAPER_DIR/Excels" -type f -mmin -120 2>/dev/null | wc -l | tr -d ' ')"
+
+    echo "[runner] section start: $section"
+
+    set +e
+    if [ "$section" = "ALL" ]; then
+      "$PY" "$SCRAPER_DIR/dynamic_script.py"
+    else
+      FCMS_TARGET_SECTIONS="$section" "$PY" "$SCRAPER_DIR/dynamic_script.py"
+    fi
+    status=$?
+    set -e
+
+    after_count="$(find "$SCRAPER_DIR/Excels" -type f -mmin -120 2>/dev/null | wc -l | tr -d ' ')"
+    produced_count="$((after_count - before_count))"
+    [ "$produced_count" -lt 0 ] && produced_count=0
+    produced_total="$((produced_total + produced_count))"
+
+    echo "[runner] section exit status=$status section=$section produced_count=$produced_count"
+
+    if [ "$status" -ne 0 ]; then
+      overall_status="$status"
+    fi
+  done
 fi
-
-for section in "${TARGET_SECTIONS[@]}"; do
-  section="$(echo "$section" | xargs)"
-  [ -z "$section" ] && continue
-
-  before_count="$(find "$SCRAPER_DIR/Excels" -type f -mmin -120 2>/dev/null | wc -l | tr -d ' ')"
-
-  echo "[runner] section start: $section"
-
-  set +e
-  if [ "$section" = "ALL" ]; then
-    "$PY" "$SCRAPER_DIR/dynamic_script.py"
-  else
-    FCMS_TARGET_SECTIONS="$section" "$PY" "$SCRAPER_DIR/dynamic_script.py"
-  fi
-  status=$?
-  set -e
-
-  after_count="$(find "$SCRAPER_DIR/Excels" -type f -mmin -120 2>/dev/null | wc -l | tr -d ' ')"
-  produced_count="$((after_count - before_count))"
-  [ "$produced_count" -lt 0 ] && produced_count=0
-  produced_total="$((produced_total + produced_count))"
-
-  echo "[runner] section exit status=$status section=$section produced_count=$produced_count"
-
-  if [ "$status" -ne 0 ]; then
-    overall_status="$status"
-  fi
-done
 
 echo "[runner] scraper exit status=$overall_status produced_total=$produced_total"
 
