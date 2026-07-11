@@ -23,6 +23,50 @@ type CompanyRecord = {
   created_at: string | null;
 };
 
+type CompanyOverview = {
+  generated_at: string;
+  profile: {
+    company_name: string;
+    company_slug: string;
+    company_status: string;
+    industry_label: string | null;
+    created_at: string | null;
+  };
+  operating_profile: {
+    average_daily_routes: number;
+    active_driver_count: number;
+    company_user_count: number;
+    primary_terminal: string | null;
+    active_contract_number: string | null;
+    service_area: string | null;
+    last_report: {
+      family: string;
+      service_date: string;
+    } | null;
+  };
+  analytics: {
+    window: string;
+    history_count: number;
+    latest_service_date: string | null;
+    latest: {
+      routes: number;
+      stops: number;
+      packages: number;
+    };
+    average: {
+      routes: number;
+      stops: number;
+      packages: number;
+    };
+    delta_pct: {
+      routes: number;
+      stops: number;
+      packages: number;
+    };
+    signal: string;
+  };
+};
+
 type OverviewSurface = "profile" | "payroll" | "prior-day" | "analytics" | "config";
 
 const SIZE_OPTIONS = ["1-9", "10-49", "50-199", "200-999", "1000+"];
@@ -83,6 +127,96 @@ function MiniStat(props: { label: string; value: string }) {
   );
 }
 
+function titleCase(value: string | null | undefined) {
+  const text = String(value ?? "").trim();
+
+  if (!text) return "Not available";
+
+  return text
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map(
+      (part) =>
+        part.slice(0, 1).toUpperCase() + part.slice(1).toLowerCase()
+    )
+    .join(" ");
+}
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return "No report loaded";
+
+  return new Date(`${value.slice(0, 10)}T12:00:00`).toLocaleDateString(
+    undefined,
+    {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }
+  );
+}
+
+function formatWorkspaceAge(value: string | null | undefined) {
+  if (!value) return "Unknown";
+
+  const started = new Date(value);
+
+  if (Number.isNaN(started.getTime())) return "Unknown";
+
+  const elapsedDays = Math.max(
+    0,
+    Math.floor((Date.now() - started.getTime()) / 86_400_000)
+  );
+
+  if (elapsedDays < 14) {
+    return `${elapsedDays} day${elapsedDays === 1 ? "" : "s"}`;
+  }
+
+  if (elapsedDays < 60) {
+    return `${Math.floor(elapsedDays / 7)} weeks`;
+  }
+
+  const months = Math.floor(elapsedDays / 30.4375);
+
+  if (months < 24) {
+    return `${months} months`;
+  }
+
+  const years = Math.floor(months / 12);
+  const remainingMonths = months % 12;
+
+  return remainingMonths > 0
+    ? `${years}y ${remainingMonths}m`
+    : `${years} year${years === 1 ? "" : "s"}`;
+}
+
+function formatCount(value: number | null | undefined) {
+  return Number.isFinite(value)
+    ? Number(value).toLocaleString()
+    : "—";
+}
+
+function formatAverage(value: number | null | undefined) {
+  if (!Number.isFinite(value) || Number(value) <= 0) {
+    return "No history";
+  }
+
+  const number = Number(value);
+
+  return Number.isInteger(number)
+    ? number.toLocaleString()
+    : number.toLocaleString(undefined, {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      });
+}
+
+function formatDelta(value: number | null | undefined) {
+  if (!Number.isFinite(value)) return "—";
+
+  const number = Number(value);
+  return `${number > 0 ? "+" : ""}${number.toFixed(1)}%`;
+}
+
 export default function CompanyPage() {
   const params = useParams();
   const access = useAccess();
@@ -94,6 +228,9 @@ export default function CompanyPage() {
   const [activeSurface, setActiveSurface] = useState<OverviewSurface>("profile");
   const [activeConfigSection, setActiveConfigSection] = useState<CompanyConfigSection>("company");
   const [company, setCompany] = useState<CompanyRecord | null>(null);
+  const [overview, setOverview] = useState<CompanyOverview | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(true);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
 
@@ -178,6 +315,54 @@ export default function CompanyPage() {
     };
   }, [slug]);
 
+  useEffect(() => {
+    let active = true;
+
+    async function loadOverview() {
+      try {
+        setOverviewLoading(true);
+        setOverviewError(null);
+
+        const res = await fetch(`/api/company/${slug}/overview`, {
+          method: "GET",
+          cache: "no-store",
+          credentials: "include",
+        });
+
+        const data = await res.json();
+
+        if (!active) return;
+
+        if (!res.ok) {
+          setOverview(null);
+          setOverviewError(
+            data?.error ?? "Failed to load company operating profile."
+          );
+          return;
+        }
+
+        setOverview(data as CompanyOverview);
+      } catch {
+        if (!active) return;
+
+        setOverview(null);
+        setOverviewError("Failed to load company operating profile.");
+      } finally {
+        if (active) setOverviewLoading(false);
+      }
+    }
+
+    if (slug) {
+      void loadOverview();
+    } else {
+      setOverviewLoading(false);
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [slug]);
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -226,8 +411,53 @@ export default function CompanyPage() {
 
   const heading = loading ? "Loading company" : company?.company_name ?? slug;
   const industryLabel = company?.industry_label ?? "Not assigned";
-  const statusLabel = company?.company_status ?? "Unknown";
-  const createdLabel = company?.created_at ? new Date(company.created_at).toLocaleDateString() : "Unknown";
+  const statusLabel = titleCase(company?.company_status);
+  const membershipLabel = membership
+    ? `${titleCase(membership.relationship_type)} · ${titleCase(
+        membership.membership_status
+      )}`
+    : "No membership";
+
+  const operatingProfile = overview?.operating_profile ?? null;
+  const analytics = overview?.analytics ?? null;
+
+  const averageRoutesLabel = overviewLoading
+    ? "Loading…"
+    : formatAverage(operatingProfile?.average_daily_routes);
+
+  const activeDriversLabel = overviewLoading
+    ? "Loading…"
+    : formatCount(operatingProfile?.active_driver_count);
+
+  const companyUsersLabel = overviewLoading
+    ? "Loading…"
+    : formatCount(operatingProfile?.company_user_count);
+
+  const workspaceAgeLabel = formatWorkspaceAge(
+    overview?.profile.created_at ?? company?.created_at
+  );
+
+  const lastReportLabel = operatingProfile?.last_report
+    ? `${operatingProfile.last_report.family} · ${formatDate(
+        operatingProfile.last_report.service_date
+      )}`
+    : overviewLoading
+      ? "Loading…"
+      : "No report loaded";
+
+  const analyticsSummary = !analytics
+    ? "Operational history will appear after finalized DSW reports are available."
+    : analytics.history_count === 0
+      ? "The latest operating day is available, but more finalized history is needed before Insight can calculate a meaningful comparison."
+      : `On ${formatDate(
+          analytics.latest_service_date
+        )}, route volume was ${formatDelta(
+          analytics.delta_pct.routes
+        )} versus the recent operating average. Stops were ${formatDelta(
+          analytics.delta_pct.stops
+        )} and packages were ${formatDelta(
+          analytics.delta_pct.packages
+        )} across ${analytics.history_count} prior operating days.`;
 
   return (
     <main className="workspace-shell">
@@ -242,15 +472,45 @@ export default function CompanyPage() {
           <section style={{ display: "grid", gap: 10 }}>
             <SectionCard eyebrow="Operating profile" title={heading}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
-                <MiniStat label="Avg daily routes" value="Pending DSW" />
-                <MiniStat label="Active drivers" value="Pending roster" />
-                <MiniStat label="Company users" value="Pending access" />
-                <MiniStat label="Time in platform" value={createdLabel} />
-                <MiniStat label="Primary terminal" value="Pending config" />
-                <MiniStat label="Active contract" value="Pending config" />
-                <MiniStat label="Service area" value="Pending config" />
-                <MiniStat label="Last report loaded" value="No source yet" />
+                <MiniStat label="Avg daily routes" value={averageRoutesLabel} />
+                <MiniStat label="Active drivers" value={activeDriversLabel} />
+                <MiniStat label="Company users" value={companyUsersLabel} />
+                <MiniStat label="Time in platform" value={workspaceAgeLabel} />
+                <MiniStat
+                  label="Primary terminal"
+                  value={
+                    overviewLoading
+                      ? "Loading…"
+                      : operatingProfile?.primary_terminal || "Not configured"
+                  }
+                />
+                <MiniStat
+                  label="Active contract"
+                  value={
+                    overviewLoading
+                      ? "Loading…"
+                      : operatingProfile?.active_contract_number || "Not configured"
+                  }
+                />
+                <MiniStat
+                  label="Service area"
+                  value={
+                    overviewLoading
+                      ? "Loading…"
+                      : operatingProfile?.service_area || "Not configured"
+                  }
+                />
+                <MiniStat label="Last report loaded" value={lastReportLabel} />
               </div>
+
+              {overviewError ? (
+                <p
+                  className="app-card__body"
+                  style={{ marginTop: 10, color: "#b91c1c" }}
+                >
+                  {overviewError}
+                </p>
+              ) : null}
             </SectionCard>
 
             <SectionCard eyebrow="Context" title="Company posture">
@@ -258,10 +518,7 @@ export default function CompanyPage() {
                 <MiniStat label="LOB" value={lob.lob_label} />
                 <MiniStat label="Industry" value={industryLabel} />
                 <MiniStat label="Status" value={statusLabel} />
-                <MiniStat
-                  label="Membership"
-                  value={membership ? `${membership.relationship_type} · ${membership.membership_status}` : "No match"}
-                />
+                <MiniStat label="Membership" value={membershipLabel} />
               </div>
             </SectionCard>
           </section>
@@ -288,16 +545,101 @@ export default function CompanyPage() {
         ) : null}
 
         {activeSurface === "analytics" ? (
-          <SectionCard eyebrow="Analytics" title="Analytics Engine">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
-              <MiniStat label="Company signals" value="Coming soon" />
-              <MiniStat label="Operational trends" value="Pending surface" />
-              <MiniStat label="Readiness signals" value="Pending setup" />
-            </div>
-            <p className="app-card__body" style={{ marginTop: 12 }}>
-              Analytics, readiness signals, operational trends, and decision-support summaries will surface here.
-            </p>
-          </SectionCard>
+          <section style={{ display: "grid", gap: 10 }}>
+            <SectionCard eyebrow="Analytics" title="Operating intelligence">
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
+                <MiniStat
+                  label="Latest routes"
+                  value={
+                    overviewLoading
+                      ? "Loading…"
+                      : formatCount(analytics?.latest.routes)
+                  }
+                />
+                <MiniStat
+                  label="Latest stops"
+                  value={
+                    overviewLoading
+                      ? "Loading…"
+                      : formatCount(analytics?.latest.stops)
+                  }
+                />
+                <MiniStat
+                  label="Latest packages"
+                  value={
+                    overviewLoading
+                      ? "Loading…"
+                      : formatCount(analytics?.latest.packages)
+                  }
+                />
+                <MiniStat
+                  label="Demand signal"
+                  value={
+                    overviewLoading
+                      ? "Loading…"
+                      : titleCase(analytics?.signal)
+                  }
+                />
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              eyebrow="Operational trends"
+              title="Recent operating baseline"
+            >
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
+                <MiniStat
+                  label="Average routes"
+                  value={
+                    overviewLoading
+                      ? "Loading…"
+                      : formatAverage(analytics?.average.routes)
+                  }
+                />
+                <MiniStat
+                  label="Route change"
+                  value={
+                    overviewLoading
+                      ? "Loading…"
+                      : formatDelta(analytics?.delta_pct.routes)
+                  }
+                />
+                <MiniStat
+                  label="Stop change"
+                  value={
+                    overviewLoading
+                      ? "Loading…"
+                      : formatDelta(analytics?.delta_pct.stops)
+                  }
+                />
+                <MiniStat
+                  label="Package change"
+                  value={
+                    overviewLoading
+                      ? "Loading…"
+                      : formatDelta(analytics?.delta_pct.packages)
+                  }
+                />
+              </div>
+            </SectionCard>
+
+            <SectionCard eyebrow="Decision support" title="Company signal">
+              <p className="app-card__body" style={{ margin: 0 }}>
+                {overviewLoading
+                  ? "Loading operating intelligence…"
+                  : analyticsSummary}
+              </p>
+
+              {overviewError ? (
+                <p
+                  className="app-card__body"
+                  style={{ marginTop: 10, color: "#b91c1c" }}
+                >
+                  {overviewError}
+                </p>
+              ) : null}
+            </SectionCard>
+          </section>
         ) : null}
 
         {activeSurface === "config" ? (

@@ -44,6 +44,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const assetsBase = `${base}/assets`;
   const payrollBase = `${base}/payroll`;
   const billingBase = `${base}/billing`;
+  const analyticsBase = `${base}/analytics`;
 
   const mainItems: NavItem[] = isAdminUser
     ? [
@@ -53,7 +54,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
           href: base,
           match: (path) =>
             path === base ||
-            path === `${base}/analytics` ||
+            path.startsWith(analyticsBase) ||
             path === `${base}/readiness` ||
             path.startsWith(billingBase) ||
             path.startsWith(payrollBase) ||
@@ -72,11 +73,68 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
       ];
 
   const overviewSubItems: NavItem[] = [
-    { label: "Analytics", href: `${base}/analytics`, match: (path) => path === `${base}/analytics` || path === `${base}/readiness` },
+    {
+      label: "Analytics",
+      href: analyticsBase,
+      match: (path) =>
+        path.startsWith(analyticsBase) ||
+        path === `${base}/readiness`,
+    },
     { label: "Billing", href: billingBase, match: (path) => path.startsWith(billingBase) },
     { label: "Payroll", href: payrollBase, match: (path) => path.startsWith(payrollBase) },
     { label: "Assets", href: `${assetsBase}/scanners`, match: (path) => path.startsWith(assetsBase) },
     { label: "Config", href: configBase, match: (path) => path === configBase || path.startsWith(`${configBase}/`) },
+  ];
+
+  const analyticsSubItems: NavItem[] = [
+    {
+      label: "Dashboard",
+      href: analyticsBase,
+      match: (path) =>
+        path === analyticsBase ||
+        path === `${base}/readiness`,
+    },
+    {
+      label: "Operations",
+      href: `${analyticsBase}/operations`,
+      match: (path) => path.startsWith(`${analyticsBase}/operations`),
+    },
+    {
+      label: "Workforce",
+      href: `${analyticsBase}/workforce`,
+      match: (path) => path.startsWith(`${analyticsBase}/workforce`),
+    },
+    {
+      label: "Driver Scorecards",
+      href: `${analyticsBase}/driver-scorecards`,
+      match: (path) =>
+        path.startsWith(`${analyticsBase}/driver-scorecards`),
+    },
+    {
+      label: "Route Intelligence",
+      href: `${analyticsBase}/routes`,
+      match: (path) => path.startsWith(`${analyticsBase}/routes`),
+    },
+    {
+      label: "Territory",
+      href: `${analyticsBase}/territory`,
+      match: (path) => path.startsWith(`${analyticsBase}/territory`),
+    },
+    {
+      label: "Commercial",
+      href: `${analyticsBase}/commercial`,
+      match: (path) => path.startsWith(`${analyticsBase}/commercial`),
+    },
+    {
+      label: "Historical",
+      href: `${analyticsBase}/historical`,
+      match: (path) => path.startsWith(`${analyticsBase}/historical`),
+    },
+    {
+      label: "Exports",
+      href: `${analyticsBase}/exports`,
+      match: (path) => path.startsWith(`${analyticsBase}/exports`),
+    },
   ];
 
   const payrollSubItems: NavItem[] = [
@@ -146,6 +204,11 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     pathname.startsWith(`${base}/dispatch`) ||
     pathname === `${base}/prior-day`;
 
+  const inAnalyticsBranch =
+    pathname === analyticsBase ||
+    pathname.startsWith(`${analyticsBase}/`) ||
+    pathname === `${base}/readiness`;
+
   const inConfigBranch = pathname === configBase || pathname.startsWith(`${configBase}/`);
   const inAssetsBranch = pathname === assetsBase || pathname.startsWith(`${assetsBase}/`);
   const inPayrollBranch = pathname === payrollBase || pathname.startsWith(`${payrollBase}/`);
@@ -159,17 +222,17 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
         : []
     : inHomeBranch
       ? homeSubItems
-      : inPayrollBranch
-        ? payrollSubItems
+      : inAnalyticsBranch
+        ? analyticsSubItems
+        : inPayrollBranch
+          ? payrollSubItems
         : inAssetsBranch
         ? assetsSubItems
         : inConfigBranch
           ? configSubItems
           : pathname === base ||
               pathname === `${base}/payroll` ||
-              pathname === billingBase ||
-              pathname === `${base}/analytics` ||
-              pathname === `${base}/readiness`
+              pathname === billingBase
             ? overviewSubItems
             : inPeopleBranch
               ? peopleSubItems
