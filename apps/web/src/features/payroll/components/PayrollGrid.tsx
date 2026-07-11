@@ -28,6 +28,7 @@ import PayrollAttendanceTable from "@/features/payroll/components/PayrollAttenda
 import PayrollRowDetailTable from "@/features/payroll/components/PayrollRowDetailTable";
 import PayrollDetailTable from "@/features/payroll/components/PayrollDetailTable";
 import PayrollDswAliasTool from "@/features/payroll/components/PayrollDswAliasTool";
+import PayrollRecordRepairTool from "@/features/payroll/components/PayrollRecordRepairTool";
 import PayrollReportEmailDialog from "@/features/payroll/components/PayrollReportEmailDialog";
 import PayrollAdjustmentsPanel from "@/features/payroll/components/PayrollAdjustmentsPanel";
 
@@ -94,6 +95,9 @@ export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; 
   const [rebuilding, setRebuilding] = useState(false);
   const [aliasOpen, setAliasOpen] = useState(false);
   const [aliasCount, setAliasCount] = useState(0);
+  const [repairOpen, setRepairOpen] = useState(false);
+  const [repairCount, setRepairCount] = useState(0);
+  const [repairRefreshKey, setRepairRefreshKey] = useState(0);
   const [reportEmailOpen, setReportEmailOpen] = useState(false);
   const [includeNonDriverWorkers, setIncludeNonDriverWorkers] = useState(
     DEFAULT_COMPANY_PAYROLL_CONFIG.include_non_driver_workers
@@ -258,6 +262,45 @@ export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; 
       active = false;
     };
   }, [slug, weekEnd, payrollMetrics?.activity]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadRepairCount() {
+      if (!slug || !weekEnd) return;
+
+      try {
+        const res = await fetch(
+          `/api/company/${slug}/payroll/record-repairs?weekEnd=${weekEnd}`,
+          {
+            credentials: "include",
+            cache: "no-store",
+          }
+        );
+
+        const data = await res.json();
+
+        if (!active) return;
+
+        if (!res.ok) {
+          setRepairCount(0);
+          return;
+        }
+
+        setRepairCount(
+          Array.isArray(data?.repairs) ? data.repairs.length : 0
+        );
+      } catch {
+        if (active) setRepairCount(0);
+      }
+    }
+
+    void loadRepairCount();
+
+    return () => {
+      active = false;
+    };
+  }, [slug, weekEnd, payrollMetrics?.activity, repairRefreshKey]);
 
   async function rebuildPayrollActivity() {
     try {
@@ -437,22 +480,116 @@ export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; 
               type="button"
               className="button payroll-action-button"
               onClick={() => setReportEmailOpen(true)}
-              disabled={aliasCount > 0}
+              disabled={aliasCount > 0 || repairCount > 0}
               title={
-                aliasCount > 0
-                  ? `Resolve ${aliasCount} alias review item${aliasCount === 1 ? "" : "s"} before sending payroll.`
+                aliasCount > 0 || repairCount > 0
+                  ? `Resolve ${aliasCount + repairCount} payroll review item${
+                      aliasCount + repairCount === 1 ? "" : "s"
+                    } before sending payroll.`
                   : "Send payroll report"
               }
             >
               <span aria-hidden="true">✉</span>
-              {aliasCount > 0 ? `Send Locked (${aliasCount})` : "Send Report"}
+              {aliasCount > 0 || repairCount > 0
+                ? `Send Locked (${aliasCount + repairCount})`
+                : "Send Report"}
             </button>
 
-            <button type="button" className="button payroll-action-button" onClick={() => setAliasOpen(true)}>
+            <button
+              type="button"
+              className="button payroll-action-button"
+              disabled={aliasCount === 0}
+              onClick={() => setAliasOpen(true)}
+              title={
+                aliasCount > 0
+                  ? `${aliasCount} alias review item${
+                      aliasCount === 1 ? "" : "s"
+                    } require attention.`
+                  : "No alias review items are needed."
+              }
+            >
               Alias Review{aliasCount > 0 ? ` (${aliasCount})` : ""}
+            </button>
+
+            <button
+              type="button"
+              className="button payroll-action-button"
+              disabled={repairCount === 0}
+              onClick={() => setRepairOpen(true)}
+              title={
+                repairCount > 0
+                  ? `${repairCount} payroll record repair item${
+                      repairCount === 1 ? "" : "s"
+                    } require attention.`
+                  : "No payroll record repairs are needed."
+              }
+            >
+              Record Repair{repairCount > 0 ? ` (${repairCount})` : ""}
             </button>
           </div>
         </div>
+
+        {aliasCount > 0 || repairCount > 0 ? (
+          <div
+            role="alert"
+            style={{
+              width: "100%",
+              border: "1px solid #f59e0b",
+              borderRadius: 14,
+              background: "#fffbeb",
+              color: "#78350f",
+              padding: "12px 14px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 14,
+              flexWrap: "wrap",
+            }}
+          >
+            <div>
+              <strong style={{ display: "block", fontSize: 14 }}>
+                Payroll review required
+              </strong>
+              <span style={{ fontSize: 13, fontWeight: 750 }}>
+                Resolve
+                {aliasCount > 0
+                  ? ` ${aliasCount} alias review item${
+                      aliasCount === 1 ? "" : "s"
+                    }`
+                  : ""}
+                {aliasCount > 0 && repairCount > 0 ? " and" : ""}
+                {repairCount > 0
+                  ? ` ${repairCount} payroll record repair item${
+                      repairCount === 1 ? "" : "s"
+                    }`
+                  : ""}
+                {" "}before sending the payroll report.
+              </span>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {aliasCount > 0 ? (
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => setAliasOpen(true)}
+                >
+                  Alias Review ({aliasCount})
+                </button>
+              ) : null}
+
+              {repairCount > 0 ? (
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => setRepairOpen(true)}
+                >
+                  Record Repair ({repairCount})
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         <div
           style={{
@@ -517,6 +654,74 @@ export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; 
         aliasCount={aliasCount}
         onClose={() => setReportEmailOpen(false)}
       />
+
+      {repairOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1000,
+            background: "rgba(15,23,42,.42)",
+            display: "grid",
+            placeItems: "center",
+            padding: 24,
+          }}
+          onClick={() => setRepairOpen(false)}
+        >
+          <div
+            style={{
+              width: "min(980px, 96vw)",
+              maxHeight: "86vh",
+              overflow: "auto",
+              background: "#fff",
+              borderRadius: 16,
+              boxShadow: "0 24px 80px rgba(15,23,42,.28)",
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div
+              style={{
+                padding: 12,
+                borderBottom: "1px solid #e6edf5",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <div>
+                <strong>Payroll Record Repair</strong>
+                <div
+                  style={{
+                    color: "#64748b",
+                    fontSize: 12,
+                    marginTop: 2,
+                  }}
+                >
+                  Complete missing daily-pay configuration without leaving Payroll.
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="button"
+                onClick={() => setRepairOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            <PayrollRecordRepairTool
+              slug={slug}
+              weekEnd={weekEnd}
+              onChanged={() =>
+                setRepairRefreshKey((current) => current + 1)
+              }
+            />
+          </div>
+        </div>
+      ) : null}
 
       {aliasOpen ? (
         <div

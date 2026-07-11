@@ -37,7 +37,30 @@ export async function POST(
     });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      const message = String(error.message ?? "");
+
+      if (
+        message.includes("daily_pay_eligible") &&
+        message.includes("not-null constraint")
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Payroll rebuild blocked. One or more workers have a daily pay rate but no effective date. Open People → Roster, add the Daily Pay Effective Date, then run Rebuild again.",
+            error_code: "PAYROLL_DAILY_PAY_EFFECTIVE_DATE_REQUIRED",
+          },
+          { status: 422 }
+        );
+      }
+
+      return NextResponse.json(
+        {
+          error:
+            "Payroll rebuild failed. Review the payroll configuration and source data, then try again.",
+          detail: message,
+        },
+        { status: 500 }
+      );
     }
 
     await supabase.from("data_rebuild_log").insert({
