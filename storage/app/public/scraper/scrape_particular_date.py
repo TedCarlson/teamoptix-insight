@@ -196,23 +196,56 @@ def main(section_='', option_=0, retry=1):
         btn = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.XPATH, "//input[@class='credentials_input_submit']")))
         btn.click()
 
-        username = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.XPATH, '//input[@name="identifier"]')))
+        username = WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located(
+                (By.XPATH, '//input[@name="identifier"]')
+            )
+        )
 
         logging.info("On login page....")
-        
-        password = driver.find_element(By.XPATH, '//input[@name="credentials.passcode"]')
         time.sleep(1)
+
         username.send_keys(SCRAP_INFO['username'])
         time.sleep(1)
-        
+
+        continue_candidates = [
+            "//input[@type='submit']",
+            "//button[@type='submit']",
+            "//input[contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'next')]",
+            "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'next')]",
+            "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue')]",
+        ]
+
+        for candidate in continue_candidates:
+            try:
+                element = driver.find_element(By.XPATH, candidate)
+                element.click()
+                logging.info("Clicked username continue...")
+                break
+            except Exception:
+                pass
+
+        password = WebDriverWait(driver, 25).until(
+            EC.presence_of_element_located(
+                (
+                    By.XPATH,
+                    '//input[@name="credentials.passcode"]'
+                    ' | //input[@name="password"]'
+                    ' | //input[@type="password"]'
+                )
+            )
+        )
+
+        time.sleep(1)
         password.send_keys(SCRAP_INFO['password'])
         time.sleep(1)
-
-
-
         password.send_keys(Keys.ENTER)
 
-        WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//a[@id='PT_HOME']")))
+        WebDriverWait(driver, 30).until(
+            EC.presence_of_element_located(
+                (By.XPATH, "//a[@id='PT_HOME']")
+            )
+        )
         # WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//div[@class='gf_header-welcometext']")))
 
         # //div[@class='gf_header-welcometext']
