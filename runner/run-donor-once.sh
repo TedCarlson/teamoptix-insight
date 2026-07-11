@@ -57,7 +57,8 @@ export FCMS_SCRAPER_HOME="$SCRAPER_DIR"
 overall_status=0
 produced_total=0
 
-if [ "${FCMS_REQUEST_TYPE:-}" = "HISTORICAL_BACKFILL" ] \
+if { [ "${FCMS_REQUEST_TYPE:-}" = "HISTORICAL_BACKFILL" ] \
+    || [ "${FCMS_REQUEST_TYPE:-}" = "PREVIOUS_DAY_CLOSE" ]; } \
   && [ -n "${FCMS_SERVICE_DATE_START:-}" ] \
   && [ -n "${FCMS_SERVICE_DATE_END:-}" ]; then
 
