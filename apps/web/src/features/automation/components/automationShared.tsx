@@ -54,6 +54,65 @@ export function ProfileCard(props: {
   onClick?: () => void;
   disabled?: boolean;
 }) {
+  const content = (
+    <>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 10,
+          alignItems: "flex-start",
+        }}
+      >
+        <div>
+          <h4 style={{ margin: 0, fontSize: 16, color: "#0f172a" }}>
+            {props.title}
+          </h4>
+
+          <p style={{ ...mutedCopy, margin: "6px 0 0" }}>
+            {props.description}
+          </p>
+        </div>
+
+        <StatusPill tone={props.tone}>{props.badge}</StatusPill>
+      </div>
+
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {props.reports.map((report) => (
+          <span key={report} style={reportChip}>
+            {report}
+          </span>
+        ))}
+      </div>
+
+      <p
+        style={{
+          margin: 0,
+          color: "#475569",
+          fontSize: 12,
+          fontWeight: 850,
+        }}
+      >
+        {props.footer}
+      </p>
+    </>
+  );
+
+  if (!props.onClick) {
+    return (
+      <article
+        style={{
+          ...profileCard,
+          border: "1px solid #e6edf5",
+          textAlign: "left",
+          width: "100%",
+        }}
+      >
+        {content}
+      </article>
+    );
+  }
+
   return (
     <button
       type="button"
@@ -61,32 +120,14 @@ export function ProfileCard(props: {
       style={{
         ...profileCard,
         border: "1px solid #e6edf5",
-        cursor: props.disabled
-          ? "not-allowed"
-          : props.onClick
-            ? "pointer"
-            : "default",
+        cursor: props.disabled ? "not-allowed" : "pointer",
         opacity: props.disabled ? 0.58 : 1,
         textAlign: "left",
         width: "100%",
       }}
       onClick={props.disabled ? undefined : props.onClick}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
-        <div>
-          <h4 style={{ margin: 0, fontSize: 16, color: "#0f172a" }}>{props.title}</h4>
-          <p style={{ ...mutedCopy, margin: "6px 0 0" }}>{props.description}</p>
-        </div>
-        <StatusPill tone={props.tone}>{props.badge}</StatusPill>
-      </div>
-
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {props.reports.map((report) => (
-          <span key={report} style={reportChip}>{report}</span>
-        ))}
-      </div>
-
-      <p style={{ margin: 0, color: "#475569", fontSize: 12, fontWeight: 850 }}>{props.footer}</p>
+      {content}
     </button>
   );
 }

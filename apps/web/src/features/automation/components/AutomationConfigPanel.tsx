@@ -518,12 +518,18 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
                 </table>
               </div>
             ) : (
-              <div style={profileGrid}>
-                {COLLECTION_PROFILES.map((profile) => {
-                  const customerCanPrepare =
-                    profile.type === "TARGETED_RECOVERY";
-
-                  return (
+              <div
+                style={{
+                  ...profileGrid,
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                }}
+              >
+                {COLLECTION_PROFILES
+                  .filter(
+                    (profile) =>
+                      profile.type !== "TARGETED_RECOVERY"
+                  )
+                  .map((profile) => (
                     <ProfileCard
                       key={profile.type}
                       title={profile.title}
@@ -531,20 +537,9 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
                       tone={profile.tone}
                       description={profile.description}
                       reports={profile.reports}
-                      footer={
-                        customerCanPrepare
-                          ? profile.footer
-                          : `${profile.footer} · Managed by Team Optix`
-                      }
-                      disabled={!customerCanPrepare}
-                      onClick={
-                        customerCanPrepare
-                          ? () => setSelectedCollection(profile.type)
-                          : undefined
-                      }
+                      footer={`${profile.footer} · Managed by Team Optix`}
                     />
-                  );
-                })}
+                  ))}
               </div>
             )}
           </SectionCard>
