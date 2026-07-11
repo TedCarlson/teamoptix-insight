@@ -48,14 +48,23 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const mainItems: NavItem[] = isAdminUser
     ? [
         { label: "Home", href: homeBase, match: (path) => path === homeBase || path.startsWith(announcementsBase) },
-        { label: "Admin", href: base, match: (path) => path === base || path === `${base}/analytics` || path === `${base}/readiness` },
+        {
+          label: "Admin",
+          href: base,
+          match: (path) =>
+            path === base ||
+            path === `${base}/analytics` ||
+            path === `${base}/readiness` ||
+            path.startsWith(billingBase) ||
+            path.startsWith(payrollBase) ||
+            path.startsWith(assetsBase) ||
+            path === configBase ||
+            path.startsWith(`${configBase}/`),
+        },
         { label: "Operations", href: operationsBase, match: (path) => path.startsWith(operationsBase) || path.startsWith(`${base}/dispatch`) || path === `${base}/prior-day` },
-        { label: "Payroll", href: payrollBase, match: (path) => path.startsWith(payrollBase) },
         { label: "People", href: peopleBase, match: (path) => path.startsWith(peopleBase) || path.startsWith(`${base}/hiring`) },
         { label: "Schedule", href: scheduleBase, match: (path) => path.startsWith(scheduleBase) },
         { label: "Routes", href: `${base}/routes`, match: (path) => path.startsWith(`${base}/routes`) },
-        { label: "Assets", href: `${assetsBase}/scanners`, match: (path) => path.startsWith(assetsBase) },
-        { label: "Config", href: configBase, match: (path) => path.startsWith(configBase) },
       ]
     : [
         { label: "Home", href: homeBase, match: (path) => path === homeBase || path.startsWith(announcementsBase) },
@@ -63,9 +72,11 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
       ];
 
   const overviewSubItems: NavItem[] = [
-    { label: "Profile", href: base, match: (path) => path === base },
     { label: "Analytics", href: `${base}/analytics`, match: (path) => path === `${base}/analytics` || path === `${base}/readiness` },
     { label: "Billing", href: billingBase, match: (path) => path.startsWith(billingBase) },
+    { label: "Payroll", href: payrollBase, match: (path) => path.startsWith(payrollBase) },
+    { label: "Assets", href: `${assetsBase}/scanners`, match: (path) => path.startsWith(assetsBase) },
+    { label: "Config", href: configBase, match: (path) => path === configBase || path.startsWith(`${configBase}/`) },
   ];
 
   const payrollSubItems: NavItem[] = [
