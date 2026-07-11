@@ -56,6 +56,7 @@ export default async function TeamOptixCustomerGovernancePage({
               slug={slug}
               canEdit
               credentialMode="status_only"
+              workspaceMode="governance"
             />
           </WorkspaceSection>
         </section>

@@ -52,18 +52,25 @@ export function ProfileCard(props: {
   reports: string[];
   footer: string;
   onClick?: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
+      disabled={props.disabled}
       style={{
         ...profileCard,
         border: "1px solid #e6edf5",
-        cursor: props.onClick ? "pointer" : "default",
+        cursor: props.disabled
+          ? "not-allowed"
+          : props.onClick
+            ? "pointer"
+            : "default",
+        opacity: props.disabled ? 0.58 : 1,
         textAlign: "left",
         width: "100%",
       }}
-      onClick={props.onClick}
+      onClick={props.disabled ? undefined : props.onClick}
     >
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
         <div>

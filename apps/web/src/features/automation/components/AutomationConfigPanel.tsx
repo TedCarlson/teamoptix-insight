@@ -11,6 +11,10 @@ import type { AutomationConfigPanelProps, AutomationRun, AutomationStatusRespons
 export default function AutomationConfigPanel(props: AutomationConfigPanelProps) {
   const customerManagesCredential =
     (props.credentialMode ?? "customer_managed") === "customer_managed";
+  const governanceWorkspace =
+    (props.workspaceMode ?? "customer") === "governance";
+  const showOperationsWorkspace =
+    props.showOperationsWorkspace !== false;
   const [status, setStatus] = useState<AutomationStatusResponse | null>(null);
   const [credential, setCredential] = useState<CredentialResponse | null>(null);
   const [scheduleRows, setScheduleRows] = useState<ScheduleRow[]>([]);
@@ -429,26 +433,121 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
         {statusError ? <p style={{ color: "#c62828", fontWeight: 800, marginBottom: 0 }}>{statusError}</p> : null}
       </SectionCard>
 
-      <SectionCard eyebrow="Protected Collections" title="Collection orders Insight depends on">
-        <p style={mutedCopy}>
-          These collection orders protect the data foundation Insight needs to produce trustworthy operational intelligence.
-        </p>
+      {showOperationsWorkspace ? (
+        <>
+          <SectionCard
+            eyebrow="Protected Collections"
+            title={
+              governanceWorkspace
+                ? "Platform collection controls"
+                : "Collection orders Insight depends on"
+            }
+          >
+            <p style={mutedCopy}>
+              {governanceWorkspace
+                ? "Review the current ticket contract, ownership, cadence, priority, and latest request state for this customer."
+                : "These collection orders protect the data foundation Insight needs to produce trustworthy operational intelligence."}
+            </p>
 
-        <div style={profileGrid}>
-          {COLLECTION_PROFILES.map((profile) => (
-            <ProfileCard
-              key={profile.type}
-              title={profile.title}
-              badge={profile.badge}
-              tone={profile.tone}
-              description={profile.description}
-              reports={profile.reports}
-              footer={profile.footer}
-              onClick={() => setSelectedCollection(profile.type)}
-            />
-          ))}
-        </div>
-      </SectionCard>
+            {governanceWorkspace ? (
+              <div style={{ overflowX: "auto" }}>
+                <table
+                  style={{
+                    width: "100%",
+                    borderCollapse: "collapse",
+                    fontSize: 12,
+                  }}
+                >
+                  <thead>
+                    <tr style={{ color: "#64748b", textAlign: "left" }}>
+                      <th style={th}>Collection</th>
+                      <th style={th}>Ownership</th>
+                      <th style={th}>Schedule / purpose</th>
+                      <th style={th}>Reports</th>
+                      <th style={th}>Priority</th>
+                      <th style={th}>Latest request</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {COLLECTION_PROFILES.map((profile) => {
+                      const latestRequest =
+                        collectionRequests.find(
+                          (request) =>
+                            request.request_type === profile.type
+                        ) ?? null;
+
+                      const ownership =
+                        profile.type === "TARGETED_RECOVERY"
+                          ? "Team Optix manual"
+                          : "Team Optix governed";
+
+                      return (
+                        <tr key={profile.type}>
+                          <td style={td}>
+                            <strong>{profile.title}</strong>
+                            <div
+                              style={{
+                                color: "#64748b",
+                                fontSize: 11,
+                                fontWeight: 750,
+                                marginTop: 3,
+                              }}
+                            >
+                              {profile.description}
+                            </div>
+                          </td>
+
+                          <td style={td}>{ownership}</td>
+                          <td style={td}>{profile.footer}</td>
+                          <td style={td}>
+                            {profile.reports.join(" · ")}
+                          </td>
+                          <td style={td}>{profile.priority}</td>
+                          <td style={td}>
+                            {latestRequest
+                              ? `${latestRequest.request_status} · ${formatTime(
+                                  latestRequest.created_at
+                                )}`
+                              : "No request recorded"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div style={profileGrid}>
+                {COLLECTION_PROFILES.map((profile) => {
+                  const customerCanPrepare =
+                    profile.type === "TARGETED_RECOVERY";
+
+                  return (
+                    <ProfileCard
+                      key={profile.type}
+                      title={profile.title}
+                      badge={profile.badge}
+                      tone={profile.tone}
+                      description={profile.description}
+                      reports={profile.reports}
+                      footer={
+                        customerCanPrepare
+                          ? profile.footer
+                          : `${profile.footer} · Managed by Team Optix`
+                      }
+                      disabled={!customerCanPrepare}
+                      onClick={
+                        customerCanPrepare
+                          ? () => setSelectedCollection(profile.type)
+                          : undefined
+                      }
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </SectionCard>
 
       <SectionCard eyebrow="Request Warehouse" title="Recent collection requests">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 12 }}>
@@ -620,6 +719,8 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
           </table>
         </div>
       </SectionCard>
+        </>
+      ) : null}
     </section>
   );
 }

@@ -2,6 +2,8 @@ export type AutomationConfigPanelProps = {
   slug: string;
   canEdit: boolean;
   credentialMode?: AutomationCredentialMode;
+  workspaceMode?: "customer" | "governance";
+  showOperationsWorkspace?: boolean;
 };
 
 export type AutomationStatusValue =

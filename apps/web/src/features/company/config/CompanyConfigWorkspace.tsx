@@ -131,6 +131,19 @@ function CompanySection(props: CompanyConfigWorkspaceProps) {
         )}
       </SectionCard>
 
+      <SectionCard
+        eyebrow="Insight Collection Center"
+        title="Collection health and connection"
+      >
+        <AutomationConfigPanel
+          slug={props.slug}
+          canEdit={props.canEditCompany}
+          credentialMode="customer_managed"
+          workspaceMode="customer"
+          showOperationsWorkspace={false}
+        />
+      </SectionCard>
+
       <SectionCard eyebrow="Company identity" title="Contract / Terminal Identity / Service Area">
         <CompanyContractConfigManager slug={props.slug} canEdit={false} />
       </SectionCard>
@@ -184,6 +197,15 @@ export default function CompanyConfigWorkspace(props: CompanyConfigWorkspaceProp
   if (props.section === "leadership") return <LeadershipSection />;
   if (props.section === "access") return <AccessSection {...props} />;
   if (props.section === "operations") return <OperationsSection {...props} />;
-  if (props.section === "automation") return <AutomationConfigPanel slug={props.slug} canEdit={props.canEditCompany} />;
+  if (props.section === "automation") {
+    return (
+      <AutomationConfigPanel
+        slug={props.slug}
+        canEdit={props.canEditCompany}
+        credentialMode="customer_managed"
+        workspaceMode="customer"
+      />
+    );
+  }
   return <CompanySection {...props} />;
 }
