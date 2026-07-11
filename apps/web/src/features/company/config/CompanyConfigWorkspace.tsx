@@ -132,7 +132,7 @@ function CompanySection(props: CompanyConfigWorkspaceProps) {
       </SectionCard>
 
       <SectionCard eyebrow="Company identity" title="Contract / Terminal Identity / Service Area">
-        <CompanyContractConfigManager slug={props.slug} canEdit={props.canEditCompany} />
+        <CompanyContractConfigManager slug={props.slug} canEdit={false} />
       </SectionCard>
     </section>
   );

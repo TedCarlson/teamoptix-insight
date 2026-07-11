@@ -39,9 +39,11 @@ export function buildTeamOptixMenu(): AppMenuSection[] {
           label: "Customers",
           href: "/teamoptix/customers",
           children: [
-            { key: "customer-beacon", label: "Beacon Point", href: "/teamoptix/customers/beacon-point" },
-            { key: "customer-freedom", label: "Freedom", href: "/teamoptix/customers/freedom" },
-            { key: "customer-keystone", label: "Keystone", href: "/teamoptix/customers/keystone" },
+            {
+              key: "customer-workspace",
+              label: "Customer Workspace",
+              href: "/teamoptix/customers",
+            },
           ],
         },
       ],

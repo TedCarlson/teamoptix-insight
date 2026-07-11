@@ -160,14 +160,30 @@ export default function CompanyContractConfigManager(props: {
       </p>
 
       <div className="cta-row" style={{ marginTop: 0 }}>
-        <button
-          type="button"
-          className="button button-primary"
-          onClick={openCreate}
-          disabled={!canEdit}
-        >
-          Add configuration
-        </button>
+        {canEdit ? (
+          <button
+            type="button"
+            className="button button-primary"
+            onClick={openCreate}
+          >
+            Add configuration
+          </button>
+        ) : (
+          <span
+            style={{
+              border: "1px solid #dbe7f3",
+              borderRadius: 999,
+              padding: "9px 13px",
+              color: "#64748b",
+              background: "#f8fafc",
+              fontSize: 12,
+              fontWeight: 900,
+            }}
+          >
+            Managed by Team Optix
+          </span>
+        )}
+
         <button type="button" className="button" onClick={loadRows}>
           Refresh
         </button>
@@ -207,15 +223,20 @@ export default function CompanyContractConfigManager(props: {
                   <td style={td}>{row.effective_end_date || "—"}</td>
                   <td style={td}>{row.status}</td>
                   <td style={td}>
-                    <button
-                      type="button"
-                      className="button"
-                      onClick={() => openEdit(row)}
-                      disabled={!canEdit}
-                      style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}
-                    >
-                      Edit
-                    </button>
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        className="button"
+                        onClick={() => openEdit(row)}
+                        style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}
+                      >
+                        Edit
+                      </button>
+                    ) : (
+                      <span style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>
+                        Read only
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))
@@ -224,7 +245,7 @@ export default function CompanyContractConfigManager(props: {
         </table>
       </div>
 
-      {overlayOpen ? (
+      {canEdit && overlayOpen ? (
         <div
           style={{
             position: "fixed",

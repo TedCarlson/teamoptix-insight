@@ -9,6 +9,8 @@ import { credentialEditorBox, credentialField, credentialInput, credentialNotice
 import type { AutomationConfigPanelProps, AutomationRun, AutomationStatusResponse, CollectionOrderDraft, CollectionRequest, CredentialResponse, ProtectedCollectionType, ScheduleRow } from "./automation.types";
 
 export default function AutomationConfigPanel(props: AutomationConfigPanelProps) {
+  const customerManagesCredential =
+    (props.credentialMode ?? "customer_managed") === "customer_managed";
   const [status, setStatus] = useState<AutomationStatusResponse | null>(null);
   const [credential, setCredential] = useState<CredentialResponse | null>(null);
   const [scheduleRows, setScheduleRows] = useState<ScheduleRow[]>([]);
@@ -42,18 +44,33 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
   }, [props.slug]);
 
   const loadCredential = useCallback(async () => {
-    const res = await fetch(`/api/company/${props.slug}/automation/credentials`, {
+    const endpoint = customerManagesCredential
+      ? `/api/company/${props.slug}/automation/credentials`
+      : `/api/company/${props.slug}/automation/credential-status`;
+
+    const res = await fetch(endpoint, {
       cache: "no-store",
       credentials: "include",
     });
 
     const data = await res.json();
 
-    if (!res.ok) throw new Error(data?.error ?? "Failed to load credentials.");
+    if (!res.ok) {
+      throw new Error(
+        data?.error ?? "Failed to load credential status."
+      );
+    }
 
     setCredential(data);
-    setUsername(data?.username ?? "");
-  }, [props.slug]);
+
+    if (customerManagesCredential) {
+      setUsername(data?.username ?? "");
+    } else {
+      setUsername("");
+      setPassword("");
+      setShowCredentialEditor(false);
+    }
+  }, [props.slug, customerManagesCredential]);
 
   const loadSchedule = useCallback(async () => {
     const res = await fetch(`/api/company/${props.slug}/automation/schedule`, {
@@ -254,23 +271,90 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
         <div style={executiveSignalGrid}>
           <MiniStat label="Collection Health" value={formatStatus(status?.status ?? null)} />
 
-          <button
-            type="button"
-            style={credentialSignalButton}
-            disabled={!props.canEdit}
-            onClick={() => setShowCredentialEditor((value) => !value)}
-          >
-            <span className="context-stat__label">FedEx Connection</span>
-            <strong>{credential?.has_secret ? "Credentials Current" : "Credentials Needed"}</strong>
-            <span style={{ color: "#2563eb", fontSize: 11, fontWeight: 900 }}>
-              {showCredentialEditor ? "Click to close" : "Click to update"}
-            </span>
-            <span style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>
-              {credential?.has_secret
-                ? `Last verified ${formatDateTime(credential?.last_verified_at)}`
-                : "Click to add credentials"}
-            </span>
-          </button>
+          {customerManagesCredential ? (
+            <button
+              type="button"
+              style={credentialSignalButton}
+              disabled={!props.canEdit}
+              onClick={() =>
+                setShowCredentialEditor((value) => !value)
+              }
+            >
+              <span className="context-stat__label">
+                FedEx Connection
+              </span>
+
+              <strong>
+                {credential?.has_secret
+                  ? "Credentials Current"
+                  : "Credentials Needed"}
+              </strong>
+
+              <span
+                style={{
+                  color: "#2563eb",
+                  fontSize: 11,
+                  fontWeight: 900,
+                }}
+              >
+                {showCredentialEditor
+                  ? "Click to close"
+                  : "Click to update"}
+              </span>
+
+              <span
+                style={{
+                  color: "#64748b",
+                  fontSize: 12,
+                  fontWeight: 800,
+                }}
+              >
+                {credential?.has_secret
+                  ? `Last verified ${formatDateTime(
+                      credential.last_verified_at
+                    )}`
+                  : "Click to add credentials"}
+              </span>
+            </button>
+          ) : (
+            <div style={credentialSignalButton}>
+              <span className="context-stat__label">
+                FedEx Connection
+              </span>
+
+              <strong>
+                {credential?.has_secret
+                  ? "Credentials Current"
+                  : "Customer Action Required"}
+              </strong>
+
+              <span
+                style={{
+                  color: credential?.has_secret
+                    ? "#166534"
+                    : "#b45309",
+                  fontSize: 11,
+                  fontWeight: 900,
+                }}
+              >
+                Customer managed
+              </span>
+
+              <span
+                style={{
+                  color: "#64748b",
+                  fontSize: 12,
+                  fontWeight: 800,
+                }}
+              >
+                {credential?.last_verified_at
+                  ? `Last verified ${formatDateTime(
+                      credential.last_verified_at
+                    )}`
+                  : "No successful verification recorded"}
+              </span>
+            </div>
+          )}
 
           <MiniStat label="Last Successful Collection" value={formatTime(latestDswRun?.started_at ?? latestFccRun?.started_at)} />
         </div>
@@ -280,7 +364,7 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
           <span>Required integrity collections always receive priority.</span>
         </div>
 
-        {showCredentialEditor ? (
+        {customerManagesCredential && showCredentialEditor ? (
           <div style={credentialEditorBox}>
             <div style={credentialNotice}>
               <strong>Credential changes affect report collection.</strong>

@@ -10,6 +10,7 @@ export default function PayrollReportEmailDialog({
   weekEnd,
   summary,
   groupedSummaryRows,
+  aliasCount,
   onClose,
 }: {
   open: boolean;
@@ -17,6 +18,7 @@ export default function PayrollReportEmailDialog({
   weekEnd: string;
   summary: PayrollSummaryRow[];
   groupedSummaryRows: { group: string; rows: PayrollSummaryRow[] }[];
+  aliasCount: number;
   onClose: () => void;
 }) {
   const [recipientsText, setRecipientsText] = useState("");
@@ -29,6 +31,14 @@ export default function PayrollReportEmailDialog({
   const estimatedTotal = summary.reduce((sum, row) => sum + Number(row.estimated_total ?? 0), 0);
 
   async function sendReport() {
+    if (aliasCount > 0) {
+      setMessage(null);
+      setError(
+        `Resolve ${aliasCount} alias review item${aliasCount === 1 ? "" : "s"} before sending payroll.`
+      );
+      return;
+    }
+
     setSending(true);
     setMessage(null);
     setError(null);
@@ -125,6 +135,12 @@ export default function PayrollReportEmailDialog({
           The signed-in user is automatically included.
         </p>
 
+        {aliasCount > 0 ? (
+          <p style={{ margin: 0, color: "#991b1b", fontWeight: 850 }}>
+            Resolve {aliasCount} alias review item{aliasCount === 1 ? "" : "s"} before sending payroll.
+          </p>
+        ) : null}
+
         {message ? <p style={{ margin: 0, color: "#166534", fontWeight: 800 }}>{message}</p> : null}
         {error ? <p style={{ margin: 0, color: "#991b1b", fontWeight: 800 }}>{error}</p> : null}
 
@@ -132,7 +148,7 @@ export default function PayrollReportEmailDialog({
           <button type="button" className="button" onClick={onClose} disabled={sending}>
             Close
           </button>
-          <button type="button" className="button button-primary" onClick={sendReport} disabled={sending || !summary.length}>
+          <button type="button" className="button button-primary" onClick={sendReport} disabled={sending || !summary.length || aliasCount > 0}>
             {sending ? "Sending..." : "Send report"}
           </button>
         </div>

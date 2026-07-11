@@ -1,6 +1,7 @@
 export type AutomationConfigPanelProps = {
   slug: string;
   canEdit: boolean;
+  credentialMode?: AutomationCredentialMode;
 };
 
 export type AutomationStatusValue =
@@ -19,11 +20,15 @@ export type AutomationStatusResponse = {
 };
 
 export type CredentialResponse = {
-  username: string;
+  username?: string;
   has_secret: boolean;
   last_verified_at: string | null;
   last_verification_result: string | null;
 };
+
+export type AutomationCredentialMode =
+  | "customer_managed"
+  | "status_only";
 
 export type AutomationRun = {
   id: string;

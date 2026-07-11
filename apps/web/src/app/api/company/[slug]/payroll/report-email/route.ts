@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getCompanyPayrollConfig } from "@/features/payroll/lib/payroll.config";
+import { isDriverType } from "@/features/payroll/lib/payroll.classification";
 
 export const runtime = "nodejs";
 
@@ -21,6 +23,38 @@ function escapeHtml(value: unknown) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 }
+
+function addDays(dateIso: string, days: number) {
+  const date = new Date(`${dateIso}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function aliasKey(value: unknown) {
+  const raw = String(value ?? "").toUpperCase().trim();
+  if (!raw) return "";
+
+  if (raw.includes(",")) {
+    const [lastRaw, restRaw = ""] = raw.split(",");
+    const last =
+      lastRaw.replace(/[^A-Z0-9]+/g, " ").trim().split(/\s+/)[0] ?? "";
+    const first =
+      restRaw.replace(/[^A-Z0-9]+/g, " ").trim().split(/\s+/)[0] ?? "";
+
+    return last && first ? `${last}|${first}` : "";
+  }
+
+  const parts = raw
+    .replace(/[^A-Z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  return parts.length >= 2
+    ? `${parts[parts.length - 1]}|${parts[0]}`
+    : "";
+}
+
 
 export async function POST(
   req: NextRequest,
@@ -57,6 +91,85 @@ export async function POST(
       return NextResponse.json({ error: "Signed-in sender email not found." }, { status: 401 });
     }
 
+    const { data: company, error: companyError } = await supabase
+      .from("companies")
+      .select("id")
+      .eq("company_slug", slug)
+      .single();
+
+    if (companyError || !company) {
+      return NextResponse.json({ error: "Company not found." }, { status: 404 });
+    }
+
+    const weekStart = addDays(weekEnd, -6);
+
+    const { data: unmatchedFacts, error: unmatchedError } = await supabase.rpc(
+      "list_payroll_dsw_unmatched",
+      {
+        p_company_id: company.id,
+        p_start_date: weekStart,
+        p_end_date: weekEnd,
+      }
+    );
+
+    if (unmatchedError) {
+      return NextResponse.json({ error: unmatchedError.message }, { status: 500 });
+    }
+
+    const { data: rosterRows, error: rosterError } = await supabase
+      .from("company_roster_view")
+      .select("roster_member_id, dswid, worker_type")
+      .eq("company_id", company.id);
+
+    if (rosterError) {
+      return NextResponse.json({ error: rosterError.message }, { status: 500 });
+    }
+
+    const resolvedAliases = new Set<string>();
+
+    for (const row of rosterRows ?? []) {
+      const resolvedKey = aliasKey(row.dswid);
+      if (resolvedKey) resolvedAliases.add(resolvedKey);
+    }
+
+    const unresolvedAliases = new Set<string>();
+
+    for (const row of unmatchedFacts ?? []) {
+      const name = String(row.person_name ?? "").trim();
+      if (!name) continue;
+
+      const unresolvedKey = aliasKey(name);
+      if (!unresolvedKey || resolvedAliases.has(unresolvedKey)) continue;
+
+      unresolvedAliases.add(name);
+    }
+
+    if (unresolvedAliases.size > 0) {
+      return NextResponse.json(
+        {
+          error:
+            `Resolve ${unresolvedAliases.size} alias review item${
+              unresolvedAliases.size === 1 ? "" : "s"
+            } before sending payroll.`,
+          alias_count: unresolvedAliases.size,
+        },
+        { status: 409 }
+      );
+    }
+
+    const payrollConfig = await getCompanyPayrollConfig(slug);
+
+    const rosterWorkerTypeById = new Map<string, string | null>();
+
+    for (const row of rosterRows ?? []) {
+      if (row.roster_member_id) {
+        rosterWorkerTypeById.set(
+          String(row.roster_member_id),
+          row.worker_type ?? null
+        );
+      }
+    }
+
     const recipients = Array.from(new Set([user.email, ...manualRecipients]));
 
     const resendApiKey = requireEnv("RESEND_API_KEY");
@@ -77,6 +190,15 @@ export async function POST(
           if (!row.roster_member_id) return false;
           if (!name || name === "unmatched") return false;
           if (String(group.group ?? "").toLowerCase().includes("unmatched")) return false;
+
+          if (
+            !payrollConfig.include_non_driver_workers &&
+            !isDriverType(
+              rosterWorkerTypeById.get(String(row.roster_member_id))
+            )
+          ) {
+            return false;
+          }
 
           return total !== 0;
         });

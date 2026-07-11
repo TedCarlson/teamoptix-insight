@@ -1,11 +1,5 @@
-import TeamOptixWorkspaceStub from "@/features/teamoptix/shared/TeamOptixWorkspaceStub";
+import { redirect } from "next/navigation";
 
-export default function Page() {
-  return (
-    <TeamOptixWorkspaceStub
-      eyebrow="TeamOptix · Customers"
-      title="Beacon Point"
-      description="Customer workspace, priorities, and platform posture."
-    />
-  );
+export default function BeaconPointCustomerRedirectPage() {
+  redirect("/teamoptix/customers/beacon-point-ventures");
 }

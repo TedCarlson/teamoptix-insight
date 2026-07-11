@@ -13,6 +13,8 @@ import type {
 } from "@/features/payroll/lib/payroll.types";
 import { money } from "@/features/payroll/lib/payroll.format";
 import { buildPayrollSummaryGroups } from "@/features/payroll/lib/payroll.summary";
+import { isDriverType } from "@/features/payroll/lib/payroll.classification";
+import { DEFAULT_COMPANY_PAYROLL_CONFIG } from "@/features/payroll/lib/payroll.config";
 import {
   buildPayrollDriverDayDetails,
   buildPayrollRowDetails,
@@ -93,8 +95,46 @@ export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; 
   const [aliasOpen, setAliasOpen] = useState(false);
   const [aliasCount, setAliasCount] = useState(0);
   const [reportEmailOpen, setReportEmailOpen] = useState(false);
+  const [includeNonDriverWorkers, setIncludeNonDriverWorkers] = useState(
+    DEFAULT_COMPANY_PAYROLL_CONFIG.include_non_driver_workers
+  );
 
   const days = useMemo(() => weekDaysForEnd(weekEnd), [weekEnd]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadPayrollConfig() {
+      try {
+        const res = await fetch(`/api/company/${slug}/config/payroll`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        const data = await res.json();
+
+        if (!active) return;
+
+        setIncludeNonDriverWorkers(
+          res.ok
+            ? Boolean(data?.config?.include_non_driver_workers)
+            : DEFAULT_COMPANY_PAYROLL_CONFIG.include_non_driver_workers
+        );
+      } catch {
+        if (active) {
+          setIncludeNonDriverWorkers(
+            DEFAULT_COMPANY_PAYROLL_CONFIG.include_non_driver_workers
+          );
+        }
+      }
+    }
+
+    if (slug) void loadPayrollConfig();
+
+    return () => {
+      active = false;
+    };
+  }, [slug]);
 
   useEffect(() => {
     let active = true;
@@ -293,36 +333,51 @@ export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; 
     [payrollDetailRows]
   );
 
+  // Payroll Detail retains unresolved route evidence for audit.
+  // Payroll Summary and every outbound payroll output require a resolved
+  // roster identity.
+  const payableSummaryRows = useMemo(
+    () =>
+      reconciledSummaryRows.filter((row) => {
+        if (!row.roster_member_id) return false;
+        if (includeNonDriverWorkers) return true;
+
+        const rosterMember = rosterById.get(row.roster_member_id);
+        return isDriverType(rosterMember?.worker_type);
+      }),
+    [includeNonDriverWorkers, reconciledSummaryRows, rosterById]
+  );
+
   const groupedSummaryRows = useMemo(
-    () => buildPayrollSummaryGroups(reconciledSummaryRows, rosterById),
-    [reconciledSummaryRows, rosterById]
+    () => buildPayrollSummaryGroups(payableSummaryRows, rosterById),
+    [payableSummaryRows, rosterById]
   );
 
   const estimatedPayroll = useMemo(
     () =>
-      reconciledSummaryRows.reduce(
+      payableSummaryRows.reduce(
         (sum, row) => sum + Number(row.estimated_total ?? 0),
         0
       ),
-    [reconciledSummaryRows]
+    [payableSummaryRows]
   );
 
   const estimatedThresholdPay = useMemo(
     () =>
-      reconciledSummaryRows.reduce(
+      payableSummaryRows.reduce(
         (sum, row) => sum + Number(row.threshold_pay_total ?? 0),
         0
       ),
-    [reconciledSummaryRows]
+    [payableSummaryRows]
   );
 
   const estimatedAdjustmentPay = useMemo(
     () =>
-      reconciledSummaryRows.reduce(
+      payableSummaryRows.reduce(
         (sum, row) => sum + Number(row.adjustment_total ?? 0),
         0
       ),
-    [reconciledSummaryRows]
+    [payableSummaryRows]
   );
 
   const payrollViewTitle =
@@ -378,9 +433,19 @@ export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; 
               {rebuilding ? "Rebuilding..." : "Rebuild"}
             </button>
 
-            <button type="button" className="button payroll-action-button" onClick={() => setReportEmailOpen(true)}>
+            <button
+              type="button"
+              className="button payroll-action-button"
+              onClick={() => setReportEmailOpen(true)}
+              disabled={aliasCount > 0}
+              title={
+                aliasCount > 0
+                  ? `Resolve ${aliasCount} alias review item${aliasCount === 1 ? "" : "s"} before sending payroll.`
+                  : "Send payroll report"
+              }
+            >
               <span aria-hidden="true">✉</span>
-              Send Report
+              {aliasCount > 0 ? `Send Locked (${aliasCount})` : "Send Report"}
             </button>
 
             <button type="button" className="button payroll-action-button" onClick={() => setAliasOpen(true)}>
@@ -406,7 +471,7 @@ export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; 
         >
           <span>Week Ending Friday: {weekEnd}</span>
           <span>
-            {reconciledSummaryRows.length} records · Estimated payroll{" "}
+            {payableSummaryRows.length} records · Estimated payroll{" "}
             {money(estimatedPayroll)} · Estimated threshold pay{" "}
             {money(estimatedThresholdPay)} · Adjustments{" "}
             {money(estimatedAdjustmentPay)}
@@ -447,8 +512,9 @@ export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; 
         open={reportEmailOpen}
         slug={slug}
         weekEnd={weekEnd}
-        summary={reconciledSummaryRows}
+        summary={payableSummaryRows}
         groupedSummaryRows={groupedSummaryRows}
+        aliasCount={aliasCount}
         onClose={() => setReportEmailOpen(false)}
       />
 

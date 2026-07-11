@@ -35,11 +35,7 @@ const secondaryLinksByDomain: Record<string, NavItem[]> = {
     { href: "/teamoptix/products/itg", label: "ITG v2.0" },
   ],
   customers: [
-    { href: "/teamoptix/customers", label: "Overview" },
-    { href: "/companies", label: "Company Directory" },
-    { href: "/teamoptix/customers/beacon-point", label: "Beacon Point" },
-    { href: "/teamoptix/customers/freedom", label: "Freedom" },
-    { href: "/teamoptix/customers/keystone", label: "Keystone" },
+    { href: "/teamoptix/customers", label: "Customer Workspace" },
   ],
   projects: [
     { href: "/teamoptix/projects", label: "Overview" },

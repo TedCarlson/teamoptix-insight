@@ -3,62 +3,72 @@ import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 
 export const runtime = "nodejs";
 
-const ACTIVE_REQUEST_STATUSES = [
+const GOVERNED_COMPANY_SLUGS = new Set([
+  "beacon-point-ventures",
+]);
+
+const BLOCKING_REQUEST_STATUSES = [
   "QUEUED",
   "CLAIMED",
   "RUNNING",
   "ARTIFACTS_READY",
   "INGESTING",
 ];
-const AUTOMATION_REPORTS = new Set(["DSW", "FCC"]);
 
-function parseTimeToMinutes(time: string | null | undefined) {
-  if (!time || typeof time !== "string") return null;
-  const match = time.match(/^(\d{2}):(\d{2})(?::\d{2})?$/);
-  if (!match) return null;
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
-  return hours * 60 + minutes;
-}
+const EXISTING_SWEEP_STATUSES = [
+  "QUEUED",
+  "CLAIMED",
+  "RUNNING",
+  "ARTIFACTS_READY",
+  "INGESTING",
+  "COMPLETE",
+];
 
-function newYorkCurrentMinutes() {
-  const date = new Date();
-  const formatted = new Intl.DateTimeFormat("en-US", {
+function newYorkTodayIso() {
+  const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
-    hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
 
-  const [hourText, minuteText] = formatted.split(":");
-  const hour = Number(hourText);
-  const minute = Number(minuteText);
-  return hour * 60 + minute;
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value])
+  );
+
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
-function isWithinWindow(currentMinutes: number, startTime: string | null | undefined, endTime: string | null | undefined) {
-  const start = parseTimeToMinutes(startTime);
-  const end = parseTimeToMinutes(endTime);
-  if (start === null || end === null) return true;
-  if (start === end) return true;
-  if (start < end) {
-    return currentMinutes >= start && currentMinutes < end;
-  }
-  return currentMinutes >= start || currentMinutes < end;
+function addIsoDays(value: string, days: number) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  date.setUTCDate(date.getUTCDate() + days);
+
+  return date.toISOString().slice(0, 10);
 }
 
-function buildRequestPayload(activeRows: any[]) {
+function historicalSweepWindow() {
+  const today = newYorkTodayIso();
+
   return {
-    source: "automation_scheduler",
-    preset: "operations_pulse",
-    intent: "operations_pulse",
-    request_origin: "automation_scheduler",
-    collect_scope: "targeted_file_groups",
+    serviceDateStart: addIsoDays(today, -2),
+    serviceDateEnd: addIsoDays(today, -1),
+  };
+}
+
+function buildHistoricalSweepPayload() {
+  return {
+    source: "teamoptix_automation",
+    preset: "daily_historical_sweep",
+    intent: "historical_backfill",
+    request_origin: "teamoptix_governed_daily_sweep",
+    collect_scope: "dsw_only",
     control_level: "platform_managed",
-    customer_language: "Operations Pulse",
-    runner_goal: "keep_operations_current",
-    cadence_minutes: Math.min(...activeRows.map((row) => Number(row.cadence_minutes) || 0)),
+    customer_language: "Daily Historical Sweep",
+    runner_goal: "protect_recent_operational_history",
     targets: [
       {
         key: "DSW_DAILY_SERVICE",
@@ -68,64 +78,79 @@ function buildRequestPayload(activeRows: any[]) {
         runner_section: "DAILY_SERVICE",
         expected_filename_match: ["daily service worksheet"],
       },
-      {
-        key: "FCC_SERVICE_AREA_STATUS",
-        label: "FCC · Service Area Status",
-        artifact_key: "FCC",
-        report_family_key: "FCC",
-        runner_section: "SERVICE",
-        expected_filename_match: ["serviceareastatus", "sastatus", "work area summary"],
-      },
     ],
-    windows: activeRows.map((row) => ({
-      report: row.automation_type,
-      window_preset: row.window_preset,
-      start_time: row.start_time,
-      end_time: row.end_time,
-      cadence_minutes: row.cadence_minutes,
-    })),
   };
 }
 
-async function companyHasActiveRequest(supabase: any, companyId: string) {
+async function companyHasBlockingRequest(
+  supabase: any,
+  companyId: string
+) {
   const { data, error } = await supabase
     .from("operations_collection_request_v")
     .select("id")
     .eq("company_id", companyId)
-    .in("request_status", ACTIVE_REQUEST_STATUSES)
+    .in("request_status", BLOCKING_REQUEST_STATUSES)
     .limit(1);
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    throw new Error(error.message);
+  }
+
   return Array.isArray(data) && data.length > 0;
 }
 
-async function companyHasRecentRequest(supabase: any, companySlug: string, cadenceMinutes: number) {
+async function companyHasMatchingSweep(params: {
+  supabase: any;
+  companyId: string;
+  serviceDateStart: string;
+  serviceDateEnd: string;
+}) {
+  const {
+    supabase,
+    companyId,
+    serviceDateStart,
+    serviceDateEnd,
+  } = params;
+
   const { data, error } = await supabase
     .from("operations_collection_request_v")
-    .select("created_at")
-    .eq("company_slug", companySlug)
-    .eq("request_type", "OPERATIONS_PULSE")
-    .order("created_at", { ascending: false })
+    .select("id, request_status")
+    .eq("company_id", companyId)
+    .eq("request_type", "HISTORICAL_BACKFILL")
+    .eq("service_date_start", serviceDateStart)
+    .eq("service_date_end", serviceDateEnd)
+    .in("request_status", EXISTING_SWEEP_STATUSES)
     .limit(1);
 
-  if (error) throw new Error(error.message);
-  const latest = Array.isArray(data) && data.length > 0 ? data[0] : null;
-  if (!latest || !latest.created_at) return false;
-  const createdAt = new Date(latest.created_at).getTime();
-  return Date.now() - createdAt < cadenceMinutes * 60_000;
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return Array.isArray(data) && data.length > 0;
 }
 
 export async function GET() {
   const startedAt = Date.now();
   const supabase = createSupabaseServiceRoleClient();
-  const currentMinutes = newYorkCurrentMinutes();
+  const { serviceDateStart, serviceDateEnd } =
+    historicalSweepWindow();
+
+  const governedSlugs = Array.from(GOVERNED_COMPANY_SLUGS);
 
   const { data: companies, error: companyError } = await supabase
     .from("companies")
-    .select("id,company_slug");
+    .select("id, company_slug")
+    .in("company_slug", governedSlugs);
 
   if (companyError) {
-    return NextResponse.json({ ok: false, error: companyError.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: companyError.message,
+      },
+      { status: 500 }
+    );
   }
 
   const results: Array<Record<string, unknown>> = [];
@@ -134,77 +159,105 @@ export async function GET() {
   for (const company of companyRows) {
     const companyId = String(company?.id ?? "");
     const companySlug = String(company?.company_slug ?? "");
-    if (!companyId || !companySlug) continue;
+
+    if (!companyId || !companySlug) {
+      continue;
+    }
 
     try {
-      const { data: rows, error: scheduleError } = await supabase.rpc(
-        "get_operations_automation_schedule_config",
-        { p_company_slug: companySlug }
-      );
+      const matchingSweepExists = await companyHasMatchingSweep({
+        supabase,
+        companyId,
+        serviceDateStart,
+        serviceDateEnd,
+      });
 
-      if (scheduleError) {
-        results.push({ company_slug: companySlug, status: "error", error: scheduleError.message });
+      if (matchingSweepExists) {
+        results.push({
+          company_slug: companySlug,
+          status: "skipped",
+          reason: "matching historical sweep already exists",
+          service_date_start: serviceDateStart,
+          service_date_end: serviceDateEnd,
+        });
         continue;
       }
 
-      const enabledRows = (rows ?? []).filter(
-        (row: any) => row?.is_enabled && row?.window_preset !== "OFF"
-      );
-
-      const activeRows = enabledRows.filter((row: any) =>
-        AUTOMATION_REPORTS.has(row?.automation_type) &&
-        isWithinWindow(currentMinutes, row?.start_time, row?.end_time)
-      );
-
-      if (activeRows.length === 0) {
-        results.push({ company_slug: companySlug, status: "skipped", reason: "no active automation window" });
+      if (await companyHasBlockingRequest(supabase, companyId)) {
+        results.push({
+          company_slug: companySlug,
+          status: "skipped",
+          reason: "active collection request exists",
+        });
         continue;
       }
 
-      const requestReports = [...new Set(activeRows.map((row: any) => String(row.automation_type).toUpperCase()))].filter(
-        (value): value is string => typeof value === "string" && AUTOMATION_REPORTS.has(value)
-      );
-
-      if (requestReports.length === 0) {
-        results.push({ company_slug: companySlug, status: "skipped", reason: "no supported reports" });
-        continue;
-      }
-
-      if (await companyHasActiveRequest(supabase, companyId)) {
-        results.push({ company_slug: companySlug, status: "skipped", reason: "active request exists" });
-        continue;
-      }
-
-      const cadenceMinutes = Math.min(...activeRows.map((row: any) => Number(row.cadence_minutes) || 0)) || 60;
-      if (await companyHasRecentRequest(supabase, companySlug, cadenceMinutes)) {
-        results.push({ company_slug: companySlug, status: "skipped", reason: "recent request exists" });
-        continue;
-      }
-
-      const { data: requestData, error: requestError } = await supabase.rpc(
-        "create_operations_collection_request",
-        {
-          p_company_slug: companySlug,
-          p_request_type: "OPERATIONS_PULSE",
-          p_requested_reports: requestReports,
-          p_priority: 80,
-          p_request_payload: buildRequestPayload(activeRows),
-        }
-      );
+      const { data: requestData, error: requestError } =
+        await supabase.rpc(
+          "create_operations_collection_request",
+          {
+            p_company_slug: companySlug,
+            p_request_type: "HISTORICAL_BACKFILL",
+            p_service_date: null,
+            p_service_date_start: serviceDateStart,
+            p_service_date_end: serviceDateEnd,
+            p_requested_reports: ["DSW"],
+            p_priority: 60,
+            p_request_payload: buildHistoricalSweepPayload(),
+          }
+        );
 
       if (requestError) {
-        results.push({ company_slug: company.company_slug, status: "error", error: requestError.message });
+        results.push({
+          company_slug: companySlug,
+          status: "error",
+          error: requestError.message,
+        });
         continue;
       }
 
-      results.push({ company_slug: company.company_slug, status: "created", request_id: requestData?.id });
+      results.push({
+        company_slug: companySlug,
+        status: "created",
+        request_id: requestData?.id,
+        request_type: "HISTORICAL_BACKFILL",
+        service_date_start: serviceDateStart,
+        service_date_end: serviceDateEnd,
+        requested_reports: ["DSW"],
+      });
     } catch (error) {
-      results.push({ company_slug: company.company_slug, status: "error", error: error instanceof Error ? error.message : String(error) });
+      results.push({
+        company_slug: companySlug,
+        status: "error",
+        error:
+          error instanceof Error
+            ? error.message
+            : String(error),
+      });
+    }
+  }
+
+  for (const companySlug of governedSlugs) {
+    if (
+      !companyRows.some(
+        (company) => company?.company_slug === companySlug
+      )
+    ) {
+      results.push({
+        company_slug: companySlug,
+        status: "error",
+        error: "Governed company was not found.",
+      });
     }
   }
 
   return NextResponse.json({
     ok: true,
+    governance: "teamoptix",
+    request_type: "HISTORICAL_BACKFILL",
+    service_date_start: serviceDateStart,
+    service_date_end: serviceDateEnd,
+    requested_reports: ["DSW"],
     generated: results,
     elapsed_ms: Date.now() - startedAt,
   });
