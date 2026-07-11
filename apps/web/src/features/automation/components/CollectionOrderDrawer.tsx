@@ -39,11 +39,15 @@ export function CollectionOrderDrawer(props: {
     profile.type === "HISTORICAL_BACKFILL" && timeMachinePriorityMode === "onboarding"
       ? 10
       : profile.priority;
+  const hasValidDateRange =
+    Boolean(startDate && endDate) &&
+    startDate <= endDate;
+
   const canPrepare =
     props.canEdit &&
     !isPlatformManaged &&
     (profile.type === "TARGETED_RECOVERY" ? selectedTargets.length > 0 : requestedReports.length > 0) &&
-    (isDateRange ? Boolean(startDate && endDate) : Boolean(serviceDate));
+    (isDateRange ? hasValidDateRange : Boolean(serviceDate));
 
   async function prepareOrder() {
     if (!profile) return;

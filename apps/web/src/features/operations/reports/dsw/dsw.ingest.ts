@@ -77,18 +77,12 @@ export async function ingestDswWorkbook(params: {
   });
 
   const meta = extractMeta(rows);
-  const headerServiceDate = meta.service_date_text ? excelDateToIso(meta.service_date_text) : "";
+  const headerServiceDate = meta.service_date_text
+    ? excelDateToIso(meta.service_date_text)
+    : "";
 
   if (!headerServiceDate) {
     throw new Error("DSW report date was not detected in the file header.");
-  }
-
-  const cleanedRequestedDate = cellText(requestedDate);
-
-  if (cleanedRequestedDate && cleanedRequestedDate !== headerServiceDate) {
-    throw new Error(
-      `Submitted report date ${cleanedRequestedDate} does not match DSW file header date ${headerServiceDate}.`
-    );
   }
 
   const serviceDate = headerServiceDate;

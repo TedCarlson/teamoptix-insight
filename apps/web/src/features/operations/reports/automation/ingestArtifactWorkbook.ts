@@ -71,7 +71,6 @@ export async function ingestArtifactWorkbook(params: {
       buffer,
       filename,
       fileSize: artifact.size_bytes ?? buffer.length,
-      requestedDate: artifact.service_date ?? undefined,
       uploadedByAuthUserId,
       uploadedByProfileId,
     });
