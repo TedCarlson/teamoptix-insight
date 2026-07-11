@@ -13,7 +13,11 @@ import type {
 } from "@/features/payroll/lib/payroll.types";
 import { money } from "@/features/payroll/lib/payroll.format";
 import { buildPayrollSummaryGroups } from "@/features/payroll/lib/payroll.summary";
-import { buildPayrollDriverDayDetails, buildPayrollRowDetails } from "@/features/payroll/lib/payroll.detail";
+import {
+  buildPayrollDriverDayDetails,
+  buildPayrollRowDetails,
+  buildPayrollSummaryFromDriverDayDetails,
+} from "@/features/payroll/lib/payroll.detail";
 import { buildAttendanceRows } from "@/features/payroll/lib/payroll.attendance";
 import ReportDayPills from "@/features/payroll/components/ReportDayPills";
 import PayrollSummaryTable from "@/features/payroll/components/PayrollSummaryTable";
@@ -277,23 +281,48 @@ export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; 
     [payrollMetrics?.activity]
   );
 
-  const groupedSummaryRows = useMemo(
-    () => buildPayrollSummaryGroups(payrollMetrics?.summary ?? [], rosterById),
-    [payrollMetrics?.summary, rosterById]
-  );
-
   const payrollDetailRows = useMemo(
     () => buildPayrollDriverDayDetails(payrollMetrics?.activity ?? []),
     [payrollMetrics?.activity]
   );
 
+  // Payroll Summary is a rollup of the exact normalized rows shown in
+  // Payroll Detail. There is no independent client-visible calculation path.
+  const reconciledSummaryRows = useMemo(
+    () => buildPayrollSummaryFromDriverDayDetails(payrollDetailRows),
+    [payrollDetailRows]
+  );
+
+  const groupedSummaryRows = useMemo(
+    () => buildPayrollSummaryGroups(reconciledSummaryRows, rosterById),
+    [reconciledSummaryRows, rosterById]
+  );
+
+  const estimatedPayroll = useMemo(
+    () =>
+      reconciledSummaryRows.reduce(
+        (sum, row) => sum + Number(row.estimated_total ?? 0),
+        0
+      ),
+    [reconciledSummaryRows]
+  );
+
+  const estimatedThresholdPay = useMemo(
+    () =>
+      reconciledSummaryRows.reduce(
+        (sum, row) => sum + Number(row.threshold_pay_total ?? 0),
+        0
+      ),
+    [reconciledSummaryRows]
+  );
+
   const estimatedAdjustmentPay = useMemo(
     () =>
-      (payrollMetrics?.summary ?? []).reduce(
+      reconciledSummaryRows.reduce(
         (sum, row) => sum + Number(row.adjustment_total ?? 0),
         0
       ),
-    [payrollMetrics?.summary]
+    [reconciledSummaryRows]
   );
 
   const payrollViewTitle =
@@ -377,9 +406,9 @@ export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; 
         >
           <span>Week Ending Friday: {weekEnd}</span>
           <span>
-            {payrollMetrics?.record_count ?? attendanceRows.length} records · Estimated payroll{" "}
-            {money(payrollMetrics?.estimated_payroll)} · Estimated threshold pay{" "}
-            {money(payrollMetrics?.estimated_threshold_pay)} · Adjustments{" "}
+            {reconciledSummaryRows.length} records · Estimated payroll{" "}
+            {money(estimatedPayroll)} · Estimated threshold pay{" "}
+            {money(estimatedThresholdPay)} · Adjustments{" "}
             {money(estimatedAdjustmentPay)}
           </span>
           {payrollView === "attendance" ? (
@@ -418,7 +447,7 @@ export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; 
         open={reportEmailOpen}
         slug={slug}
         weekEnd={weekEnd}
-        summary={payrollMetrics?.summary ?? []}
+        summary={reconciledSummaryRows}
         groupedSummaryRows={groupedSummaryRows}
         onClose={() => setReportEmailOpen(false)}
       />

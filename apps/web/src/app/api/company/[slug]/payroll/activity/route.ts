@@ -371,6 +371,17 @@ export async function GET(
     const people = new Map<string, { id: string | null; name: string; days: Map<string, number>; thresholdPay: number; adjustmentPay: number }>();
 
     for (const row of rows as any[]) {
+      // Summary and Payroll Detail must use the same payroll-qualified
+      // population. Non-DSW and non-present activity remains available for
+      // attendance/audit views but must not enter payroll totals.
+      if (
+        !isDswPayrollSource(row.source_kind) ||
+        row.attendance_status !== "present" ||
+        !row.service_date
+      ) {
+        continue;
+      }
+
       const personKey =
         row.roster_member_id ?? row.person_name ?? `unknown-${row.service_date}`;
       const person = people.get(personKey) ?? {
@@ -381,17 +392,13 @@ export async function GET(
         adjustmentPay: 0,
       };
 
-      if (
-        row.attendance_status === "present" &&
-        row.daily_pay_eligible &&
-        row.daily_pay_rate != null
-      ) {
+      if (row.daily_pay_eligible && row.daily_pay_rate != null) {
         const current = person.days.get(row.service_date);
         const rate = Number(row.daily_pay_rate);
         person.days.set(row.service_date, Math.max(current ?? 0, rate));
       }
 
-      if (isDswPayrollSource(row.source_kind) && row.threshold_pay_amount != null) {
+      if (row.threshold_pay_amount != null) {
         person.thresholdPay += Number(row.threshold_pay_amount);
       }
 

@@ -2,6 +2,7 @@ import type {
   PayrollActivityRow,
   PayrollDriverDayDetailRow,
   PayrollRouteCollectionItem,
+  PayrollSummaryRow,
 } from "@/features/payroll/lib/payroll.types";
 
 export function buildPayrollRowDetails(activityRows: PayrollActivityRow[]) {
@@ -36,6 +37,62 @@ function isDswPayrollSource(sourceKind: string | null | undefined) {
     sourceKind === "DSW_OWNERSHIP" ||
     sourceKind === "DSW_CANDIDATE"
   );
+}
+
+export function buildPayrollSummaryFromDriverDayDetails(
+  rows: PayrollDriverDayDetailRow[]
+): PayrollSummaryRow[] {
+  const people = new Map<
+    string,
+    {
+      roster_member_id: string | null;
+      person_name: string;
+      worked_days: Set<string>;
+      daily_pay_total: number;
+      threshold_pay_total: number;
+      adjustment_total: number;
+    }
+  >();
+
+  for (const row of rows) {
+    const personKey = row.roster_member_id ?? row.person_name;
+    const person = people.get(personKey) ?? {
+      roster_member_id: row.roster_member_id,
+      person_name: row.person_name,
+      worked_days: new Set<string>(),
+      daily_pay_total: 0,
+      threshold_pay_total: 0,
+      adjustment_total: 0,
+    };
+
+    person.worked_days.add(row.service_date);
+    person.daily_pay_total += row.daily_pay_applied;
+    person.threshold_pay_total += row.threshold_pay_amount;
+    person.adjustment_total += row.adjustment_pay_amount;
+
+    people.set(personKey, person);
+  }
+
+  return Array.from(people.values())
+    .map((person) => {
+      const workedDays = Array.from(person.worked_days).sort();
+      const estimatedTotal =
+        person.daily_pay_total +
+        person.threshold_pay_total +
+        person.adjustment_total;
+
+      return {
+        roster_member_id: person.roster_member_id,
+        person_name: person.person_name,
+        days_worked: workedDays.length,
+        worked_days: workedDays,
+        daily_pay_total: person.daily_pay_total,
+        threshold_pay_total: person.threshold_pay_total,
+        adjustment_total: person.adjustment_total,
+        estimated_total: estimatedTotal,
+      };
+    })
+    .sort((a, b) => a.person_name.localeCompare(b.person_name));
 }
 
 export function buildPayrollDriverDayDetails(
