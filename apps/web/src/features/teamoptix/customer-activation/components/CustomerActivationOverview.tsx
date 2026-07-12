@@ -84,6 +84,28 @@ function readinessState(
   };
 }
 
+function statusLabel(value: string) {
+  return value
+    .replaceAll("_", " ")
+    .replace(/^\w/, (first) => first.toUpperCase());
+}
+
+function formatMetadata(value: Record<string, unknown>) {
+  const entries = Object.entries(value ?? {});
+
+  if (entries.length === 0) {
+    return null;
+  }
+
+  return JSON.stringify(value, null, 2);
+}
+
+function stepDisplayName(value: string) {
+  return value
+    .replaceAll("_", " ")
+    .replace(/^\w/, (first) => first.toUpperCase());
+}
+
 export default function CustomerActivationOverview({
   slug,
   snapshot,
@@ -275,9 +297,7 @@ export default function CustomerActivationOverview({
           </p>
 
           <h3 className="app-card__title">
-            {snapshot.latest_run.status
-              .replaceAll("_", " ")
-              .replace(/^\w/, (value) => value.toUpperCase())}
+            {statusLabel(snapshot.latest_run.status)}
           </h3>
 
           <p className="app-card__body">
@@ -285,6 +305,132 @@ export default function CustomerActivationOverview({
             {" · "}
             {snapshot.latest_run_steps.length} recorded steps
           </p>
+
+          <div
+            style={{
+              display: "grid",
+              gap: 8,
+              marginTop: 12,
+              color: "#64748b",
+              fontSize: 13,
+              fontWeight: 700,
+            }}
+          >
+            <div>
+              Started: {formatDate(snapshot.latest_run.started_at)}
+            </div>
+            <div>
+              Completed: {formatDate(snapshot.latest_run.completed_at)}
+            </div>
+
+            {snapshot.latest_run.failure_summary ? (
+              <div
+                style={{
+                  color: "#b91c1c",
+                  fontWeight: 900,
+                }}
+              >
+                Failure: {snapshot.latest_run.failure_summary}
+              </div>
+            ) : null}
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gap: 10,
+              marginTop: 18,
+            }}
+          >
+            {snapshot.latest_run_steps.map((step) => {
+              const metadata = formatMetadata(step.result_metadata);
+
+              return (
+                <div
+                  key={step.step_key}
+                  style={{
+                    display: "grid",
+                    gap: 8,
+                    padding: "12px 0",
+                    borderTop: "1px solid var(--border-subtle)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "48px minmax(220px, 1fr) minmax(120px, 0.35fr) minmax(110px, 0.25fr)",
+                      gap: 12,
+                      alignItems: "center",
+                    }}
+                  >
+                    <strong>{step.step_order}</strong>
+                    <strong>{stepDisplayName(step.step_key)}</strong>
+                    <span
+                      style={{
+                        fontWeight: 900,
+                        color:
+                          step.status === "failed"
+                            ? "#b91c1c"
+                            : step.status === "complete"
+                              ? "#059669"
+                              : "#64748b",
+                      }}
+                    >
+                      {statusLabel(step.status)}
+                    </span>
+                    <span className="app-card__body">
+                      Attempts: {step.attempt_count}
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 6,
+                      paddingLeft: 60,
+                    }}
+                  >
+                    <span className="app-card__body">
+                      Started {formatDate(step.started_at)}
+                      {" · "}
+                      Completed {formatDate(step.completed_at)}
+                    </span>
+
+                    {step.last_error ? (
+                      <span
+                        style={{
+                          color: "#b91c1c",
+                          fontWeight: 800,
+                        }}
+                      >
+                        Error: {step.last_error}
+                      </span>
+                    ) : null}
+
+                    {metadata ? (
+                      <pre
+                        style={{
+                          margin: 0,
+                          whiteSpace: "pre-wrap",
+                          border: "1px solid var(--border-subtle)",
+                          borderRadius: 12,
+                          padding: 12,
+                          background: "#f8fafc",
+                          color: "#334155",
+                          fontSize: 12,
+                          lineHeight: 1.5,
+                          overflowX: "auto",
+                        }}
+                      >
+                        {metadata}
+                      </pre>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </article>
       ) : null}
     </div>

@@ -85,6 +85,37 @@ type ImplementationPaymentRecord = {
   provider_event_id: string | null;
 };
 
+type ActiveContractRecord = {
+  id: string;
+  company_id: string;
+  contract_number: string;
+  terminal_identity: string;
+  service_area: string;
+};
+
+type AutomationProfileRecord = {
+  id: string;
+  company_id: string;
+  provider_key: string;
+  status:
+    | "NOT_CONFIGURED"
+    | "CONFIGURED"
+    | "HEALTHY"
+    | "WARNING"
+    | "ACTION_REQUIRED"
+    | "DISABLED";
+  created_at: string;
+  updated_at: string;
+};
+
+type AutomationCredentialReadinessRecord = {
+  username: string;
+  has_secret: boolean;
+  last_verified_at: string | null;
+  last_verification_result: string | null;
+  updated_at: string;
+};
+
 export type CompanyActivationRecord = {
   id: string;
   company_id: string;
@@ -202,9 +233,9 @@ const READINESS_DEFAULTS: ReadonlyArray<{
   },
   {
     readiness_key: "contract_ready",
-    source_type: "manual",
+    source_type: "computed",
     blocking_reason:
-      "Customer agreement has not yet been acknowledged.",
+      "An active contract configuration has not yet been established.",
   },
   {
     readiness_key: "workspace_ready",
@@ -214,15 +245,15 @@ const READINESS_DEFAULTS: ReadonlyArray<{
   },
   {
     readiness_key: "credentials_ready",
-    source_type: "manual",
+    source_type: "computed",
     blocking_reason:
-      "Required customer credentials have not yet been verified.",
+      "Customer-managed FedEx credentials have not yet been verified.",
   },
   {
     readiness_key: "automation_ready",
-    source_type: "manual",
+    source_type: "computed",
     blocking_reason:
-      "Automation configuration has not yet been verified.",
+      "Contract governance and collection access are not yet operational.",
   },
   {
     readiness_key: "training_ready",
@@ -525,11 +556,16 @@ async function loadRunSteps(
 
 async function syncComputedActivationReadiness(
   admin: SupabaseClient,
-  companyId: string
+  companyId: string,
+  companySlug: string
 ): Promise<void> {
+  const today = new Date().toISOString().slice(0, 10);
+
   const [
     { data: commercialProfile, error: commercialError },
     { data: implementationPayment, error: paymentError },
+    { data: activeContract, error: contractError },
+    { data: automationProfile, error: automationProfileError },
   ] = await Promise.all([
     admin
       .schema("commercial")
@@ -552,6 +588,16 @@ async function syncComputedActivationReadiness(
       .order("paid_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
+
+    admin.rpc("get_active_company_contract_config", {
+      p_company_slug: companySlug,
+      p_service_date: today,
+    }),
+
+    admin.rpc("get_or_create_automation_profile", {
+      p_company_id: companyId,
+      p_provider_key: "FEDEX",
+    }),
   ]);
 
   if (commercialError) {
@@ -568,11 +614,66 @@ async function syncComputedActivationReadiness(
     );
   }
 
+  if (contractError) {
+    throwDatabaseError(
+      "Unable to compute contract readiness",
+      contractError
+    );
+  }
+
+  if (automationProfileError) {
+    throwDatabaseError(
+      "Unable to compute automation readiness",
+      automationProfileError
+    );
+  }
+
   const typedCommercialProfile =
     commercialProfile as CommercialReadinessProfile | null;
 
   const typedImplementationPayment =
     implementationPayment as ImplementationPaymentRecord | null;
+
+  const activeContractRow = Array.isArray(activeContract)
+    ? activeContract[0] ?? null
+    : activeContract;
+
+  const typedActiveContract =
+    activeContractRow as ActiveContractRecord | null;
+
+  const automationProfileRow = Array.isArray(
+    automationProfile
+  )
+    ? automationProfile[0] ?? null
+    : automationProfile;
+
+  const typedAutomationProfile =
+    automationProfileRow as AutomationProfileRecord | null;
+
+  let typedCredential:
+    | AutomationCredentialReadinessRecord
+    | null = null;
+
+  if (typedAutomationProfile?.id) {
+    const { data: credentialData, error: credentialError } =
+      await admin.rpc("get_automation_credential", {
+        p_profile_id: typedAutomationProfile.id,
+      });
+
+    if (credentialError) {
+      throwDatabaseError(
+        "Unable to compute credential readiness",
+        credentialError
+      );
+    }
+
+    const credentialRow = Array.isArray(credentialData)
+      ? credentialData[0] ?? null
+      : credentialData;
+
+    typedCredential =
+      credentialRow as AutomationCredentialReadinessRecord | null;
+  }
 
   const commercialStages = new Set([
     "ready_for_stripe",
@@ -609,6 +710,25 @@ async function syncComputedActivationReadiness(
 
   const implementationPaymentReady =
     Boolean(typedImplementationPayment?.id);
+
+  const contractReady = Boolean(
+    typedActiveContract?.id &&
+      typedActiveContract.contract_number.trim() &&
+      typedActiveContract.terminal_identity.trim() &&
+      typedActiveContract.service_area.trim()
+  );
+
+  const credentialsReady = Boolean(
+    typedCredential?.has_secret &&
+      typedCredential.last_verified_at &&
+      typedAutomationProfile?.status === "HEALTHY"
+  );
+
+  const automationReady = Boolean(
+    contractReady &&
+      credentialsReady &&
+      typedAutomationProfile?.status === "HEALTHY"
+  );
 
   const now = new Date().toISOString();
 
@@ -659,6 +779,100 @@ async function syncComputedActivationReadiness(
           typedImplementationPayment?.provider_event_id ?? null,
         amount: typedImplementationPayment?.amount ?? null,
         currency: typedImplementationPayment?.currency ?? null,
+      },
+    },
+    {
+      company_id: companyId,
+      readiness_key: "contract_ready",
+      status: contractReady ? "ready" : "incomplete",
+      source_type: "computed",
+      source_basis: contractReady
+        ? "Verified from the active Team Optix contract configuration."
+        : null,
+      is_blocking: true,
+      completed_at: contractReady ? now : null,
+      completed_by: null,
+      blocking_reason: contractReady
+        ? null
+        : "An active contract row with contract number, terminal identity, and service area is required.",
+      metadata: {
+        contract_config_id: typedActiveContract?.id ?? null,
+        contract_number:
+          typedActiveContract?.contract_number ?? null,
+        terminal_identity:
+          typedActiveContract?.terminal_identity ?? null,
+        service_area:
+          typedActiveContract?.service_area ?? null,
+      },
+    },
+    {
+      company_id: companyId,
+      readiness_key: "credentials_ready",
+      status: credentialsReady ? "ready" : "incomplete",
+      source_type: "computed",
+      source_basis: credentialsReady
+        ? "Customer-managed FedEx credentials are present and successfully verified."
+        : null,
+      is_blocking: true,
+      completed_at: credentialsReady
+        ? typedCredential?.last_verified_at ?? now
+        : null,
+      completed_by: null,
+      blocking_reason: credentialsReady
+        ? null
+        : !typedAutomationProfile
+          ? "A FedEx automation profile has not been initialized."
+          : !typedCredential?.has_secret
+            ? "The customer has not uploaded FedEx credentials."
+            : !typedCredential.last_verified_at
+              ? "The customer credentials have not been verified."
+              : typedAutomationProfile.status !== "HEALTHY"
+                ? "The most recent FedEx credential verification is not healthy."
+                : "Customer-managed FedEx credentials are not ready.",
+      metadata: {
+        automation_profile_id:
+          typedAutomationProfile?.id ?? null,
+        automation_profile_status:
+          typedAutomationProfile?.status ?? null,
+        has_secret:
+          typedCredential?.has_secret ?? false,
+        last_verified_at:
+          typedCredential?.last_verified_at ?? null,
+        last_verification_result:
+          typedCredential?.last_verification_result ?? null,
+      },
+    },
+    {
+      company_id: companyId,
+      readiness_key: "automation_ready",
+      status: automationReady ? "ready" : "incomplete",
+      source_type: "computed",
+      source_basis: automationReady
+        ? "Active contract governance and healthy FedEx collection access are both confirmed."
+        : null,
+      is_blocking: true,
+      completed_at: automationReady
+        ? typedCredential?.last_verified_at ?? now
+        : null,
+      completed_by: null,
+      blocking_reason: automationReady
+        ? null
+        : !contractReady
+          ? "Automation is blocked until Team Optix establishes the active contract, terminal, and service-area mapping."
+          : !credentialsReady
+            ? "Automation is blocked until customer-managed FedEx credentials are successfully verified."
+            : "Automation is not operationally ready.",
+      metadata: {
+        contract_ready: contractReady,
+        credentials_ready: credentialsReady,
+        automation_profile_id:
+          typedAutomationProfile?.id ?? null,
+        automation_profile_status:
+          typedAutomationProfile?.status ?? null,
+        contract_config_id:
+          typedActiveContract?.id ?? null,
+        last_verified_at:
+          typedCredential?.last_verified_at ?? null,
       },
     },
   ];
@@ -772,7 +986,11 @@ export async function getCompanyActivationSnapshot(
   const company = await resolveCompanyBySlug(admin, slug);
 
   await ensureActivationFoundation(admin, company);
-  await syncComputedActivationReadiness(admin, company.id);
+  await syncComputedActivationReadiness(
+    admin,
+    company.id,
+    company.company_slug
+  );
   await reconcileActivationLifecycleFromReadiness(
     admin,
     company.id,
@@ -939,7 +1157,11 @@ export async function beginCompanyGoLive(
   const company = await resolveCompanyBySlug(admin, slug);
 
   await ensureActivationFoundation(admin, company);
-  await syncComputedActivationReadiness(admin, company.id);
+  await syncComputedActivationReadiness(
+    admin,
+    company.id,
+    company.company_slug
+  );
   await reconcileActivationLifecycleFromReadiness(
     admin,
     company.id,
