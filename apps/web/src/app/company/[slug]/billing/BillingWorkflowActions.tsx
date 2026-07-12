@@ -16,7 +16,9 @@ export default function BillingWorkflowActions(props: Props) {
 
   const [creating, setCreating] = useState(false);
   const [showImplementationInfo, setShowImplementationInfo] = useState(false);
+  const [showGoLiveAuthorization, setShowGoLiveAuthorization] = useState(false);
   const [launching, setLaunching] = useState(false);
+  const [authorizingGoLive, setAuthorizingGoLive] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const customerExists = Boolean(props.stripeCustomerId);
@@ -99,6 +101,40 @@ export default function BillingWorkflowActions(props: Props) {
     }
   }
 
+  async function authorizeGoLive() {
+    try {
+      setAuthorizingGoLive(true);
+      setError(null);
+
+      const response = await fetch(
+        `/api/company/${props.slug}/activation/customer-approval`,
+        {
+          method: "POST",
+        }
+      );
+
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          payload.error ?? "Unable to record Go Live authorization."
+        );
+      }
+
+      setShowGoLiveAuthorization(false);
+      router.refresh();
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Unable to record Go Live authorization."
+      );
+    } finally {
+      setAuthorizingGoLive(false);
+    }
+  }
+
+
   return (
     <div style={workflowShell}>
       <div style={actionRow}>
@@ -133,6 +169,17 @@ export default function BillingWorkflowActions(props: Props) {
             ? "Opening Stripe Checkout..."
             : "Launch Stripe Checkout"}
         </button>
+
+        <button
+          type="button"
+          disabled={authorizingGoLive}
+          onClick={() => setShowGoLiveAuthorization(true)}
+          style={primaryButton}
+        >
+          {authorizingGoLive
+            ? "Recording Authorization..."
+            : "Authorize Go Live"}
+        </button>
       </div>
 
       <button
@@ -154,6 +201,73 @@ export default function BillingWorkflowActions(props: Props) {
           {error}
         </p>
       ) : null}
+
+      {showGoLiveAuthorization && (
+        <div style={overlay}>
+          <div style={modal}>
+            <div style={modalBrandHeader}>
+              <InsightSignal
+                phase="implementation"
+                size="lg"
+                showWordmark
+              />
+            </div>
+
+            <h3 style={modalTitle}>Authorize Go Live</h3>
+
+            <p>
+              This action records your approval for Team Optix to move your
+              Insight workspace from implementation toward <strong>Go Live</strong>.
+            </p>
+
+            <p>
+              <strong>This does not mean your Stripe subscription is launched immediately.</strong>
+              {" "}It authorizes Team Optix to proceed with the subscription,
+              billing, payment, and operational activation lifecycle according
+              to the commercial terms already agreed for this account.
+            </p>
+
+            <p>
+              After authorization, Team Optix will use this approval as Go Live
+              readiness evidence and may complete the remaining activation steps
+              needed to start live service.
+            </p>
+
+            <div style={{ marginTop: 18 }}>
+              <strong>By continuing, you confirm:</strong>
+
+              <ul style={{ marginTop: 8 }}>
+                <li>You are authorized to approve Go Live for this company.</li>
+                <li>You understand Team Optix may advance the account toward subscription activation.</li>
+                <li>You understand recurring billing follows the agreed commercial terms and billing schedule.</li>
+                <li>You understand this approval is recorded as customer Go Live authorization.</li>
+              </ul>
+            </div>
+
+            <div style={modalActions}>
+              <button
+                type="button"
+                style={secondaryButton}
+                disabled={authorizingGoLive}
+                onClick={() => setShowGoLiveAuthorization(false)}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                style={primaryButton}
+                disabled={authorizingGoLive}
+                onClick={authorizeGoLive}
+              >
+                {authorizingGoLive
+                  ? "Recording Authorization..."
+                  : "Authorize Team Optix to Proceed"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showImplementationInfo && (
         <div style={overlay}>
@@ -275,6 +389,24 @@ const modalBrandHeader = {
   display: "flex",
   justifyContent: "flex-end",
   marginBottom: 12,
+};
+
+const modalActions = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: 10,
+  marginTop: 22,
+  flexWrap: "wrap" as const,
+};
+
+const secondaryButton = {
+  border: "1px solid #cbd5e1",
+  borderRadius: 8,
+  padding: "9px 12px",
+  background: "#fff",
+  color: "#0f172a",
+  fontWeight: 900,
+  cursor: "pointer",
 };
 
 const modalTitle = {
