@@ -5247,3 +5247,81 @@ body {
   overflow: hidden !important;
   text-overflow: ellipsis !important;
 }
+
+/* Payroll targeted adjustment picker */
+.payroll-target-picker {
+  display: grid;
+  gap: 10px;
+}
+
+.payroll-target-picker__summary {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+.payroll-target-picker__summary strong {
+  display: block;
+  margin-top: 2px;
+}
+
+.payroll-target-picker__summary p {
+  margin: 0;
+  color: rgba(71, 85, 105, 0.88);
+  font-size: 13px;
+}
+
+.payroll-target-picker__summary summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.payroll-target-picker__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.payroll-target-picker__chips span {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.payroll-target-picker__list {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 14px;
+  padding: 10px;
+}
+
+.payroll-target-picker__list p {
+  margin: 0;
+  color: rgba(71, 85, 105, 0.88);
+  font-size: 13px;
+}
+
+.payroll-target-picker__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  font-size: 13px;
+}
+
+.payroll-target-picker__option input {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 900px) {
+  .payroll-target-picker {
+    grid-column: 1 / -1 !important;
+  }
+}

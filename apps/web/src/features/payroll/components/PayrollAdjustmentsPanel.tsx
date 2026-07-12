@@ -133,6 +133,29 @@ export default function PayrollAdjustmentsPanel({ slug, weekEnd, roster, onChang
     .filter((row) => row.employment_status === "Active" || row.employment_status === "Trainee")
     .sort((a, b) => String(a.full_name ?? "").localeCompare(String(b.full_name ?? "")));
 
+  const selectedRoster = activeRoster.filter((person) =>
+    selectedRosterIds.includes(person.roster_member_id)
+  );
+
+  const selectedCountLabel =
+    selectedRosterIds.length === 1
+      ? "1 driver selected"
+      : `${selectedRosterIds.length} drivers selected`;
+
+  function toggleRosterSelection(rosterMemberId: string, checked: boolean) {
+    setSelectedRosterIds((current) => {
+      const selected = new Set(current);
+
+      if (checked) {
+        selected.add(rosterMemberId);
+      } else {
+        selected.delete(rosterMemberId);
+      }
+
+      return Array.from(selected);
+    });
+  }
+
   return (
     <section style={{ display: "grid", gap: 12 }}>
       <article className="app-card" style={{ padding: 14 }}>
@@ -147,7 +170,18 @@ export default function PayrollAdjustmentsPanel({ slug, weekEnd, roster, onChang
 
           <label style={{ display: "grid", gap: 5 }}>
             <span className="hero-stat__label">Scope</span>
-            <select value={scope} onChange={(e) => setScope(e.target.value as "GLOBAL" | "TARGETED")} style={{ height: 40, borderRadius: 10, border: "1px solid #d6dfeb", padding: "0 10px" }}>
+            <select
+              value={scope}
+              onChange={(e) => {
+                const nextScope = e.target.value as "GLOBAL" | "TARGETED";
+                setScope(nextScope);
+
+                if (nextScope === "GLOBAL") {
+                  setSelectedRosterIds([]);
+                }
+              }}
+              style={{ height: 40, borderRadius: 10, border: "1px solid #d6dfeb", padding: "0 10px" }}
+            >
               <option value="GLOBAL">Global</option>
               <option value="TARGETED">Targeted</option>
             </select>
@@ -169,21 +203,50 @@ export default function PayrollAdjustmentsPanel({ slug, weekEnd, roster, onChang
           </label>
 
           {scope === "TARGETED" ? (
-            <label style={{ display: "grid", gap: 5, gridColumn: "span 3" }}>
-              <span className="hero-stat__label">Targets</span>
-              <select
-                multiple
-                value={selectedRosterIds}
-                onChange={(e) => setSelectedRosterIds(Array.from(e.target.selectedOptions).map((option) => option.value))}
-                style={{ minHeight: 110, borderRadius: 10, border: "1px solid #d6dfeb", padding: 8 }}
-              >
-                {activeRoster.map((person) => (
-                  <option key={person.roster_member_id} value={person.roster_member_id}>
-                    {person.full_name} · {person.employment_status}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <section className="payroll-target-picker" style={{ gridColumn: "span 3" }}>
+              <div className="payroll-target-picker__summary">
+                <div>
+                  <span className="hero-stat__label">Targets</span>
+                  <strong>{selectedCountLabel}</strong>
+                </div>
+
+                {selectedRoster.length > 0 ? (
+                  <details>
+                    <summary>Review selected drivers</summary>
+                    <div className="payroll-target-picker__chips">
+                      {selectedRoster.map((person) => (
+                        <span key={person.roster_member_id}>
+                          {person.full_name || "Unnamed driver"}
+                        </span>
+                      ))}
+                    </div>
+                  </details>
+                ) : (
+                  <p>Select one or more eligible drivers below.</p>
+                )}
+              </div>
+
+              <div className="payroll-target-picker__list" aria-label="Targeted payroll adjustment drivers">
+                {activeRoster.length === 0 ? (
+                  <p>No active drivers are available for targeted adjustments.</p>
+                ) : (
+                  activeRoster.map((person) => (
+                    <label className="payroll-target-picker__option" key={person.roster_member_id}>
+                      <input
+                        type="checkbox"
+                        checked={selectedRosterIds.includes(person.roster_member_id)}
+                        onChange={(event) =>
+                          toggleRosterSelection(person.roster_member_id, event.target.checked)
+                        }
+                      />
+                      <span>
+                        {person.full_name || "Unnamed driver"} · {person.employment_status}
+                      </span>
+                    </label>
+                  ))
+                )}
+              </div>
+            </section>
           ) : null}
 
           <label style={{ display: "grid", gap: 5, gridColumn: "1 / -1" }}>
