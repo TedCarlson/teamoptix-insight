@@ -1,3 +1,5 @@
-import CompanyPage from "@/features/company/pages/CompanyPage";
+import AnalyticsDashboardSurface from "@/features/company/analytics/AnalyticsDashboardSurface";
 
-export default CompanyPage;
+export default function Page() {
+  return <AnalyticsDashboardSurface />;
+}
