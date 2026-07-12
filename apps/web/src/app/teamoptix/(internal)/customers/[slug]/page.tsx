@@ -1,6 +1,8 @@
-import TeamOptixShell from "@/features/teamoptix/navigation/TeamOptixShell";
-import CompanyContractConfigManager from "@/features/company/components/CompanyContractConfigManager";
 import AutomationConfigPanel from "@/features/automation/components/AutomationConfigPanel";
+import CompanyContractConfigManager from "@/features/company/components/CompanyContractConfigManager";
+import CustomerActivationOverview from "@/features/teamoptix/customer-activation/components/CustomerActivationOverview";
+import { getCompanyActivationSnapshot } from "@/features/teamoptix/customer-activation/server/customerActivation.server";
+import TeamOptixShell from "@/features/teamoptix/navigation/TeamOptixShell";
 import {
   WorkspaceHeader,
   WorkspaceSection,
@@ -12,29 +14,32 @@ type PageProps = {
   }>;
 };
 
-function customerName(slug: string) {
-  return slug
-    .split("-")
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
 export default async function TeamOptixCustomerGovernancePage({
   params,
 }: PageProps) {
   const { slug } = await params;
-  const name = customerName(slug);
+  const snapshot = await getCompanyActivationSnapshot(slug);
 
   return (
     <TeamOptixShell>
       <main className="workspace-shell">
         <section className="workspace-main">
           <WorkspaceHeader
-            eyebrow="TeamOptix · Customers"
-            title={name}
-            description="Team Optix governance for customer contracts, terminal scope, and platform-managed automation."
+            eyebrow="Team Optix · Customers"
+            title={snapshot.company.company_name}
+            description="Team Optix governance for customer activation, contracts, terminal scope, and platform-managed automation."
           />
+
+          <WorkspaceSection
+            eyebrow="Customer Activation"
+            title="Implementation and Go Live"
+            description="Review the authoritative customer lifecycle, readiness checklist, billing activation posture, and latest execution state."
+          >
+            <CustomerActivationOverview
+              slug={slug}
+              snapshot={snapshot}
+            />
+          </WorkspaceSection>
 
           <WorkspaceSection
             eyebrow="Customer Governance"

@@ -1,0 +1,272 @@
+import ReadinessStatusControl from "@/features/teamoptix/customer-activation/components/ReadinessStatusControl";
+import type {
+  ActivationLifecycleStatus,
+  CompanyActivationReadinessRecord,
+  CompanyActivationSnapshot,
+} from "@/features/teamoptix/customer-activation/server/customerActivation.server";
+
+type CustomerActivationOverviewProps = {
+  slug: string;
+  snapshot: CompanyActivationSnapshot;
+};
+
+const READINESS_LABELS: Record<
+  CompanyActivationReadinessRecord["readiness_key"],
+  string
+> = {
+  commercial_ready: "Commercial",
+  implementation_payment_ready: "Implementation payment",
+  contract_ready: "Agreement",
+  workspace_ready: "Workspace",
+  credentials_ready: "Credentials",
+  automation_ready: "Automation",
+  training_ready: "Training",
+  customer_approval_ready: "Customer approval",
+};
+
+const LIFECYCLE_LABELS: Record<ActivationLifecycleStatus, string> = {
+  implementation: "Implementation",
+  ready_for_go_live: "Ready for Go Live",
+  activation_in_progress: "Activation in progress",
+  active: "Active",
+  activation_failed: "Activation needs attention",
+  paused: "Paused",
+  cancelled: "Cancelled",
+  archived: "Archived",
+};
+
+function formatDate(value: string | null) {
+  if (!value) {
+    return "Not recorded";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Not recorded";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/New_York",
+    timeZoneName: "short",
+  }).format(date);
+}
+
+function readinessState(
+  item: CompanyActivationReadinessRecord
+): {
+  symbol: string;
+  label: string;
+} {
+  if (item.status === "ready") {
+    return {
+      symbol: "✓",
+      label: "Ready",
+    };
+  }
+
+  if (item.status === "not_applicable") {
+    return {
+      symbol: "—",
+      label: "Not applicable",
+    };
+  }
+
+  return {
+    symbol: "○",
+    label: "Incomplete",
+  };
+}
+
+export default function CustomerActivationOverview({
+  slug,
+  snapshot,
+}: CustomerActivationOverviewProps) {
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <section className="summary-grid">
+        <article className="app-card">
+          <p className="value-card__eyebrow">
+            Customer lifecycle
+          </p>
+
+          <h3 className="app-card__title">
+            {LIFECYCLE_LABELS[
+              snapshot.activation.lifecycle_status
+            ]}
+          </h3>
+
+          <p className="app-card__body">
+            Authoritative Team Optix customer state. Workspace
+            availability and Stripe provider status remain separate.
+          </p>
+        </article>
+
+        <article className="app-card">
+          <p className="value-card__eyebrow">
+            Go Live readiness
+          </p>
+
+          <h3 className="app-card__title">
+            {snapshot.is_ready_for_go_live
+              ? "Ready"
+              : `${snapshot.blocking_readiness.length} blocking`}
+          </h3>
+
+          <p className="app-card__body">
+            {snapshot.is_ready_for_go_live
+              ? "All required readiness domains are complete."
+              : "Incomplete readiness items must be resolved before activation can begin."}
+          </p>
+        </article>
+
+        <article className="app-card">
+          <p className="value-card__eyebrow">
+            First billing date
+          </p>
+
+          <h3 className="app-card__title">
+            {snapshot.activation.first_billing_date ??
+              "Not calculated"}
+          </h3>
+
+          <p className="app-card__body">
+            Calculated and persisted when Team Optix requests
+            Go Live.
+          </p>
+        </article>
+
+        <article className="app-card">
+          <p className="value-card__eyebrow">
+            Subscription activation
+          </p>
+
+          <h3 className="app-card__title">
+            {snapshot.activation.subscription_activation_status
+              .replaceAll("_", " ")
+              .replace(/^\w/, (value) => value.toUpperCase())}
+          </h3>
+
+          <p className="app-card__body">
+            Provider subscription execution remains independently
+            auditable from the customer lifecycle.
+          </p>
+        </article>
+      </section>
+
+      <article className="app-card">
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 18,
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <p className="value-card__eyebrow">
+              Activation readiness
+            </p>
+
+            <h3 className="app-card__title">
+              Go Live checklist
+            </h3>
+
+            <p className="app-card__body">
+              Each readiness domain retains its own source,
+              completion evidence, and blocking reason.
+            </p>
+          </div>
+
+          <div
+            aria-label="Go Live readiness summary"
+            style={{
+              fontWeight: 700,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {snapshot.readiness.length -
+              snapshot.blocking_readiness.length}
+            {" / "}
+            {snapshot.readiness.length}
+            {" ready"}
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gap: 10,
+            marginTop: 18,
+          }}
+        >
+          {snapshot.readiness.map((item) => {
+            const state = readinessState(item);
+
+            return (
+              <div
+                key={item.readiness_key}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "minmax(180px, 0.8fr) minmax(120px, 0.45fr) minmax(240px, 1.5fr)",
+                  gap: 14,
+                  alignItems: "center",
+                  padding: "12px 0",
+                  borderTop: "1px solid var(--border-subtle)",
+                }}
+              >
+                <strong>
+                  {READINESS_LABELS[item.readiness_key]}
+                </strong>
+
+                <ReadinessStatusControl
+                  slug={slug}
+                  readinessKey={item.readiness_key}
+                  status={item.status}
+                  editable={item.source_type !== "computed"}
+                />
+
+                <span className="app-card__body">
+                  {item.status === "incomplete"
+                    ? item.blocking_reason ??
+                      "Readiness has not been completed."
+                    : item.source_basis ??
+                      `Completed ${formatDate(
+                        item.completed_at
+                      )}`}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </article>
+
+      {snapshot.latest_run ? (
+        <article className="app-card">
+          <p className="value-card__eyebrow">
+            Latest activation run
+          </p>
+
+          <h3 className="app-card__title">
+            {snapshot.latest_run.status
+              .replaceAll("_", " ")
+              .replace(/^\w/, (value) => value.toUpperCase())}
+          </h3>
+
+          <p className="app-card__body">
+            Requested {formatDate(snapshot.latest_run.requested_at)}
+            {" · "}
+            {snapshot.latest_run_steps.length} recorded steps
+          </p>
+        </article>
+      ) : null}
+    </div>
+  );
+}
