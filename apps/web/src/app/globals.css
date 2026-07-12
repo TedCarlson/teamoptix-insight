@@ -4787,3 +4787,80 @@ body {
   }
 }
 
+/* Company billing workspace */
+.company-billing-commercial-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.9fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.company-billing-input {
+  max-width: 100%;
+}
+
+@media (max-width: 1024px) {
+  .company-billing-commercial-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .company-billing-commercial-grid {
+    gap: 12px;
+  }
+
+  .company-billing-profile-table,
+  .company-billing-profile-table tbody,
+  .company-billing-profile-row,
+  .company-billing-profile-label,
+  .company-billing-profile-value {
+    display: block;
+    width: 100% !important;
+  }
+
+  .company-billing-profile-row {
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .company-billing-profile-label {
+    padding: 12px 14px 4px !important;
+    border-bottom: 0 !important;
+  }
+
+  .company-billing-profile-value {
+    padding: 0 14px 12px !important;
+  }
+
+  .company-billing-input {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .company-billing-panel-header {
+    align-items: flex-start !important;
+    flex-direction: column;
+  }
+
+  .company-billing-tier-evidence__body {
+    padding: 14px !important;
+  }
+
+  .company-billing-tier-evidence__metric-grid,
+  .company-billing-tier-evidence__tier-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .company-billing-tier-evidence__stat {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .company-billing-profile-label,
+  .company-billing-profile-value,
+  .company-billing-tier-evidence__body {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+}

@@ -87,7 +87,7 @@ export default function CommercialProfileForm(props: {
 
   return (
     <>
-      <table style={table}>
+      <table className="company-billing-profile-table" style={table}>
         <tbody>
           <Row
             label="Operator Tier"
@@ -203,9 +203,9 @@ function formatWeekly(value: unknown) {
 
 function Row(props: { label: string; value: React.ReactNode }) {
   return (
-    <tr style={tr}>
-      <th style={th}>{props.label}</th>
-      <td style={td}>{props.value}</td>
+    <tr className="company-billing-profile-row" style={tr}>
+      <th className="company-billing-profile-label" style={th}>{props.label}</th>
+      <td className="company-billing-profile-value" style={td}>{props.value}</td>
     </tr>
   );
 }

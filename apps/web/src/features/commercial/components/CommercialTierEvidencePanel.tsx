@@ -24,7 +24,7 @@ function EvidenceStat(props: {
   detail?: string;
 }) {
   return (
-    <div style={evidenceStat}>
+    <div className="company-billing-tier-evidence__stat" style={evidenceStat}>
       <span style={evidenceLabel}>{props.label}</span>
       <strong>{props.value}</strong>
       {props.detail ? (
@@ -45,8 +45,8 @@ export default function CommercialTierEvidencePanel({
         : "Evidence pending";
 
   return (
-    <section style={panel}>
-      <div style={panelHeader}>
+    <section className="company-billing-tier-evidence" style={panel}>
+      <div className="company-billing-panel-header" style={panelHeader}>
         <div>
           <h2 style={panelTitle}>Commercial Tier Evidence</h2>
           <p style={muted}>
@@ -68,8 +68,8 @@ export default function CommercialTierEvidencePanel({
         </div>
       </div>
 
-      <div style={evidenceBody}>
-        <div style={evidenceGrid}>
+      <div className="company-billing-tier-evidence__body" style={evidenceBody}>
+        <div className="company-billing-tier-evidence__metric-grid" style={evidenceGrid}>
           <EvidenceStat
             label="30-day avg routes"
             value={formatEvidenceNumber(evidence.average30)}
@@ -96,7 +96,7 @@ export default function CommercialTierEvidencePanel({
           />
         </div>
 
-        <div style={tierComparisonGrid}>
+        <div className="company-billing-tier-evidence__tier-grid" style={tierComparisonGrid}>
           <EvidenceStat
             label="Observed days"
             value={String(evidence.observedDays)}

@@ -66,7 +66,7 @@ export default async function CompanyBillingPage(props: PageProps) {
             </Link>
           </div>
 
-          <div style={commercialGrid}>
+          <div className="company-billing-commercial-grid">
             <section style={panel}>
               <div style={panelHeader}>
                 <div>
@@ -135,12 +135,6 @@ const title = {
   letterSpacing: "-0.04em",
 };
 
-const commercialGrid = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) minmax(360px, 0.9fr)",
-  gap: 14,
-  alignItems: "start",
-};
 
 const panel = {
   border: "1px solid #dbe3ef",
