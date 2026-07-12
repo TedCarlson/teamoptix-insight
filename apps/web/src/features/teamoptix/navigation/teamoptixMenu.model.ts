@@ -104,6 +104,7 @@ export function buildTeamOptixMenu(): AppMenuSection[] {
               children: [
                 { key: "finance-banking", label: "Banking", href: "/teamoptix/business/finance/banking" },
                 { key: "finance-billing", label: "Billing", href: "/teamoptix/business/finance/billing" },
+                { key: "finance-billing-stripe", label: "Stripe", href: "/teamoptix/business/finance/billing-stripe" },
                 { key: "finance-accounting", label: "Accounting", href: "/teamoptix/business/finance/accounting" },
                 { key: "finance-revenue", label: "Revenue", href: "/teamoptix/business/finance/revenue" },
                 { key: "finance-expenses", label: "Expenses", href: "/teamoptix/business/finance/expenses" },

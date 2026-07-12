@@ -12,8 +12,15 @@ const financeAreas = [
   {
     eyebrow: "Billing",
     title: "Billing",
-    description: "Customers, subscriptions, invoices, payments, plans, and billing provider state.",
+    description: "Customer billing, invoices, receivables, payments, and billing operations.",
     href: "/teamoptix/business/finance/billing",
+  },
+
+  {
+    eyebrow: "Stripe",
+    title: "Stripe",
+    description: "Stripe provider administration, catalog, customers, subscriptions, and webhooks.",
+    href: "/teamoptix/business/finance/billing-stripe",
   },
   {
     eyebrow: "Accounting",
