@@ -203,9 +203,9 @@ export default function BillingWorkflowActions(props: Props) {
       ) : null}
 
       {showGoLiveAuthorization && (
-        <div style={overlay}>
-          <div style={modal}>
-            <div style={modalBrandHeader}>
+        <div className="company-billing-overlay" style={overlay}>
+          <div className="company-billing-modal" style={modal}>
+            <div className="company-billing-modal__brand" style={modalBrandHeader}>
               <InsightSignal
                 phase="implementation"
                 size="lg"
@@ -213,7 +213,7 @@ export default function BillingWorkflowActions(props: Props) {
               />
             </div>
 
-            <h3 style={modalTitle}>Authorize Go Live</h3>
+            <h3 className="company-billing-modal__title" style={modalTitle}>Authorize Go Live</h3>
 
             <p>
               This action records your approval for Team Optix to move your
@@ -270,9 +270,9 @@ export default function BillingWorkflowActions(props: Props) {
       )}
 
       {showImplementationInfo && (
-        <div style={overlay}>
-          <div style={modal}>
-            <div style={modalBrandHeader}>
+        <div className="company-billing-overlay" style={overlay}>
+          <div className="company-billing-modal" style={modal}>
+            <div className="company-billing-modal__brand" style={modalBrandHeader}>
               <InsightSignal
                 phase="implementation"
                 size="lg"
@@ -280,7 +280,7 @@ export default function BillingWorkflowActions(props: Props) {
               />
             </div>
 
-            <h3 style={modalTitle}>Implementation &amp; Go Live</h3>
+            <h3 className="company-billing-modal__title" style={modalTitle}>Implementation &amp; Go Live</h3>
 
             <p>
               <strong>Implementation is a one-time onboarding phase.</strong>
