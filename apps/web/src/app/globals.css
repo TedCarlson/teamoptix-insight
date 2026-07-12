@@ -5184,3 +5184,66 @@ body {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* Driver home message cards */
+.company-user-message-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.company-user-message-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 16px;
+  padding: 12px;
+}
+
+.company-user-message-card h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.company-user-message-card p {
+  margin: 6px 0 0;
+}
+
+.company-user-message-card .button {
+  width: 100%;
+}
+
+.company-user-message-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: rgba(71, 85, 105, 0.85);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.company-user-message-card__status {
+  color: rgba(22, 101, 52, 0.95);
+  font-weight: 800;
+}
+
+/* Driver mobile nav: four fixed tabs */
+.driver-bottom-nav {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+}
+
+.driver-bottom-nav__item {
+  min-width: 0 !important;
+  justify-content: center !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+}
+
+.driver-bottom-nav__item span {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}

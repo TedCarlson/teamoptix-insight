@@ -69,6 +69,16 @@ type TimekeepingDiscrepancyResponse = {
   error?: string;
 };
 
+type DriverMessage = {
+  id: string;
+  title: string;
+  body: string;
+  status: "published" | string;
+  visibility: "all" | "drivers" | "leadership" | string;
+  requires_ack: boolean;
+  published_at: string | null;
+};
+
 const routeByDayKey: Record<number, keyof ScheduleRow> = {
   0: "default_route_u",
   1: "default_route_m",
@@ -212,6 +222,9 @@ export default function CompanyUserHomePage() {
   const [activitySaving, setActivitySaving] = useState(false);
   const [activityState, setActivityState] = useState<ActivityCurrentResponse | null>(null);
   const [timekeepingDiscrepancies, setTimekeepingDiscrepancies] = useState<TimekeepingDiscrepancy[]>([]);
+  const [driverMessages, setDriverMessages] = useState<DriverMessage[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(true);
+  const [ackSavingId, setAckSavingId] = useState<string | null>(null);
   const [correctionTime, setCorrectionTime] = useState("");
   const [correctionNote, setCorrectionNote] = useState("");
   const [correctionSaving, setCorrectionSaving] = useState(false);
@@ -263,6 +276,31 @@ export default function CompanyUserHomePage() {
     }
   }, [slug]);
 
+  const loadDriverMessages = useCallback(async () => {
+    if (!slug) return;
+
+    try {
+      setMessagesLoading(true);
+
+      const res = await fetch(`/api/company/${slug}/messages`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setDriverMessages([]);
+        return;
+      }
+
+      setDriverMessages(Array.isArray(data.messages) ? data.messages : []);
+    } catch {
+      setDriverMessages([]);
+    } finally {
+      setMessagesLoading(false);
+    }
+  }, [slug]);
+
   useEffect(() => {
     let active = true;
 
@@ -300,12 +338,13 @@ export default function CompanyUserHomePage() {
       void loadSchedule();
       void loadActivity();
       void loadTimekeepingDiscrepancies();
+      void loadDriverMessages();
     }
 
     return () => {
       active = false;
     };
-  }, [loadActivity, loadTimekeepingDiscrepancies, slug]);
+  }, [loadActivity, loadDriverMessages, loadTimekeepingDiscrepancies, slug]);
 
   const myScheduleRow = useMemo(() => {
     if (!access.profile_id) return null;
@@ -395,6 +434,35 @@ export default function CompanyUserHomePage() {
       setPageError("Could not record workday activity.");
     } finally {
       setActivitySaving(false);
+    }
+  }
+
+  async function acknowledgeMessage(messageId: string) {
+    if (!slug || ackSavingId) return;
+
+    try {
+      setAckSavingId(messageId);
+      setPageError(null);
+
+      const res = await fetch(`/api/company/${slug}/messages/${messageId}/ack`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setPageError(data?.error ?? "Could not acknowledge message.");
+        return;
+      }
+
+      setDriverMessages((current) =>
+        current.filter((message) => message.id !== messageId)
+      );
+    } catch {
+      setPageError("Could not acknowledge message.");
+    } finally {
+      setAckSavingId(null);
     }
   }
 
@@ -534,12 +602,50 @@ export default function CompanyUserHomePage() {
           <div className="company-user-section-header">
             <div>
               <p className="value-card__eyebrow">Company Updates</p>
-              <h2>Nothing new right now</h2>
+              <h2>
+                {messagesLoading
+                  ? "Checking messages"
+                  : driverMessages.length > 0
+                    ? `${driverMessages.length} update${driverMessages.length === 1 ? "" : "s"}`
+                    : "Nothing new right now"}
+              </h2>
             </div>
           </div>
-          <p className="company-user-muted">
-            Broadcasts, reminders, incentives, and targeted company messages will appear here.
-          </p>
+
+          {messagesLoading ? (
+            <p className="company-user-muted">
+              Loading broadcasts, reminders, and targeted company messages.
+            </p>
+          ) : driverMessages.length === 0 ? (
+            <p className="company-user-muted">
+              Broadcasts, reminders, incentives, and targeted company messages will appear here.
+            </p>
+          ) : (
+            <div className="company-user-message-list">
+              {driverMessages.map((message) => (
+                <article className="company-user-message-card" key={message.id}>
+                  <div>
+                    <p className="value-card__eyebrow">
+                      {message.visibility === "drivers" ? "Driver message" : "Company message"}
+                    </p>
+                    <h3>{message.title}</h3>
+                    <p>{message.body}</p>
+                  </div>
+
+                  {message.requires_ack ? (
+                    <button
+                      type="button"
+                      className="button button-primary"
+                      disabled={ackSavingId === message.id}
+                      onClick={() => void acknowledgeMessage(message.id)}
+                    >
+                      {ackSavingId === message.id ? "Acknowledging..." : "Read & acknowledge"}
+                    </button>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="app-card company-user-card">

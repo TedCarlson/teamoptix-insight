@@ -174,9 +174,10 @@ export async function GET(
 
   if (resolved.error) return resolved.error;
 
-  const { supabase, company, canAdmin } = resolved;
+  const { supabase, company, access, canAdmin } = resolved;
   const url = new URL(req.url);
   const includeDrafts = url.searchParams.get("admin") === "1" && canAdmin;
+  const includeHistory = url.searchParams.get("history") === "1";
 
   let query = supabase
     .from("company_message")
@@ -211,8 +212,43 @@ export async function GET(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  const messages = data ?? [];
+  const messageIds = messages.map((message: any) => message.id).filter(Boolean);
+
+  let acknowledgments: Record<string, string> = {};
+
+  if (!includeDrafts && access?.profile_id && messageIds.length > 0) {
+    const { data: ackRows, error: ackError } = await supabase
+      .from("company_message_ack")
+      .select("message_id, acknowledged_at")
+      .eq("company_id", company.id)
+      .eq("profile_id", access.profile_id)
+      .in("message_id", messageIds);
+
+    if (ackError) {
+      return NextResponse.json({ error: ackError.message }, { status: 500 });
+    }
+
+    acknowledgments = Object.fromEntries(
+      (ackRows ?? []).map((row: any) => [row.message_id, row.acknowledged_at])
+    );
+  }
+
+  const hydratedMessages = messages.map((message: any) => ({
+    ...message,
+    acknowledged_at: acknowledgments[message.id] ?? null,
+    acknowledged: Boolean(acknowledgments[message.id]),
+  }));
+
+  const visibleMessages =
+    includeDrafts || includeHistory
+      ? hydratedMessages
+      : hydratedMessages.filter(
+          (message: any) => !message.requires_ack || !message.acknowledged
+        );
+
   return NextResponse.json({
-    messages: data ?? [],
+    messages: visibleMessages,
     can_admin: canAdmin,
   });
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarDays, Home } from "lucide-react";
+import { BarChart3, CalendarDays, Home, MessageSquareText } from "lucide-react";
 import { usePathname } from "next/navigation";
 
 type DriverBottomNavProps = {
@@ -16,10 +16,22 @@ const navItems = [
     href: (slug: string) => `/company/${slug}/home`,
   },
   {
+    key: "messages",
+    label: "Messages",
+    Icon: MessageSquareText,
+    href: (slug: string) => `/company/${slug}/driver/messages`,
+  },
+  {
     key: "schedule",
     label: "Schedule",
     Icon: CalendarDays,
     href: (slug: string) => `/company/${slug}/driver/schedule`,
+  },
+  {
+    key: "scorecard",
+    label: "Scorecard",
+    Icon: BarChart3,
+    href: (slug: string) => `/company/${slug}/driver/scorecard`,
   },
 ];
 
