@@ -22,6 +22,22 @@ type CompanyRow = {
   company_slug: string;
 };
 
+type MessageRow = {
+  id: string;
+  company_id: string;
+  title: string;
+  body: string;
+  status: string;
+  visibility: string;
+  requires_ack: boolean;
+  published_at: string | null;
+  archived_at: string | null;
+  created_by_profile_id: string | null;
+  updated_by_profile_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type ResolvedContext =
   | {
       supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>;
@@ -72,6 +88,19 @@ function normalizeVisibility(value: unknown) {
 
 function booleanOrDefault(value: unknown, fallback: boolean) {
   return typeof value === "boolean" ? value : fallback;
+}
+
+function stringArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+
+  return Array.from(
+    new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
 }
 
 async function resolveCompanyAndAccess(slug: string): Promise<ResolvedContext> {
@@ -209,6 +238,7 @@ export async function POST(
   const status = normalizeStatus(body.status);
   const visibility = normalizeVisibility(body.visibility);
   const requiresAck = booleanOrDefault(body.requires_ack, true);
+  const recipientRosterMemberIds = stringArray(body.recipient_roster_member_ids);
 
   if (!title) {
     return NextResponse.json({ error: "title is required." }, { status: 400 });
@@ -218,22 +248,32 @@ export async function POST(
     return NextResponse.json({ error: "body is required." }, { status: 400 });
   }
 
+  if (recipientRosterMemberIds.length > 0 && visibility !== "drivers") {
+    return NextResponse.json(
+      { error: "Targeted messages must use drivers visibility." },
+      { status: 400 }
+    );
+  }
+
   const now = new Date().toISOString();
+  const publishAfterRecipients =
+    status === "published" && recipientRosterMemberIds.length > 0;
+  const initialStatus = publishAfterRecipients ? "draft" : status;
 
   const insertRow = {
     company_id: company.id,
     title,
     body: messageBody,
-    status,
+    status: initialStatus,
     visibility,
     requires_ack: requiresAck,
-    published_at: status === "published" ? now : null,
-    archived_at: status === "archived" ? now : null,
+    published_at: initialStatus === "published" ? now : null,
+    archived_at: initialStatus === "archived" ? now : null,
     created_by_profile_id: access?.profile_id ?? null,
     updated_by_profile_id: access?.profile_id ?? null,
   };
 
-  const { data, error } = await supabase
+  const { data: inserted, error } = await supabase
     .from("company_message")
     .insert(insertRow)
     .select(
@@ -255,9 +295,104 @@ export async function POST(
     )
     .single();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error || !inserted) {
+    return NextResponse.json(
+      { error: error?.message ?? "Failed to create message." },
+      { status: 500 }
+    );
   }
 
-  return NextResponse.json({ message: data }, { status: 201 });
+  const insertedMessage = inserted as unknown as MessageRow;
+
+  if (recipientRosterMemberIds.length > 0) {
+    const { data: rosterRows, error: rosterError } = await supabase
+      .from("company_roster_view")
+      .select("roster_member_id, profile_id, person_id, employment_status")
+      .eq("company_id", company.id)
+      .in("roster_member_id", recipientRosterMemberIds);
+
+    if (rosterError) {
+      return NextResponse.json(
+        { error: rosterError.message, message: insertedMessage },
+        { status: 500 }
+      );
+    }
+
+    const recipientRows = (rosterRows ?? [])
+      .filter((row: any) =>
+        row.employment_status === "Active" || row.employment_status === "Trainee"
+      )
+      .map((row: any) => ({
+        company_id: company.id,
+        message_id: insertedMessage.id,
+        roster_member_id: row.roster_member_id,
+        profile_id: row.profile_id ?? null,
+        person_id: row.person_id ?? null,
+      }));
+
+    if (recipientRows.length !== recipientRosterMemberIds.length) {
+      return NextResponse.json(
+        {
+          error: "One or more selected recipients are not active drivers.",
+          message: insertedMessage,
+        },
+        { status: 400 }
+      );
+    }
+
+    const { error: recipientError } = await supabase
+      .from("company_message_recipient")
+      .insert(recipientRows);
+
+    if (recipientError) {
+      return NextResponse.json(
+        { error: recipientError.message, message: insertedMessage },
+        { status: 500 }
+      );
+    }
+  }
+
+  if (publishAfterRecipients) {
+    const { data: published, error: publishError } = await supabase
+      .from("company_message")
+      .update({
+        status: "published",
+        published_at: now,
+        updated_by_profile_id: access?.profile_id ?? null,
+      })
+      .eq("company_id", company.id)
+      .eq("id", insertedMessage.id)
+      .select(
+        [
+          "id",
+          "company_id",
+          "title",
+          "body",
+          "status",
+          "visibility",
+          "requires_ack",
+          "published_at",
+          "archived_at",
+          "created_by_profile_id",
+          "updated_by_profile_id",
+          "created_at",
+          "updated_at",
+        ].join(", ")
+      )
+      .single();
+
+    if (publishError || !published) {
+      return NextResponse.json(
+        {
+          error: publishError?.message ?? "Message recipients saved, but publish failed.",
+          message: insertedMessage,
+        },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ message: published }, { status: 201 });
+  }
+
+  return NextResponse.json({ message: insertedMessage }, { status: 201 });
 }
