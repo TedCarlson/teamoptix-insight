@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import CommercialTierEvidencePanel from "@/features/commercial/components/CommercialTierEvidencePanel";
+import { getCommercialTierEvidence } from "@/features/commercial/server/commercialTierEvidence.server";
 import CommercialProfileForm from "./CommercialProfileForm";
 import BillingWorkflowActions from "./BillingWorkflowActions";
 
@@ -43,10 +45,12 @@ export default async function CompanyBillingPage(props: PageProps) {
     .eq("active", true)
     .order("sort_order");
 
-
-
-
-
+  const tierEvidence = await getCommercialTierEvidence({
+    supabase,
+    companyId: company.id,
+    declaredTierKey: commercialProfile?.operator_tier_key,
+    operatorTiers: operatorTiers ?? [],
+  });
 
   return (
     <main className="workspace-shell">
@@ -62,29 +66,33 @@ export default async function CompanyBillingPage(props: PageProps) {
             </Link>
           </div>
 
-          <section style={panel}>
-            <div style={panelHeader}>
-              <div>
-                <h2 style={panelTitle}>Commercial Billing Setup</h2>
-                <p style={muted}>
-                  Stripe customer status, implementation fee, and subscription setup for {company.company_name}.
-                </p>
+          <div style={commercialGrid}>
+            <section style={panel}>
+              <div style={panelHeader}>
+                <div>
+                  <h2 style={panelTitle}>Commercial Billing Setup</h2>
+                  <p style={muted}>
+                    Stripe customer status, implementation fee, and subscription setup for {company.company_name}.
+                  </p>
+                </div>
+                <div
+                  style={statusPillStyle(
+                    commercialProfile?.commercial_status ?? "draft"
+                  )}
+                >
+                  {formatStatus(commercialProfile?.commercial_status ?? "draft")}
+                </div>
               </div>
-              <div
-                style={statusPillStyle(
-                  commercialProfile?.commercial_status ?? "draft"
-                )}
-              >
-                {formatStatus(commercialProfile?.commercial_status ?? "draft")}
-              </div>
-            </div>
 
-            <CommercialProfileForm
-              billingEmail={company.contact_email ?? ""}
-              profile={commercialProfile}
-              tiers={operatorTiers ?? []}
-            />
-          </section>
+              <CommercialProfileForm
+                billingEmail={company.contact_email ?? ""}
+                profile={commercialProfile}
+                tiers={operatorTiers ?? []}
+              />
+            </section>
+
+            <CommercialTierEvidencePanel evidence={tierEvidence} />
+          </div>
 
           <section style={panel}>
             <div style={panelHeader}>
@@ -139,6 +147,13 @@ const title = {
   color: "#0f172a",
   fontSize: 28,
   letterSpacing: "-0.04em",
+};
+
+const commercialGrid = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) minmax(360px, 0.9fr)",
+  gap: 14,
+  alignItems: "start",
 };
 
 const panel = {
