@@ -5,6 +5,7 @@ export const runtime = "nodejs";
 
 const SORT_KEYS = new Set(["route_name", "current_wa_num"]);
 const SORT_DIRECTIONS = new Set(["asc", "desc"]);
+const TIMEKEEPING_OVERSIGHT_MODES = new Set(["off", "signal_only", "driver_correction", "blocking"]);
 
 function cleanSortKey(value: unknown) {
   return typeof value === "string" && SORT_KEYS.has(value) ? value : "route_name";
@@ -12,6 +13,10 @@ function cleanSortKey(value: unknown) {
 
 function cleanSortDirection(value: unknown) {
   return typeof value === "string" && SORT_DIRECTIONS.has(value) ? value : "asc";
+}
+
+function cleanTimekeepingOversightMode(value: unknown) {
+  return typeof value === "string" && TIMEKEEPING_OVERSIGHT_MODES.has(value) ? value : "off";
 }
 
 export async function GET(
@@ -47,6 +52,26 @@ export async function PATCH(
     const { slug } = await context.params;
     const supabase = await getSupabaseServerClient();
     const body = await req.json().catch(() => ({}));
+
+    const updatesTimekeepingOnly =
+      body.timekeeping_oversight_mode !== undefined &&
+      body.route_sort_key === undefined &&
+      body.route_sort_direction === undefined;
+
+    if (updatesTimekeepingOnly) {
+      const { data, error } = await supabase.rpc("update_company_timekeeping_config", {
+        p_company_slug: slug,
+        p_timekeeping_oversight_mode: cleanTimekeepingOversightMode(
+          body.timekeeping_oversight_mode
+        ),
+      });
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({ config: data }, { status: 200 });
+    }
 
     const { data, error } = await supabase.rpc("update_company_operations_config", {
       p_company_slug: slug,

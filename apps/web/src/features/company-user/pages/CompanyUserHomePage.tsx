@@ -53,6 +53,22 @@ type ActivityCurrentResponse = {
   lastClockOut?: { occurred_at: string } | null;
 };
 
+type TimekeepingDiscrepancy = {
+  id: string;
+  type: "MISSING_CLOCK_OUT";
+  service_date: string;
+  clock_in: string;
+  title: string;
+  message: string;
+};
+
+type TimekeepingDiscrepancyResponse = {
+  ok?: boolean;
+  oversightMode?: string;
+  discrepancies?: TimekeepingDiscrepancy[];
+  error?: string;
+};
+
 const routeByDayKey: Record<number, keyof ScheduleRow> = {
   0: "default_route_u",
   1: "default_route_m",
@@ -162,6 +178,29 @@ function formatTime(value?: string | null) {
   });
 }
 
+function formatDateLabel(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, (month ?? 1) - 1, day ?? 1);
+
+  return date.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function buildLocalTimestamp(serviceDate: string, timeValue: string) {
+  if (!/^\d{2}:\d{2}$/.test(timeValue)) return null;
+
+  const [year, month, day] = serviceDate.split("-").map(Number);
+  const [hour, minute] = timeValue.split(":").map(Number);
+  const date = new Date(year, (month ?? 1) - 1, day ?? 1, hour ?? 0, minute ?? 0);
+
+  if (!Number.isFinite(date.getTime())) return null;
+
+  return date.toISOString();
+}
+
 export default function CompanyUserHomePage() {
   const params = useParams();
   const slug = String(params?.slug ?? "");
@@ -172,6 +211,10 @@ export default function CompanyUserHomePage() {
   const [activityLoading, setActivityLoading] = useState(true);
   const [activitySaving, setActivitySaving] = useState(false);
   const [activityState, setActivityState] = useState<ActivityCurrentResponse | null>(null);
+  const [timekeepingDiscrepancies, setTimekeepingDiscrepancies] = useState<TimekeepingDiscrepancy[]>([]);
+  const [correctionTime, setCorrectionTime] = useState("");
+  const [correctionNote, setCorrectionNote] = useState("");
+  const [correctionSaving, setCorrectionSaving] = useState(false);
   const [clockConfirm, setClockConfirm] = useState<IntentVerificationAction | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
 
@@ -196,6 +239,27 @@ export default function CompanyUserHomePage() {
       setActivityState(data);
     } finally {
       setActivityLoading(false);
+    }
+  }, [slug]);
+
+  const loadTimekeepingDiscrepancies = useCallback(async () => {
+    if (!slug) return;
+
+    try {
+      const res = await fetch(`/api/company/${slug}/driver/timekeeping/discrepancies`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+      const data = (await res.json().catch(() => ({}))) as TimekeepingDiscrepancyResponse;
+
+      if (!res.ok) {
+        setTimekeepingDiscrepancies([]);
+        return;
+      }
+
+      setTimekeepingDiscrepancies(Array.isArray(data.discrepancies) ? data.discrepancies : []);
+    } catch {
+      setTimekeepingDiscrepancies([]);
     }
   }, [slug]);
 
@@ -235,12 +299,13 @@ export default function CompanyUserHomePage() {
     if (slug) {
       void loadSchedule();
       void loadActivity();
+      void loadTimekeepingDiscrepancies();
     }
 
     return () => {
       active = false;
     };
-  }, [loadActivity, slug]);
+  }, [loadActivity, loadTimekeepingDiscrepancies, slug]);
 
   const myScheduleRow = useMemo(() => {
     if (!access.profile_id) return null;
@@ -277,6 +342,7 @@ export default function CompanyUserHomePage() {
   const workdayTitle = workdayPresentation.title;
   const workdaySubtitle = workdayPresentation.message;
   const workdayAction = workdayPresentation.actionLabel;
+  const primaryTimekeepingDiscrepancy = timekeepingDiscrepancies[0] ?? null;
 
   function handleWorkdayAction() {
     if (!slug || activitySaving || activityLoading || !workdayPresentation.actionEnabled) return;
@@ -331,12 +397,114 @@ export default function CompanyUserHomePage() {
       setActivitySaving(false);
     }
   }
+
+  async function submitTimekeepingCorrection() {
+    if (!slug || !primaryTimekeepingDiscrepancy || correctionSaving) return;
+
+    const clockOutAt = buildLocalTimestamp(
+      primaryTimekeepingDiscrepancy.service_date,
+      correctionTime
+    );
+
+    if (!clockOutAt) {
+      setPageError("Enter a valid clock-out time.");
+      return;
+    }
+
+    try {
+      setCorrectionSaving(true);
+      setPageError(null);
+
+      const res = await fetch(`/api/company/${slug}/driver/timekeeping/corrections`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: primaryTimekeepingDiscrepancy.type,
+          service_date: primaryTimekeepingDiscrepancy.service_date,
+          clock_out_at: clockOutAt,
+          driver_note: correctionNote,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setPageError(data?.error ?? "Could not submit timekeeping correction.");
+        return;
+      }
+
+      setCorrectionTime("");
+      setCorrectionNote("");
+      await loadTimekeepingDiscrepancies();
+      await loadActivity();
+    } catch {
+      setPageError("Could not submit timekeeping correction.");
+    } finally {
+      setCorrectionSaving(false);
+    }
+  }
   return (
     <DriverMobileShell slug={slug}>
       <section className="company-user-home">
         {pageError ? (
           <section className="app-card company-user-card">
             <p style={{ color: "#c62828", margin: 0 }}>{pageError}</p>
+          </section>
+        ) : null}
+
+
+        {primaryTimekeepingDiscrepancy ? (
+          <section className="app-card company-user-card">
+            <div className="company-user-section-header">
+              <div>
+                <p className="value-card__eyebrow">Timekeeping needs attention</p>
+                <h2>{primaryTimekeepingDiscrepancy.title}</h2>
+              </div>
+            </div>
+            <p className="company-user-muted" style={{ marginTop: 8 }}>
+              {primaryTimekeepingDiscrepancy.message}
+            </p>
+            <p className="company-user-muted" style={{ marginTop: 4 }}>
+              Service date: {formatDateLabel(primaryTimekeepingDiscrepancy.service_date)} ·
+              Clocked in: {formatTime(primaryTimekeepingDiscrepancy.clock_in) ?? "Recorded"}
+            </p>
+
+            <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+              <label className="context-stat__label" htmlFor="missing-clock-out-time">
+                Clock-out time
+              </label>
+              <input
+                id="missing-clock-out-time"
+                type="time"
+                className="workspace-input"
+                value={correctionTime}
+                disabled={correctionSaving}
+                onChange={(event) => setCorrectionTime(event.target.value)}
+              />
+
+              <label className="context-stat__label" htmlFor="missing-clock-out-note">
+                Optional note
+              </label>
+              <textarea
+                id="missing-clock-out-note"
+                className="workspace-input"
+                rows={3}
+                value={correctionNote}
+                disabled={correctionSaving}
+                onChange={(event) => setCorrectionNote(event.target.value)}
+                placeholder="Add context if needed."
+              />
+
+              <button
+                type="button"
+                className="button button-primary"
+                disabled={correctionSaving || !correctionTime}
+                onClick={() => void submitTimekeepingCorrection()}
+              >
+                {correctionSaving ? "Submitting..." : "Submit correction"}
+              </button>
+            </div>
           </section>
         ) : null}
 

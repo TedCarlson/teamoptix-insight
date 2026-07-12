@@ -1,5 +1,6 @@
 import CompanyContractConfigManager from "@/features/company/components/CompanyContractConfigManager";
 import CompanyRouteSortConfig from "@/features/company/components/CompanyRouteSortConfig";
+import CompanyTimekeepingOversightConfig from "@/features/company/components/CompanyTimekeepingOversightConfig";
 import CompanyConfigAccessPanel from "./CompanyConfigAccessPanel";
 import AutomationConfigPanel from "@/features/automation/components/AutomationConfigPanel";
 
@@ -188,6 +189,10 @@ function OperationsSection(props: CompanyConfigWorkspaceProps) {
     <section style={{ display: "grid", gap: 10 }}>
       <SectionCard eyebrow="Operations preferences" title="Route ordering">
         <CompanyRouteSortConfig slug={props.slug} canEdit={props.canEditCompany} />
+      </SectionCard>
+
+      <SectionCard eyebrow="Timekeeping" title="Oversight lifecycle">
+        <CompanyTimekeepingOversightConfig slug={props.slug} canEdit={props.canEditCompany} />
       </SectionCard>
     </section>
   );
