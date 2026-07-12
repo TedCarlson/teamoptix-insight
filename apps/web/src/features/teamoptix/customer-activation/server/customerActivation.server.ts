@@ -66,6 +66,23 @@ type CompanyRecord = {
   created_at: string;
 };
 
+type CommercialReadinessProfile = {
+  operator_tier_key: string | null;
+  implementation_fee: number | null;
+  weekly_subscription: number | null;
+  billing_email: string | null;
+  commercial_status: string;
+};
+
+type ImplementationPaymentRecord = {
+  id: string;
+  amount: number;
+  currency: string;
+  payment_status: string;
+  paid_at: string | null;
+  provider_event_id: string | null;
+};
+
 export type CompanyActivationRecord = {
   id: string;
   company_id: string;
@@ -503,13 +520,262 @@ async function loadRunSteps(
   return (data ?? []) as CompanyActivationStepRecord[];
 }
 
+
+async function syncComputedActivationReadiness(
+  admin: SupabaseClient,
+  companyId: string
+): Promise<void> {
+  const [
+    { data: commercialProfile, error: commercialError },
+    { data: implementationPayment, error: paymentError },
+  ] = await Promise.all([
+    admin
+      .schema("commercial")
+      .from("profile")
+      .select(
+        "operator_tier_key, implementation_fee, weekly_subscription, billing_email, commercial_status"
+      )
+      .eq("company_id", companyId)
+      .maybeSingle(),
+
+    admin
+      .schema("billing")
+      .from("payment")
+      .select(
+        "id, amount, currency, payment_status, paid_at, provider_event_id"
+      )
+      .eq("company_id", companyId)
+      .eq("payment_purpose", "implementation")
+      .eq("payment_status", "paid")
+      .order("paid_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  if (commercialError) {
+    throwDatabaseError(
+      "Unable to compute commercial readiness",
+      commercialError
+    );
+  }
+
+  if (paymentError) {
+    throwDatabaseError(
+      "Unable to compute implementation payment readiness",
+      paymentError
+    );
+  }
+
+  const typedCommercialProfile =
+    commercialProfile as CommercialReadinessProfile | null;
+
+  const typedImplementationPayment =
+    implementationPayment as ImplementationPaymentRecord | null;
+
+  const commercialStages = new Set([
+    "ready_for_stripe",
+    "stripe_customer_created",
+    "implementation_paid",
+    "subscription_active",
+  ]);
+
+  const commercialReady = Boolean(
+    typedCommercialProfile?.operator_tier_key &&
+      typedCommercialProfile?.billing_email &&
+      typedCommercialProfile?.implementation_fee != null &&
+      typedCommercialProfile?.weekly_subscription != null &&
+      commercialStages.has(
+        String(typedCommercialProfile?.commercial_status ?? "")
+      )
+  );
+
+  const commercialBlockingReason = !typedCommercialProfile
+    ? "Commercial profile has not been created."
+    : !typedCommercialProfile.operator_tier_key
+      ? "Operator tier has not been assigned."
+      : !typedCommercialProfile.billing_email
+        ? "Billing email has not been recorded."
+        : typedCommercialProfile.implementation_fee == null
+          ? "Implementation fee has not been established."
+          : typedCommercialProfile.weekly_subscription == null
+            ? "Weekly subscription price has not been established."
+            : !commercialStages.has(
+                  String(typedCommercialProfile.commercial_status ?? "")
+                )
+              ? "Commercial profile has not reached a Go Live-ready stage."
+              : null;
+
+  const implementationPaymentReady =
+    Boolean(typedImplementationPayment?.id);
+
+  const now = new Date().toISOString();
+
+  const computedRows = [
+    {
+      company_id: companyId,
+      readiness_key: "commercial_ready",
+      status: commercialReady ? "ready" : "incomplete",
+      source_type: "computed",
+      source_basis: commercialReady
+        ? `Commercial profile verified at stage ${typedCommercialProfile?.commercial_status}.`
+        : null,
+      is_blocking: true,
+      completed_at: commercialReady ? now : null,
+      completed_by: null,
+      blocking_reason: commercialReady
+        ? null
+        : commercialBlockingReason ??
+          "Commercial profile is not ready for Go Live.",
+      metadata: {
+        commercial_status:
+          typedCommercialProfile?.commercial_status ?? null,
+        operator_tier_key:
+          typedCommercialProfile?.operator_tier_key ?? null,
+      },
+    },
+    {
+      company_id: companyId,
+      readiness_key: "implementation_payment_ready",
+      status: implementationPaymentReady
+        ? "ready"
+        : "incomplete",
+      source_type: "computed",
+      source_basis: implementationPaymentReady
+        ? "Verified from the latest paid implementation payment record."
+        : null,
+      is_blocking: true,
+      completed_at:
+        typedImplementationPayment?.paid_at ??
+        (implementationPaymentReady ? now : null),
+      completed_by: null,
+      blocking_reason: implementationPaymentReady
+        ? null
+        : "A paid implementation payment record has not been found.",
+      metadata: {
+        payment_id: typedImplementationPayment?.id ?? null,
+        provider_event_id:
+          typedImplementationPayment?.provider_event_id ?? null,
+        amount: typedImplementationPayment?.amount ?? null,
+        currency: typedImplementationPayment?.currency ?? null,
+      },
+    },
+  ];
+
+  const { error: readinessError } = await admin
+    .schema("commercial")
+    .from("company_activation_readiness")
+    .upsert(computedRows, {
+      onConflict: "company_id,readiness_key",
+    });
+
+  if (readinessError) {
+    throwDatabaseError(
+      "Unable to persist computed activation readiness",
+      readinessError
+    );
+  }
+
+  const { error: activationError } = await admin
+    .schema("commercial")
+    .from("company_activation")
+    .update({
+      implementation_payment_received_at:
+        typedImplementationPayment?.paid_at ?? null,
+    })
+    .eq("company_id", companyId);
+
+  if (activationError) {
+    throwDatabaseError(
+      "Unable to synchronize implementation payment timestamp",
+      activationError
+    );
+  }
+}
+
+async function reconcileActivationLifecycleFromReadiness(
+  admin: SupabaseClient,
+  companyId: string,
+  actorUserId: string
+): Promise<void> {
+  const [activation, readiness] = await Promise.all([
+    loadActivation(admin, companyId),
+    loadReadiness(admin, companyId),
+  ]);
+
+  if (
+    [
+      "activation_in_progress",
+      "active",
+      "paused",
+      "cancelled",
+      "archived",
+    ].includes(activation.lifecycle_status)
+  ) {
+    return;
+  }
+
+  const blockingReadiness = readiness.filter(
+    (item) =>
+      item.is_blocking &&
+      item.status === "incomplete"
+  );
+
+  const nextLifecycleStatus: ActivationLifecycleStatus =
+    blockingReadiness.length === 0
+      ? "ready_for_go_live"
+      : "implementation";
+
+  if (activation.lifecycle_status === nextLifecycleStatus) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+
+  const { error } = await admin
+    .schema("commercial")
+    .from("company_activation")
+    .update({
+      lifecycle_status: nextLifecycleStatus,
+      ready_for_go_live_at:
+        nextLifecycleStatus === "ready_for_go_live"
+          ? now
+          : null,
+      ready_for_go_live_by:
+        nextLifecycleStatus === "ready_for_go_live"
+          ? actorUserId
+          : null,
+      last_transition:
+        nextLifecycleStatus === "ready_for_go_live"
+          ? "readiness_completed"
+          : "readiness_reopened",
+      last_transition_at: now,
+      last_transition_by: actorUserId,
+    })
+    .eq("company_id", companyId);
+
+  if (error) {
+    throwDatabaseError(
+      "Unable to reconcile activation lifecycle",
+      error
+    );
+  }
+}
+
 export async function getCompanyActivationSnapshot(
   slug: string
 ): Promise<CompanyActivationSnapshot> {
-  const { admin } = await requirePlatformOwner();
+  const { actorUserId, admin } =
+    await requirePlatformOwner();
+
   const company = await resolveCompanyBySlug(admin, slug);
 
   await ensureActivationFoundation(admin, company);
+  await syncComputedActivationReadiness(admin, company.id);
+  await reconcileActivationLifecycleFromReadiness(
+    admin,
+    company.id,
+    actorUserId
+  );
 
   const [activation, readiness, latestRun] =
     await Promise.all([
