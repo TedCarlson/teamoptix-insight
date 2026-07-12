@@ -4,6 +4,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
+import { executeActivationRun } from "@/features/teamoptix/customer-activation/executor/activationExecutor";
+import { initialActivationSteps } from "@/features/teamoptix/customer-activation/executor/defaultActivationSteps";
 
 export type ActivationLifecycleStatus =
   | "implementation"
@@ -806,6 +808,333 @@ export async function getCompanyActivationSnapshot(
       readiness.length === READINESS_DEFAULTS.length &&
       blockingReadiness.length === 0,
   };
+}
+
+
+const GO_LIVE_STEP_DEFINITIONS = [
+  {
+    step_key: "validate_readiness",
+    step_order: 1,
+  },
+  {
+    step_key: "record_go_live_decision",
+    step_order: 2,
+  },
+  {
+    step_key: "calculate_first_billing_date",
+    step_order: 3,
+  },
+  {
+    step_key: "create_stripe_subscription",
+    step_order: 4,
+  },
+  {
+    step_key: "persist_billing_subscription",
+    step_order: 5,
+  },
+  {
+    step_key: "enable_automation",
+    step_order: 6,
+  },
+  {
+    step_key: "confirm_intelligence_access",
+    step_order: 7,
+  },
+  {
+    step_key: "enable_notifications",
+    step_order: 8,
+  },
+  {
+    step_key: "finalize_activation",
+    step_order: 9,
+  },
+] as const;
+
+function getNewYorkDateParts(value: Date): {
+  year: number;
+  month: number;
+  day: number;
+  weekday: number;
+} {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+  });
+
+  const parts = formatter.formatToParts(value);
+
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value])
+  );
+
+  const weekdayMap: Record<string, number> = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  };
+
+  const weekday = weekdayMap[values.weekday];
+
+  if (
+    !values.year ||
+    !values.month ||
+    !values.day ||
+    weekday === undefined
+  ) {
+    throw new CustomerActivationError(
+      "Unable to calculate the New York billing date.",
+      {
+        status: 500,
+        code: "billing_date_calculation_failed",
+      }
+    );
+  }
+
+  return {
+    year: Number(values.year),
+    month: Number(values.month),
+    day: Number(values.day),
+    weekday,
+  };
+}
+
+export function calculateFirstFridayAfterGoLive(
+  value: Date = new Date()
+): string {
+  const parts = getNewYorkDateParts(value);
+
+  let daysUntilFriday = (5 - parts.weekday + 7) % 7;
+
+  // "Following Go Live" always means a later Friday.
+  if (daysUntilFriday === 0) {
+    daysUntilFriday = 7;
+  }
+
+  const date = new Date(
+    Date.UTC(
+      parts.year,
+      parts.month - 1,
+      parts.day + daysUntilFriday
+    )
+  );
+
+  return date.toISOString().slice(0, 10);
+}
+
+export async function beginCompanyGoLive(
+  slug: string
+): Promise<CompanyActivationSnapshot> {
+  const { actorUserId, admin } =
+    await requirePlatformOwner();
+
+  const company = await resolveCompanyBySlug(admin, slug);
+
+  await ensureActivationFoundation(admin, company);
+  await syncComputedActivationReadiness(admin, company.id);
+  await reconcileActivationLifecycleFromReadiness(
+    admin,
+    company.id,
+    actorUserId
+  );
+
+  const [activation, readiness] = await Promise.all([
+    loadActivation(admin, company.id),
+    loadReadiness(admin, company.id),
+  ]);
+
+  const blockingReadiness = readiness.filter(
+    (item) =>
+      item.is_blocking &&
+      item.status === "incomplete"
+  );
+
+  if (blockingReadiness.length > 0) {
+    throw new CustomerActivationError(
+      `Go Live is blocked by ${blockingReadiness.length} incomplete readiness item${
+        blockingReadiness.length === 1 ? "" : "s"
+      }.`,
+      {
+        status: 409,
+        code: "go_live_readiness_blocked",
+      }
+    );
+  }
+
+  if (activation.lifecycle_status === "active") {
+    throw new CustomerActivationError(
+      "This customer is already active.",
+      {
+        status: 409,
+        code: "customer_already_active",
+      }
+    );
+  }
+
+  if (
+    activation.lifecycle_status === "paused" ||
+    activation.lifecycle_status === "cancelled" ||
+    activation.lifecycle_status === "archived"
+  ) {
+    throw new CustomerActivationError(
+      `Go Live cannot begin from lifecycle state ${activation.lifecycle_status}.`,
+      {
+        status: 409,
+        code: "invalid_go_live_lifecycle_state",
+      }
+    );
+  }
+
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const firstBillingDate =
+    calculateFirstFridayAfterGoLive(now);
+
+  const idempotencyKey =
+    `company:${company.id}:initial-go-live:v1`;
+
+  const { data: existingRun, error: existingRunError } =
+    await admin
+      .schema("commercial")
+      .from("company_activation_run")
+      .select("*")
+      .eq("idempotency_key", idempotencyKey)
+      .maybeSingle();
+
+  if (existingRunError) {
+    throwDatabaseError(
+      "Unable to inspect existing Go Live run",
+      existingRunError
+    );
+  }
+
+  let activationRunId =
+    (existingRun as CompanyActivationRunRecord | null)?.id ??
+    null;
+
+  if (!activationRunId) {
+    const { data: insertedRun, error: runError } =
+      await admin
+        .schema("commercial")
+        .from("company_activation_run")
+        .insert({
+          company_id: company.id,
+          run_type: "go_live",
+          status: "pending",
+          requested_at: nowIso,
+          requested_by: actorUserId,
+          idempotency_key: idempotencyKey,
+        })
+        .select("*")
+        .single();
+
+    if (runError || !insertedRun) {
+      throwDatabaseError(
+        "Unable to create Go Live activation run",
+        runError
+      );
+    }
+
+    activationRunId =
+      (insertedRun as CompanyActivationRunRecord).id;
+  }
+
+  const stepRows = GO_LIVE_STEP_DEFINITIONS.map((step) => ({
+    activation_run_id: activationRunId,
+    step_key: step.step_key,
+    step_order: step.step_order,
+    status: "pending",
+    attempt_count: 0,
+  }));
+
+  const { error: stepError } = await admin
+    .schema("commercial")
+    .from("company_activation_step")
+    .upsert(stepRows, {
+      onConflict: "activation_run_id,step_key",
+      ignoreDuplicates: true,
+    });
+
+  if (stepError) {
+    throwDatabaseError(
+      "Unable to initialize Go Live activation steps",
+      stepError
+    );
+  }
+
+  const { error: activationError } = await admin
+    .schema("commercial")
+    .from("company_activation")
+    .update({
+      lifecycle_status: "activation_in_progress",
+      go_live_requested_at:
+        activation.go_live_requested_at ?? nowIso,
+      go_live_requested_by: actorUserId,
+      first_billing_date:
+        activation.first_billing_date ?? firstBillingDate,
+      subscription_activation_status: "pending",
+      last_transition: "go_live_requested",
+      last_transition_at: nowIso,
+      last_transition_by: actorUserId,
+    })
+    .eq("company_id", company.id);
+
+  if (activationError) {
+    throwDatabaseError(
+      "Unable to record Go Live request",
+      activationError
+    );
+  }
+
+  const { data: runData, error: runLoadError } = await admin
+    .schema("commercial")
+    .from("company_activation_run")
+    .select("*")
+    .eq("id", activationRunId)
+    .single();
+
+  if (runLoadError || !runData) {
+    throwDatabaseError(
+      "Unable to load Go Live activation run",
+      runLoadError
+    );
+  }
+
+  const { data: stepData, error: stepLoadError } = await admin
+    .schema("commercial")
+    .from("company_activation_step")
+    .select("*")
+    .eq("activation_run_id", activationRunId)
+    .order("step_order", { ascending: true });
+
+  if (stepLoadError) {
+    throwDatabaseError(
+      "Unable to load Go Live activation steps",
+      stepLoadError
+    );
+  }
+
+  await executeActivationRun(
+    {
+      admin,
+      actor_user_id: actorUserId,
+      company_id: company.id,
+      company_slug: company.company_slug,
+      run: runData as CompanyActivationRunRecord,
+      steps: (stepData ?? []) as CompanyActivationStepRecord[],
+    },
+    initialActivationSteps
+  );
+
+  return getCompanyActivationSnapshot(slug);
 }
 
 export async function getPlatformOwnerActivationContext(): Promise<{

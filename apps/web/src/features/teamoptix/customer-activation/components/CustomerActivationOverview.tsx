@@ -1,3 +1,4 @@
+import GoLiveControl from "@/features/teamoptix/customer-activation/components/GoLiveControl";
 import ReadinessStatusControl from "@/features/teamoptix/customer-activation/components/ReadinessStatusControl";
 import type {
   ActivationLifecycleStatus,
@@ -185,17 +186,36 @@ export default function CustomerActivationOverview({
           </div>
 
           <div
-            aria-label="Go Live readiness summary"
             style={{
-              fontWeight: 700,
-              whiteSpace: "nowrap",
+              display: "grid",
+              gap: 10,
+              justifyItems: "end",
             }}
           >
-            {snapshot.readiness.length -
-              snapshot.blocking_readiness.length}
-            {" / "}
-            {snapshot.readiness.length}
-            {" ready"}
+            <div
+              aria-label="Go Live readiness summary"
+              style={{
+                fontWeight: 700,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {snapshot.readiness.length -
+                snapshot.blocking_readiness.length}
+              {" / "}
+              {snapshot.readiness.length}
+              {" ready"}
+            </div>
+
+            <GoLiveControl
+              slug={slug}
+              disabled={!snapshot.is_ready_for_go_live}
+              blockingCount={
+                snapshot.blocking_readiness.length
+              }
+              lifecycleStatus={
+                snapshot.activation.lifecycle_status
+              }
+            />
           </div>
         </div>
 
