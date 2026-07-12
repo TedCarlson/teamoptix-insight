@@ -675,45 +675,6 @@ export default function AutomationConfigPanel(props: AutomationConfigPanelProps)
         </div>
       </SectionCard>
 
-      <SectionCard eyebrow="Run history" title="Automation audit trail">
-        <div style={grid4}>
-          <MiniStat label="Runs" value={runs.length} />
-          <MiniStat label="Success" value={successCount} />
-          <MiniStat label="Failures" value={failedCount} />
-          <MiniStat label="Enabled" value={enabledCount} />
-        </div>
-
-        <div style={{ overflowX: "auto", marginTop: 12 }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-            <thead>
-              <tr style={{ color: "#64748b", textAlign: "left" }}>
-                <th style={th}>Started</th>
-                <th style={th}>Type</th>
-                <th style={th}>Status</th>
-                <th style={th}>Duration</th>
-                <th style={th}>Rows</th>
-                <th style={th}>Match</th>
-                <th style={th}>Batch</th>
-              </tr>
-            </thead>
-            <tbody>
-              {runs.slice(0, 10).map((run) => (
-                <tr key={run.id}>
-                  <td style={td}>{formatTime(run.started_at)}</td>
-                  <td style={td}>{run.automation_type}</td>
-                  <td style={td}>{run.status}</td>
-                  <td style={td}>{formatDuration(run.duration_ms)}</td>
-                  <td style={td}>{run.inserted_rows ?? "—"}</td>
-                  <td style={td}>
-                    {run.matched_rows ?? "—"} / {run.unmatched_rows ?? "—"}
-                  </td>
-                  <td style={td}>{run.batch_id ? run.batch_id.slice(0, 8) : "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </SectionCard>
         </>
       ) : null}
     </section>
