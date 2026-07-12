@@ -21,6 +21,17 @@ type ReportHistoryRow = {
   matched_row_count: number | string;
   unmatched_row_count: number | string;
   summary_row_count: number | string;
+  summary_rows: Array<{
+    id: string;
+    summary_scope: string;
+    summary_label: string;
+    contract_code: string | null;
+    terminal_code: string | null;
+    source_row_index: number;
+    normalized_row_json: Record<string, unknown>;
+    raw_row_json: Record<string, unknown>;
+    created_at: string;
+  }>;
   total_history_count: number | string;
 };
 
@@ -77,6 +88,8 @@ export default function HistoricalAnalyticsSurface({ slug }: Props) {
   const [family, setFamily] = useState("");
   const [offset, setOffset] = useState(0);
   const [rows, setRows] = useState<ReportHistoryRow[]>([]);
+  const [selectedRow, setSelectedRow] =
+    useState<ReportHistoryRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -344,7 +357,12 @@ export default function HistoricalAnalyticsSurface({ slug }: Props) {
                 </tr>
               ) : (
                 rows.map((row) => (
-                  <tr key={row.batch_id}>
+                  <tr
+                    key={row.batch_id}
+                    onClick={() => setSelectedRow(row)}
+                    style={{ cursor: "pointer" }}
+                    title="Open batch detail"
+                  >
                     <td style={bodyCell}>
                       {formatDate(row.service_date)}
                     </td>
@@ -416,7 +434,224 @@ export default function HistoricalAnalyticsSurface({ slug }: Props) {
           </button>
         </div>
       </article>
+
+      {selectedRow ? (
+        <div
+          role="presentation"
+          onClick={() => setSelectedRow(null)}
+          style={drawerBackdrop}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-label="Historical report batch detail"
+            onClick={(event) => event.stopPropagation()}
+            style={drawerPanel}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                gap: 12,
+              }}
+            >
+              <div>
+                <p className="value-card__eyebrow">
+                  {selectedRow.report_family_key ?? "Report"} batch
+                </p>
+                <h2 className="app-card__title">
+                  {formatDate(selectedRow.service_date)}
+                </h2>
+                <p
+                  className="app-card__body"
+                  style={{ marginTop: 5 }}
+                >
+                  {selectedRow.source_filename ?? "Source filename unavailable"}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="button"
+                onClick={() => setSelectedRow(null)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit, minmax(150px, 1fr))",
+                gap: 8,
+              }}
+            >
+              <BatchStat
+                label="Status"
+                value={selectedRow.status}
+              />
+              <BatchStat
+                label="Rows"
+                value={String(integer(selectedRow.raw_row_count))}
+              />
+              <BatchStat
+                label="Routes"
+                value={String(selectedRow.route_row_count)}
+              />
+              <BatchStat
+                label="Matched"
+                value={String(integer(selectedRow.matched_row_count))}
+              />
+              <BatchStat
+                label="Unmatched"
+                value={String(integer(selectedRow.unmatched_row_count))}
+              />
+              <BatchStat
+                label="Summary rows"
+                value={String(integer(selectedRow.summary_row_count))}
+              />
+            </div>
+
+            <article className="app-card" style={{ padding: 14 }}>
+              <p className="value-card__eyebrow">Source evidence</p>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: 8,
+                  marginTop: 10,
+                }}
+              >
+                <BatchStat
+                  label="Batch"
+                  value={selectedRow.batch_id}
+                />
+                <BatchStat
+                  label="Shape"
+                  value={selectedRow.report_shape_key ?? "—"}
+                />
+                <BatchStat
+                  label="Frame"
+                  value={selectedRow.report_frame ?? "—"}
+                />
+                <BatchStat
+                  label="Snapshot"
+                  value={selectedRow.snapshot_kind}
+                />
+                <BatchStat
+                  label="Created"
+                  value={formatTimestamp(selectedRow.created_at)}
+                />
+              </div>
+            </article>
+
+            <article className="app-card" style={{ padding: 14 }}>
+              <p className="value-card__eyebrow">Summary evidence</p>
+              <h3
+                className="app-card__title"
+                style={{ fontSize: 17 }}
+              >
+                Normalized summary rows
+              </h3>
+
+              <div style={{ marginTop: 12, overflowX: "auto" }}>
+                <table
+                  style={{
+                    width: "100%",
+                    minWidth: 760,
+                    borderCollapse: "separate",
+                    borderSpacing: 0,
+                  }}
+                >
+                  <thead>
+                    <tr>
+                      <th style={drawerHeaderCell}>Scope</th>
+                      <th style={drawerHeaderCell}>Label</th>
+                      <th style={drawerHeaderCell}>Contract</th>
+                      <th style={drawerHeaderCell}>Terminal</th>
+                      <th style={drawerHeaderCell}>Source row</th>
+                      <th style={drawerHeaderCell}>Normalized payload</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {selectedRow.summary_rows.length ? (
+                      selectedRow.summary_rows.map((summary) => (
+                        <tr key={summary.id}>
+                          <td style={drawerBodyCell}>
+                            {summary.summary_scope}
+                          </td>
+                          <td style={drawerBodyCell}>
+                            <strong>{summary.summary_label}</strong>
+                          </td>
+                          <td style={drawerBodyCell}>
+                            {summary.contract_code ?? "—"}
+                          </td>
+                          <td style={drawerBodyCell}>
+                            {summary.terminal_code ?? "—"}
+                          </td>
+                          <td style={drawerBodyCell}>
+                            {summary.source_row_index}
+                          </td>
+                          <td
+                            style={{
+                              ...drawerBodyCell,
+                              whiteSpace: "normal",
+                              minWidth: 320,
+                            }}
+                          >
+                            <pre
+                              style={{
+                                margin: 0,
+                                fontSize: 11,
+                                lineHeight: 1.45,
+                                whiteSpace: "pre-wrap",
+                                overflowWrap: "anywhere",
+                              }}
+                            >
+                              {JSON.stringify(
+                                summary.normalized_row_json,
+                                null,
+                                2
+                              )}
+                            </pre>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={6} style={emptyCell}>
+                          No summary evidence was stored for this batch.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </section>
+        </div>
+      ) : null}
     </section>
+  );
+}
+
+function BatchStat({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="context-stat">
+      <span className="context-stat__label">{label}</span>
+      <strong title={value}>{value}</strong>
+    </div>
   );
 }
 
@@ -440,4 +675,49 @@ const emptyCell: React.CSSProperties = {
   padding: 28,
   color: "#64748b",
   textAlign: "center",
+};
+
+const drawerBackdrop: React.CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 80,
+  background: "rgba(15, 23, 42, 0.35)",
+  display: "flex",
+  justifyContent: "flex-end",
+};
+
+const drawerPanel: React.CSSProperties = {
+  width: "min(1040px, 96vw)",
+  height: "100%",
+  padding: 18,
+  background: "#fff",
+  boxShadow: "-12px 0 30px rgba(15, 23, 42, 0.18)",
+  overflow: "auto",
+  display: "grid",
+  gap: 14,
+  alignContent: "start",
+};
+
+const drawerHeaderCell: React.CSSProperties = {
+  position: "sticky",
+  top: 0,
+  padding: "9px 10px",
+  borderBottom: "1px solid #e6edf5",
+  background: "#f8fafc",
+  color: "#64748b",
+  fontSize: 11,
+  fontWeight: 950,
+  textAlign: "left",
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+  whiteSpace: "nowrap",
+};
+
+const drawerBodyCell: React.CSSProperties = {
+  padding: "9px 10px",
+  borderBottom: "1px solid #eef2f7",
+  color: "#334155",
+  fontSize: 13,
+  verticalAlign: "top",
+  whiteSpace: "nowrap",
 };

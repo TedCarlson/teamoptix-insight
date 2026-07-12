@@ -42,15 +42,13 @@ export async function GET(
     const limit = int(url.searchParams.get("limit"), 50);
     const offset = int(url.searchParams.get("offset"), 0);
 
-    const { data, error } = await sb.rpc(
-      "operations_report_history",
-      {
+    const { data, error } = await sb
+      .rpc("operations_report_history", {
         p_company_id: company.id,
         p_report_family_key: family,
         p_limit: limit,
         p_offset: offset,
-      }
-    );
+      });
 
     if (error) {
       return NextResponse.json(
