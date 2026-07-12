@@ -4919,3 +4919,28 @@ body {
     font-size: 26px !important;
   }
 }
+
+/* Company announcements / leadership message board */
+.company-announcements-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 10px;
+  align-items: start;
+}
+
+.company-announcements-feed,
+.company-announcements-sidebar {
+  min-width: 0;
+  padding: 14px;
+}
+
+@media (max-width: 760px) {
+  .company-announcements-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .company-announcements-feed,
+  .company-announcements-sidebar {
+    width: 100%;
+  }
+}

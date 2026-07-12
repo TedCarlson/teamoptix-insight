@@ -1,11 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
-
 export default function CompanyAnnouncementsPage() {
-  const params = useParams();
-  const slug = String(params?.slug ?? "");
-
   return (
     <main className="workspace-shell">
       <section className="workspace-main" style={{ paddingTop: 0, paddingBottom: 24 }}>
@@ -17,15 +12,8 @@ export default function CompanyAnnouncementsPage() {
           </p>
         </section>
 
-        <section
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1fr) 340px",
-            gap: 10,
-            alignItems: "start",
-          }}
-        >
-          <section className="app-card" style={{ padding: 14 }}>
+        <section className="company-announcements-layout">
+          <section className="app-card company-announcements-feed">
             <p className="value-card__eyebrow">Feed</p>
             <h2 className="app-card__title">No announcements yet</h2>
             <p className="app-card__body" style={{ marginTop: 4 }}>
@@ -33,16 +21,16 @@ export default function CompanyAnnouncementsPage() {
             </p>
           </section>
 
-          <aside className="app-card" style={{ padding: 14 }}>
+          <aside className="app-card company-announcements-sidebar">
             <p className="value-card__eyebrow">Coming next</p>
             <h2 className="app-card__title">Communication controls</h2>
             <p className="app-card__body" style={{ marginTop: 4 }}>
               Later this can support pinned posts, read receipts, audience targeting, and admin posting controls.
             </p>
             <div className="cta-row" style={{ marginTop: 12 }}>
-              <a className="button" href={`/company/${slug}/announcements`}>
-                Back to Home
-              </a>
+              <button className="button" type="button" disabled>
+                Draft message
+              </button>
             </div>
           </aside>
         </section>
