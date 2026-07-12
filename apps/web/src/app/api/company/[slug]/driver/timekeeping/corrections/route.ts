@@ -49,6 +49,9 @@ function isValidTimestamp(value: string) {
   return Number.isFinite(parsed);
 }
 
+const MAX_CORRECTED_CLOCK_OUT_HOURS = 14;
+const MAX_CORRECTED_CLOCK_OUT_MS = MAX_CORRECTED_CLOCK_OUT_HOURS * 60 * 60 * 1000;
+
 export async function POST(
   req: NextRequest,
   context: { params: Promise<{ slug: string }> }
@@ -162,9 +165,30 @@ export async function POST(
     return NextResponse.json({ error: "No open missing clock-out discrepancy found." }, { status: 409 });
   }
 
-  if (new Date(clockOutAt).getTime() <= new Date(discrepancy.clock_in).getTime()) {
+  const correctedClockOutDate = new Date(clockOutAt).toISOString().slice(0, 10);
+
+  if (correctedClockOutDate !== serviceDate) {
+    return NextResponse.json(
+      { error: "Clock-out correction must match the discrepancy service date." },
+      { status: 400 }
+    );
+  }
+
+  const originalClockInMs = new Date(discrepancy.clock_in).getTime();
+  const correctedClockOutMs = new Date(clockOutAt).getTime();
+
+  if (correctedClockOutMs <= originalClockInMs) {
     return NextResponse.json(
       { error: "Clock-out time must be after the original clock-in time." },
+      { status: 400 }
+    );
+  }
+
+  if (correctedClockOutMs - originalClockInMs > MAX_CORRECTED_CLOCK_OUT_MS) {
+    return NextResponse.json(
+      {
+        error: `Clock-out correction must be within ${MAX_CORRECTED_CLOCK_OUT_HOURS} hours of the original clock-in time.`,
+      },
       { status: 400 }
     );
   }
