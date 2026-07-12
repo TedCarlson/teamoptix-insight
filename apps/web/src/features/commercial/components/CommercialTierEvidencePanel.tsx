@@ -41,7 +41,7 @@ export default function CommercialTierEvidencePanel({
     evidence.tierMatchesEvidence === false
       ? "Tier mismatch"
       : evidence.tierMatchesEvidence === true
-        ? "Tier aligned"
+        ? "Verified"
         : "Evidence pending";
 
   return (
@@ -217,10 +217,16 @@ const evidenceDetail = {
 };
 
 const basePill = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minHeight: 30,
   borderRadius: 999,
   padding: "6px 10px",
   fontSize: 12,
   fontWeight: 900,
+  lineHeight: 1,
+  textAlign: "center" as const,
 };
 
 const successPill = {
