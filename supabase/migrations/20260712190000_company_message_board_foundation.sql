@@ -65,7 +65,6 @@ execute function core.set_updated_at();
 alter table core.company_message enable row level security;
 alter table core.company_message_ack enable row level security;
 
-
 create or replace function core.can_receive_company_message(
   p_company_id uuid,
   p_visibility text
@@ -101,7 +100,6 @@ $$;
 
 grant execute on function core.can_receive_company_message(uuid, text) to authenticated;
 grant execute on function core.can_receive_company_message(uuid, text) to service_role;
-
 
 drop policy if exists company_message_select on core.company_message;
 create policy company_message_select
