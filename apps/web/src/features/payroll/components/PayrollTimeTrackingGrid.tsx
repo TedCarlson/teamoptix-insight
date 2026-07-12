@@ -63,6 +63,29 @@ type TimeSheetWeekRow = {
   byDate: Map<string, PayrollTimeKeepingRow>;
 };
 
+type TimekeepingOverviewSource =
+  | "Matched"
+  | "DSW Generated"
+  | "Clock Only"
+  | "Needs Clock Out";
+
+type TimekeepingOverviewRow = {
+  key: string;
+  roster_member_id: string | null;
+  service_date: string;
+  employee_name: string;
+  worker_type: string | null;
+  clock_in: string | null;
+  clock_out: string | null;
+  state: PayrollTimeKeepingRow["state"] | "DSW_GENERATED";
+  event_count: number;
+  route_name: string | null;
+  wa_number: string | null;
+  on_duty_hours: number | null;
+  on_road_hours: number | null;
+  source_label: TimekeepingOverviewSource;
+};
+
 type PayrollTimeTrackingGridProps = {
   slug: string;
   weekEnd: string;
@@ -92,6 +115,19 @@ const tdStyle = {
 
 function hours(value: number | null) {
   return value == null ? "—" : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+function durationHours(clockIn: string | null, clockOut: string | null) {
+  if (!clockIn || !clockOut) return null;
+
+  const start = new Date(clockIn).getTime();
+  const end = new Date(clockOut).getTime();
+
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return null;
+  }
+
+  return Number(((end - start) / 3_600_000).toFixed(2));
 }
 
 function dotRiskLabel(row: DswTimeRow) {
@@ -179,101 +215,251 @@ function buildTimeSheetWeekRows(rows: PayrollTimeKeepingRow[]) {
     .sort((a, b) => a.employee_name.localeCompare(b.employee_name));
 }
 
-function breadcrumbKey(rosterMemberId: string | null, serviceDate: string) {
-  return `${rosterMemberId ?? "unknown"}|${serviceDate}`;
+function timekeepingOverviewKey(rosterMemberId: string | null, name: string | null, serviceDate: string) {
+  return `${rosterMemberId ?? name ?? "unknown"}|${serviceDate}`;
 }
 
-function mapEmbedSrc(row: BreadcrumbRow) {
-  const delta = 0.002;
-  const lat = Number(row.latitude);
-  const lon = Number(row.longitude);
+function buildTimekeepingOverviewRows(
+  driverRows: PayrollTimeKeepingRow[],
+  dswRows: DswTimeRow[]
+): TimekeepingOverviewRow[] {
+  const byKey = new Map<string, TimekeepingOverviewRow>();
 
-  return `https://www.openstreetmap.org/export/embed.html?bbox=${lon - delta},${lat - delta},${lon + delta},${lat + delta}&layer=mapnik&marker=${lat},${lon}`;
-}
-
-function mapsHref(row: BreadcrumbRow) {
-  return `https://www.google.com/maps?q=${row.latitude},${row.longitude}`;
-}
-
-function breadcrumbForContext(
-  rows: BreadcrumbRow[],
-  context: "CLOCK_IN" | "CLOCK_OUT"
-) {
-  return rows.find((row) => row.tracking_context === context) ?? null;
-}
-
-function TimeEvidenceButton(props: {
-  time: string;
-  breadcrumb: BreadcrumbRow | null;
-  onSelect: (row: BreadcrumbRow) => void;
-}) {
-  if (!props.breadcrumb) {
-    return <span>{props.time}</span>;
+  for (const row of driverRows) {
+    const key = timekeepingOverviewKey(row.roster_member_id, row.full_name, row.service_date);
+    byKey.set(key, {
+      key,
+      roster_member_id: row.roster_member_id,
+      service_date: row.service_date,
+      employee_name: row.full_name ?? "Unknown driver",
+      worker_type: row.worker_type,
+      clock_in: row.clock_in,
+      clock_out: row.clock_out,
+      state: row.state,
+      event_count: row.event_count,
+      route_name: null,
+      wa_number: null,
+      on_duty_hours: null,
+      on_road_hours: null,
+      source_label: row.clock_in && !row.clock_out ? "Needs Clock Out" : "Clock Only",
+    });
   }
 
+  for (const row of dswRows) {
+    const employeeName = row.person_name ?? row.driver_name ?? "Unknown driver";
+    const key = timekeepingOverviewKey(row.roster_member_id, employeeName, row.service_date);
+    const existing = byKey.get(key);
+
+    if (existing) {
+      byKey.set(key, {
+        ...existing,
+        worker_type: existing.worker_type ?? row.worker_type,
+        route_name: row.route_name,
+        wa_number: row.wa_number,
+        on_duty_hours: row.on_duty_hours,
+        on_road_hours: row.on_road_hours,
+        source_label:
+          existing.clock_in && !existing.clock_out ? "Needs Clock Out" : "Matched",
+      });
+      continue;
+    }
+
+    byKey.set(key, {
+      key,
+      roster_member_id: row.roster_member_id,
+      service_date: row.service_date,
+      employee_name: employeeName,
+      worker_type: row.worker_type,
+      clock_in: null,
+      clock_out: null,
+      state: "DSW_GENERATED",
+      event_count: 0,
+      route_name: row.route_name,
+      wa_number: row.wa_number,
+      on_duty_hours: row.on_duty_hours,
+      on_road_hours: row.on_road_hours,
+      source_label: "DSW Generated",
+    });
+  }
+
+  return Array.from(byKey.values()).sort((a, b) => {
+    if (a.service_date !== b.service_date) {
+      return b.service_date.localeCompare(a.service_date);
+    }
+
+    return a.employee_name.localeCompare(b.employee_name);
+  });
+}
+
+function overviewSourceStyle(source: TimekeepingOverviewSource) {
+  if (source === "Needs Clock Out") {
+    return {
+      background: "#fef2f2",
+      border: "1px solid #fecaca",
+      color: "#991b1b",
+    };
+  }
+
+  if (source === "DSW Generated") {
+    return {
+      background: "#eff6ff",
+      border: "1px solid #bfdbfe",
+      color: "#1d4ed8",
+    };
+  }
+
+  if (source === "Matched") {
+    return {
+      background: "#ecfdf5",
+      border: "1px solid #bbf7d0",
+      color: "#047857",
+    };
+  }
+
+  return {
+    background: "#f8fafc",
+    border: "1px solid #e2e8f0",
+    color: "#475569",
+  };
+}
+
+function renderSourceDot(source: TimekeepingOverviewSource) {
+  const sourceStyle = overviewSourceStyle(source);
+
   return (
-    <button
-      type="button"
-      onClick={() => props.onSelect(props.breadcrumb!)}
+    <span
+      aria-label={source}
+      title={source}
       style={{
-        border: 0,
-        background: "transparent",
+        ...sourceStyle,
+        display: "inline-block",
+        width: 10,
+        height: 10,
+        borderRadius: 999,
         padding: 0,
-        color: "#0f172a",
-        font: "inherit",
-        fontWeight: 900,
-        cursor: "pointer",
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 3,
+        flex: "0 0 auto",
+        borderWidth: 2,
+        boxShadow: `0 0 0 2px ${sourceStyle.background}`,
       }}
-      title="View location evidence"
-    >
-      <span>{props.time}</span>
-      <span style={{ color: "#2563eb", fontSize: 10 }}>📍</span>
-    </button>
+    />
   );
 }
 
-function renderTimeSheetRows(
-  rows: PayrollTimeKeepingRow[],
-  days: string[],
-  breadcrumbs: BreadcrumbRow[],
-  setSelectedBreadcrumb: (row: BreadcrumbRow) => void
-) {
-  const weeklyRows = buildTimeSheetWeekRows(rows);
-  const breadcrumbsByDriverDay = new Map<string, BreadcrumbRow[]>();
+function renderOverviewLegend() {
+  const items: TimekeepingOverviewSource[] = [
+    "Matched",
+    "DSW Generated",
+    "Clock Only",
+    "Needs Clock Out",
+  ];
 
-  for (const row of breadcrumbs) {
-    const key = breadcrumbKey(row.roster_member_id, row.service_date);
-    const current = breadcrumbsByDriverDay.get(key) ?? [];
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        flexWrap: "wrap",
+        color: "#64748b",
+        fontSize: 11,
+        fontWeight: 850,
+      }}
+    >
+      <span style={{ textTransform: "uppercase", letterSpacing: "0.05em" }}>Evidence</span>
+      {items.map((item) => (
+        <span key={item} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+          {renderSourceDot(item)}
+          {item}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function renderOverviewRows(
+  driverRows: PayrollTimeKeepingRow[],
+  dswRows: DswTimeRow[],
+  days: string[]
+) {
+  const overviewRows = buildTimekeepingOverviewRows(driverRows, dswRows);
+  const groups = new Map<string, TimekeepingOverviewRow[]>();
+
+  for (const row of overviewRows) {
+    const key = row.roster_member_id ?? row.employee_name;
+    const current = groups.get(key) ?? [];
     current.push(row);
-    breadcrumbsByDriverDay.set(key, current);
+    groups.set(key, current);
   }
+
+  const weeklyRows = Array.from(groups.entries())
+    .map(([key, rowDays]) => {
+      const sortedDays = [...rowDays].sort((a, b) => a.service_date.localeCompare(b.service_date));
+      const byDate = new Map<string, TimekeepingOverviewRow>();
+
+      for (const row of sortedDays) {
+        byDate.set(row.service_date, row);
+      }
+
+      const totalClockHours = sortedDays.reduce(
+        (sum, row) => sum + Number(durationHours(row.clock_in, row.clock_out) ?? 0),
+        0
+      );
+      const totalDutyHours = sortedDays.reduce(
+        (sum, row) => sum + Number(row.on_duty_hours ?? 0),
+        0
+      );
+      const totalRoadHours = sortedDays.reduce(
+        (sum, row) => sum + Number(row.on_road_hours ?? 0),
+        0
+      );
+
+      const sourceLabels = new Set(sortedDays.map((row) => row.source_label));
+      const signal = sourceLabels.has("Needs Clock Out")
+        ? "Needs Clock Out"
+        : sourceLabels.has("DSW Generated") && sourceLabels.size === 1
+          ? "DSW Generated"
+          : sourceLabels.has("Clock Only") && !sourceLabels.has("Matched")
+            ? "Clock Only"
+            : "Matched";
+
+      return {
+        key,
+        employee_name: sortedDays[0]?.employee_name ?? "Unknown driver",
+        worker_type: sortedDays[0]?.worker_type ?? null,
+        totalClockHours,
+        totalDutyHours,
+        totalRoadHours,
+        signal,
+        days: sortedDays,
+        byDate,
+      };
+    })
+    .sort((a, b) => a.employee_name.localeCompare(b.employee_name));
 
   return (
     <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1060 }}>
+      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1240 }}>
         <thead>
           <tr>
             <th style={{ ...thStyle, position: "sticky", left: 0, zIndex: 3, background: "#f8fafc", minWidth: 220, boxShadow: "1px 0 0 #e6edf5" }}>
               Employee
             </th>
             {days.map((day) => (
-              <th key={day} style={{ ...thStyle, textAlign: "center", minWidth: 92, padding: "7px 4px" }}>
+              <th key={day} style={{ ...thStyle, textAlign: "center", minWidth: 118, padding: "7px 4px" }}>
                 {compactDayCode(day)}
                 <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>{day.slice(5)}</div>
               </th>
             ))}
-            <th style={{ ...thStyle, textAlign: "right" }}>Rows</th>
-            <th style={thStyle}>Status</th>
+            <th style={{ ...thStyle, textAlign: "right" }}>Clock</th>
+            <th style={{ ...thStyle, textAlign: "right" }}>Duty</th>
+            <th style={{ ...thStyle, textAlign: "right" }}>Road</th>
           </tr>
         </thead>
         <tbody>
           {weeklyRows.length === 0 ? (
             <tr>
-              <td colSpan={days.length + 3} style={{ padding: 16, color: "#64748b", fontWeight: 800 }}>
-                No clock activity found for this week.
+              <td colSpan={days.length + 4} style={{ padding: 16, color: "#64748b", fontWeight: 800 }}>
+                No clock or DSW activity found for this week.
               </td>
             </tr>
           ) : (
@@ -281,40 +467,44 @@ function renderTimeSheetRows(
               <tr key={row.key} style={{ background: "#fff" }}>
                 <td style={{ ...tdStyle, position: "sticky", left: 0, zIndex: 2, background: "#fff", minWidth: 220, boxShadow: "1px 0 0 #e6edf5" }}>
                   <strong>{row.employee_name}</strong>
-                  <div style={{ color: "#94a3b8", fontSize: 10, fontWeight: 800 }}>{row.worker_type ?? "—"}</div>
+                  <div style={{ color: "#94a3b8", fontSize: 10, fontWeight: 800 }}>
+                    {row.worker_type ?? "—"}
+                  </div>
                 </td>
                 {days.map((day) => {
                   const dayRow = row.byDate.get(day);
-                  const breadcrumbRows =
-                    breadcrumbsByDriverDay.get(
-                      breadcrumbKey(
-                        dayRow?.roster_member_id ?? row.days[0]?.roster_member_id ?? null,
-                        day
-                      )
-                    ) ?? [];
-
-                  const clockInBreadcrumb = breadcrumbForContext(breadcrumbRows, "CLOCK_IN");
-                  const clockOutBreadcrumb = breadcrumbForContext(breadcrumbRows, "CLOCK_OUT");
 
                   return (
                     <td key={day} style={{ ...tdStyle, textAlign: "center", verticalAlign: "top", padding: "7px 4px" }}>
                       {dayRow ? (
                         <div style={{ display: "grid", gap: 2, justifyItems: "center", lineHeight: 1.08 }}>
-                          <strong style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                            <TimeEvidenceButton
-                              time={formatClockTime(dayRow.clock_in)}
-                              breadcrumb={clockInBreadcrumb}
-                              onSelect={setSelectedBreadcrumb}
-                            />
-                            <span style={{ color: "#94a3b8" }}>→</span>
-                            <TimeEvidenceButton
-                              time={formatClockTime(dayRow.clock_out)}
-                              breadcrumb={clockOutBreadcrumb}
-                              onSelect={setSelectedBreadcrumb}
-                            />
-                          </strong>
-                          <span style={{ color: "#475569", fontSize: 10 }}>{formatDuration(dayRow.clock_in, dayRow.clock_out)}</span>
-                          <span style={{ color: "#94a3b8", fontSize: 9 }}>{stateLabel(dayRow.state)}</span>
+                          {dayRow.clock_in ? (
+                            <strong style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                              {renderSourceDot(dayRow.source_label)}
+                              <span>{formatClockTime(dayRow.clock_in)}</span>
+                              <span style={{ color: "#94a3b8" }}>→</span>
+                              <span>{formatClockTime(dayRow.clock_out)}</span>
+                            </strong>
+                          ) : (
+                            <strong style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                              {renderSourceDot(dayRow.source_label)}
+                              <span>{hours(dayRow.on_duty_hours)} duty</span>
+                            </strong>
+                          )}
+
+                          {dayRow.clock_in ? (
+                            <span style={{ color: "#475569", fontSize: 10 }}>
+                              {formatDuration(dayRow.clock_in, dayRow.clock_out)}
+                            </span>
+                          ) : (
+                            <span style={{ color: "#475569", fontSize: 10 }}>
+                              {hours(dayRow.on_road_hours)} road
+                            </span>
+                          )}
+
+                          <span style={{ color: "#94a3b8", fontSize: 9 }}>
+                            {dayRow.route_name ?? "—"} · WA {dayRow.wa_number ?? "—"}
+                          </span>
                         </div>
                       ) : (
                         <span style={{ color: "#94a3b8", fontWeight: 900 }}>—</span>
@@ -323,176 +513,14 @@ function renderTimeSheetRows(
                   );
                 })}
                 <td style={{ ...tdStyle, textAlign: "right", fontWeight: 950 }}>
-                  {row.days.reduce((sum, item) => sum + item.event_count, 0)}
+                  {hours(row.totalClockHours)}
                 </td>
-                <td style={tdStyle}>{row.days.some((item) => item.state === "CLOCKED_IN") ? "Active" : "Closed"}</td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function renderDriverRows(rows: PayrollTimeKeepingRow[]) {
-  return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 920 }}>
-        <thead>
-          <tr>
-            <th style={thStyle}>Driver</th>
-            <th style={thStyle}>Type</th>
-            <th style={thStyle}>Date</th>
-            <th style={thStyle}>Clock In</th>
-            <th style={thStyle}>Clock Out</th>
-            <th style={thStyle}>Duration</th>
-            <th style={thStyle}>State</th>
-            <th style={{ ...thStyle, textAlign: "right" }}>Events</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 ? (
-            <tr>
-              <td colSpan={8} style={{ padding: 16, color: "#64748b", fontWeight: 800 }}>
-                No clock activity found for this week.
-              </td>
-            </tr>
-          ) : (
-            rows.map((row) => (
-              <tr key={`${row.roster_member_id}-${row.service_date}`}>
-                <td style={tdStyle}><strong>{row.full_name ?? "Unknown driver"}</strong></td>
-                <td style={tdStyle}>{row.worker_type ?? "—"}</td>
-                <td style={tdStyle}>{row.service_date}</td>
-                <td style={tdStyle}>{formatClockTime(row.clock_in)}</td>
-                <td style={tdStyle}>{formatClockTime(row.clock_out)}</td>
-                <td style={tdStyle}>{formatDuration(row.clock_in, row.clock_out)}</td>
-                <td style={tdStyle}>{stateLabel(row.state)}</td>
-                <td style={{ ...tdStyle, textAlign: "right" }}>{row.event_count}</td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function renderDutyRows(rows: DswTimeRow[], days: string[]) {
-  const weeklyRows = buildDswDriverWeekRows(rows);
-
-  return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1060 }}>
-        <thead>
-          <tr>
-            <th style={{ ...thStyle, position: "sticky", left: 0, zIndex: 3, background: "#f8fafc", minWidth: 220, boxShadow: "1px 0 0 #e6edf5" }}>
-              Employee
-            </th>
-            {days.map((day) => (
-              <th key={day} style={{ ...thStyle, textAlign: "center", minWidth: 78, padding: "7px 4px" }}>
-                {compactDayCode(day)}
-                <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>{day.slice(5)}</div>
-              </th>
-            ))}
-            <th style={{ ...thStyle, textAlign: "right" }}>Duty</th>
-            <th style={thStyle}>Signal</th>
-          </tr>
-        </thead>
-        <tbody>
-          {weeklyRows.length === 0 ? (
-            <tr>
-              <td colSpan={days.length + 3} style={{ padding: 16, color: "#64748b", fontWeight: 800 }}>
-                No finalized DSW duty-hour rows found for this week.
-              </td>
-            </tr>
-          ) : (
-            weeklyRows.map((row) => (
-              <tr key={row.key} style={{ background: "#fff" }}>
-                <td style={{ ...tdStyle, position: "sticky", left: 0, zIndex: 2, background: "#fff", minWidth: 220, boxShadow: "1px 0 0 #e6edf5" }}>
-                  <strong>{row.driver_name}</strong>
+                <td style={{ ...tdStyle, textAlign: "right", fontWeight: 950 }}>
+                  {hours(row.totalDutyHours)}
                 </td>
-                {days.map((day) => {
-                  const dayRow = row.byDate.get(day);
-
-                  return (
-                    <td key={day} style={{ ...tdStyle, textAlign: "center", verticalAlign: "top", padding: "7px 4px" }}>
-                      {dayRow ? (
-                        <div style={{ display: "grid", gap: 1, justifyItems: "center", lineHeight: 1.08 }}>
-                          <strong>{hours(dayRow.on_duty_hours)}</strong>
-                          <span style={{ color: "#475569", fontSize: 10 }}>WA {dayRow.wa_number ?? "—"}</span>
-                          <span style={{ color: "#94a3b8", fontSize: 9 }}>{dayRow.next_available_on_duty ?? "—"}</span>
-                        </div>
-                      ) : (
-                        <span style={{ color: "#94a3b8", fontWeight: 900 }}>—</span>
-                      )}
-                    </td>
-                  );
-                })}
-                <td style={{ ...tdStyle, textAlign: "right", fontWeight: 950 }}>{hours(row.total_duty_hours)}</td>
-                <td style={tdStyle}>{weekDotSignal(row)}</td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function renderDotRows(rows: DswTimeRow[], days: string[]) {
-  const weeklyRows = buildDswDriverWeekRows(rows);
-
-  return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1060 }}>
-        <thead>
-          <tr>
-            <th style={{ ...thStyle, position: "sticky", left: 0, zIndex: 3, background: "#f8fafc", minWidth: 220, boxShadow: "1px 0 0 #e6edf5" }}>
-              Employee
-            </th>
-            {days.map((day) => (
-              <th key={day} style={{ ...thStyle, textAlign: "center", minWidth: 78, padding: "7px 4px" }}>
-                {compactDayCode(day)}
-                <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>{day.slice(5)}</div>
-              </th>
-            ))}
-            <th style={{ ...thStyle, textAlign: "right" }}>DOT Hours</th>
-            <th style={thStyle}>70 / 8 Signal</th>
-          </tr>
-        </thead>
-        <tbody>
-          {weeklyRows.length === 0 ? (
-            <tr>
-              <td colSpan={days.length + 3} style={{ padding: 16, color: "#64748b", fontWeight: 800 }}>
-                No finalized DSW DOT-hour rows found for this week.
-              </td>
-            </tr>
-          ) : (
-            weeklyRows.map((row) => (
-              <tr key={row.key} style={{ background: "#fff" }}>
-                <td style={{ ...tdStyle, position: "sticky", left: 0, zIndex: 2, background: "#fff", minWidth: 220, boxShadow: "1px 0 0 #e6edf5" }}>
-                  <strong>{row.driver_name}</strong>
+                <td style={{ ...tdStyle, textAlign: "right", fontWeight: 950 }}>
+                  {hours(row.totalRoadHours)}
                 </td>
-                {days.map((day) => {
-                  const dayRow = row.byDate.get(day);
-
-                  return (
-                    <td key={day} style={{ ...tdStyle, textAlign: "center", verticalAlign: "top", padding: "7px 4px" }}>
-                      {dayRow ? (
-                        <div style={{ display: "grid", gap: 1, justifyItems: "center", lineHeight: 1.08 }}>
-                          <strong>{dotRiskLabel(dayRow)}</strong>
-                          <span style={{ color: "#475569", fontSize: 10 }}>{hours(dayRow.on_road_hours)} DOT</span>
-                          <span style={{ color: "#94a3b8", fontSize: 9 }}>WA {dayRow.wa_number ?? "—"}</span>
-                        </div>
-                      ) : (
-                        <span style={{ color: "#94a3b8", fontWeight: 900 }}>—</span>
-                      )}
-                    </td>
-                  );
-                })}
-                <td style={{ ...tdStyle, textAlign: "right", fontWeight: 950 }}>{hours(row.total_road_hours)}</td>
-                <td style={tdStyle}>{weekDotSignal(row)}</td>
               </tr>
             ))
           )}
@@ -501,6 +529,7 @@ function renderDotRows(rows: DswTimeRow[], days: string[]) {
     </div>
   );
 }
+
 
 export default function PayrollTimeTrackingGrid({
   slug,
@@ -660,6 +689,8 @@ export default function PayrollTimeTrackingGrid({
         </span>
       </div>
 
+      {view === "overview" ? renderOverviewLegend() : null}
+
       {error ? (
         <div style={{ color: "#991b1b", fontWeight: 800 }}>{error}</div>
       ) : null}
@@ -673,7 +704,7 @@ export default function PayrollTimeTrackingGrid({
       ) : view === "time-sheet" ? (
         renderTimeSheetRows(driverRows, days, breadcrumbRows, setSelectedBreadcrumb)
       ) : (
-        renderDriverRows(driverRows)
+        renderOverviewRows(driverRows, dswRows, days)
       )}
 
       {selectedBreadcrumb ? (
