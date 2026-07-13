@@ -5,8 +5,10 @@ type Props = {
   document?: unknown;
   draftMode: boolean;
   exitHref: string;
+  versionActionState: "idle" | "locking" | "locked" | "exists" | "error";
   onToggleDraft: () => void;
   onOpenReview: () => void;
+  onLockVersion: () => void;
 };
 
 function documentValue(document: unknown, key: string) {
@@ -26,16 +28,27 @@ function documentVersion(document: unknown) {
   return `${major}.${minor}.${patch}`;
 }
 
+function lockLabel(state: Props["versionActionState"]) {
+  if (state === "locking") return "Locking...";
+  if (state === "locked") return "Version Locked";
+  if (state === "exists") return "Already Locked";
+  if (state === "error") return "Lock Failed";
+  return "Lock Version";
+}
+
 export function LegalToolbar({
   document,
   draftMode,
   exitHref,
+  versionActionState,
   onToggleDraft,
   onOpenReview,
+  onLockVersion,
 }: Props) {
   const title = documentValue(document, "title") ?? "Document";
   const status = documentValue(document, "status") ?? "DRAFT";
   const version = documentVersion(document);
+  const lockDisabled = versionActionState === "locking";
 
   return (
     <header className={styles.toolbar}>
@@ -64,8 +77,8 @@ export function LegalToolbar({
           Export
         </button>
 
-        <button className={styles.secondaryButton} type="button" disabled>
-          Stage for Legal Review
+        <button className={styles.secondaryButton} type="button" onClick={onLockVersion} disabled={lockDisabled}>
+          {lockLabel(versionActionState)}
         </button>
 
         <button className={styles.secondaryButton} type="button" disabled>

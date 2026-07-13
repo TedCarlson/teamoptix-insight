@@ -23,19 +23,42 @@ type LegalSection = {
   body_markdown?: string | null;
 };
 
+type LegalDocumentVersion = {
+  id: string;
+  version_label?: string | null;
+  status?: string | null;
+  section_count?: number | null;
+  created_at?: string | null;
+};
+
 type DocumentWorkspaceProps = {
   document?: unknown;
   sections?: LegalSection[] | null;
+  versions?: LegalDocumentVersion[] | null;
   exitHref?: string;
 };
+
+function formatVersionDate(value?: string | null) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
 
 export function DocumentWorkspace({
   document = null,
   sections,
+  versions,
   exitHref = "/teamoptix/business/contracts",
 }: DocumentWorkspaceProps) {
   const [sectionRows, setSectionRows] = useState<LegalSection[]>(() => {
     return Array.isArray(sections) ? sections : [];
+  });
+  const [versionRows, setVersionRows] = useState<LegalDocumentVersion[]>(() => {
+    return Array.isArray(versions) ? versions : [];
   });
   const [selectedSectionId, setSelectedSectionId] = useState(() => {
     return Array.isArray(sections) ? sections[0]?.id ?? "" : "";
@@ -43,6 +66,7 @@ export function DocumentWorkspace({
   const [draftMode, setDraftMode] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [sectionActionState, setSectionActionState] = useState<"idle" | "saving" | "error">("idle");
+  const [versionActionState, setVersionActionState] = useState<"idle" | "locking" | "locked" | "exists" | "error">("idle");
 
   const safeSections = useMemo(() => sectionRows, [sectionRows]);
 
@@ -134,6 +158,42 @@ export function DocumentWorkspace({
     }
   }
 
+  async function lockVersion() {
+    if (!documentId) return;
+
+    const confirmed = window.confirm(
+      "Lock the current draft as an immutable version snapshot? You can keep editing the draft afterward."
+    );
+    if (!confirmed) return;
+
+    try {
+      setVersionActionState("locking");
+      const res = await fetch("/api/legal/document/version/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentId }),
+      });
+      const json = await res.json();
+
+      if (!json?.ok) {
+        setVersionActionState("error");
+        return;
+      }
+
+      if (json.version) {
+        setVersionRows((current) => {
+          if (current.some((version) => version.id === json.version.id)) return current;
+          return [json.version, ...current];
+        });
+      }
+
+      setVersionActionState(json.alreadyLocked ? "exists" : "locked");
+      setTimeout(() => setVersionActionState("idle"), 1800);
+    } catch {
+      setVersionActionState("error");
+    }
+  }
+
   if (!selectedSection) {
     return (
       <section className={styles.workspace}>
@@ -141,8 +201,10 @@ export function DocumentWorkspace({
           document={document}
           draftMode={draftMode}
           exitHref={exitHref}
+          versionActionState={versionActionState}
           onToggleDraft={() => setDraftMode((current) => !current)}
           onOpenReview={() => setReviewOpen(true)}
+          onLockVersion={lockVersion}
         />
         <div className={styles.emptyState}>
           <p>No sections loaded.</p>
@@ -162,8 +224,10 @@ export function DocumentWorkspace({
         document={document}
         draftMode={draftMode}
         exitHref={exitHref}
+        versionActionState={versionActionState}
         onToggleDraft={() => setDraftMode((current) => !current)}
         onOpenReview={() => setReviewOpen(true)}
+        onLockVersion={lockVersion}
       />
 
       {draftMode ? (
@@ -191,6 +255,30 @@ export function DocumentWorkspace({
         />
 
         <aside className={styles.inspector}>
+          <section className={styles.inspectorSection}>
+            <div className={styles.inspectorHeadingRow}>
+              <p className={styles.panelLabel}>Locked Versions</p>
+              <span className={styles.sectionBadge}>{versionRows.length}</span>
+            </div>
+
+            <div className={styles.cardStack}>
+              {versionRows.length ? (
+                versionRows.map((version) => (
+                  <article key={version.id} className={styles.versionCard}>
+                    <div>
+                      <p className={styles.revisionTitle}>Version {version.version_label ?? "—"}</p>
+                      <p className={styles.revisionDetail}>
+                        {version.status ?? "LOCKED"} · {version.section_count ?? 0} sections
+                      </p>
+                    </div>
+                    <span className={styles.revisionTime}>{formatVersionDate(version.created_at)}</span>
+                  </article>
+                ))
+              ) : (
+                <p className={styles.emptyHelper}>No locked versions yet.</p>
+              )}
+            </div>
+          </section>
           <EditorialNotesPanel sectionId={selectedSection.id} />
           <RevisionHistoryPanel sectionId={selectedSection.id} />
         </aside>

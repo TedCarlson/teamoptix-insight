@@ -86,3 +86,17 @@ export async function getDocuments() {
   if (error) throw error;
   return data ?? [];
 }
+
+/**
+ * LOCKED DOCUMENT VERSIONS
+ */
+export async function getDocumentVersions(documentId: string) {
+  const { data, error } = await db
+    .from("legal_document_version_v")
+    .select("*")
+    .eq("document_id", documentId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  return data ?? [];
+}
