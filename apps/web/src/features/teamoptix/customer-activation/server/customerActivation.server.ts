@@ -93,6 +93,14 @@ type ActiveContractRecord = {
   service_area: string;
 };
 
+type LegalTaskReadinessRecord = {
+  id: string;
+  status: string | null;
+  vault_item_id: string | null;
+  teamoptix_executed_at: string | null;
+  completed_at: string | null;
+};
+
 type AutomationProfileRecord = {
   id: string;
   company_id: string;
@@ -565,6 +573,7 @@ async function syncComputedActivationReadiness(
     { data: commercialProfile, error: commercialError },
     { data: implementationPayment, error: paymentError },
     { data: activeContract, error: contractError },
+    { data: legalTasks, error: legalTasksError },
     { data: automationProfile, error: automationProfileError },
   ] = await Promise.all([
     admin
@@ -594,6 +603,11 @@ async function syncComputedActivationReadiness(
       p_service_date: today,
     }),
 
+    admin
+      .from("legal_customer_legal_task_v")
+      .select("id, status, vault_item_id, teamoptix_executed_at, completed_at")
+      .eq("company_id", companyId),
+
     admin.rpc("get_or_create_automation_profile", {
       p_company_id: companyId,
       p_provider_key: "FEDEX",
@@ -621,6 +635,13 @@ async function syncComputedActivationReadiness(
     );
   }
 
+  if (legalTasksError) {
+    throwDatabaseError(
+      "Unable to compute legal readiness",
+      legalTasksError
+    );
+  }
+
   if (automationProfileError) {
     throwDatabaseError(
       "Unable to compute automation readiness",
@@ -640,6 +661,26 @@ async function syncComputedActivationReadiness(
 
   const typedActiveContract =
     activeContractRow as ActiveContractRecord | null;
+
+  const typedLegalTasks =
+    (legalTasks ?? []) as unknown as LegalTaskReadinessRecord[];
+
+  const openLegalTasks = typedLegalTasks.filter((task) =>
+    task.status !== "EXECUTED_AND_VAULTED" && task.status !== "CANCELLED"
+  );
+
+  const executedLegalTasks = typedLegalTasks.filter((task) =>
+    task.status === "EXECUTED_AND_VAULTED"
+  );
+
+  const legalTasksReady =
+    typedLegalTasks.length === 0 || openLegalTasks.length === 0;
+
+  const latestLegalCompletion = executedLegalTasks
+    .map((task) => task.completed_at ?? task.teamoptix_executed_at)
+    .filter((value): value is string => Boolean(value))
+    .sort()
+    .at(-1) ?? null;
 
   const automationProfileRow = Array.isArray(
     automationProfile
@@ -711,12 +752,24 @@ async function syncComputedActivationReadiness(
   const implementationPaymentReady =
     Boolean(typedImplementationPayment?.id);
 
-  const contractReady = Boolean(
+  const activeContractReady = Boolean(
     typedActiveContract?.id &&
       typedActiveContract.contract_number.trim() &&
       typedActiveContract.terminal_identity.trim() &&
       typedActiveContract.service_area.trim()
   );
+
+  const contractReady = Boolean(activeContractReady && legalTasksReady);
+
+  const contractBlockingReason = !activeContractReady
+    ? "An active contract row with contract number, terminal identity, and service area is required."
+    : !legalTasksReady
+      ? openLegalTasks.some((task) => task.status === "READY_FOR_CUSTOMER_REVIEW")
+        ? "Customer legal review and acceptance is still required."
+        : openLegalTasks.some((task) => task.status === "CUSTOMER_ACCEPTED")
+          ? "Team Optix final execution and vaulting is still required."
+          : "Customer legal tasks must be executed and vaulted before Go Live."
+      : null;
 
   const credentialsReady = Boolean(
     typedCredential?.has_secret &&
@@ -787,14 +840,14 @@ async function syncComputedActivationReadiness(
       status: contractReady ? "ready" : "incomplete",
       source_type: "computed",
       source_basis: contractReady
-        ? "Verified from the active Team Optix contract configuration."
+        ? typedLegalTasks.length > 0
+          ? "Verified from the active Team Optix contract configuration and executed/vaulted customer legal task evidence."
+          : "Verified from the active Team Optix contract configuration."
         : null,
       is_blocking: true,
-      completed_at: contractReady ? now : null,
+      completed_at: contractReady ? latestLegalCompletion ?? now : null,
       completed_by: null,
-      blocking_reason: contractReady
-        ? null
-        : "An active contract row with contract number, terminal identity, and service area is required.",
+      blocking_reason: contractReady ? null : contractBlockingReason,
       metadata: {
         contract_config_id: typedActiveContract?.id ?? null,
         contract_number:
@@ -803,6 +856,10 @@ async function syncComputedActivationReadiness(
           typedActiveContract?.terminal_identity ?? null,
         service_area:
           typedActiveContract?.service_area ?? null,
+        legal_task_count: typedLegalTasks.length,
+        open_legal_task_count: openLegalTasks.length,
+        executed_legal_task_count: executedLegalTasks.length,
+        latest_legal_completion_at: latestLegalCompletion,
       },
     },
     {
