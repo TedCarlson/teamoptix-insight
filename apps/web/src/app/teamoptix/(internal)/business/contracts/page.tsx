@@ -49,6 +49,48 @@ function version(row: Record<string, unknown> | undefined) {
   return `${major}.${minor}.${patch}`;
 }
 
+
+function normalizedStatus(input: unknown) {
+  return String(input ?? "").trim().toUpperCase();
+}
+
+function taskForDocument(
+  document: Record<string, unknown>,
+  legalTasks: Array<Record<string, unknown>>
+) {
+  const documentId = String(document.id ?? "");
+  const documentKey = String(document.document_key ?? "");
+
+  return legalTasks.find((task) => {
+    return (
+      String(task.document_id ?? "") === documentId ||
+      String(task.document_key ?? "") === documentKey
+    );
+  });
+}
+
+function customerDocumentDisplayStatus(
+  document: Record<string, unknown>,
+  legalTasks: Array<Record<string, unknown>>
+) {
+  const documentStatus = normalizedStatus(document.status);
+  const taskStatus = normalizedStatus(taskForDocument(document, legalTasks)?.status);
+
+  if (documentStatus === "SUPERSEDED") return "SUPERSEDED";
+  if (documentStatus === "CANCELLED") return "CANCELLED";
+  if (taskStatus === "READY_FOR_CUSTOMER_REVIEW") return "CUSTOMER ACTION";
+  if (taskStatus === "CUSTOMER_ACCEPTED") return "TEAM OPTIX";
+  if (taskStatus === "TEAMOPTIX_EXECUTED") return "VAULTING";
+  if (taskStatus === "EXECUTED_AND_VAULTED") return "EXECUTED";
+
+  return documentStatus || "DRAFT";
+}
+
+function isArchivedClientDocument(document: Record<string, unknown>) {
+  const status = normalizedStatus(document.status);
+  return status === "SUPERSEDED" || status === "CANCELLED";
+}
+
 export default async function TeamOptixContractsPage() {
   const documents = await getTemplateDocuments();
   const clientDocuments = await getClientDocuments();
@@ -71,6 +113,12 @@ export default async function TeamOptixContractsPage() {
   const publishedCount = rows.filter((row) => row.status.toLowerCase().includes("published")).length;
   const missingCount = rows.filter((row) => !row.document).length;
   const clientCount = clientDocuments.length;
+  const actionableClientDocuments = clientDocuments.filter(
+    (document: Record<string, unknown>) => !isArchivedClientDocument(document)
+  );
+  const archivedClientDocuments = clientDocuments.filter(
+    (document: Record<string, unknown>) => isArchivedClientDocument(document)
+  );
   const openLegalTaskCount = legalTasks.filter((task: Record<string, unknown>) => {
     const status = String(task.status ?? "");
     return status !== "EXECUTED_AND_VAULTED" && status !== "CANCELLED";
@@ -122,10 +170,10 @@ export default async function TeamOptixContractsPage() {
           </WorkspaceSection>
 
           <section className="workspace-grid">
-            <WorkspaceSection eyebrow="Customer Contracts" title="Executed Contracts" description="Customer-specific agreements, signed packages, renewals, and exceptions.">
+            <WorkspaceSection eyebrow="Customer Contracts" title="Actionable Contracts" description="Current customer agreements that are draft, released for review, accepted, or awaiting Team Optix finalization.">
               <div className="signal-list">
-                {clientDocuments.length ? (
-                  clientDocuments.map((document: Record<string, unknown>) => (
+                {actionableClientDocuments.length ? (
+                  actionableClientDocuments.map((document: Record<string, unknown>) => (
                     <Link
                       key={String(document.id)}
                       className="signal-list__row"
@@ -136,22 +184,23 @@ export default async function TeamOptixContractsPage() {
                         <strong>{String(document.title ?? "Client Document")}</strong>
                         <span>{String(document.customer_legal_name ?? "Customer document")} · v{version(document)}</span>
                       </div>
-                      <em>{String(document.status ?? "DRAFT")}</em>
+                      <em>{customerDocumentDisplayStatus(document, legalTasks)}</em>
                     </Link>
                   ))
                 ) : (
                   <div className="signal-list__row">
                     <div>
-                      <strong>No customer documents yet</strong>
-                      <span>Open a locked template and create the first customer document.</span>
+                      <strong>No actionable customer documents</strong>
+                      <span>Create a customer document from a locked template, or open the task queue.</span>
                     </div>
-                    <em>Empty</em>
+                    <em>Ready</em>
                   </div>
                 )}
+
                 <Link
                   className="signal-list__row"
                   href="/teamoptix/business/contracts/vault"
-                  style={{ color: "inherit", textDecoration: "none" }}
+                  style={{ color: "inherit", textDecoration:"none" }}
                 >
                   <div>
                     <strong>Document Vault</strong>
@@ -159,10 +208,11 @@ export default async function TeamOptixContractsPage() {
                   </div>
                   <em>Open</em>
                 </Link>
+
                 <Link
                   className="signal-list__row"
                   href="/teamoptix/business/contracts/tasks"
-                  style={{ color: "inherit", textDecoration: "none" }}
+                  style={{ color: "inherit", textDecoration:"none" }}
                 >
                   <div>
                     <strong>Customer Legal Tasks</strong>
@@ -172,6 +222,7 @@ export default async function TeamOptixContractsPage() {
                 </Link>
               </div>
             </WorkspaceSection>
+
             <WorkspaceSection eyebrow="Templates" title="Clause & Document Templates" description="Reusable contract structures and approved language. Open a template, lock a version, then create customer documents from it.">
               <div className="signal-list">
                 {rows.map((row) => (
@@ -193,8 +244,33 @@ export default async function TeamOptixContractsPage() {
             <WorkspaceSection eyebrow="Package Review" title="Counsel Review Package" description="Assemble MSA, SOW, DPA, AUP, and supporting policies for legal review.">
               <div />
             </WorkspaceSection>
-            <WorkspaceSection eyebrow="Archive" title="Published History" description="Immutable published versions and superseded commercial documents.">
-              <div />
+            <WorkspaceSection eyebrow="Archive" title="Superseded History" description="Superseded, cancelled, and historical customer contract records.">
+              <div className="signal-list">
+                {archivedClientDocuments.length ? (
+                  archivedClientDocuments.map((document: Record<string, unknown>) => (
+                    <Link
+                      key={`archived-${String(document.id)}`}
+                      className="signal-list__row"
+                      href={`/teamoptix/business/contracts/client-documents/${encodeURIComponent(String(document.document_key))}`}
+                      style={{ color: "inherit", textDecoration: "none" }}
+                    >
+                      <div>
+                        <strong>{String(document.title ?? "Client Document")}</strong>
+                        <span>{String(document.customer_legal_name ?? "Customer document")} · v{version(document)}</span>
+                      </div>
+                      <em>{customerDocumentDisplayStatus(document, legalTasks)}</em>
+                    </Link>
+                  ))
+                ) : (
+                  <div className="signal-list__row">
+                    <div>
+                      <strong>No archived customer documents</strong>
+                      <span>Superseded and cancelled client documents will appear here.</span>
+                    </div>
+                    <em>Empty</em>
+                  </div>
+                )}
+              </div>
             </WorkspaceSection>
           </section>
         </section>
