@@ -65,6 +65,15 @@ execute function core.set_updated_at();
 alter table core.company_message enable row level security;
 alter table core.company_message_ack enable row level security;
 
+-- Live-first repair:
+-- A later targeted-recipient version of this helper may already exist remotely.
+-- Drop dependent policies and helper overloads so this foundation migration can
+-- apply cleanly before the targeted-recipient migration replaces the policies.
+drop policy if exists company_message_select on core.company_message;
+drop policy if exists company_message_ack_insert on core.company_message_ack;
+drop function if exists core.can_receive_company_message(uuid, text, uuid);
+drop function if exists core.can_receive_company_message(uuid, text);
+
 create or replace function core.can_receive_company_message(
   p_company_id uuid,
   p_visibility text
@@ -101,7 +110,6 @@ $$;
 grant execute on function core.can_receive_company_message(uuid, text) to authenticated;
 grant execute on function core.can_receive_company_message(uuid, text) to service_role;
 
-drop policy if exists company_message_select on core.company_message;
 create policy company_message_select
 on core.company_message
 for select
@@ -146,7 +154,6 @@ using (
   or profile_id = core.current_profile_id()
 );
 
-drop policy if exists company_message_ack_insert on core.company_message_ack;
 create policy company_message_ack_insert
 on core.company_message_ack
 for insert
