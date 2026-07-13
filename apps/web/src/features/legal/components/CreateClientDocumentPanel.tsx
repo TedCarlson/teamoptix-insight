@@ -160,7 +160,7 @@ export function CreateClientDocumentPanel({ templateDocumentId, versions }: Prop
 
       <div className={styles.inlineActions}>
         <button
-          className={styles.primaryButton}
+          className={[styles.primaryButton, lockedVersions.length ? styles.actionButtonGo : styles.actionButtonBlocked].join(" ")}
           type="button"
           onClick={createClientDocument}
           disabled={!lockedVersions.length || createState === "creating"}

@@ -664,3 +664,128 @@
   gap: 10px;
   align-items: center;
 }
+
+/* Legal workflow signals */
+.actionButtonGo {
+  border-color: #059669 !important;
+  background: #059669 !important;
+  color: #ffffff !important;
+}
+
+.actionButtonNext {
+  border-color: #f59e0b !important;
+  background: #fffbeb !important;
+  color: #92400e !important;
+}
+
+.actionButtonBlocked {
+  border-color: #fecaca !important;
+  background: #fef2f2 !important;
+  color: #991b1b !important;
+  cursor: not-allowed !important;
+}
+
+.actionButtonMuted {
+  opacity: 0.58;
+}
+
+.workflowStack {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.workflowStep {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  border: 1px solid var(--line, #d6dfeb);
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.workflowStep strong {
+  display: block;
+  color: var(--text, #13203a);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.workflowStep p {
+  margin: 3px 0 0;
+  color: var(--muted, #5c6b84);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.workflowStep em {
+  border-radius: 999px;
+  padding: 4px 7px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.workflowStepNumber {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.workflowStep_go {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.workflowStep_go em,
+.workflowStep_done em {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.workflowStep_next {
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.workflowStep_next em {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.workflowStep_blocked {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.workflowStep_blocked em {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.workflowStep_done {
+  border-color: #bbf7d0;
+  background: #f7fee7;
+}
+
+.workflowStep_muted {
+  background: #f8fafc;
+  opacity: 0.82;
+}
+
+.workflowStep_muted em {
+  background: #e2e8f0;
+  color: #475569;
+}

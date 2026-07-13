@@ -128,7 +128,7 @@ export function LegalDocumentMetadataPanel({ document, onSaved }: Props) {
         </label>
       </div>
 
-      <button className={styles.primaryButton} type="button" onClick={saveMetadata}>
+      <button className={[styles.primaryButton, styles.actionButtonNext].join(" ")} type="button" onClick={saveMetadata}>
         Save Fields
       </button>
     </section>

@@ -7,6 +7,7 @@ type Props = {
   exitHref: string;
   versionActionState: "idle" | "locking" | "locked" | "exists" | "error";
   documentScope?: string;
+  lockActionTone?: "go" | "next" | "blocked" | "muted";
   onToggleDraft: () => void;
   onOpenReview: () => void;
   onLockVersion: () => void;
@@ -43,6 +44,7 @@ export function LegalToolbar({
   exitHref,
   versionActionState,
   documentScope = "TEMPLATE",
+  lockActionTone = "next",
   onToggleDraft,
   onOpenReview,
   onLockVersion,
@@ -50,7 +52,14 @@ export function LegalToolbar({
   const title = documentValue(document, "title") ?? "Document";
   const status = documentValue(document, "status") ?? "DRAFT";
   const version = documentVersion(document);
-  const lockDisabled = versionActionState === "locking";
+  const lockDisabled = versionActionState === "locking" || lockActionTone === "blocked";
+  const lockClassName = [
+    styles.secondaryButton,
+    lockActionTone === "go" ? styles.actionButtonGo : "",
+    lockActionTone === "next" ? styles.actionButtonNext : "",
+    lockActionTone === "blocked" ? styles.actionButtonBlocked : "",
+    lockActionTone === "muted" ? styles.actionButtonMuted : "",
+  ].filter(Boolean).join(" ");
   const isClientDocument = documentScope === "CLIENT_DOCUMENT";
   const eyebrow = isClientDocument ? "Client Document Workbench" : "Template Workbench";
 
@@ -73,7 +82,7 @@ export function LegalToolbar({
           Save Draft
         </button>
 
-        <button className={styles.secondaryButton} type="button" onClick={onOpenReview}>
+        <button className={[styles.secondaryButton, styles.actionButtonNext].join(" ")} type="button" onClick={onOpenReview}>
           Review Document
         </button>
 
@@ -81,7 +90,7 @@ export function LegalToolbar({
           Export
         </button>
 
-        <button className={styles.secondaryButton} type="button" onClick={onLockVersion} disabled={lockDisabled}>
+        <button className={lockClassName} type="button" onClick={onLockVersion} disabled={lockDisabled}>
           {lockLabel(versionActionState)}
         </button>
 

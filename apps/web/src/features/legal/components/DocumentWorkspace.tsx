@@ -9,6 +9,7 @@ import { LegalToolbar } from "./LegalToolbar";
 import { LegalAcceptanceOverlay } from "./LegalAcceptanceOverlay";
 import { CreateClientDocumentPanel } from "./CreateClientDocumentPanel";
 import { LegalDocumentMetadataPanel } from "./LegalDocumentMetadataPanel";
+import { LegalWorkflowSignals } from "./LegalWorkflowSignals";
 import { RevisionHistoryPanel } from "./RevisionHistoryPanel";
 import styles from "./legal-workspace.module.css";
 
@@ -115,6 +116,16 @@ export function DocumentWorkspace({
   const documentId = documentValue(documentRecord, "id");
   const documentScope = documentValue(documentRecord, "document_scope") ?? "TEMPLATE";
   const isClientDocument = documentScope === "CLIENT_DOCUMENT";
+  const hasLockedVersions = versionRows.some((version) => version.status === "LOCKED");
+  const hasAcceptance = acceptanceRows.length > 0;
+  const fieldsReady = Boolean(
+    documentValue(documentRecord, "customer_legal_name") && documentValue(documentRecord, "effective_at")
+  );
+  const lockActionTone = isClientDocument
+    ? fieldsReady
+      ? "go"
+      : "blocked"
+    : "go";
 
   function acceptedRecordForVersion(versionId: string) {
     return acceptanceRows.find((acceptance) => acceptance.document_version_id === versionId) ?? null;
@@ -260,6 +271,8 @@ export function DocumentWorkspace({
           draftMode={draftMode}
           exitHref={exitHref}
           versionActionState={versionActionState}
+          documentScope={documentScope}
+          lockActionTone={lockActionTone}
           onToggleDraft={() => setDraftMode((current) => !current)}
           onOpenReview={() => setReviewOpen(true)}
           onLockVersion={lockVersion}
@@ -284,6 +297,7 @@ export function DocumentWorkspace({
         exitHref={exitHref}
         versionActionState={versionActionState}
         documentScope={documentScope}
+        lockActionTone={lockActionTone}
         onToggleDraft={() => setDraftMode((current) => !current)}
         onOpenReview={() => setReviewOpen(true)}
         onLockVersion={lockVersion}
@@ -318,6 +332,14 @@ export function DocumentWorkspace({
         />
 
         <aside className={styles.inspector}>
+          <LegalWorkflowSignals
+            documentScope={documentScope}
+            draftMode={draftMode}
+            hasLockedVersions={hasLockedVersions}
+            hasAcceptance={hasAcceptance}
+            fieldsReady={fieldsReady}
+          />
+
           {isClientDocument ? (
             <LegalDocumentMetadataPanel
               document={documentRecord as Record<string, string | number | null>}
@@ -353,13 +375,17 @@ export function DocumentWorkspace({
                     </div>
                     <div className={styles.versionCardActions}>
                       <span className={styles.revisionTime}>{formatVersionDate(version.created_at)}</span>
-                      <button
-                        className={styles.miniButton}
-                        type="button"
-                        onClick={() => setSelectedAcceptanceVersion(version)}
-                      >
-                        {acceptedRecordForVersion(version.id) ? "View Acceptance" : "Accept"}
-                      </button>
+                      {isClientDocument ? (
+                        <button
+                          className={styles.miniButton}
+                          type="button"
+                          onClick={() => setSelectedAcceptanceVersion(version)}
+                        >
+                          {acceptedRecordForVersion(version.id) ? "View Acceptance" : "Accept"}
+                        </button>
+                      ) : (
+                        <span className={styles.revisionDetail}>Template source</span>
+                      )}
                     </div>
                   </article>
                 ))
@@ -417,8 +443,8 @@ export function DocumentWorkspace({
                     .split(/\n{2,}/)
                     .map((paragraph) => paragraph.trim())
                     .filter(Boolean)
-                    .map((paragraph) => (
-                      <p key={paragraph}>{paragraph}</p>
+                    .map((paragraph, paragraphIndex) => (
+                      <p key={`${section.id}-${paragraphIndex}`}>{paragraph}</p>
                     ))}
                 </section>
               ))}
