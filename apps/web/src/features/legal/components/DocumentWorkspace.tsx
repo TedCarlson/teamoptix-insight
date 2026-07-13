@@ -9,7 +9,7 @@ import { LegalToolbar } from "./LegalToolbar";
 import { RevisionHistoryPanel } from "./RevisionHistoryPanel";
 import styles from "./legal-workspace.module.css";
 
-function documentValue(document: unknown, key: "title" | "status" | "version") {
+function documentValue(document: unknown, key: "id" | "title" | "status" | "version") {
   if (!document || typeof document !== "object") return null;
   const value = (document as Record<string, unknown>)[key];
   return typeof value === "string" || typeof value === "number" ? String(value) : null;
@@ -17,6 +17,7 @@ function documentValue(document: unknown, key: "title" | "status" | "version") {
 
 type LegalSection = {
   id: string;
+  document_id?: string | null;
   section_number?: string | number | null;
   title?: string | null;
   body_markdown?: string | null;
@@ -33,14 +34,17 @@ export function DocumentWorkspace({
   sections,
   exitHref = "/teamoptix/business/contracts",
 }: DocumentWorkspaceProps) {
-  const safeSections = useMemo(
-    () => (Array.isArray(sections) ? sections : []),
-    [sections]
-  );
-
+  const [sectionRows, setSectionRows] = useState<LegalSection[]>(() => {
+    return Array.isArray(sections) ? sections : [];
+  });
   const [selectedSectionId, setSelectedSectionId] = useState(() => {
     return Array.isArray(sections) ? sections[0]?.id ?? "" : "";
   });
+  const [draftMode, setDraftMode] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [sectionActionState, setSectionActionState] = useState<"idle" | "saving" | "error">("idle");
+
+  const safeSections = useMemo(() => sectionRows, [sectionRows]);
 
   const selectedSection = useMemo(() => {
     return (
@@ -50,9 +54,85 @@ export function DocumentWorkspace({
     );
   }, [safeSections, selectedSectionId]);
 
-  const [draftMode, setDraftMode] = useState(false);
-  const [reviewOpen, setReviewOpen] = useState(false);
   const documentTitle = documentValue(document, "title") ?? "Document";
+  const documentId = documentValue(document, "id");
+
+  function updateSection(section: LegalSection) {
+    setSectionRows((current) =>
+      current.map((row) => (row.id === section.id ? { ...row, ...section } : row))
+    );
+  }
+
+  function replaceSections(nextSections: LegalSection[]) {
+    setSectionRows(nextSections);
+    setSelectedSectionId((current) => {
+      if (nextSections.some((section) => section.id === current)) return current;
+      return nextSections[0]?.id ?? "";
+    });
+  }
+
+  async function runSectionAction(payload: Record<string, unknown>) {
+    try {
+      setSectionActionState("saving");
+      const res = await fetch("/api/legal/section/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+
+      if (!json?.ok) {
+        setSectionActionState("error");
+        return null;
+      }
+
+      setSectionActionState("idle");
+      return json;
+    } catch {
+      setSectionActionState("error");
+      return null;
+    }
+  }
+
+  async function addSection() {
+    if (!documentId) return;
+    const json = await runSectionAction({
+      action: "add",
+      documentId,
+      title: "New Section",
+    });
+
+    if (json?.section) {
+      setSectionRows((current) => [...current, json.section]);
+      setSelectedSectionId(json.section.id);
+    }
+  }
+
+  async function moveSection(sectionId: string, direction: "up" | "down") {
+    const json = await runSectionAction({
+      action: "move",
+      sectionId,
+      direction,
+    });
+
+    if (Array.isArray(json?.sections)) {
+      replaceSections(json.sections);
+    }
+  }
+
+  async function archiveSection(sectionId: string) {
+    const confirmed = window.confirm("Archive this section? It will be removed from the active draft.");
+    if (!confirmed) return;
+
+    const json = await runSectionAction({
+      action: "archive",
+      sectionId,
+    });
+
+    if (Array.isArray(json?.sections)) {
+      replaceSections(json.sections);
+    }
+  }
 
   if (!selectedSection) {
     return (
@@ -64,7 +144,14 @@ export function DocumentWorkspace({
           onToggleDraft={() => setDraftMode((current) => !current)}
           onOpenReview={() => setReviewOpen(true)}
         />
-        <div className={styles.emptyState}>No sections loaded</div>
+        <div className={styles.emptyState}>
+          <p>No sections loaded.</p>
+          {draftMode && documentId ? (
+            <button className={styles.primaryButton} type="button" onClick={addSection}>
+              Add First Section
+            </button>
+          ) : null}
+        </div>
       </section>
     );
   }
@@ -79,10 +166,20 @@ export function DocumentWorkspace({
         onOpenReview={() => setReviewOpen(true)}
       />
 
+      {draftMode ? (
+        <p className={sectionActionState === "error" ? styles.saveError : styles.saveStatus}>
+          Section structure: {sectionActionState}
+        </p>
+      ) : null}
+
       <div className={styles.body}>
         <LegalSectionRail
+          draftMode={draftMode}
           selectedSectionId={selectedSection.id}
           onSelectSection={setSelectedSectionId}
+          onAddSection={addSection}
+          onMoveSection={moveSection}
+          onArchiveSection={archiveSection}
           sections={safeSections}
         />
 
@@ -90,6 +187,7 @@ export function DocumentWorkspace({
           key={selectedSection.id}
           draftMode={draftMode}
           section={selectedSection}
+          onSectionSaved={updateSection}
         />
 
         <aside className={styles.inspector}>

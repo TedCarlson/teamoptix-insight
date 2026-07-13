@@ -24,6 +24,7 @@ export async function getSections(documentId: string) {
     .from("legal_document_section_v")
     .select("*")
     .eq("document_id", documentId)
+    .neq("status", "ARCHIVED")
     .order("section_number");
 
   if (error) throw error;

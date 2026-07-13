@@ -3,18 +3,22 @@
 import { useState } from "react";
 import styles from "./legal-workspace.module.css";
 
-type Props = {
-  draftMode: boolean;
-  section: {
-    id: string;
-    section_number?: string | number | null;
-    title?: string | null;
-    body_markdown?: string | null;
-  };
+type LegalSection = {
+  id: string;
+  section_number?: string | number | null;
+  title?: string | null;
+  body_markdown?: string | null;
 };
 
-export function LegalEditorPane({ draftMode, section }: Props) {
+type Props = {
+  draftMode: boolean;
+  section: LegalSection;
+  onSectionSaved?: (section: LegalSection) => void;
+};
+
+export function LegalEditorPane({ draftMode, section, onSectionSaved }: Props) {
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [title, setTitle] = useState(section.title ?? "");
   const [body, setBody] = useState(section.body_markdown ?? "");
 
   async function save() {
@@ -26,6 +30,7 @@ export function LegalEditorPane({ draftMode, section }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sectionId: section.id,
+          title,
           body,
         }),
       });
@@ -37,7 +42,15 @@ export function LegalEditorPane({ draftMode, section }: Props) {
         return;
       }
 
-      setBody(json.section?.body_markdown ?? body);
+      const savedSection = json.section ?? {
+        ...section,
+        title,
+        body_markdown: body,
+      };
+
+      setTitle(savedSection.title ?? title);
+      setBody(savedSection.body_markdown ?? body);
+      onSectionSaved?.(savedSection);
       setSaveState("saved");
       setTimeout(() => setSaveState("idle"), 1200);
     } catch {
@@ -49,15 +62,26 @@ export function LegalEditorPane({ draftMode, section }: Props) {
     <section className={styles.editor}>
       <article className={styles.documentCard}>
         <header className={styles.documentHeader}>
-          <div>
+          <div className={styles.documentHeaderContent}>
             <p className={styles.panelLabel}>Section {section.section_number ?? "—"}</p>
-            <h2 className={styles.documentTitle}>{section.title ?? "Untitled Section"}</h2>
+            {draftMode ? (
+              <label className={styles.titleFieldLabel}>
+                <span>Section title</span>
+                <input
+                  className={styles.titleInput}
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                />
+              </label>
+            ) : (
+              <h2 className={styles.documentTitle}>{title || "Untitled Section"}</h2>
+            )}
           </div>
 
           {draftMode ? (
             <div className={styles.editorActions}>
               <button className={styles.primaryButton} onClick={save} type="button">
-                Save
+                Save Section
               </button>
 
               <span className={saveState === "error" ? styles.saveError : styles.saveStatus}>
