@@ -6,6 +6,7 @@ type Props = {
   draftMode: boolean;
   exitHref: string;
   versionActionState: "idle" | "locking" | "locked" | "exists" | "error";
+  documentScope?: string;
   onToggleDraft: () => void;
   onOpenReview: () => void;
   onLockVersion: () => void;
@@ -41,6 +42,7 @@ export function LegalToolbar({
   draftMode,
   exitHref,
   versionActionState,
+  documentScope = "TEMPLATE",
   onToggleDraft,
   onOpenReview,
   onLockVersion,
@@ -49,14 +51,16 @@ export function LegalToolbar({
   const status = documentValue(document, "status") ?? "DRAFT";
   const version = documentVersion(document);
   const lockDisabled = versionActionState === "locking";
+  const isClientDocument = documentScope === "CLIENT_DOCUMENT";
+  const eyebrow = isClientDocument ? "Client Document Workbench" : "Template Workbench";
 
   return (
     <header className={styles.toolbar}>
       <div>
-        <p className={styles.eyebrow}>Document Workbench</p>
+        <p className={styles.eyebrow}>{eyebrow}</p>
         <h1 className={styles.title}>{title}</h1>
         <p className={styles.toolbarMeta}>
-          Version {version} · {status}
+          Version {version} · {status} · {isClientDocument ? "Client Document" : "Template"}
         </p>
       </div>
 

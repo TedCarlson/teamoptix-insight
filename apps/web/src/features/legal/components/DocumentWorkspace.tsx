@@ -7,11 +7,12 @@ import { LegalEditorPane } from "./LegalEditorPane";
 import { LegalSectionRail } from "./LegalSectionRail";
 import { LegalToolbar } from "./LegalToolbar";
 import { LegalAcceptanceOverlay } from "./LegalAcceptanceOverlay";
+import { CreateClientDocumentPanel } from "./CreateClientDocumentPanel";
 import { LegalDocumentMetadataPanel } from "./LegalDocumentMetadataPanel";
 import { RevisionHistoryPanel } from "./RevisionHistoryPanel";
 import styles from "./legal-workspace.module.css";
 
-function documentValue(document: unknown, key: "id" | "title" | "status" | "version") {
+function documentValue(document: unknown, key: string) {
   if (!document || typeof document !== "object") return null;
   const value = (document as Record<string, unknown>)[key];
   return typeof value === "string" || typeof value === "number" ? String(value) : null;
@@ -112,6 +113,8 @@ export function DocumentWorkspace({
 
   const documentTitle = documentValue(documentRecord, "title") ?? "Document";
   const documentId = documentValue(documentRecord, "id");
+  const documentScope = documentValue(documentRecord, "document_scope") ?? "TEMPLATE";
+  const isClientDocument = documentScope === "CLIENT_DOCUMENT";
 
   function acceptedRecordForVersion(versionId: string) {
     return acceptanceRows.find((acceptance) => acceptance.document_version_id === versionId) ?? null;
@@ -198,7 +201,9 @@ export function DocumentWorkspace({
     if (!documentId) return;
 
     const confirmed = window.confirm(
-      "Lock the current draft as an immutable version snapshot? You can keep editing the draft afterward."
+      isClientDocument
+        ? "Lock this customer document as the immutable version the customer can accept?"
+        : "Lock this reusable template as the source for future customer documents?"
     );
     if (!confirmed) return;
 
@@ -278,6 +283,7 @@ export function DocumentWorkspace({
         draftMode={draftMode}
         exitHref={exitHref}
         versionActionState={versionActionState}
+        documentScope={documentScope}
         onToggleDraft={() => setDraftMode((current) => !current)}
         onOpenReview={() => setReviewOpen(true)}
         onLockVersion={lockVersion}
@@ -312,13 +318,17 @@ export function DocumentWorkspace({
         />
 
         <aside className={styles.inspector}>
-          <LegalDocumentMetadataPanel
-            document={documentRecord as Record<string, string | number | null>}
-            onSaved={(updatedDocument) => setDocumentRecord((current: LegalDocumentRecord | null) => ({
-              ...(current && typeof current === "object" ? current : {}),
-              ...updatedDocument,
-            }))}
-          />
+          {isClientDocument ? (
+            <LegalDocumentMetadataPanel
+              document={documentRecord as Record<string, string | number | null>}
+              onSaved={(updatedDocument) => setDocumentRecord((current: LegalDocumentRecord | null) => ({
+                ...(current && typeof current === "object" ? current : {}),
+                ...updatedDocument,
+              }))}
+            />
+          ) : documentId ? (
+            <CreateClientDocumentPanel templateDocumentId={documentId} versions={versionRows} />
+          ) : null}
 
           <section className={styles.inspectorSection}>
             <div className={styles.inspectorHeadingRow}>

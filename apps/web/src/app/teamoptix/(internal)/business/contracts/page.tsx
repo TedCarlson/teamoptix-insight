@@ -1,6 +1,6 @@
 import Link from "next/link";
 import TeamOptixShell from "@/features/teamoptix/navigation/TeamOptixShell";
-import { getDocuments } from "@/features/legal/server/legal.repository";
+import { getClientDocuments, getTemplateDocuments } from "@/features/legal/server/legal.repository";
 import { WorkspaceHeader, WorkspaceSection } from "@/features/ui/workspace";
 
 export const dynamic = "force-dynamic";
@@ -50,7 +50,8 @@ function version(row: Record<string, unknown> | undefined) {
 }
 
 export default async function TeamOptixContractsPage() {
-  const documents = await getDocuments();
+  const documents = await getTemplateDocuments();
+  const clientDocuments = await getClientDocuments();
   const byKey = new Map(
     documents.map((document: Record<string, unknown>) => [String(document.document_key), document])
   );
@@ -68,6 +69,7 @@ export default async function TeamOptixContractsPage() {
   const draftCount = rows.filter((row) => row.status.toLowerCase().includes("draft")).length;
   const publishedCount = rows.filter((row) => row.status.toLowerCase().includes("published")).length;
   const missingCount = rows.filter((row) => !row.document).length;
+  const clientCount = clientDocuments.length;
 
   return (
     <TeamOptixShell>
@@ -86,7 +88,7 @@ export default async function TeamOptixContractsPage() {
             <WorkspaceSection eyebrow="Pulse" title="Published" description={`${publishedCount} commercial documents published.`}>
               <div />
             </WorkspaceSection>
-            <WorkspaceSection eyebrow="Pulse" title="Missing" description={`${missingCount} planned documents not seeded yet.`}>
+            <WorkspaceSection eyebrow="Pulse" title="Client Docs" description={`${clientCount} customer documents generated from locked templates.`}>
               <div />
             </WorkspaceSection>
           </section>
@@ -117,6 +119,30 @@ export default async function TeamOptixContractsPage() {
           <section className="workspace-grid">
             <WorkspaceSection eyebrow="Customer Contracts" title="Executed Contracts" description="Customer-specific agreements, signed packages, renewals, and exceptions.">
               <div className="signal-list">
+                {clientDocuments.length ? (
+                  clientDocuments.map((document: Record<string, unknown>) => (
+                    <Link
+                      key={String(document.id)}
+                      className="signal-list__row"
+                      href={`/teamoptix/business/contracts/client-documents/${encodeURIComponent(String(document.document_key))}`}
+                      style={{ color: "inherit", textDecoration: "none" }}
+                    >
+                      <div>
+                        <strong>{String(document.title ?? "Client Document")}</strong>
+                        <span>{String(document.customer_legal_name ?? "Customer document")} · v{version(document)}</span>
+                      </div>
+                      <em>{String(document.status ?? "DRAFT")}</em>
+                    </Link>
+                  ))
+                ) : (
+                  <div className="signal-list__row">
+                    <div>
+                      <strong>No customer documents yet</strong>
+                      <span>Open a locked template and create the first customer document.</span>
+                    </div>
+                    <em>Empty</em>
+                  </div>
+                )}
                 <Link
                   className="signal-list__row"
                   href="/teamoptix/business/contracts/vault"
@@ -130,8 +156,23 @@ export default async function TeamOptixContractsPage() {
                 </Link>
               </div>
             </WorkspaceSection>
-            <WorkspaceSection eyebrow="Templates" title="Clause & Document Templates" description="Reusable contract structures and approved language.">
-              <div />
+            <WorkspaceSection eyebrow="Templates" title="Clause & Document Templates" description="Reusable contract structures and approved language. Open a template, lock a version, then create customer documents from it.">
+              <div className="signal-list">
+                {rows.map((row) => (
+                  <Link
+                    key={`template-${row.key}`}
+                    className="signal-list__row"
+                    href={row.href}
+                    style={{ color: "inherit", textDecoration: "none" }}
+                  >
+                    <div>
+                      <strong>{row.title}</strong>
+                      <span>Template · v{row.version}</span>
+                    </div>
+                    <em>{row.status}</em>
+                  </Link>
+                ))}
+              </div>
             </WorkspaceSection>
             <WorkspaceSection eyebrow="Package Review" title="Counsel Review Package" description="Assemble MSA, SOW, DPA, AUP, and supporting policies for legal review.">
               <div />

@@ -87,6 +87,28 @@ export async function getDocuments() {
   return data ?? [];
 }
 
+export async function getTemplateDocuments() {
+  const { data, error } = await db
+    .from("legal_document_v")
+    .select("*")
+    .eq("document_scope", "TEMPLATE")
+    .order("title");
+
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function getClientDocuments() {
+  const { data, error } = await db
+    .from("legal_document_v")
+    .select("*")
+    .eq("document_scope", "CLIENT_DOCUMENT")
+    .order("updated_at", { ascending: false });
+
+  if (error) throw error;
+  return data ?? [];
+}
+
 /**
  * LOCKED DOCUMENT VERSIONS
  */

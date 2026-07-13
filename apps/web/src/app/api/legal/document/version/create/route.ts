@@ -14,6 +14,7 @@ type LegalDocument = {
   customer_project_lead: string | null;
   teamoptix_project_lead: string | null;
   provider_name: string | null;
+  document_scope: string | null;
 };
 
 type LegalSection = {
@@ -97,7 +98,7 @@ export async function POST(req: NextRequest) {
     .schema("legal")
     .from("document")
     .select(
-      "id, document_key, title, version_major, version_minor, version_patch, current_version, effective_at, customer_legal_name, customer_project_lead, teamoptix_project_lead, provider_name"
+      "id, document_key, title, version_major, version_minor, version_patch, current_version, effective_at, customer_legal_name, customer_project_lead, teamoptix_project_lead, provider_name, document_scope"
     )
     .eq("id", documentId)
     .single();
@@ -148,14 +149,15 @@ export async function POST(req: NextRequest) {
   const sections = ((sectionRows ?? []) as LegalSection[]).filter(
     (section) => !isArchived(section)
   );
+  const isTemplate = legalDocument.document_scope === "TEMPLATE";
   const values = mergeValues(legalDocument);
-  const unresolved = unresolvedFields(sections, values);
+  const unresolved = isTemplate ? [] : unresolvedFields(sections, values);
 
   if (unresolved.length > 0) {
     return NextResponse.json(
       {
         ok: false,
-        error: "Resolve document fields before locking this version.",
+        error: "Resolve document fields before locking this client document.",
         code: "UNRESOLVED_DOCUMENT_FIELDS",
         unresolvedFields: unresolved,
       },
@@ -167,9 +169,9 @@ export async function POST(req: NextRequest) {
     id: section.id,
     section_number: section.section_number,
     section_key: section.section_key,
-    title: resolveText(section.title, values),
-    summary: resolveText(section.summary, values),
-    body_markdown: resolveText(section.body_markdown, values),
+    title: isTemplate ? section.title : resolveText(section.title, values),
+    summary: isTemplate ? section.summary ?? "" : resolveText(section.summary, values),
+    body_markdown: isTemplate ? section.body_markdown : resolveText(section.body_markdown, values),
   }));
 
   const snapshot = {
@@ -186,6 +188,7 @@ export async function POST(req: NextRequest) {
       customer_project_lead: legalDocument.customer_project_lead,
       teamoptix_project_lead: legalDocument.teamoptix_project_lead,
       provider_name: legalDocument.provider_name ?? "Team Optix, LLC",
+      document_scope: legalDocument.document_scope ?? "TEMPLATE",
     },
     sections: resolvedSections,
   };
