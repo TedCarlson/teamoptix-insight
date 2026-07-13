@@ -42,6 +42,23 @@ function slugPart(value: string) {
     .slice(0, 54) || "customer";
 }
 
+const PLACEHOLDER_PATTERN = /\[[^\]\n]+\]/g;
+
+function formatEffectiveDate(value: string | null) {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toISOString().slice(0, 10);
+}
+
+function resolveClientText(
+  value: string | null | undefined,
+  fields: Map<string, string>
+) {
+  if (!value) return value ?? "";
+  return value.replace(PLACEHOLDER_PATTERN, (token) => fields.get(token) || token);
+}
+
 export async function POST(req: NextRequest) {
   const db = createSupabaseServiceRoleClient();
   const body = await req.json().catch(() => null);
@@ -137,13 +154,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: insertDocumentError.message }, { status: 500 });
   }
 
+  const clientFields = new Map<string, string>([
+    ["[Customer Legal Name]", customerLegalName],
+    ["[Date]", formatEffectiveDate(effectiveAt)],
+    ["[Customer Lead]", customerProjectLead ?? ""],
+    ["[Team Optix Lead]", teamOptixProjectLead ?? ""],
+  ]);
+
   const sectionPayload = sections.map((section, index) => ({
     document_id: clientDocument.id,
     section_number: section.section_number ?? index + 1,
     section_key: section.section_key || `section-${index + 1}`,
-    title: section.title ?? `Section ${index + 1}`,
-    summary: section.summary ?? null,
-    body_markdown: section.body_markdown ?? "",
+    title: resolveClientText(section.title ?? `Section ${index + 1}`, clientFields),
+    summary: resolveClientText(section.summary ?? null, clientFields) || null,
+    body_markdown: resolveClientText(section.body_markdown ?? "", clientFields),
     status: "DRAFT",
     workflow_status: "DRAFT",
   }));

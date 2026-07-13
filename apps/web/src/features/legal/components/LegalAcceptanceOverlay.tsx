@@ -146,8 +146,10 @@ export function LegalAcceptanceOverlay({
               <section key={`${section.section_number}-${section.title}`} className={styles.reviewSection}>
                 <p className={styles.panelLabel}>Section {section.section_number ?? "—"}</p>
                 <h3>{section.title ?? "Untitled Section"}</h3>
-                {paragraphs(section.body_markdown).map((paragraph) => (
-                  <p key={paragraph}>{paragraph}</p>
+                {paragraphs(section.body_markdown).map((paragraph, paragraphIndex) => (
+                  <p key={`${section.section_number ?? "section"}-${paragraphIndex}`}>
+                    {paragraph}
+                  </p>
                 ))}
               </section>
             ))}
