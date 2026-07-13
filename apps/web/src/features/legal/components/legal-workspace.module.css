@@ -624,3 +624,35 @@
     border-top: 1px solid var(--line, #d6dfeb);
   }
 }
+
+.metadataGrid {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.metadataFieldLabel {
+  display: grid;
+  gap: 5px;
+  color: var(--muted, #5c6b84);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.metadataInput {
+  width: 100%;
+  border: 1px solid var(--line, #d6dfeb);
+  border-radius: 12px;
+  background: var(--surface, #ffffff);
+  color: var(--text, #13203a);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 9px 10px;
+  outline: none;
+}
+
+.metadataInput:focus {
+  border-color: var(--brand, #246bff);
+  box-shadow: 0 0 0 3px rgba(36, 107, 255, 0.12);
+}

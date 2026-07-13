@@ -7,6 +7,7 @@ import { LegalEditorPane } from "./LegalEditorPane";
 import { LegalSectionRail } from "./LegalSectionRail";
 import { LegalToolbar } from "./LegalToolbar";
 import { LegalAcceptanceOverlay } from "./LegalAcceptanceOverlay";
+import { LegalDocumentMetadataPanel } from "./LegalDocumentMetadataPanel";
 import { RevisionHistoryPanel } from "./RevisionHistoryPanel";
 import styles from "./legal-workspace.module.css";
 
@@ -52,8 +53,10 @@ type LegalDocumentAcceptance = {
   accepted_at?: string | null;
 };
 
+type LegalDocumentRecord = Record<string, unknown>;
+
 type DocumentWorkspaceProps = {
-  document?: unknown;
+  document?: LegalDocumentRecord | null;
   sections?: LegalSection[] | null;
   versions?: LegalDocumentVersion[] | null;
   acceptances?: LegalDocumentAcceptance[] | null;
@@ -77,6 +80,7 @@ export function DocumentWorkspace({
   acceptances,
   exitHref = "/teamoptix/business/contracts",
 }: DocumentWorkspaceProps) {
+  const [documentRecord, setDocumentRecord] = useState<LegalDocumentRecord | null>(document);
   const [sectionRows, setSectionRows] = useState<LegalSection[]>(() => {
     return Array.isArray(sections) ? sections : [];
   });
@@ -94,6 +98,7 @@ export function DocumentWorkspace({
   const [reviewOpen, setReviewOpen] = useState(false);
   const [sectionActionState, setSectionActionState] = useState<"idle" | "saving" | "error">("idle");
   const [versionActionState, setVersionActionState] = useState<"idle" | "locking" | "locked" | "exists" | "error">("idle");
+  const [versionActionMessage, setVersionActionMessage] = useState("");
 
   const safeSections = useMemo(() => sectionRows, [sectionRows]);
 
@@ -105,8 +110,8 @@ export function DocumentWorkspace({
     );
   }, [safeSections, selectedSectionId]);
 
-  const documentTitle = documentValue(document, "title") ?? "Document";
-  const documentId = documentValue(document, "id");
+  const documentTitle = documentValue(documentRecord, "title") ?? "Document";
+  const documentId = documentValue(documentRecord, "id");
 
   function acceptedRecordForVersion(versionId: string) {
     return acceptanceRows.find((acceptance) => acceptance.document_version_id === versionId) ?? null;
@@ -207,9 +212,19 @@ export function DocumentWorkspace({
       const json = await res.json();
 
       if (!json?.ok) {
+        const unresolvedFields = Array.isArray(json?.unresolvedFields)
+          ? json.unresolvedFields.join(", ")
+          : "";
+        const message = unresolvedFields
+          ? `${json.error} Missing: ${unresolvedFields}`
+          : json?.error || "Version lock failed.";
+        setVersionActionMessage(message);
+        window.alert(message);
         setVersionActionState("error");
         return;
       }
+
+      setVersionActionMessage("");
 
       if (json.version) {
         setVersionRows((current) => {
@@ -236,7 +251,7 @@ export function DocumentWorkspace({
     return (
       <section className={styles.workspace}>
         <LegalToolbar
-          document={document}
+          document={documentRecord}
           draftMode={draftMode}
           exitHref={exitHref}
           versionActionState={versionActionState}
@@ -259,7 +274,7 @@ export function DocumentWorkspace({
   return (
     <section className={styles.workspace}>
       <LegalToolbar
-        document={document}
+        document={documentRecord}
         draftMode={draftMode}
         exitHref={exitHref}
         versionActionState={versionActionState}
@@ -267,6 +282,10 @@ export function DocumentWorkspace({
         onOpenReview={() => setReviewOpen(true)}
         onLockVersion={lockVersion}
       />
+
+      {versionActionMessage ? (
+        <p className={styles.saveError}>{versionActionMessage}</p>
+      ) : null}
 
       {draftMode ? (
         <p className={sectionActionState === "error" ? styles.saveError : styles.saveStatus}>
@@ -293,6 +312,14 @@ export function DocumentWorkspace({
         />
 
         <aside className={styles.inspector}>
+          <LegalDocumentMetadataPanel
+            document={documentRecord as Record<string, string | number | null>}
+            onSaved={(updatedDocument) => setDocumentRecord((current: LegalDocumentRecord | null) => ({
+              ...(current && typeof current === "object" ? current : {}),
+              ...updatedDocument,
+            }))}
+          />
+
           <section className={styles.inspectorSection}>
             <div className={styles.inspectorHeadingRow}>
               <p className={styles.panelLabel}>Locked Versions</p>

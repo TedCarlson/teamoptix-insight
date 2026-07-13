@@ -9,6 +9,11 @@ type LegalDocument = {
   version_minor: number;
   version_patch: number;
   current_version: string | null;
+  effective_at: string | null;
+  customer_legal_name: string | null;
+  customer_project_lead: string | null;
+  teamoptix_project_lead: string | null;
+  provider_name: string | null;
 };
 
 type LegalSection = {
@@ -22,6 +27,8 @@ type LegalSection = {
   workflow_status: string | null;
 };
 
+const PLACEHOLDER_PATTERN = /\[[^\]\n]+\]/g;
+
 function isArchived(section: Pick<LegalSection, "status" | "workflow_status">) {
   return (
     section.status?.toUpperCase() === "ARCHIVED" ||
@@ -34,6 +41,44 @@ function versionLabel(document: LegalDocument) {
     document.current_version ||
     `${document.version_major}.${document.version_minor}.${document.version_patch}`
   );
+}
+
+function formatEffectiveDate(value: string | null) {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toISOString().slice(0, 10);
+}
+
+function mergeValues(document: LegalDocument) {
+  return new Map<string, string>([
+    ["[Customer Legal Name]", document.customer_legal_name?.trim() ?? ""],
+    ["[Date]", formatEffectiveDate(document.effective_at)],
+    ["[Customer Lead]", document.customer_project_lead?.trim() ?? ""],
+    ["[Team Optix Lead]", document.teamoptix_project_lead?.trim() ?? ""],
+  ]);
+}
+
+function unresolvedFields(sections: LegalSection[], values: Map<string, string>) {
+  const unresolved = new Set<string>();
+
+  for (const section of sections) {
+    const text = `${section.title}\n${section.summary ?? ""}\n${section.body_markdown}`;
+    const matches = text.match(PLACEHOLDER_PATTERN) ?? [];
+
+    for (const match of matches) {
+      if (!values.has(match) || !values.get(match)) {
+        unresolved.add(match);
+      }
+    }
+  }
+
+  return Array.from(unresolved).sort();
+}
+
+function resolveText(value: string | null, values: Map<string, string>) {
+  if (!value) return value ?? "";
+  return value.replace(PLACEHOLDER_PATTERN, (token) => values.get(token) || token);
 }
 
 export async function POST(req: NextRequest) {
@@ -51,7 +96,9 @@ export async function POST(req: NextRequest) {
   const { data: document, error: documentError } = await db
     .schema("legal")
     .from("document")
-    .select("id, document_key, title, version_major, version_minor, version_patch, current_version")
+    .select(
+      "id, document_key, title, version_major, version_minor, version_patch, current_version, effective_at, customer_legal_name, customer_project_lead, teamoptix_project_lead, provider_name"
+    )
     .eq("id", documentId)
     .single();
 
@@ -101,6 +148,29 @@ export async function POST(req: NextRequest) {
   const sections = ((sectionRows ?? []) as LegalSection[]).filter(
     (section) => !isArchived(section)
   );
+  const values = mergeValues(legalDocument);
+  const unresolved = unresolvedFields(sections, values);
+
+  if (unresolved.length > 0) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Resolve document fields before locking this version.",
+        code: "UNRESOLVED_DOCUMENT_FIELDS",
+        unresolvedFields: unresolved,
+      },
+      { status: 400 }
+    );
+  }
+
+  const resolvedSections = sections.map((section) => ({
+    id: section.id,
+    section_number: section.section_number,
+    section_key: section.section_key,
+    title: resolveText(section.title, values),
+    summary: resolveText(section.summary, values),
+    body_markdown: resolveText(section.body_markdown, values),
+  }));
 
   const snapshot = {
     document: {
@@ -111,15 +181,13 @@ export async function POST(req: NextRequest) {
       version_major: legalDocument.version_major,
       version_minor: legalDocument.version_minor,
       version_patch: legalDocument.version_patch,
+      effective_at: legalDocument.effective_at,
+      customer_legal_name: legalDocument.customer_legal_name,
+      customer_project_lead: legalDocument.customer_project_lead,
+      teamoptix_project_lead: legalDocument.teamoptix_project_lead,
+      provider_name: legalDocument.provider_name ?? "Team Optix, LLC",
     },
-    sections: sections.map((section) => ({
-      id: section.id,
-      section_number: section.section_number,
-      section_key: section.section_key,
-      title: section.title,
-      summary: section.summary,
-      body_markdown: section.body_markdown,
-    })),
+    sections: resolvedSections,
   };
 
   const { data: version, error: insertError } = await db
