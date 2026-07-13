@@ -165,15 +165,6 @@ export async function POST(
     return NextResponse.json({ error: "No open missing clock-out discrepancy found." }, { status: 409 });
   }
 
-  const correctedClockOutDate = new Date(clockOutAt).toISOString().slice(0, 10);
-
-  if (correctedClockOutDate !== serviceDate) {
-    return NextResponse.json(
-      { error: "Clock-out correction must match the discrepancy service date." },
-      { status: 400 }
-    );
-  }
-
   const originalClockInMs = new Date(discrepancy.clock_in).getTime();
   const correctedClockOutMs = new Date(clockOutAt).getTime();
 
