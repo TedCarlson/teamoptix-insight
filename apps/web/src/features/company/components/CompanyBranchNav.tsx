@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import IdentityPill from "@/features/access/components/IdentityPill";
 import { useAccess } from "@/features/access/AccessProvider";
 
@@ -24,6 +25,36 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     pathname.startsWith(`/company/${slug}/driver/`);
 
   const access = useAccess();
+  const [legalActionCount, setLegalActionCount] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadLegalSignal() {
+      try {
+        const res = await fetch(`/api/company/${slug}/legal/tasks`, {
+          method: "GET",
+          cache: "no-store",
+          credentials: "include",
+        });
+        const data = await res.json();
+
+        if (!active) return;
+
+        setLegalActionCount(
+          res.ok ? Number(data?.customer_action_count ?? 0) || 0 : 0
+        );
+      } catch {
+        if (active) setLegalActionCount(0);
+      }
+    }
+
+    if (slug) void loadLegalSignal();
+
+    return () => {
+      active = false;
+    };
+  }, [slug]);
 
   if (isDriverShellRoute) {
     return null;
@@ -45,6 +76,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const payrollBase = `${base}/payroll`;
   const billingBase = `${base}/billing`;
   const analyticsBase = `${base}/analytics`;
+  const legalRequiredBase = `${base}/admin/legal/required`;
 
   const mainItems: NavItem[] = isAdminUser
     ? [
@@ -56,6 +88,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
             path === base ||
             path.startsWith(analyticsBase) ||
             path === `${base}/readiness` ||
+            path.startsWith(`${base}/admin/legal`) ||
             path.startsWith(billingBase) ||
             path.startsWith(payrollBase) ||
             path.startsWith(assetsBase) ||
@@ -73,6 +106,15 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
       ];
 
   const overviewSubItems: NavItem[] = [
+    ...(legalActionCount > 0
+      ? [
+          {
+            label: `Signature Required (${legalActionCount})`,
+            href: legalRequiredBase,
+            match: (path: string) => path.startsWith(`${base}/admin/legal`),
+          },
+        ]
+      : []),
     {
       label: "Analytics",
       href: analyticsBase,
@@ -212,6 +254,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const inConfigBranch = pathname === configBase || pathname.startsWith(`${configBase}/`);
   const inAssetsBranch = pathname === assetsBase || pathname.startsWith(`${assetsBase}/`);
   const inPayrollBranch = pathname === payrollBase || pathname.startsWith(`${payrollBase}/`);
+  const inLegalBranch = pathname.startsWith(`${base}/admin/legal`);
 
 
   const subItems = !isAdminUser
@@ -230,7 +273,8 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
         ? assetsSubItems
         : inConfigBranch
           ? configSubItems
-          : pathname === base ||
+          : inLegalBranch ||
+            pathname === base ||
               pathname === `${base}/payroll` ||
               pathname === billingBase
             ? overviewSubItems
@@ -302,7 +346,13 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
                 key={item.href}
                 href={item.href}
                 className={`app-workspace-tile app-workspace-tile--surface${active ? " app-workspace-tile--active" : ""}`}
-                style={item.label === "Mileage Audit" ? { marginLeft: 18 } : undefined}
+                style={
+                  item.label.startsWith("Signature Required")
+                    ? { background: "#fee2e2", borderColor: "#ef4444", color: "#991b1b" }
+                    : item.label === "Mileage Audit"
+                      ? { marginLeft: 18 }
+                      : undefined
+                }
               >
                 {item.label}
               </Link>

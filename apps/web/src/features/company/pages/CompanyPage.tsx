@@ -23,6 +23,19 @@ type CompanyRecord = {
   created_at: string | null;
 };
 
+type LegalTaskSummary = {
+  open_count: number;
+  customer_action_count: number;
+  teamoptix_action_count: number;
+  tasks: Array<{
+    id: string;
+    status: string | null;
+    document_title: string | null;
+    version_label: string | null;
+    blocking_reason: string | null;
+  }>;
+};
+
 type CompanyOverview = {
   generated_at: string;
   profile: {
@@ -231,6 +244,7 @@ export default function CompanyPage() {
   const [overview, setOverview] = useState<CompanyOverview | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(true);
   const [overviewError, setOverviewError] = useState<string | null>(null);
+  const [legalTasks, setLegalTasks] = useState<LegalTaskSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
 
@@ -363,6 +377,43 @@ export default function CompanyPage() {
     };
   }, [slug]);
 
+  useEffect(() => {
+    let active = true;
+
+    async function loadLegalTasks() {
+      try {
+        const res = await fetch(`/api/company/${slug}/legal/tasks`, {
+          method: "GET",
+          cache: "no-store",
+          credentials: "include",
+        });
+        const data = await res.json();
+
+        if (!active) return;
+
+        setLegalTasks(
+          res.ok
+            ? {
+                open_count: Number(data?.open_count ?? 0) || 0,
+                customer_action_count: Number(data?.customer_action_count ?? 0) || 0,
+                teamoptix_action_count: Number(data?.teamoptix_action_count ?? 0) || 0,
+                tasks: Array.isArray(data?.tasks) ? data.tasks : [],
+              }
+            : null
+        );
+      } catch {
+        if (active) setLegalTasks(null);
+      }
+    }
+
+    if (slug && isCompanyAdmin) void loadLegalTasks();
+    else setLegalTasks(null);
+
+    return () => {
+      active = false;
+    };
+  }, [isCompanyAdmin, slug]);
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -470,6 +521,28 @@ export default function CompanyPage() {
 
         {activeSurface === "profile" ? (
           <section style={{ display: "grid", gap: 10 }}>
+            {legalTasks && legalTasks.open_count > 0 ? (
+              <SectionCard
+                eyebrow="Customer Admin · Legal"
+                title="Signature Required"
+                action={
+                  <Link
+                    className="primary-action"
+                    href={`/company/${slug}/admin/legal/required`}
+                    style={{ background: "#dc2626", borderColor: "#dc2626" }}
+                  >
+                    Review
+                  </Link>
+                }
+              >
+                <p className="app-card__body" style={{ margin: 0 }}>
+                  {legalTasks.customer_action_count > 0
+                    ? `${legalTasks.customer_action_count} locked legal document${legalTasks.customer_action_count === 1 ? " is" : "s are"} waiting for customer review and acceptance.`
+                    : "Customer legal acceptance is complete. Team Optix finalization is pending."}
+                </p>
+              </SectionCard>
+            ) : null}
+
             <SectionCard eyebrow="Operating profile" title={heading}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
                 <MiniStat label="Avg daily routes" value={averageRoutesLabel} />
