@@ -529,7 +529,21 @@ export default function CompanyPage() {
                   <Link
                     className="primary-action"
                     href={`/company/${slug}/admin/legal/required`}
-                    style={{ background: "#dc2626", borderColor: "#dc2626" }}
+                    style={{
+                      alignItems: "center",
+                      background: "#dc2626",
+                      border: "1px solid #dc2626",
+                      borderRadius: 999,
+                      color: "#ffffff",
+                      display: "inline-flex",
+                      fontSize: 13,
+                      fontWeight: 800,
+                      justifyContent: "center",
+                      lineHeight: 1,
+                      minHeight: 34,
+                      padding: "0 16px",
+                      textDecoration: "none",
+                    }}
                   >
                     Review
                   </Link>
