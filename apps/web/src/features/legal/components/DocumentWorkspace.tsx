@@ -6,6 +6,7 @@ import { EditorialNotesPanel } from "./EditorialNotesPanel";
 import { LegalEditorPane } from "./LegalEditorPane";
 import { LegalSectionRail } from "./LegalSectionRail";
 import { LegalToolbar } from "./LegalToolbar";
+import { LegalAcceptanceOverlay } from "./LegalAcceptanceOverlay";
 import { RevisionHistoryPanel } from "./RevisionHistoryPanel";
 import styles from "./legal-workspace.module.css";
 
@@ -25,16 +26,37 @@ type LegalSection = {
 
 type LegalDocumentVersion = {
   id: string;
+  document_id?: string | null;
   version_label?: string | null;
+  title?: string | null;
   status?: string | null;
   section_count?: number | null;
+  content_snapshot?: {
+    document?: { title?: string | null; version_label?: string | null };
+    sections?: Array<{
+      section_number?: number | null;
+      title?: string | null;
+      body_markdown?: string | null;
+    }>;
+  } | null;
   created_at?: string | null;
+};
+
+type LegalDocumentAcceptance = {
+  id: string;
+  document_version_id?: string | null;
+  accepted_by_name?: string | null;
+  accepted_by_email?: string | null;
+  accepted_by_title?: string | null;
+  accepted_by_company?: string | null;
+  accepted_at?: string | null;
 };
 
 type DocumentWorkspaceProps = {
   document?: unknown;
   sections?: LegalSection[] | null;
   versions?: LegalDocumentVersion[] | null;
+  acceptances?: LegalDocumentAcceptance[] | null;
   exitHref?: string;
 };
 
@@ -52,6 +74,7 @@ export function DocumentWorkspace({
   document = null,
   sections,
   versions,
+  acceptances,
   exitHref = "/teamoptix/business/contracts",
 }: DocumentWorkspaceProps) {
   const [sectionRows, setSectionRows] = useState<LegalSection[]>(() => {
@@ -60,6 +83,10 @@ export function DocumentWorkspace({
   const [versionRows, setVersionRows] = useState<LegalDocumentVersion[]>(() => {
     return Array.isArray(versions) ? versions : [];
   });
+  const [acceptanceRows, setAcceptanceRows] = useState<LegalDocumentAcceptance[]>(() => {
+    return Array.isArray(acceptances) ? acceptances : [];
+  });
+  const [selectedAcceptanceVersion, setSelectedAcceptanceVersion] = useState<LegalDocumentVersion | null>(null);
   const [selectedSectionId, setSelectedSectionId] = useState(() => {
     return Array.isArray(sections) ? sections[0]?.id ?? "" : "";
   });
@@ -80,6 +107,10 @@ export function DocumentWorkspace({
 
   const documentTitle = documentValue(document, "title") ?? "Document";
   const documentId = documentValue(document, "id");
+
+  function acceptedRecordForVersion(versionId: string) {
+    return acceptanceRows.find((acceptance) => acceptance.document_version_id === versionId) ?? null;
+  }
 
   function updateSection(section: LegalSection) {
     setSectionRows((current) =>
@@ -194,6 +225,13 @@ export function DocumentWorkspace({
     }
   }
 
+  function recordAcceptance(acceptance: LegalDocumentAcceptance) {
+    setAcceptanceRows((current) => {
+      if (current.some((row) => row.id === acceptance.id)) return current;
+      return [acceptance, ...current];
+    });
+  }
+
   if (!selectedSection) {
     return (
       <section className={styles.workspace}>
@@ -270,8 +308,22 @@ export function DocumentWorkspace({
                       <p className={styles.revisionDetail}>
                         {version.status ?? "LOCKED"} · {version.section_count ?? 0} sections
                       </p>
+                      {acceptedRecordForVersion(version.id) ? (
+                        <p className={styles.revisionDetail}>
+                          Accepted {formatVersionDate(acceptedRecordForVersion(version.id)?.accepted_at)}
+                        </p>
+                      ) : null}
                     </div>
-                    <span className={styles.revisionTime}>{formatVersionDate(version.created_at)}</span>
+                    <div className={styles.versionCardActions}>
+                      <span className={styles.revisionTime}>{formatVersionDate(version.created_at)}</span>
+                      <button
+                        className={styles.miniButton}
+                        type="button"
+                        onClick={() => setSelectedAcceptanceVersion(version)}
+                      >
+                        {acceptedRecordForVersion(version.id) ? "View Acceptance" : "Accept"}
+                      </button>
+                    </div>
                   </article>
                 ))
               ) : (
@@ -283,6 +335,18 @@ export function DocumentWorkspace({
           <RevisionHistoryPanel sectionId={selectedSection.id} />
         </aside>
       </div>
+
+      {selectedAcceptanceVersion ? (
+        <LegalAcceptanceOverlay
+          version={selectedAcceptanceVersion}
+          existingAcceptance={acceptedRecordForVersion(selectedAcceptanceVersion.id)}
+          onClose={() => setSelectedAcceptanceVersion(null)}
+          onAccepted={(acceptance) => {
+            recordAcceptance(acceptance);
+            setSelectedAcceptanceVersion(null);
+          }}
+        />
+      ) : null}
 
       {reviewOpen ? (
         <div className={styles.reviewBackdrop} role="presentation">

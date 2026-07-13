@@ -100,3 +100,18 @@ export async function getDocumentVersions(documentId: string) {
   if (error) throw error;
   return data ?? [];
 }
+
+
+/**
+ * DOCUMENT VERSION ACCEPTANCES
+ */
+export async function getDocumentVersionAcceptances(documentId: string) {
+  const { data, error } = await db
+    .from("legal_document_version_acceptance_v")
+    .select("*")
+    .eq("document_id", documentId)
+    .order("accepted_at", { ascending: false });
+
+  if (error) throw error;
+  return data ?? [];
+}

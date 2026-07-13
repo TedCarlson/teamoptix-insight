@@ -507,3 +507,120 @@
   font-weight: 700;
   line-height: 1.5;
 }
+
+.versionCardActions {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.acceptanceBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  background: rgba(15, 23, 42, 0.46);
+  padding: 28px;
+}
+
+.acceptancePanel {
+  width: min(1180px, 100%);
+  max-height: calc(100dvh - 56px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line, #d6dfeb);
+  border-radius: 24px;
+  background: var(--surface, #ffffff);
+  box-shadow: 0 28px 90px rgba(15, 23, 42, 0.28);
+}
+
+.acceptanceHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid var(--line, #d6dfeb);
+  padding: 22px 24px;
+}
+
+.acceptanceLayout {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 0;
+}
+
+.acceptanceDocument {
+  min-height: 0;
+  max-height: calc(100dvh - 166px);
+  overflow: auto;
+  background: #f8fafc;
+  color: #475569;
+  padding: 28px 34px;
+}
+
+.acceptanceAside {
+  min-height: 0;
+  max-height: calc(100dvh - 166px);
+  overflow: auto;
+  border-left: 1px solid var(--line, #d6dfeb);
+  padding: 24px;
+}
+
+.acceptanceCopy {
+  color: var(--muted, #5c6b84);
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 0 0 18px;
+}
+
+.acceptanceFields {
+  display: grid;
+  gap: 12px;
+}
+
+.acceptanceCheck {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--text, #13203a);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.acceptanceCheck input {
+  margin-top: 3px;
+}
+
+.acceptanceRecord {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line, #d6dfeb);
+  border-radius: 16px;
+  background: #f8fafc;
+  padding: 14px;
+}
+
+@media (max-width: 980px) {
+  .acceptanceBackdrop {
+    padding: 10px;
+  }
+
+  .acceptancePanel {
+    max-height: calc(100dvh - 20px);
+  }
+
+  .acceptanceLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .acceptanceAside {
+    max-height: none;
+    border-left: 0;
+    border-top: 1px solid var(--line, #d6dfeb);
+  }
+}
