@@ -8,6 +8,7 @@ type Props = {
   versionActionState: "idle" | "locking" | "locked" | "exists" | "error";
   documentScope?: string;
   lockActionTone?: "go" | "next" | "blocked" | "muted";
+  releaseHref?: string | null;
   onToggleDraft: () => void;
   onOpenReview: () => void;
   onLockVersion: () => void;
@@ -45,6 +46,7 @@ export function LegalToolbar({
   versionActionState,
   documentScope = "TEMPLATE",
   lockActionTone = "next",
+  releaseHref,
   onToggleDraft,
   onOpenReview,
   onLockVersion,
@@ -94,9 +96,21 @@ export function LegalToolbar({
           {lockLabel(versionActionState)}
         </button>
 
-        <button className={styles.secondaryButton} type="button" disabled>
-          Publish
-        </button>
+        {isClientDocument ? (
+          releaseHref ? (
+            <Link className={[styles.secondaryButton, styles.actionButtonGo].join(" ")} href={releaseHref}>
+              Release to Customer
+            </Link>
+          ) : (
+            <button className={styles.secondaryButton} type="button" disabled>
+              Release to Customer
+            </button>
+          )
+        ) : (
+          <button className={styles.secondaryButton} type="button" disabled>
+            Publish
+          </button>
+        )}
 
         <Link className={styles.primaryButton} href={exitHref}>
           Exit Document

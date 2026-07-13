@@ -77,27 +77,27 @@ export function LegalWorkflowSignals({
     {
       label: "Lock client version",
       detail: hasLockedVersions
-        ? "A locked client version is ready for acceptance."
+        ? "A locked client version is ready to release to the customer."
         : fieldsReady
           ? "Ready to lock the customer-specific version."
           : "Blocked until required fields are complete.",
       tone: hasLockedVersions ? "done" : fieldsReady ? "go" : "blocked",
     },
     {
-      label: "Accept / vault",
+      label: "Release to customer",
       detail: hasAcceptance
-        ? "Acceptance exists and the vault record can be evidenced."
+        ? "Customer acceptance has been recorded."
         : hasLockedVersions
-          ? "Open Accept on a locked version to create the vault artifact."
+          ? "Send the locked version to the customer review lane."
           : "Blocked until the client document is locked.",
       tone: hasAcceptance ? "done" : hasLockedVersions ? "go" : "blocked",
     },
     {
-      label: "Evidence packet",
+      label: "Customer acceptance",
       detail: hasAcceptance
-        ? "Open the vault record to print or save the evidence packet."
-        : "Waiting for acceptance and vault creation.",
-      tone: hasAcceptance ? "next" : "muted",
+        ? "Customer has accepted the released document."
+        : "Waiting for the customer to review and accept.",
+      tone: hasAcceptance ? "done" : "muted",
     },
   ];
 

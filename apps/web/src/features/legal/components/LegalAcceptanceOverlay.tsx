@@ -30,6 +30,8 @@ type LegalDocumentAcceptance = {
 type Props = {
   version: LegalDocumentVersion;
   existingAcceptance?: LegalDocumentAcceptance | null;
+  companyId?: string | null;
+  defaultAcceptedByCompany?: string | null;
   onClose: () => void;
   onAccepted: (acceptance: LegalDocumentAcceptance) => void;
 };
@@ -55,13 +57,15 @@ function formatAcceptedAt(value?: string | null) {
 export function LegalAcceptanceOverlay({
   version,
   existingAcceptance,
+  companyId,
+  defaultAcceptedByCompany,
   onClose,
   onAccepted,
 }: Props) {
   const [acceptedByName, setAcceptedByName] = useState(existingAcceptance?.accepted_by_name ?? "");
   const [acceptedByEmail, setAcceptedByEmail] = useState(existingAcceptance?.accepted_by_email ?? "");
   const [acceptedByTitle, setAcceptedByTitle] = useState(existingAcceptance?.accepted_by_title ?? "");
-  const [acceptedByCompany, setAcceptedByCompany] = useState(existingAcceptance?.accepted_by_company ?? "");
+  const [acceptedByCompany, setAcceptedByCompany] = useState(existingAcceptance?.accepted_by_company ?? defaultAcceptedByCompany ?? "");
   const [acknowledgmentChecked, setAcknowledgmentChecked] = useState(Boolean(existingAcceptance));
   const [saveState, setSaveState] = useState<"idle" | "saving" | "accepted" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -101,6 +105,7 @@ export function LegalAcceptanceOverlay({
           acceptedByEmail,
           acceptedByTitle,
           acceptedByCompany,
+          companyId,
           acknowledgmentChecked,
         }),
       });

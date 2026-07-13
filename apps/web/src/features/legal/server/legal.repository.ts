@@ -180,3 +180,37 @@ export async function getCustomerLegalTasks() {
 
   return data ?? [];
 }
+
+export async function getCustomerLegalTasksForCompanySlug(slug: string) {
+  const { data, error } = await db
+    .from("legal_customer_legal_task_v")
+    .select("*")
+    .eq("company_slug", slug)
+    .order("released_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.warn("Company legal task queue unavailable", error);
+    return [];
+  }
+
+  return data ?? [];
+}
+
+export async function getDocumentVersionsByIds(versionIds: string[]) {
+  const ids = Array.from(new Set(versionIds.filter(Boolean)));
+
+  if (!ids.length) return [];
+
+  const { data, error } = await db
+    .from("legal_document_version_v")
+    .select("*")
+    .in("id", ids);
+
+  if (error) {
+    console.warn("Locked legal versions unavailable", error);
+    return [];
+  }
+
+  return data ?? [];
+}

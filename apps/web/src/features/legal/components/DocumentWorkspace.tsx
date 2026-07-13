@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useMemo, useState } from "react";
 
 import { EditorialNotesPanel } from "./EditorialNotesPanel";
@@ -65,6 +67,16 @@ type DocumentWorkspaceProps = {
   exitHref?: string;
 };
 
+
+function slugifyCustomerName(value: string | null) {
+  return (value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 function formatVersionDate(value?: string | null) {
   if (!value) return "—";
   return new Intl.DateTimeFormat("en", {
@@ -118,6 +130,14 @@ export function DocumentWorkspace({
   const isClientDocument = documentScope === "CLIENT_DOCUMENT";
   const hasLockedVersions = versionRows.some((version) => version.status === "LOCKED");
   const hasAcceptance = acceptanceRows.length > 0;
+  const customerSlug = slugifyCustomerName(
+    documentValue(documentRecord, "customer_legal_name") ??
+      documentValue(documentRecord, "customer_document_label")
+  );
+  const customerReviewHref =
+    isClientDocument && hasLockedVersions && customerSlug
+      ? `/company/${customerSlug}/admin/legal/required`
+      : null;
   const fieldsReady = Boolean(
     documentValue(documentRecord, "customer_legal_name") && documentValue(documentRecord, "effective_at")
   );
@@ -263,6 +283,31 @@ export function DocumentWorkspace({
     });
   }
 
+  async function deleteDraftClientDocument() {
+    if (!documentId || !isClientDocument) return;
+
+    const confirmed = window.confirm(
+      "Delete this draft client document? This is only allowed before locked versions, customer release, or acceptance."
+    );
+
+    if (!confirmed) return;
+
+    const res = await fetch("/api/legal/document/client/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ documentId }),
+    });
+
+    const json = await res.json().catch(() => null);
+
+    if (!json?.ok) {
+      window.alert(json?.error ?? "Client document delete failed.");
+      return;
+    }
+
+    window.location.href = exitHref;
+  }
+
   if (!selectedSection) {
     return (
       <section className={styles.workspace}>
@@ -273,6 +318,7 @@ export function DocumentWorkspace({
           versionActionState={versionActionState}
           documentScope={documentScope}
           lockActionTone={lockActionTone}
+          releaseHref={customerReviewHref}
           onToggleDraft={() => setDraftMode((current) => !current)}
           onOpenReview={() => setReviewOpen(true)}
           onLockVersion={lockVersion}
@@ -298,6 +344,7 @@ export function DocumentWorkspace({
         versionActionState={versionActionState}
         documentScope={documentScope}
         lockActionTone={lockActionTone}
+        releaseHref={customerReviewHref}
         onToggleDraft={() => setDraftMode((current) => !current)}
         onOpenReview={() => setReviewOpen(true)}
         onLockVersion={lockVersion}
@@ -340,6 +387,18 @@ export function DocumentWorkspace({
             fieldsReady={fieldsReady}
           />
 
+          {isClientDocument && !hasLockedVersions && !hasAcceptance ? (
+            <section className={styles.inspectorSection}>
+              <p className={styles.panelLabel}>Draft Controls</p>
+              <button className={styles.secondaryButton} type="button" onClick={deleteDraftClientDocument}>
+                Delete Draft Client Document
+              </button>
+              <p className={styles.emptyHelper}>
+                Delete is available only before this client document is locked, released, accepted, or vaulted.
+              </p>
+            </section>
+          ) : null}
+
           {isClientDocument ? (
             <LegalDocumentMetadataPanel
               document={documentRecord as Record<string, string | number | null>}
@@ -376,13 +435,23 @@ export function DocumentWorkspace({
                     <div className={styles.versionCardActions}>
                       <span className={styles.revisionTime}>{formatVersionDate(version.created_at)}</span>
                       {isClientDocument ? (
-                        <button
-                          className={styles.miniButton}
-                          type="button"
-                          onClick={() => setSelectedAcceptanceVersion(version)}
-                        >
-                          {acceptedRecordForVersion(version.id) ? "View Acceptance" : "Accept"}
-                        </button>
+                        acceptedRecordForVersion(version.id) ? (
+                          <button
+                            className={styles.miniButton}
+                            type="button"
+                            onClick={() => setSelectedAcceptanceVersion(version)}
+                          >
+                            View Acceptance
+                          </button>
+                        ) : customerReviewHref ? (
+                          <Link className={styles.miniButton} href={customerReviewHref}>
+                            Send to Client
+                          </Link>
+                        ) : (
+                          <button className={styles.miniButton} type="button" disabled>
+                            Send to Client
+                          </button>
+                        )
                       ) : (
                         <span className={styles.revisionDetail}>Template source</span>
                       )}
