@@ -116,7 +116,19 @@ export default async function TeamOptixContractsPage() {
 
           <section className="workspace-grid">
             <WorkspaceSection eyebrow="Customer Contracts" title="Executed Contracts" description="Customer-specific agreements, signed packages, renewals, and exceptions.">
-              <div />
+              <div className="signal-list">
+                <Link
+                  className="signal-list__row"
+                  href="/teamoptix/business/contracts/vault"
+                  style={{ color: "inherit", textDecoration: "none" }}
+                >
+                  <div>
+                    <strong>Document Vault</strong>
+                    <span>Accepted versions, signer records, timestamps, and evidence artifact status.</span>
+                  </div>
+                  <em>Open</em>
+                </Link>
+              </div>
             </WorkspaceSection>
             <WorkspaceSection eyebrow="Templates" title="Clause & Document Templates" description="Reusable contract structures and approved language.">
               <div />

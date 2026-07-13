@@ -115,3 +115,17 @@ export async function getDocumentVersionAcceptances(documentId: string) {
   if (error) throw error;
   return data ?? [];
 }
+
+/**
+ * COMPLIANCE VAULT
+ */
+export async function getDocumentVaultItems() {
+  const { data, error } = await db
+    .from("legal_document_vault_item_v")
+    .select("*")
+    .order("accepted_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  return data ?? [];
+}
