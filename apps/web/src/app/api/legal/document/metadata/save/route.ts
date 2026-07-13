@@ -24,22 +24,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const payload = {
-    customer_legal_name: cleanText(body?.customerLegalName),
-    customer_project_lead: cleanText(body?.customerProjectLead),
-    teamoptix_project_lead: cleanText(body?.teamOptixProjectLead),
-    provider_name: cleanText(body?.providerName) ?? "Team Optix, LLC",
-    effective_at: cleanDate(body?.effectiveDate),
-    updated_at: new Date().toISOString(),
-  };
-
-  const { data, error } = await db
-    .schema("legal")
-    .from("document")
-    .update(payload)
-    .eq("id", documentId)
-    .select("*")
-    .single();
+  const { data, error } = await db.rpc("legal_save_document_metadata", {
+    p_document_id: documentId,
+    p_customer_legal_name: cleanText(body?.customerLegalName),
+    p_effective_at: cleanDate(body?.effectiveDate),
+    p_customer_project_lead: cleanText(body?.customerProjectLead),
+    p_teamoptix_project_lead: cleanText(body?.teamOptixProjectLead),
+    p_provider_name: cleanText(body?.providerName) ?? "Team Optix, LLC",
+  });
 
   if (error) {
     return NextResponse.json(
@@ -48,5 +40,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  return NextResponse.json({ ok: true, document: data });
+  if (!data || data.ok === false) {
+    return NextResponse.json(
+      data ?? { ok: false, error: "Document fields save failed." },
+      { status: 400 }
+    );
+  }
+
+  return NextResponse.json(data);
 }
