@@ -129,3 +129,15 @@ export async function getDocumentVaultItems() {
   if (error) throw error;
   return data ?? [];
 }
+
+export async function getDocumentVaultItem(vaultItemId: string) {
+  const { data, error } = await db
+    .from("legal_document_vault_item_v")
+    .select("*")
+    .eq("id", vaultItemId)
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+

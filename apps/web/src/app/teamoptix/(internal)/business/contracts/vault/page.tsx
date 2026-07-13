@@ -105,7 +105,7 @@ export default async function TeamOptixDocumentVaultPage() {
                     <Link
                       key={item.id}
                       className="signal-list__row"
-                      href={documentHref(item)}
+                      href={`/teamoptix/business/contracts/vault/${item.id}/evidence`}
                       style={{ color: "inherit", textDecoration: "none" }}
                     >
                       <div>
@@ -124,7 +124,7 @@ export default async function TeamOptixDocumentVaultPage() {
                           <span>{unresolved} unresolved placeholder field{unresolved === 1 ? "" : "s"}</span>
                         ) : null}
                       </div>
-                      <em>{item.artifact_status ?? "STORED"}</em>
+                      <em>{item.storage_status ?? item.artifact_status ?? "STORED"}</em>
                     </Link>
                   );
                 })

@@ -5325,3 +5325,69 @@ body {
     grid-column: 1 / -1 !important;
   }
 }
+
+/* Document evidence packet */
+.legal-evidence-document {
+  display: grid;
+  gap: 22px;
+  border: 1px solid var(--line, #d6dfeb);
+  border-radius: 24px;
+  background: #fff;
+  color: var(--text, #13203a);
+  padding: 34px;
+}
+
+.legal-evidence-header {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 18px;
+  color: var(--muted, #5c6b84);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.legal-evidence-header p,
+.legal-evidence-section p {
+  margin: 0;
+}
+
+.legal-evidence-section {
+  display: grid;
+  gap: 10px;
+  page-break-inside: avoid;
+}
+
+.legal-evidence-section-number {
+  color: var(--muted, #5c6b84);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.legal-evidence-section h2 {
+  margin: 0;
+  color: var(--text, #13203a);
+}
+
+@media print {
+  .teamoptix-shell__rail,
+  .app-nav,
+  .workspace-actions,
+  .evidence-print-hide {
+    display: none !important;
+  }
+
+  .workspace-shell,
+  .workspace-main {
+    display: block !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  .legal-evidence-document {
+    border: 0 !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+  }
+}
