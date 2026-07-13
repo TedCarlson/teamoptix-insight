@@ -1,7 +1,7 @@
 import Link from "next/link";
 import TeamOptixShell from "@/features/teamoptix/navigation/TeamOptixShell";
 import { EvidencePrintButton } from "@/features/legal/components/EvidencePrintButton";
-import { getDocumentVaultItem } from "@/features/legal/server/legal.repository";
+import { getCustomerLegalTaskForVaultItem, getDocumentVaultItem } from "@/features/legal/server/legal.repository";
 import { WorkspaceHeader, WorkspaceSection } from "@/features/ui/workspace";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +10,15 @@ type EvidenceSection = {
   section_number?: number | null;
   title?: string | null;
   body_markdown?: string | null;
+};
+
+type LegalTask = {
+  id: string;
+  status?: string | null;
+  teamoptix_executed_at?: string | null;
+  teamoptix_executed_by?: string | null;
+  completed_at?: string | null;
+  blocking_reason?: string | null;
 };
 
 type VaultItem = {
@@ -74,9 +83,18 @@ function paragraphs(value?: string | null) {
     .filter(Boolean);
 }
 
+function taskStatusLabel(task?: LegalTask | null) {
+  if (!task) return "Acceptance Stored";
+  if (task.status === "EXECUTED_AND_VAULTED") return "Executed & Vaulted";
+  if (task.status === "CUSTOMER_ACCEPTED") return "Team Optix Finalization Pending";
+  if (task.status === "READY_FOR_CUSTOMER_REVIEW") return "Customer Review Pending";
+  return task.status?.replaceAll("_", " ") ?? "Acceptance Stored";
+}
+
 export default async function DocumentEvidencePage({ params }: Props) {
   const { vaultItemId } = await params;
   const item = (await getDocumentVaultItem(vaultItemId)) as VaultItem;
+  const legalTask = (await getCustomerLegalTaskForVaultItem(vaultItemId)) as LegalTask | null;
   const sections = Array.isArray(item.content_snapshot?.sections)
     ? item.content_snapshot.sections
     : [];
@@ -112,6 +130,9 @@ export default async function DocumentEvidencePage({ params }: Props) {
             <WorkspaceSection eyebrow="Evidence" title={item.storage_status ?? "PDF_PENDING"} description={`Checksum: ${item.checksum ?? "Pending"}`}>
               <div />
             </WorkspaceSection>
+            <WorkspaceSection eyebrow="Execution" title={taskStatusLabel(legalTask)} description={`Completed: ${formatDate(legalTask?.completed_at ?? legalTask?.teamoptix_executed_at)}`}>
+              <div />
+            </WorkspaceSection>
           </section>
 
           <WorkspaceSection
@@ -130,6 +151,10 @@ export default async function DocumentEvidencePage({ params }: Props) {
                 <p>Accepted Title: {item.accepted_by_title ?? "—"}</p>
                 <p>Accepted Company: {item.accepted_by_company ?? "—"}</p>
                 <p>Accepted At: {formatDate(item.accepted_at)}</p>
+                <p>Team Optix Execution Status: {taskStatusLabel(legalTask)}</p>
+                <p>Team Optix Executed At: {formatDate(legalTask?.teamoptix_executed_at)}</p>
+                <p>Execution Completed At: {formatDate(legalTask?.completed_at)}</p>
+                <p>Execution Evidence: {legalTask?.blocking_reason ?? "—"}</p>
                 <p>Checksum: {item.checksum ?? "Pending"}</p>
               </header>
 

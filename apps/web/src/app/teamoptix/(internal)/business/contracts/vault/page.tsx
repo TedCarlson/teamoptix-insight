@@ -1,9 +1,18 @@
 import Link from "next/link";
 import TeamOptixShell from "@/features/teamoptix/navigation/TeamOptixShell";
-import { getDocumentVaultItems } from "@/features/legal/server/legal.repository";
+import { getCustomerLegalTasksByVaultItemIds, getDocumentVaultItems } from "@/features/legal/server/legal.repository";
 import { WorkspaceHeader, WorkspaceSection } from "@/features/ui/workspace";
 
 export const dynamic = "force-dynamic";
+
+type LegalTask = {
+  id: string;
+  vault_item_id?: string | null;
+  status?: string | null;
+  teamoptix_executed_at?: string | null;
+  completed_at?: string | null;
+  blocking_reason?: string | null;
+};
 
 type VaultItem = {
   id: string;
@@ -64,8 +73,25 @@ function unresolvedPlaceholderCount(item: VaultItem) {
   return new Set(matches).size;
 }
 
+function taskStatusLabel(task?: LegalTask | null) {
+  if (!task) return "Acceptance Stored";
+  if (task.status === "EXECUTED_AND_VAULTED") return "Executed & Vaulted";
+  if (task.status === "CUSTOMER_ACCEPTED") return "Team Optix Finalization Pending";
+  if (task.status === "READY_FOR_CUSTOMER_REVIEW") return "Customer Review Pending";
+  return task.status?.replaceAll("_", " ") ?? "Acceptance Stored";
+}
+
 export default async function TeamOptixDocumentVaultPage() {
   const items = (await getDocumentVaultItems()) as VaultItem[];
+  const legalTasks = (await getCustomerLegalTasksByVaultItemIds(
+    items.map((item) => item.id)
+  )) as LegalTask[];
+  const legalTaskByVaultItemId = new Map(
+    legalTasks
+      .filter((task) => task.vault_item_id)
+      .map((task) => [String(task.vault_item_id), task])
+  );
+
   const storedCount = items.filter((item) => item.artifact_status === "STORED").length;
   const pdfPendingCount = items.filter((item) => item.storage_status !== "PDF_STORED").length;
   const unresolvedCount = items.reduce((sum, item) => sum + unresolvedPlaceholderCount(item), 0);
@@ -101,6 +127,7 @@ export default async function TeamOptixDocumentVaultPage() {
               {items.length ? (
                 items.map((item) => {
                   const unresolved = unresolvedPlaceholderCount(item);
+                  const legalTask = legalTaskByVaultItemId.get(item.id) ?? null;
                   return (
                     <Link
                       key={item.id}
@@ -117,6 +144,12 @@ export default async function TeamOptixDocumentVaultPage() {
                           Accepted by {item.accepted_by_name ?? "—"} ({item.accepted_by_email ?? "—"}) · {formatDate(item.accepted_at)}
                         </span>
                         <span>
+                          {taskStatusLabel(legalTask)}
+                          {legalTask?.teamoptix_executed_at
+                            ? ` · Team Optix executed ${formatDate(legalTask.teamoptix_executed_at)}`
+                            : ""}
+                        </span>
+                        <span>
                           {item.accepted_by_company ?? item.company_name ?? "No company recorded"}
                           {item.accepted_by_title ? ` · ${item.accepted_by_title}` : ""}
                         </span>
@@ -124,7 +157,7 @@ export default async function TeamOptixDocumentVaultPage() {
                           <span>{unresolved} unresolved placeholder field{unresolved === 1 ? "" : "s"}</span>
                         ) : null}
                       </div>
-                      <em>{item.storage_status ?? item.artifact_status ?? "STORED"}</em>
+                      <em>{taskStatusLabel(legalTask)}</em>
                     </Link>
                   );
                 })

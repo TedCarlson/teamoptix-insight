@@ -163,6 +163,29 @@ export async function getDocumentVaultItem(vaultItemId: string) {
   return data;
 }
 
+export async function getCustomerLegalTasksByVaultItemIds(vaultItemIds: string[]) {
+  const ids = Array.from(new Set(vaultItemIds.filter(Boolean)));
+
+  if (!ids.length) return [];
+
+  const { data, error } = await db
+    .from("legal_customer_legal_task_v")
+    .select("*")
+    .in("vault_item_id", ids);
+
+  if (error) {
+    console.warn("Vault legal task records unavailable", error);
+    return [];
+  }
+
+  return data ?? [];
+}
+
+export async function getCustomerLegalTaskForVaultItem(vaultItemId: string) {
+  const rows = await getCustomerLegalTasksByVaultItemIds([vaultItemId]);
+  return rows[0] ?? null;
+}
+
 /**
  * CUSTOMER LEGAL TASKS
  */
