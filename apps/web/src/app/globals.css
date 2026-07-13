@@ -201,6 +201,28 @@ h1 {
   color: white;
 }
 
+/* Shared disabled button treatment */
+.button:disabled,
+.button[aria-disabled="true"],
+.button-primary:disabled,
+.button-primary[aria-disabled="true"] {
+  background: #f1f5f9 !important;
+  border-color: #d8e1ee !important;
+  color: #94a3b8 !important;
+  box-shadow: none !important;
+  cursor: not-allowed !important;
+  opacity: 1 !important;
+  pointer-events: none !important;
+}
+
+.button:disabled:hover,
+.button[aria-disabled="true"]:hover,
+.button-primary:disabled:hover,
+.button-primary[aria-disabled="true"]:hover {
+  background: #f1f5f9 !important;
+  color: #94a3b8 !important;
+}
+
 .hero-stat {
   display: flex;
   flex-direction: column;

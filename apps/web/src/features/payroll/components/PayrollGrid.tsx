@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import type { DispatchEventRow } from "@/features/dispatch/lib/dispatchSupport";
 import type { RosterRow } from "@/features/people/types/roster.types";
 
@@ -52,6 +52,12 @@ import {
 
 export type PayrollView = "attendance" | "summary" | "payroll-detail" | "row-detail" | "adjustments";
 
+const PAYROLL_WEEK_END_STORAGE_PREFIX = "teamoptix.payroll.weekEnd.";
+
+function isIsoDate(value: string | null | undefined): value is string {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
 
 
 
@@ -82,9 +88,11 @@ export type PayrollView = "attendance" | "summary" | "payroll-detail" | "row-det
 
 export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; viewPicker?: React.ReactNode }) {
   const params = useParams();
+  const searchParams = useSearchParams();
   const slug = String(params?.slug ?? "");
+  const requestedWeekEnd = searchParams.get("weekEnd");
 
-  const [weekEnd, setWeekEnd] = useState(defaultPayrollWeekEndFriday);
+  const [weekEnd, setWeekEndState] = useState(defaultPayrollWeekEndFriday);
   const [roster, setRoster] = useState<RosterRow[]>([]);
   const [eventsByDay, setEventsByDay] = useState<Record<string, DispatchEventRow[]>>({});
   const [payrollMetrics, setPayrollMetrics] = useState<PayrollMetrics | null>(null);
@@ -101,6 +109,64 @@ export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; 
   const [reportEmailOpen, setReportEmailOpen] = useState(false);
   const [includeNonDriverWorkers, setIncludeNonDriverWorkers] = useState(
     DEFAULT_COMPANY_PAYROLL_CONFIG.include_non_driver_workers
+  );
+
+  useEffect(() => {
+    if (!slug) return;
+
+    if (isIsoDate(requestedWeekEnd)) {
+      setWeekEndState(requestedWeekEnd);
+
+      try {
+        window.localStorage.setItem(
+          `${PAYROLL_WEEK_END_STORAGE_PREFIX}${slug}`,
+          requestedWeekEnd
+        );
+      } catch {
+        // URL state is still the source of truth when storage is unavailable.
+      }
+
+      return;
+    }
+
+    try {
+      const storedWeekEnd = window.localStorage.getItem(
+        `${PAYROLL_WEEK_END_STORAGE_PREFIX}${slug}`
+      );
+
+      if (isIsoDate(storedWeekEnd)) {
+        setWeekEndState(storedWeekEnd);
+      }
+    } catch {
+      // Fall back to the previous completed payroll week.
+    }
+  }, [requestedWeekEnd, slug]);
+
+  const setWeekEnd = useCallback(
+    (nextWeekEnd: string) => {
+      if (!isIsoDate(nextWeekEnd)) return;
+
+      setWeekEndState(nextWeekEnd);
+
+      try {
+        window.localStorage.setItem(
+          `${PAYROLL_WEEK_END_STORAGE_PREFIX}${slug}`,
+          nextWeekEnd
+        );
+      } catch {
+        // Non-blocking persistence only.
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      params.set("weekEnd", nextWeekEnd);
+
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.pathname}?${params.toString()}`
+      );
+    },
+    [slug]
   );
 
   const days = useMemo(() => weekDaysForEnd(weekEnd), [weekEnd]);
@@ -327,7 +393,7 @@ export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; 
         throw new Error(data?.error ?? "Payroll rebuild failed.");
       }
 
-      window.location.reload();
+      setRepairRefreshKey((value) => value + 1);
     } catch (err) {
       alert(
         err instanceof Error
@@ -637,7 +703,7 @@ export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; 
             slug={slug}
             weekEnd={weekEnd}
             roster={roster}
-            onChanged={() => undefined}
+            onChanged={() => setRepairRefreshKey((value) => value + 1)}
           />
         ) : (
           <PayrollAttendanceTable
