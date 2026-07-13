@@ -1,6 +1,6 @@
 import Link from "next/link";
 import TeamOptixShell from "@/features/teamoptix/navigation/TeamOptixShell";
-import { getClientDocuments, getTemplateDocuments } from "@/features/legal/server/legal.repository";
+import { getClientDocuments, getCustomerLegalTasks, getTemplateDocuments } from "@/features/legal/server/legal.repository";
 import { WorkspaceHeader, WorkspaceSection } from "@/features/ui/workspace";
 
 export const dynamic = "force-dynamic";
@@ -52,6 +52,7 @@ function version(row: Record<string, unknown> | undefined) {
 export default async function TeamOptixContractsPage() {
   const documents = await getTemplateDocuments();
   const clientDocuments = await getClientDocuments();
+  const legalTasks = await getCustomerLegalTasks();
   const byKey = new Map(
     documents.map((document: Record<string, unknown>) => [String(document.document_key), document])
   );
@@ -70,6 +71,10 @@ export default async function TeamOptixContractsPage() {
   const publishedCount = rows.filter((row) => row.status.toLowerCase().includes("published")).length;
   const missingCount = rows.filter((row) => !row.document).length;
   const clientCount = clientDocuments.length;
+  const openLegalTaskCount = legalTasks.filter((task: Record<string, unknown>) => {
+    const status = String(task.status ?? "");
+    return status !== "EXECUTED_AND_VAULTED" && status !== "CANCELLED";
+  }).length;
 
   return (
     <TeamOptixShell>
@@ -88,7 +93,7 @@ export default async function TeamOptixContractsPage() {
             <WorkspaceSection eyebrow="Pulse" title="Published" description={`${publishedCount} commercial documents published.`}>
               <div />
             </WorkspaceSection>
-            <WorkspaceSection eyebrow="Pulse" title="Client Docs" description={`${clientCount} customer documents generated from locked templates.`}>
+            <WorkspaceSection eyebrow="Pulse" title="Legal Tasks" description={`${openLegalTaskCount} open legal task${openLegalTaskCount === 1 ? "" : "s"}; ${clientCount} client document${clientCount === 1 ? "" : "s"}.`}>
               <div />
             </WorkspaceSection>
           </section>
@@ -153,6 +158,17 @@ export default async function TeamOptixContractsPage() {
                     <span>Accepted versions, signer records, timestamps, and evidence artifact status.</span>
                   </div>
                   <em>Open</em>
+                </Link>
+                <Link
+                  className="signal-list__row"
+                  href="/teamoptix/business/contracts/tasks"
+                  style={{ color: "inherit", textDecoration: "none" }}
+                >
+                  <div>
+                    <strong>Customer Legal Tasks</strong>
+                    <span>Customer review, acceptance, Team Optix finalization, and Go Live legal readiness.</span>
+                  </div>
+                  <em>{openLegalTaskCount ? `${openLegalTaskCount} Open` : "Ready"}</em>
                 </Link>
               </div>
             </WorkspaceSection>

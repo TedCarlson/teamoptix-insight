@@ -163,3 +163,20 @@ export async function getDocumentVaultItem(vaultItemId: string) {
   return data;
 }
 
+/**
+ * CUSTOMER LEGAL TASKS
+ */
+export async function getCustomerLegalTasks() {
+  const { data, error } = await db
+    .from("legal_customer_legal_task_v")
+    .select("*")
+    .order("released_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.warn("Legal task queue unavailable", error);
+    return [];
+  }
+
+  return data ?? [];
+}
