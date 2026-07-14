@@ -65,22 +65,12 @@ async function updateArtifactStatus(params: {
 }) {
   const { supabase, artifact, status, metadata = {}, errorMessage = null } = params;
 
-  const updatePayload: Record<string, unknown> = {
-    artifact_status: status,
-    metadata_json: mergeMetadata(artifact, metadata),
-    error_message: errorMessage,
-    updated_at: new Date().toISOString(),
-  };
-
-  if (status === "NORMALIZED" || status === "FAILED") {
-    updatePayload.processed_at = new Date().toISOString();
-  }
-
-  const { error } = await supabase
-    .schema("core")
-    .from("operations_manifest_artifact")
-    .update(updatePayload)
-    .eq("id", artifact.id);
+  const { error } = await supabase.rpc("update_operations_manifest_artifact_status", {
+    p_artifact_id: artifact.id,
+    p_artifact_status: status,
+    p_metadata_json: metadata,
+    p_error_message: errorMessage,
+  });
 
   if (error) throw new Error(error.message);
 }
@@ -104,114 +94,6 @@ async function downloadManifestArtifact(
   return Buffer.from(await data.arrayBuffer());
 }
 
-async function replaceRows(params: {
-  supabase: SupabaseClientLike;
-  table: string;
-  sourceArtifactId: string;
-  rows: Record<string, unknown>[];
-}) {
-  const { supabase, table, sourceArtifactId, rows } = params;
-
-  const deleteResult = await supabase
-    .schema("core")
-    .from(table)
-    .delete()
-    .eq("source_artifact_id", sourceArtifactId);
-
-  if (deleteResult.error) {
-    throw new Error(deleteResult.error.message);
-  }
-
-  if (rows.length === 0) return;
-
-  const insertResult = await supabase
-    .schema("core")
-    .from(table)
-    .insert(rows);
-
-  if (insertResult.error) {
-    throw new Error(insertResult.error.message);
-  }
-}
-
-function deliveryStopRowsForInsert(artifact: ManifestArtifactRow, rows: any[]) {
-  return rows.map((row) => ({
-    company_id: artifact.company_id,
-    service_date: artifact.service_date,
-    route_key: artifact.route_key,
-    st_number: row.st_number,
-    sid: row.sid,
-    recipient: row.recipient,
-    contact_name: row.contact_name,
-    phone: row.phone,
-    address_line_1: row.address_line_1,
-    address_line_2: row.address_line_2,
-    city: row.city,
-    state: row.state,
-    postal_code: row.postal_code,
-    delivery_time_begin: row.delivery_time_begin,
-    delivery_time_end: row.delivery_time_end,
-    package_count: row.package_count,
-    stop_instructions: row.stop_instructions,
-    completed: row.completed,
-    source_artifact_id: artifact.id,
-    source_capture_plan_id: artifact.capture_plan_id,
-  }));
-}
-
-function deliveryPackageRowsForInsert(artifact: ManifestArtifactRow, rows: any[]) {
-  return rows.map((row) => ({
-    company_id: artifact.company_id,
-    service_date: artifact.service_date,
-    route_key: artifact.route_key,
-    st_number: row.st_number,
-    sid: row.sid,
-    recipient: row.recipient,
-    contact_name: row.contact_name,
-    address_line_1: row.address_line_1,
-    address_line_2: row.address_line_2,
-    city: row.city,
-    state: row.state,
-    postal_code: row.postal_code,
-    tracking_id: row.tracking_id,
-    prem_svc_raw: row.prem_svc_raw,
-    is_express: row.is_express,
-    is_residential: row.is_residential,
-    is_signature: row.is_signature,
-    is_hazmat: row.is_hazmat,
-    is_collection: row.is_collection,
-    source_artifact_id: artifact.id,
-    source_capture_plan_id: artifact.capture_plan_id,
-  }));
-}
-
-function pickupRowsForInsert(artifact: ManifestArtifactRow, rows: any[]) {
-  return rows.map((row) => ({
-    company_id: artifact.company_id,
-    service_date: artifact.service_date,
-    route_key: artifact.route_key,
-    pickup_list: row.pickup_list,
-    station: row.station,
-    wa: row.wa,
-    puid: row.puid,
-    pickup_type: row.pickup_type,
-    shipper_number: row.shipper_number,
-    shipper_name: row.shipper_name,
-    address_line_1: row.address_line_1,
-    address_line_2: row.address_line_2,
-    city: row.city,
-    state: row.state,
-    postal_code: row.postal_code,
-    ready_at: row.ready_at,
-    close_at: row.close_at,
-    pu_closed_at: row.pu_closed_at,
-    reason_code: row.reason_code,
-    package_count_expected: row.package_count_expected,
-    packages_picked_up: row.packages_picked_up,
-    source_artifact_id: artifact.id,
-    source_capture_plan_id: artifact.capture_plan_id,
-  }));
-}
 
 async function reconcileRouteStatus(params: {
   supabase: SupabaseClientLike;
@@ -352,26 +234,20 @@ async function processDeliveryArtifact(params: {
   const workbook = readManifestWorkbook(buffer);
   const parsed = parseDeliveryManifest(deliveryManifestSheetsFromWorkbook(workbook));
 
-  const stopRows = deliveryStopRowsForInsert(artifact, parsed.stopDetail.rows);
-  const packageRows = deliveryPackageRowsForInsert(artifact, parsed.packageDetail.rows);
+  const { data: replaceResult, error: replaceError } = await supabase.rpc(
+    "replace_operations_delivery_manifest_rows",
+    {
+      p_artifact_id: artifact.id,
+      p_stop_rows: parsed.stopDetail.rows,
+      p_package_rows: parsed.packageDetail.rows,
+    }
+  );
 
-  await replaceRows({
-    supabase,
-    table: "operations_delivery_manifest_stop",
-    sourceArtifactId: artifact.id,
-    rows: stopRows,
-  });
-
-  await replaceRows({
-    supabase,
-    table: "operations_delivery_manifest_package",
-    sourceArtifactId: artifact.id,
-    rows: packageRows,
-  });
+  if (replaceError) throw new Error(replaceError.message);
 
   return {
-    inserted_stop_count: stopRows.length,
-    inserted_package_count: packageRows.length,
+    inserted_stop_count: Number(replaceResult?.delivery_stop_count ?? 0),
+    inserted_package_count: Number(replaceResult?.delivery_package_count ?? 0),
     metadata: parsed.metadata,
     stop_detail: {
       parsed_row_count: parsed.stopDetail.parsedRowCount,
@@ -394,17 +270,18 @@ async function processPickupArtifact(params: {
   const workbook = readManifestWorkbook(buffer);
   const parsed = parsePickupManifest(pickupManifestSheetsFromWorkbook(workbook));
 
-  const pickupRows = pickupRowsForInsert(artifact, parsed.pickupDetail.rows);
+  const { data: replaceResult, error: replaceError } = await supabase.rpc(
+    "replace_operations_pickup_manifest_rows",
+    {
+      p_artifact_id: artifact.id,
+      p_pickup_rows: parsed.pickupDetail.rows,
+    }
+  );
 
-  await replaceRows({
-    supabase,
-    table: "operations_pickup_manifest_stop",
-    sourceArtifactId: artifact.id,
-    rows: pickupRows,
-  });
+  if (replaceError) throw new Error(replaceError.message);
 
   return {
-    inserted_pickup_count: pickupRows.length,
+    inserted_pickup_count: Number(replaceResult?.pickup_stop_count ?? 0),
     metadata: parsed.metadata,
     pickup_detail: {
       parsed_row_count: parsed.pickupDetail.parsedRowCount,
