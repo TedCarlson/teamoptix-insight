@@ -32,6 +32,7 @@ import { buildDispatchWorkspaceModel } from "../lib/dispatchWorkspaceModel";
 import { useDispatchWorkspaceData } from "../hooks/useDispatchWorkspaceData";
 import OperationsReportUploadOverlay from "@/features/operations/components/OperationsReportUploadOverlay";
 import OperationsWorkspaceToolbar from "@/features/operations/components/OperationsWorkspaceToolbar";
+import ExpressReportOverlay from "@/features/operations/manifests/components/ExpressReportOverlay";
 import OperationsIntelligenceFeed from "@/features/operations/components/OperationsIntelligenceFeed";
 import OperationsUploadCard from "@/features/operations/components/OperationsUploadCard";
 import { DispatchEventOverlay } from "../components/DispatchEventOverlay";
@@ -49,6 +50,7 @@ export default function DispatchPage() {
   const [savingEvent, setSavingEvent] = useState(false);
   const [locking, setLocking] = useState(false);
   const [uploadOverlayOpen, setUploadOverlayOpen] = useState(false);
+  const [expressReportOpen, setExpressReportOpen] = useState(false);
   const persistedCalloutKeys = useRef(new Set<string>());
 
   const serviceDate = todayIso();
@@ -677,6 +679,16 @@ export default function DispatchPage() {
           lastUpdatedAt={lastUpdatedAt}
           refreshing={loading}
           onRefresh={refreshWorkspace}
+          actions={
+            <button
+              type="button"
+              className="button"
+              onClick={() => setExpressReportOpen(true)}
+              style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}
+            >
+              Express Report
+            </button>
+          }
         />
 
         {error ? (
@@ -742,6 +754,14 @@ export default function DispatchPage() {
           </section>
       </section>
 
+
+      <ExpressReportOverlay
+        open={expressReportOpen}
+        slug={slug}
+        serviceDate={serviceDate}
+        surfaceLabel="Dispatch"
+        onClose={() => setExpressReportOpen(false)}
+      />
 
       <OperationsReportUploadOverlay
         open={uploadOverlayOpen}

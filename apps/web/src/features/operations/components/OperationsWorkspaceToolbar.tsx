@@ -5,6 +5,7 @@ type OperationsWorkspaceToolbarProps = {
   refreshing?: boolean;
   onRefresh: () => void;
   onUpload?: () => void;
+  actions?: React.ReactNode;
 };
 
 function formatLastUpdated(value: string | null) {
@@ -21,7 +22,7 @@ function formatLastUpdated(value: string | null) {
 }
 
 export default function OperationsWorkspaceToolbar(props: OperationsWorkspaceToolbarProps) {
-  const { lastUpdatedAt, refreshing = false, onRefresh, onUpload } = props;
+  const { lastUpdatedAt, refreshing = false, onRefresh, onUpload, actions } = props;
 
   return (
     <div
@@ -38,6 +39,7 @@ export default function OperationsWorkspaceToolbar(props: OperationsWorkspaceToo
       </span>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {actions}
         <button
           type="button"
           className="button"

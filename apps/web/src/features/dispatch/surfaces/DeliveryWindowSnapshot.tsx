@@ -6,6 +6,7 @@ import { eyebrow, panel } from "../lib/dispatchSupport";
 import OperationsIntelligenceFeed from "@/features/operations/components/OperationsIntelligenceFeed";
 import OperationsUploadCard from "@/features/operations/components/OperationsUploadCard";
 import ServiceSnapshotCard from "@/features/operations/components/ServiceSnapshotCard";
+import ExpressReportOverlay from "@/features/operations/manifests/components/ExpressReportOverlay";
 import RouteHealthSignal from "@/features/operations/delivery-window/components/RouteHealthSignal";
 import {
   computeFccRouteHealth,
@@ -282,6 +283,8 @@ function driverSignal(
 }
 
 export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
+  const [expressReportOpen, setExpressReportOpen] = useState(false);
+
   const { slug, serviceDate, routes, routeLabelForDisplay, onRefresh, onUploadReport } = props;
   const [payload, setPayload] = useState<DswPayload | null>(null);
   const [fccPayload, setFccPayload] = useState<FccPayload | null>(null);
@@ -693,7 +696,16 @@ console.log(
             <h2 style={{ margin: 0, fontSize: 18 }}>Service Line Up</h2>
           </div>
 
-          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center" }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
+            <button
+              type="button"
+              className="button"
+              onClick={() => setExpressReportOpen(true)}
+              style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}
+            >
+              Express Report
+            </button>
+
             {onRefresh ? (
               <button
                 type="button"
@@ -905,6 +917,14 @@ console.log(
         </div>
 
       </section>
+
+      <ExpressReportOverlay
+        open={expressReportOpen}
+        slug={slug}
+        serviceDate={serviceDate}
+        surfaceLabel="Service"
+        onClose={() => setExpressReportOpen(false)}
+      />
 
       <aside style={{ display: "grid", gap: 12 }}>
         {onUploadReport ? (
