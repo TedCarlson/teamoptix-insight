@@ -3,4 +3,5 @@ export * from "./manifest.headers";
 export * from "./manifest.metadata";
 export * from "./manifest.serviceFlags";
 export * from "./manifest.table";
+export * from "./manifest.workbook";
 export * from "./pickupManifest.parse";
