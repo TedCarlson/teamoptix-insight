@@ -2,6 +2,7 @@
 import json
 import hashlib
 import os
+import re
 import subprocess
 import sys
 import time
@@ -55,6 +56,7 @@ def request_service_dates(request: dict) -> list[str]:
 
 def infer_report_identity(filename: str) -> dict:
     name = filename.lower()
+    compact_name = re.sub(r"[^a-z0-9]+", "", name)
 
     if "daily service worksheet" in name:
         return {"report_family_key": "DSW", "report_shape_key": "DSW_DAILY_SERVICE_WORKSHEET", "report_frame": None, "display_filename": "Daily Service Worksheet.xlsx"}
@@ -62,11 +64,11 @@ def infer_report_identity(filename: str) -> dict:
         return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Service Area Summary.xlsx"}
     if "serviceareastatus" in name or "sastatus" in name:
         return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Work Area Summary.xlsx"}
-    if "combinedmanifest" in name or name.startswith("cm_"):
+    if "combinedmanifest" in compact_name or re.match(r"^cm\d{8}[_-]", name) or name.startswith("cm_"):
         return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Combined Manifest.xlsx"}
-    if "deliverymanifest" in name:
+    if "deliverymanifest" in compact_name or re.match(r"^\d{8}_\d{3}\s+.+\.xls$", name):
         return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Delivery Manifest.xlsx"}
-    if "pickupmanifest" in name or name.startswith("pm"):
+    if "pickupmanifest" in compact_name or re.match(r"^pm\d{8}[_-]", name) or name.startswith("pm"):
         return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Pickup Manifest.xlsx"}
     if "pickupassignments" in name or name.startswith("pa"):
         return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Pickup Assignments.xlsx"}
@@ -180,6 +182,7 @@ def artifact_matches_targets(request: dict, artifact: dict) -> bool:
     filename = str(artifact.get("filename") or "").lower()
     display = str(artifact.get("display_filename") or "").lower()
     haystack = f"{filename} {display}"
+    compact_haystack = re.sub(r"[^a-z0-9]+", "", haystack)
 
     for target in targets:
         if not isinstance(target, dict):
@@ -191,7 +194,8 @@ def artifact_matches_targets(request: dict, artifact: dict) -> bool:
 
         for pattern in patterns:
             needle = str(pattern or "").strip().lower()
-            if needle and needle in haystack:
+            compact_needle = re.sub(r"[^a-z0-9]+", "", needle)
+            if needle and (needle in haystack or compact_needle in compact_haystack):
                 return True
 
     return False
