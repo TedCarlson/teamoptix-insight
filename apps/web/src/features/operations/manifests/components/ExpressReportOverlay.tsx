@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+const EXPRESS_MAP_TAB_ENABLED = process.env.NEXT_PUBLIC_EXPRESS_MAP_TAB_ENABLED === "true";
+
 type ExpressRouteSummary = {
   route_key: string;
   route_label: string | null;
@@ -223,10 +225,21 @@ export default function ExpressReportOverlay({
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"exposure" | "map">("exposure");
   const [selectedStop, setSelectedStop] = useState<ExpressMapStop | null>(null);
+  const [showOpenOnly, setShowOpenOnly] = useState(false);
 
   const packages = useMemo(() => payload?.packages ?? [], [payload?.packages]);
-  const mapStops = useMemo(() => payload?.map_stops ?? [], [payload?.map_stops]);
-  const timeFrameGroups = useMemo(() => buildTimeFrameGroups(packages), [packages]);
+  const mapStops = useMemo(
+    () => (EXPRESS_MAP_TAB_ENABLED ? payload?.map_stops ?? [] : []),
+    [payload?.map_stops]
+  );
+  const visiblePackages = useMemo(
+    () => (showOpenOnly ? packages.filter((pkg) => !isComplete(pkg.completed)) : packages),
+    [packages, showOpenOnly]
+  );
+  const timeFrameGroups = useMemo(
+    () => buildTimeFrameGroups(visiblePackages),
+    [visiblePackages]
+  );
   const geocodedStops = useMemo(
     () => mapStops.filter((stop) => typeof stop.latitude === "number" && typeof stop.longitude === "number"),
     [mapStops]
@@ -398,12 +411,14 @@ export default function ExpressReportOverlay({
             <MetricCard label="Open" value={openCount} tone="hot" sublabel={`${openPct}% of express volume`} />
             <MetricCard label="Complete" value={completeCount} tone="cool" sublabel="Closed packages" />
             <MetricCard label="Time windows" value={timeFrameGroups.length} tone="neutral" sublabel="Grouped first" />
-            <MetricCard
-              label="Map stops"
-              value={mapStops.length || totals.express_stop_count}
-              tone="neutral"
-              sublabel={`${unmappedStops} pending coordinates`}
-            />
+            {EXPRESS_MAP_TAB_ENABLED ? (
+              <MetricCard
+                label="Map stops"
+                value={mapStops.length || totals.express_stop_count}
+                tone="neutral"
+                sublabel={`${unmappedStops} pending coordinates`}
+              />
+            ) : null}
           </section>
         ) : null}
 
@@ -417,7 +432,7 @@ export default function ExpressReportOverlay({
           <StatusCard tone="neutral" label="No Express packages found for this service date." />
         ) : null}
 
-        {packages.length > 0 || mapStops.length > 0 ? (
+        {packages.length > 0 || (EXPRESS_MAP_TAB_ENABLED && mapStops.length > 0) ? (
           <section
             style={{
               border: "1px solid #dbeafe",
@@ -434,31 +449,54 @@ export default function ExpressReportOverlay({
               active={activeTab === "exposure"}
               onClick={() => setActiveTab("exposure")}
             />
-            <TabButton
-              label="Map"
-              active={activeTab === "map"}
-              onClick={() => setActiveTab("map")}
-              badge={mapStops.length}
-            />
+            {EXPRESS_MAP_TAB_ENABLED ? (
+              <TabButton
+                label="Map"
+                active={activeTab === "map"}
+                onClick={() => setActiveTab("map")}
+                badge={mapStops.length}
+              />
+            ) : null}
           </section>
         ) : null}
 
         {activeTab === "exposure" && packages.length > 0 ? (
           <section style={{ display: "grid", gap: 10 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-              <h3 style={{ margin: 0, fontSize: 15 }}>Time-frame exposure</h3>
-              <span style={{ color: "#64748b", fontSize: 12, fontWeight: 900 }}>
-                Route appears inside each promised window
-              </span>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 15 }}>Time-frame exposure</h3>
+                <span style={{ color: "#64748b", fontSize: 12, fontWeight: 900 }}>
+                  Route appears inside each promised window
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowOpenOnly((value) => !value)}
+                style={{
+                  border: showOpenOnly ? "1px solid #ea580c" : "1px solid #cbd5e1",
+                  background: showOpenOnly ? "#fff7ed" : "#fff",
+                  color: showOpenOnly ? "#9a3412" : "#475569",
+                  borderRadius: 999,
+                  padding: "8px 12px",
+                  fontSize: 12,
+                  fontWeight: 950,
+                  cursor: "pointer",
+                }}
+              >
+                {showOpenOnly ? "Showing open only" : "Show open only"}
+              </button>
             </div>
 
-            {timeFrameGroups.map((group) => (
-              <TimeFrameCard key={group.key} group={group} />
-            ))}
+            {timeFrameGroups.length > 0 ? (
+              timeFrameGroups.map((group) => <TimeFrameCard key={group.key} group={group} />)
+            ) : (
+              <StatusCard tone="neutral" label="No open Express packages match this filter." />
+            )}
           </section>
         ) : null}
 
-        {activeTab === "map" ? (
+        {EXPRESS_MAP_TAB_ENABLED && activeTab === "map" ? (
           <section
             style={{
               border: "1px solid #dbeafe",
