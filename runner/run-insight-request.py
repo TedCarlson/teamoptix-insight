@@ -113,6 +113,43 @@ def target_artifact_keys(request: dict) -> set[str]:
         if isinstance(target, dict) and str(target.get("artifact_key") or "").strip()
     }
 
+def manifest_runtime_options(request: dict) -> dict:
+    payload = request.get("request_payload") or {}
+    raw_types = payload.get("manifest_types")
+    artifact_keys = target_artifact_keys(request)
+
+    manifest_types: list[str] = []
+
+    if isinstance(raw_types, list):
+        for value in raw_types:
+            normalized = str(value or "").strip().lower()
+            if normalized in {"combined", "delivery", "pickup"} and normalized not in manifest_types:
+                manifest_types.append(normalized)
+
+    if not manifest_types:
+        inferred = []
+        if "COMBINED_MANIFEST" in artifact_keys:
+            inferred.append("combined")
+        if "DELIVERY_MANIFEST" in artifact_keys:
+            inferred.append("delivery")
+        if "PICKUP_MANIFEST" in artifact_keys:
+            inferred.append("pickup")
+        manifest_types = inferred
+
+    skip_combined_payload = payload.get("skip_combined")
+    skip_combined = skip_combined_payload is True or str(skip_combined_payload).strip().lower() in {"1", "true", "yes", "on"}
+
+    if manifest_types and "combined" not in manifest_types:
+        skip_combined = True
+
+    if skip_combined:
+        manifest_types = [value for value in manifest_types if value != "combined"]
+
+    return {
+        "manifest_types": manifest_types,
+        "skip_combined": skip_combined,
+    }
+
 def target_runner_sections(request: dict) -> list[str]:
     sections: list[str] = []
     for target in request_targets(request):
@@ -371,8 +408,12 @@ def main() -> int:
         child_env["FCMS_SERVICE_DATE_END"] = request.get("service_date_end") or ""
         child_env["FCMS_REQUEST_TYPE"] = request.get("request_type") or ""
         child_env["FCMS_COLLECTION_SCOPE"] = (request.get("request_payload") or {}).get("collect_scope") or ""
+        manifest_options = manifest_runtime_options(request)
+
         child_env["FCMS_TARGET_SECTIONS"] = ",".join(target_runner_sections(request))
         child_env["FCMS_TARGET_ARTIFACT_KEYS"] = ",".join(sorted(target_artifact_keys(request)))
+        child_env["FCMS_MANIFEST_TYPES"] = ",".join(manifest_options["manifest_types"])
+        child_env["FCMS_SKIP_COMBINED"] = "1" if manifest_options["skip_combined"] else "0"
 
         print("[insight-runner] ready to execute donor runner")
         if os.environ.get("INSIGHT_RUNNER_DRY_RUN", "1") == "1":

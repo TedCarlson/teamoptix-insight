@@ -14,7 +14,7 @@ from selenium.common.exceptions import StaleElementReferenceException
 from sys import platform
 import shutil
 import threading
-from datetime import datetime   
+from datetime import datetime
 
 from webdriver_manager.chrome import ChromeDriverManager
 
@@ -23,14 +23,14 @@ from extract_data import extractDataFromFolder
 
 from connections import getConnection, closeConnection, getScrapingConfig, getMainFolder, writeError, isPlatformLinux, getDailyServiceOptions
 
-# 
+#
 import logging
 log_folder = os.path.join(getMainFolder(), 'Logs')
 if not os.path.exists(log_folder): os.mkdir(log_folder)
 log_file = f"specific_date_{datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d_%H_%M_%S')}.log"
 
 logging.basicConfig(filename=os.path.join(log_folder, log_file), level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-# 
+#
 
 MAIN_FOLDER = os.path.join(getMainFolder(), 'Excels')
 
@@ -80,7 +80,7 @@ else:
         sys.exit()
 
 closeConnection(CONNECTION)
-# 
+#
 
 formatted_date = current_date.strftime("%m-%d-%Y")
 
@@ -96,7 +96,7 @@ FOLDERS = [
     os.path.join(MAIN_FOLDER, 'P_D_Manifest', 'Pickup Manifest'), # 1
     os.path.join(MAIN_FOLDER, 'P_D_Manifest', 'Delivery Manifest'), # 2
     os.path.join(MAIN_FOLDER, 'P_D_Manifest', 'Combined Manifest'), # 3
-    
+
     os.path.join(MAIN_FOLDER, 'Service Area Status'), # 4
     os.path.join(MAIN_FOLDER, 'Service Area Status', 'Work Area Summary'), # 5
     os.path.join(MAIN_FOLDER, 'Service Area Status', 'Service Area Summary'), # 6
@@ -133,7 +133,7 @@ def checkDownloads(index):
     # thread.start()
 
 def getDriver():
-    options = webdriver.ChromeOptions() 
+    options = webdriver.ChromeOptions()
     options.add_argument("start-maximized")
     # options.binary_location = '/usr/bin/google-chrome'
 
@@ -153,10 +153,10 @@ def getDriver():
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_experimental_option('useAutomationExtension', False)
 
-    # 
+    #
     options.add_argument('--ignore-certificate-errors')
     options.add_argument('--allow-running-insecure-content')
-    # 
+    #
 
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     # driver = webdriver.Chrome(options=options)
@@ -176,6 +176,27 @@ def element_opacity_exists(el_ID):
 SECTION_LIST = ["P&D", "Service", "Pickup", "SCH", "Daily Service"]
 ACTIVE_SECTION = ''
 ACTIVE_SECTION_OPTION = 0
+
+def requested_manifest_types():
+    raw_types = os.environ.get("FCMS_MANIFEST_TYPES", "").strip().lower()
+    requested = {
+        value.strip()
+        for value in raw_types.split(",")
+        if value.strip()
+    }
+
+    if not requested:
+        requested = {"combined", "delivery", "pickup"}
+
+    if os.environ.get("FCMS_SKIP_COMBINED", "0").strip().lower() in {"1", "true", "yes", "on"}:
+        requested.discard("combined")
+
+    return requested
+
+REQUESTED_MANIFEST_TYPES = requested_manifest_types()
+
+def should_download_manifest(manifest_type):
+    return manifest_type in REQUESTED_MANIFEST_TYPES
 
 def scrollTo(el, driver):
     desired_y = (el.size['height'] / 2) + el.location['y']
@@ -252,10 +273,10 @@ def main(section_='', option_=0, retry=1):
         # //div[@class='gf_header-UserDtl']
 
         logging.info("Login successfull!")
-        
+
         # headers = driver.execute_script("var req = new XMLHttpRequest();req.open('GET', document.location, false);req.send(null);return req.getAllResponseHeaders()")
         # headers = headers.splitlines()
-        
+
         # logging.info(json.dumps(headers, indent=2))
 
         # cookie = driver.execute_script("return document.cookie")
@@ -293,7 +314,7 @@ def main(section_='', option_=0, retry=1):
 
             WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.XPATH, "//li[@id='mainTabSettab_1']")))
             time.sleep(5)
-        
+
         if secion_index <= 0:
             # P&D Mainifests
             ACTIVE_SECTION = 'P&D'
@@ -304,7 +325,7 @@ def main(section_='', option_=0, retry=1):
 
             # manifestForm:date_input
             date_element = WebDriverWait(driver, 30).until( EC.presence_of_element_located( (By.XPATH, "//input[@id='manifestForm:date_input']") ) )
-            
+
             script = "document.getElementById('manifestForm:date_input').value = '{}';".format(SCRAPE_DATE)
             driver.execute_script(script)
             time.sleep(1)
@@ -342,57 +363,66 @@ def main(section_='', option_=0, retry=1):
                 time.sleep(1)
 
                 # Combined Manifest
-                c_m = WebDriverWait(driver, 30).until( EC.element_to_be_clickable((By.XPATH, "//em[contains(text(), 'Combined Manifest')]")) )
-                time.sleep(1)
-                try:
-                    c_m.click()
-                except:
-                    c_m.find_element(By.XPATH, '..').click()
+                if should_download_manifest("combined"):
+                    c_m = WebDriverWait(driver, 30).until( EC.element_to_be_clickable((By.XPATH, "//em[contains(text(), 'Combined Manifest')]")) )
+                    time.sleep(1)
+                    try:
+                        c_m.click()
+                    except:
+                        c_m.find_element(By.XPATH, '..').click()
 
-                logging.info("Clicked the tab Combined Manifest...")
-                WebDriverWait(driver, 30).until( element_opacity_exists(c_m.find_element(By.XPATH, '../..').get_attribute('id')) )
-                time.sleep(1)
-                logging.info("Waiting for loading...")
-                if driver.find_elements(By.XPATH, "//input[@id='manifestForm:buttonCombinedGenerateExcel']"):
-                    driver.find_element(By.XPATH, "//input[@id='manifestForm:buttonCombinedGenerateExcel']").click()
-                    checkDownloads(3)
-                    time.sleep(3)
-                
+                    logging.info("Clicked the tab Combined Manifest...")
+                    WebDriverWait(driver, 30).until( element_opacity_exists(c_m.find_element(By.XPATH, '../..').get_attribute('id')) )
+                    time.sleep(1)
+                    logging.info("Waiting for loading...")
+                    if driver.find_elements(By.XPATH, "//input[@id='manifestForm:buttonCombinedGenerateExcel']"):
+                        driver.find_element(By.XPATH, "//input[@id='manifestForm:buttonCombinedGenerateExcel']").click()
+                        checkDownloads(3)
+                        time.sleep(3)
+                else:
+                    logging.info("Skipping Combined Manifest by request payload")
+
                 # Delivery Manifest
-                d_m = WebDriverWait(driver, 30).until( EC.element_to_be_clickable((By.XPATH, "//em[contains(text(), 'Delivery Manifest')]")) )
-                time.sleep(1)
-                try:
-                    d_m.click()
-                except:
-                    d_m.find_element(By.XPATH, '..').click()
+                if should_download_manifest("delivery"):
+                    d_m = WebDriverWait(driver, 30).until( EC.element_to_be_clickable((By.XPATH, "//em[contains(text(), 'Delivery Manifest')]")) )
+                    time.sleep(1)
+                    try:
+                        d_m.click()
+                    except:
+                        d_m.find_element(By.XPATH, '..').click()
 
-                logging.info("Clicked the tab Delivery Manifest...")
-                WebDriverWait(driver, 30).until( element_opacity_exists(d_m.find_element(By.XPATH, '../..').get_attribute('id')) )
-                time.sleep(1)
-                logging.info("Waiting for loading...")
+                    logging.info("Clicked the tab Delivery Manifest...")
+                    WebDriverWait(driver, 30).until( element_opacity_exists(d_m.find_element(By.XPATH, '../..').get_attribute('id')) )
+                    time.sleep(1)
+                    logging.info("Waiting for loading...")
 
-                if driver.find_elements(By.XPATH, "//input[@id='manifestForm:buttonDeliveryGenerateExcel']"):
-                    driver.find_element(By.XPATH, "//input[@id='manifestForm:buttonDeliveryGenerateExcel']").click()
-                    checkDownloads(2)
-                    time.sleep(3)
+                    if driver.find_elements(By.XPATH, "//input[@id='manifestForm:buttonDeliveryGenerateExcel']"):
+                        driver.find_element(By.XPATH, "//input[@id='manifestForm:buttonDeliveryGenerateExcel']").click()
+                        checkDownloads(2)
+                        time.sleep(3)
+                else:
+                    logging.info("Skipping Delivery Manifest by request payload")
 
                 # Pickup manifest
-                p_m = WebDriverWait(driver, 30).until( EC.element_to_be_clickable((By.XPATH, "//em[contains(text(), 'Pickup Manifest')]")) )
-                time.sleep(1)
-                try:
-                    p_m.click()
-                except:
-                    p_m.find_element(By.XPATH, '..').click()
-                
-                logging.info("Clicked the tab Pickup manifest...")
-                WebDriverWait(driver, 30).until( element_opacity_exists(p_m.find_element(By.XPATH, '../..').get_attribute('id')) )
-                time.sleep(1)
-                logging.info("Waiting for loading...")
+                if should_download_manifest("pickup"):
+                    p_m = WebDriverWait(driver, 30).until( EC.element_to_be_clickable((By.XPATH, "//em[contains(text(), 'Pickup Manifest')]")) )
+                    time.sleep(1)
+                    try:
+                        p_m.click()
+                    except:
+                        p_m.find_element(By.XPATH, '..').click()
 
-                if driver.find_elements(By.XPATH, "//input[@id='manifestForm:buttonGenerateExcel']"):
-                    driver.find_element(By.XPATH, "//input[@id='manifestForm:buttonGenerateExcel']").click()
-                    checkDownloads(1)
-                    time.sleep(3)
+                    logging.info("Clicked the tab Pickup manifest...")
+                    WebDriverWait(driver, 30).until( element_opacity_exists(p_m.find_element(By.XPATH, '../..').get_attribute('id')) )
+                    time.sleep(1)
+                    logging.info("Waiting for loading...")
+
+                    if driver.find_elements(By.XPATH, "//input[@id='manifestForm:buttonGenerateExcel']"):
+                        driver.find_element(By.XPATH, "//input[@id='manifestForm:buttonGenerateExcel']").click()
+                        checkDownloads(1)
+                        time.sleep(3)
+                else:
+                    logging.info("Skipping Pickup Manifest by request payload")
             ACTIVE_SECTION_OPTION = 0
         if secion_index <= 1:
             ACTIVE_SECTION = 'Service'
@@ -403,7 +433,7 @@ def main(section_='', option_=0, retry=1):
 
             # saStatusForm:date_input
             date_element = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//input[@id='saStatusForm:date_input']")))
-            
+
             script = "document.getElementById('saStatusForm:date_input').value = '{}';".format(SCRAPE_DATE)
             driver.execute_script(script)
             time.sleep(1)
@@ -458,7 +488,7 @@ def main(section_='', option_=0, retry=1):
                 driver.find_element(By.XPATH, "//input[@id='saStatusForm:buttonGenerateExcel']").click()
                 checkDownloads(5)
                 time.sleep(3)
-            
+
             ACTIVE_SECTION_OPTION = 0
         if secion_index <= 4:
             ACTIVE_SECTION = 'Daily Service'
