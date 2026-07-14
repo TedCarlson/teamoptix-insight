@@ -6,6 +6,7 @@ import {
   listCompanyOperationsTicketAssignments,
   listOperationsTicketTemplates,
   listTeamOptixCompanyOptions,
+  type CompanyOperationsTicketAssignmentRow,
 } from "@/features/teamoptix/automation/server/ticketControl.server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -141,6 +142,139 @@ function formatSchedule(row: {
       : row.window_preset;
 
   return `${cadence} · ${window}`;
+}
+
+
+function buildRunnerCollectionRequestPayloadPreview(assignment: CompanyOperationsTicketAssignmentRow) {
+  return {
+    rpc: "public.create_operations_collection_request",
+    arguments: {
+      p_company_slug: assignment.company_slug,
+      p_request_type: "TARGETED_RECOVERY",
+      p_service_date: "SERVICE_DATE_TO_APPROVE",
+      p_service_date_start: null,
+      p_service_date_end: null,
+      p_requested_reports: ["FCC"],
+      p_priority: assignment.effective_priority,
+      p_request_payload: {
+        source: "teamoptix_assignment_runner_payload",
+        intent: "all_route_manifest_capture",
+        collect_scope: "all_route_manifests",
+        control_level: "platform_managed",
+        runner_goal: "collect_delivery_pickup_manifests_for_all_p_and_d_work_areas",
+        assignment_id: assignment.id,
+        template_key: assignment.template_key,
+        manifest_work_area_mode: "all_options_except_zero",
+        manifest_types: ["delivery", "pickup"],
+        skip_combined: true,
+        targets: [
+          {
+            key: "P_AND_D_DELIVERY_MANIFEST",
+            label: "P&D · Delivery Manifest",
+            artifact_key: "DELIVERY_MANIFEST",
+            report_family_key: "FCC",
+            runner_section: "P_AND_D",
+            expected_filename_match: ["DeliveryManifest"],
+          },
+          {
+            key: "P_AND_D_PICKUP_MANIFEST",
+            label: "P&D · Pickup Manifest",
+            artifact_key: "PICKUP_MANIFEST",
+            report_family_key: "FCC",
+            runner_section: "P_AND_D",
+            expected_filename_match: ["PickupManifest", "PM"],
+          },
+        ],
+      },
+    },
+    runner_runtime_effect: {
+      FCMS_TARGET_SECTIONS: "P_AND_D",
+      FCMS_TARGET_ARTIFACT_KEYS: "DELIVERY_MANIFEST,PICKUP_MANIFEST",
+      FCMS_MANIFEST_TYPES: "delivery,pickup",
+      FCMS_SKIP_COMBINED: "1",
+      p_and_d_behavior: "Loop all manifestForm:workAreas options except option 0; download Delivery and Pickup; skip Combined.",
+    },
+  };
+}
+
+async function queueAllRouteManifestCollection(formData: FormData) {
+  "use server";
+
+  const assignmentId = readString(formData, "assignmentId");
+  const serviceDate = readString(formData, "serviceDate");
+
+  if (!assignmentId) {
+    throw new Error("Assignment is required.");
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(serviceDate)) {
+    throw new Error("Service date is required.");
+  }
+
+  const supabase = await getSupabaseServerClient();
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session) {
+    throw new Error("Unauthorized.");
+  }
+
+  const { data: access, error: accessError } = await supabase.rpc("access_context");
+
+  if (accessError) {
+    throw new Error(accessError.message);
+  }
+
+  if (!access?.is_platform_owner) {
+    throw new Error("Only Team Optix platform owners can queue manifest collections.");
+  }
+
+  const { data: assignment, error: assignmentError } = await supabase
+    .from("company_operations_ticket_assignment_v")
+    .select("*")
+    .eq("id", assignmentId)
+    .maybeSingle();
+
+  if (assignmentError) {
+    throw new Error(assignmentError.message);
+  }
+
+  if (!assignment) {
+    throw new Error("Assignment not found.");
+  }
+
+  const preview = buildRunnerCollectionRequestPayloadPreview(assignment as CompanyOperationsTicketAssignmentRow);
+  const args = preview.rpc === "public.create_operations_collection_request"
+    ? preview.arguments
+    : null;
+
+  if (!args) {
+    throw new Error("Unsupported payload preview.");
+  }
+
+  const { error } = await supabase.rpc("create_operations_collection_request", {
+    p_company_slug: args.p_company_slug,
+    p_request_type: args.p_request_type,
+    p_service_date: serviceDate,
+    p_service_date_start: null,
+    p_service_date_end: null,
+    p_requested_reports: args.p_requested_reports,
+    p_priority: args.p_priority,
+    p_request_payload: {
+      ...args.p_request_payload,
+      service_date: serviceDate,
+      queued_from_assignment_id: assignmentId,
+    },
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/teamoptix/automation/assignments");
+  redirect("/teamoptix/automation/assignments");
 }
 
 export default async function Page() {
@@ -320,6 +454,70 @@ export default async function Page() {
                 </table>
               </div>
             </WorkspaceSection>
+
+            {assignments.length > 0 ? (
+              <WorkspaceSection
+                eyebrow="Runner Payload"
+                title="All-Route Manifest Collection"
+                description="Queues the current VPS runner lane: all P&D work areas, Delivery + Pickup manifests, Combined skipped."
+              >
+                <div style={{ display: "grid", gap: 16 }}>
+                  {assignments.map((assignment) => {
+                    const preview = buildRunnerCollectionRequestPayloadPreview(assignment);
+
+                    return (
+                      <article className="app-card" key={`payload-${assignment.id}`} style={{ display: "grid", gap: 12, padding: 18 }}>
+                        <div>
+                          <h3 style={{ margin: 0 }}>{assignment.company_slug} · {assignment.template_name}</h3>
+                          <p style={{ margin: "6px 0 0", color: "#64748b", fontSize: 13 }}>
+                            Runner lane: operations_collection_request · P_AND_D · all dropdown work areas · Delivery/Pickup only.
+                          </p>
+                        </div>
+
+                        <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+                          <div><strong>Request Type</strong><br />TARGETED_RECOVERY</div>
+                          <div><strong>Runner Section</strong><br />P_AND_D</div>
+                          <div><strong>Manifest Types</strong><br />delivery, pickup</div>
+                          <div><strong>Skip Combined</strong><br />true</div>
+                        </div>
+
+                        <form action={queueAllRouteManifestCollection} style={{ alignItems: "end", display: "flex", flexWrap: "wrap", gap: 10 }}>
+                          <input name="assignmentId" type="hidden" value={assignment.id} />
+                          <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 800 }}>
+                            Service Date
+                            <input name="serviceDate" required type="date" />
+                          </label>
+                          <button className="primary-action" type="submit">
+                            Queue All-Route Delivery + Pickup
+                          </button>
+                        </form>
+
+                        <details style={{ border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
+                          <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 800, padding: "10px 12px" }}>
+                            View runner payload
+                          </summary>
+                          <pre
+                            style={{
+                              background: "#020617",
+                              color: "#e2e8f0",
+                              fontSize: 12,
+                              lineHeight: 1.45,
+                              margin: 0,
+                              maxHeight: 420,
+                              overflow: "auto",
+                              padding: 14,
+                              whiteSpace: "pre-wrap",
+                            }}
+                          >
+                            {JSON.stringify(preview, null, 2)}
+                          </pre>
+                        </details>
+                      </article>
+                    );
+                  })}
+                </div>
+              </WorkspaceSection>
+            ) : null}
           </section>
         </section>
       </main>
