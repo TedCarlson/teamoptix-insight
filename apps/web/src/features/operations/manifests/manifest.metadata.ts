@@ -25,6 +25,7 @@ const METADATA_KEY_ALIASES: Record<string, keyof ManifestMetadata> = {
   "user type": "user_type",
   "vehicle #": "vehicle_number",
   "vehicle type": "vehicle_type",
+  vehicletype: "vehicle_type",
   "export generated": "export_generated_at",
   disclaimer: "disclaimer",
 };
