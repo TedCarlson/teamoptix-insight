@@ -43,6 +43,12 @@ export type CompanyOperationsTicketAssignmentRow = {
   updated_at: string;
 };
 
+export type TeamOptixCompanyOption = {
+  id: string;
+  company_slug: string;
+  company_name: string | null;
+};
+
 export async function listOperationsTicketTemplates() {
   const db = createSupabaseServiceRoleClient();
 
@@ -73,4 +79,19 @@ export async function listCompanyOperationsTicketAssignments() {
   }
 
   return (data ?? []) as CompanyOperationsTicketAssignmentRow[];
+}
+
+export async function listTeamOptixCompanyOptions() {
+  const db = createSupabaseServiceRoleClient();
+
+  const { data, error } = await db
+    .from("companies")
+    .select("id, company_slug, company_name")
+    .order("company_name", { ascending: true });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []) as TeamOptixCompanyOption[];
 }
