@@ -7,6 +7,9 @@ import OperationsIntelligenceFeed from "@/features/operations/components/Operati
 import OperationsUploadCard from "@/features/operations/components/OperationsUploadCard";
 import ServiceSnapshotCard from "@/features/operations/components/ServiceSnapshotCard";
 import ExpressReportOverlay from "@/features/operations/manifests/components/ExpressReportOverlay";
+import RouteHealthOverlay, {
+  type ManifestRouteHealthCard,
+} from "@/features/operations/manifests/components/RouteHealthOverlay";
 import RouteHealthSignal from "@/features/operations/delivery-window/components/RouteHealthSignal";
 import {
   computeFccRouteHealth,
@@ -67,6 +70,18 @@ type DeliveryWindowSnapshotProps = {
   onRefresh?: () => void;
   onUploadReport?: () => void;
 };
+type RouteHealthPayload = {
+  routes: ManifestRouteHealthCard[];
+  totals: Record<string, unknown> | null;
+  freshness?: Record<string, unknown>;
+  error?: string;
+};
+
+type SelectedManifestRouteHealth = {
+  routeLabel: string;
+  health: ManifestRouteHealthCard | null;
+};
+
 
 function normalizeWaNumber(value: string | null | undefined) {
   const raw = String(value ?? "").trim();
@@ -284,6 +299,9 @@ function driverSignal(
 
 export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
   const [expressReportOpen, setExpressReportOpen] = useState(false);
+  const [routeHealthPayload, setRouteHealthPayload] = useState<RouteHealthPayload | null>(null);
+  const [selectedRouteHealth, setSelectedRouteHealth] =
+    useState<SelectedManifestRouteHealth | null>(null);
 
   const { slug, serviceDate, routes, routeLabelForDisplay, onRefresh, onUploadReport } = props;
   const [payload, setPayload] = useState<DswPayload | null>(null);
@@ -384,6 +402,32 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
       active = false;
     };
   }, [serviceDate, slug]);
+  useEffect(() => {
+    let active = true;
+
+    async function loadRouteHealth() {
+      try {
+        const res = await fetch(
+          `/api/company/${slug}/operations/route-health?serviceDate=${encodeURIComponent(serviceDate)}`,
+          { credentials: "include", cache: "no-store" }
+        );
+
+        const data = (await res.json().catch(() => null)) as RouteHealthPayload | null;
+        if (!active) return;
+
+        setRouteHealthPayload(res.ok ? data : null);
+      } catch {
+        if (active) setRouteHealthPayload(null);
+      }
+    }
+
+    if (slug && serviceDate) void loadRouteHealth();
+
+    return () => {
+      active = false;
+    };
+  }, [serviceDate, slug]);
+
 
   const dswIndex = useMemo(() => {
     const map = new Map<string, DswCurrentRow>();
@@ -418,6 +462,57 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
 
     return map;
   }, [fccPayload?.rows]);
+  const manifestRouteHealthIndex = useMemo(() => {
+    const map = new Map<string, ManifestRouteHealthCard>();
+
+    function setKey(value: string | null | undefined, health: ManifestRouteHealthCard) {
+      const normalized = normalizeKey(value);
+      if (normalized) map.set(normalized, health);
+
+      const normalizedName = normalizedRouteName(value);
+      if (normalizedName) map.set(normalizedName, health);
+    }
+
+    for (const health of routeHealthPayload?.routes ?? []) {
+      setKey(health.route_key, health);
+      setKey(health.route_label, health);
+    }
+
+    return map;
+  }, [routeHealthPayload?.routes]);
+
+  function manifestHealthForItem(item: {
+    route: DispatchRoute | null;
+    row: DswCurrentRow | null;
+    key: string;
+  }) {
+    const candidates = [
+      item.route?.route_key,
+      item.route?.current_wa_num,
+      item.route?.route_name,
+      item.route ? routeKey(item.route) : null,
+      item.row?.route_baseline_id,
+      item.row?.wa_number,
+      item.row?.route_name,
+      item.key,
+    ];
+
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+
+      const normalized = normalizeKey(candidate);
+      const normalizedName = normalizedRouteName(candidate);
+
+      const direct = normalized ? manifestRouteHealthIndex.get(normalized) : null;
+      if (direct) return direct;
+
+      const nameMatch = normalizedName ? manifestRouteHealthIndex.get(normalizedName) : null;
+      if (nameMatch) return nameMatch;
+    }
+
+    return null;
+  }
+
 
   const routeRows = useMemo(() => {
     const matchedKeys = new Set<string>();
@@ -895,7 +990,18 @@ console.log(
                     gap: 8,
                   }}
                 >
-                  <RouteHealthSignal health={fccHealth} />
+                  <RouteHealthSignal
+                    health={fccHealth}
+                    title={`${fccHealth.tooltip} · Open route health`}
+                    onClick={() =>
+                      setSelectedRouteHealth({
+                        routeLabel: item.route
+                          ? routeLabelForDisplay(item.route)
+                          : dswDisplayKey(row!, item.sortOrder),
+                        health: manifestHealthForItem(item),
+                      })
+                    }
+                  />
                   <div
                     style={{
                       minWidth: 64,
@@ -924,6 +1030,14 @@ console.log(
         serviceDate={serviceDate}
         surfaceLabel="Service"
         onClose={() => setExpressReportOpen(false)}
+      />
+
+      <RouteHealthOverlay
+        open={Boolean(selectedRouteHealth)}
+        serviceDate={serviceDate}
+        routeLabel={selectedRouteHealth?.routeLabel ?? "Route"}
+        health={selectedRouteHealth?.health ?? null}
+        onClose={() => setSelectedRouteHealth(null)}
       />
 
       <aside style={{ display: "grid", gap: 12 }}>

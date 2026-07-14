@@ -8,32 +8,62 @@ const iconByStatus = {
   nosignal: "/icons/route-health/nosignal.svg",
 } satisfies Record<FccRouteHealth["status"], string>;
 
-export default function RouteHealthSignal(props: { health: FccRouteHealth }) {
-  const { health } = props;
+type RouteHealthSignalProps = {
+  health: FccRouteHealth;
+  onClick?: () => void;
+  title?: string;
+};
+
+export default function RouteHealthSignal(props: RouteHealthSignalProps) {
+  const { health, onClick, title } = props;
+
+  const content = (
+    <Image
+      src={iconByStatus[health.status]}
+      alt=""
+      aria-hidden="true"
+      width={24}
+      height={24}
+      style={{ display: "block" }}
+    />
+  );
+
+  const sharedStyle = {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    border: "1px solid #e6edf5",
+    background: "#fff",
+  } as const;
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        title={title ?? health.tooltip}
+        aria-label={title ?? health.label}
+        onClick={onClick}
+        style={{
+          ...sharedStyle,
+          padding: 0,
+          cursor: "pointer",
+        }}
+      >
+        {content}
+      </button>
+    );
+  }
 
   return (
     <span
-      title={health.tooltip}
-      aria-label={health.label}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: 30,
-        height: 30,
-        borderRadius: 10,
-        border: "1px solid #e6edf5",
-        background: "#fff",
-      }}
+      title={title ?? health.tooltip}
+      aria-label={title ?? health.label}
+      style={sharedStyle}
     >
-      <Image
-        src={iconByStatus[health.status]}
-        alt=""
-        aria-hidden="true"
-        width={24}
-        height={24}
-        style={{ display: "block" }}
-      />
+      {content}
     </span>
   );
 }
