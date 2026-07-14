@@ -55,6 +55,27 @@ type RouteSummary = {
   latest_processed_at: string | null;
 };
 
+type ExpressMapStop = {
+  stop_key: string;
+  route_key: string;
+  route_label: string | null;
+  sid: string | null;
+  st_number: string | null;
+  address_line_1: string | null;
+  address_line_2: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  geocode_status: string | null;
+  package_count: number;
+  open_count: number;
+  complete_count: number;
+  delivery_time_begin: string | null;
+  delivery_time_end: string | null;
+};
+
 function normalizeDate(value: string | null) {
   const raw = String(value ?? "").trim();
   if (!raw) return null;
@@ -68,6 +89,75 @@ function stopKey(row: ExpressReportRow) {
 
 function isCompleted(row: ExpressReportRow) {
   return String(row.completed ?? "").trim().toUpperCase() === "Y";
+}
+
+function normalizedPart(value: string | null | undefined) {
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toUpperCase();
+}
+
+function addressKey(row: ExpressReportRow) {
+  return [
+    normalizedPart(row.address_line_1),
+    normalizedPart(row.address_line_2),
+    normalizedPart(row.city),
+    normalizedPart(row.state),
+    normalizedPart(row.postal_code),
+  ]
+    .filter(Boolean)
+    .join("|");
+}
+
+function stopMapKey(row: ExpressReportRow) {
+  return [
+    normalizedPart(row.route_key),
+    normalizedPart(row.sid),
+    normalizedPart(row.st_number),
+    addressKey(row),
+  ]
+    .filter(Boolean)
+    .join("::");
+}
+
+function earliest(values: Array<string | null | undefined>) {
+  return values.filter(Boolean).sort().at(0) ?? null;
+}
+
+function buildMapStops(rows: ExpressReportRow[]) {
+  const grouped = new Map<string, ExpressReportRow[]>();
+
+  for (const row of rows) {
+    const key = stopMapKey(row) || `${row.route_key}|${row.sid ?? ""}|${row.st_number ?? ""}`;
+    grouped.set(key, [...(grouped.get(key) ?? []), row]);
+  }
+
+  return Array.from(grouped.entries()).map<ExpressMapStop>(([key, stopRows]) => {
+    const first = stopRows[0];
+    const completeCount = stopRows.filter(isCompleted).length;
+
+    return {
+      stop_key: key,
+      route_key: first.route_key,
+      route_label: first.route_label,
+      sid: first.sid,
+      st_number: first.st_number,
+      address_line_1: first.address_line_1,
+      address_line_2: first.address_line_2,
+      city: first.city,
+      state: first.state,
+      postal_code: first.postal_code,
+      latitude: null,
+      longitude: null,
+      geocode_status: "PENDING",
+      package_count: stopRows.length,
+      open_count: stopRows.length - completeCount,
+      complete_count: completeCount,
+      delivery_time_begin: earliest(stopRows.map((row) => row.delivery_time_begin)),
+      delivery_time_end: latest(stopRows.map((row) => row.delivery_time_end)),
+    };
+  });
 }
 
 function latest(values: Array<string | null | undefined>) {
@@ -192,28 +282,10 @@ export async function GET(
 
     const supabase = await getSupabaseServerClient();
 
-    const { data: company, error: companyError } = await supabase
-      .from("companies")
-      .select("id")
-      .eq("company_slug", slug)
-      .single();
-
-    if (companyError || !company) {
-      return NextResponse.json(
-        {
-          error: "Company not found.",
-          packages: [],
-          route_summaries: [],
-          totals: null,
-        },
-        { status: 404 }
-      );
-    }
-
     const { data, error } = await supabase
       .from("operations_manifest_express_report_v")
       .select("*")
-      .eq("company_id", company.id)
+      .eq("company_slug", slug)
       .eq("service_date", serviceDate)
       .order("route_key", { ascending: true })
       .order("st_number", { ascending: true })
@@ -240,6 +312,7 @@ export async function GET(
       route_summaries: routeSummaries,
       totals: buildTotals(routeSummaries),
       freshness: buildFreshness(rows),
+      map_stops: buildMapStops(rows),
       packages: rows.map((row) => ({
         route_key: row.route_key,
         route_label: row.route_label,
