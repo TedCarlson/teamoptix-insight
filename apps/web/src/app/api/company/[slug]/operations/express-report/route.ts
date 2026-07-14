@@ -23,6 +23,10 @@ type ExpressReportRow = {
   city: string | null;
   state: string | null;
   postal_code: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  geocode_status: string | null;
+  geocode_precision: string | null;
   completed: string | null;
   delivery_time_begin: string | null;
   delivery_time_end: string | null;
@@ -148,9 +152,9 @@ function buildMapStops(rows: ExpressReportRow[]) {
       city: first.city,
       state: first.state,
       postal_code: first.postal_code,
-      latitude: null,
-      longitude: null,
-      geocode_status: "PENDING",
+      latitude: first.latitude,
+      longitude: first.longitude,
+      geocode_status: first.geocode_status ?? "PENDING",
       package_count: stopRows.length,
       open_count: stopRows.length - completeCount,
       complete_count: completeCount,
@@ -333,6 +337,10 @@ export async function GET(
         city: row.city,
         state: row.state,
         postal_code: row.postal_code,
+        latitude: row.latitude,
+        longitude: row.longitude,
+        geocode_status: row.geocode_status,
+        geocode_precision: row.geocode_precision,
         stop_instructions: row.stop_instructions,
         is_residential: row.is_residential,
         is_signature: row.is_signature,
