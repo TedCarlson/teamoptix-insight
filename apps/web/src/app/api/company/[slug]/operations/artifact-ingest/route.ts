@@ -104,6 +104,7 @@ async function handleArtifactIngest(req: NextRequest, context: RouteContext) {
       .eq("company_id", resolved.company.id)
       .eq("artifact_kind", "REPORT_FILE")
       .eq("artifact_status", "READY_FOR_INGEST")
+      .not("normalized_filename", "in", '("Delivery Manifest.xlsx","Pickup Manifest.xlsx","Combined Manifest.xlsx")')
       .order("created_at", { ascending: true })
       .limit(5);
 

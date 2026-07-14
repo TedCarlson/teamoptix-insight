@@ -151,6 +151,7 @@ export async function GET() {
     .eq("artifact_kind", "REPORT_FILE")
     .eq("request_status", "ARTIFACTS_READY")
     .in("artifact_status", ["READY_FOR_INGEST", "ARTIFACTS_READY"])
+    .not("normalized_filename", "in", '("Delivery Manifest.xlsx","Pickup Manifest.xlsx","Combined Manifest.xlsx")')
     .order("created_at", { ascending: true })
     .limit(10);
 

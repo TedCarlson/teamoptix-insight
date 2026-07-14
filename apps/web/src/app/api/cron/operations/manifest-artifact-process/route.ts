@@ -17,6 +17,18 @@ export async function GET(req: NextRequest) {
 
   try {
     const supabase = createSupabaseServiceRoleClient();
+    const { data: promoted, error: promoteError } = await supabase.rpc(
+      "promote_operations_collection_manifest_artifacts",
+      {
+        p_collection_request_id: null,
+        p_limit: parseLimit(req),
+      }
+    );
+
+    if (promoteError) {
+      throw new Error(promoteError.message);
+    }
+
     const processed = await processCapturedManifestArtifacts({
       supabase,
       limit: parseLimit(req),
@@ -24,6 +36,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
+      promoted,
       processed_count: processed.length,
       processed,
       elapsed_ms: Date.now() - startedAt,
