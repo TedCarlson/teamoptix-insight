@@ -56,6 +56,40 @@ export async function GET(
     const mode = String(req.nextUrl.searchParams.get("mode") ?? "queue").toLowerCase();
     const activeStatuses = ["QUEUED", "CLAIMED", "RUNNING", "ARTIFACTS_READY", "INGESTING"];
 
+    if (mode === "today") {
+      const timeZone = "America/New_York";
+      const now = new Date();
+      const dateParts = new Intl.DateTimeFormat("en-CA", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(now);
+
+      const part = (type: string) =>
+        dateParts.find((item) => item.type === type)?.value ?? "";
+
+      const operationalDate = `${part("year")}-${part("month")}-${part("day")}`;
+
+      const { data, error } = await supabase
+        .from("operations_collection_request_v")
+        .select("*")
+        .eq("company_id", resolved.company.id)
+        .gte("created_at", `${operationalDate}T00:00:00-04:00`)
+        .lt("created_at", `${operationalDate}T23:59:59.999999-04:00`)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        return NextResponse.json({ error: error.message, rows: [] }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        operational_date: operationalDate,
+        rows: data ?? [],
+      });
+    }
+
     if (mode === "history") {
       const { data, error } = await supabase
         .from("operations_collection_request_v")

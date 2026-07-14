@@ -74,6 +74,7 @@ export type CollectionRequest = {
   requested_reports: string[];
   request_payload: Record<string, unknown>;
   duration_ms: number | null;
+  report_batch_ids: string[] | null;
   error_message: string | null;
   created_at: string;
   updated_at: string;

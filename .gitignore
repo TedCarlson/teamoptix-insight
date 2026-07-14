@@ -21,3 +21,4 @@ apps/web/.automation-downloads/
 tmp/automation-downloads/
 *.xls
 *.xlsx
+.vercel/
