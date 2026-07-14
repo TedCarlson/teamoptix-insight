@@ -7,7 +7,6 @@ import {
   listOperationsTicketTemplates,
   listTeamOptixCompanyOptions,
 } from "@/features/teamoptix/automation/server/ticketControl.server";
-import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -103,32 +102,21 @@ async function upsertCompanyTicketAssignment(formData: FormData) {
     throw new Error("Only Team Optix platform owners can edit ticket assignments.");
   }
 
-  const db = createSupabaseServiceRoleClient();
-
-  const { error } = await db
-    .schema("core")
-    .from("company_operations_ticket_assignment")
-    .upsert(
-      {
-        company_id: companyId,
-        template_id: templateId,
-        assignment_status: assignmentStatus,
-        is_enabled: isEnabled,
-        generation_mode: generationMode,
-        cadence_minutes: cadenceMinutes,
-        window_preset: windowPreset,
-        start_time: readString(formData, "startTime") || null,
-        end_time: readString(formData, "endTime") || null,
-        priority_override: priorityOverride,
-        route_scope: routeScope,
-        route_limit: routeLimit,
-        assignment_payload_json: {},
-        updated_at: new Date().toISOString(),
-      },
-      {
-        onConflict: "company_id,template_id",
-      }
-    );
+  const { error } = await supabase.rpc("upsert_company_operations_ticket_assignment", {
+    p_company_id: companyId,
+    p_template_id: templateId,
+    p_assignment_status: assignmentStatus,
+    p_is_enabled: isEnabled,
+    p_generation_mode: generationMode,
+    p_cadence_minutes: cadenceMinutes,
+    p_window_preset: windowPreset,
+    p_start_time: readString(formData, "startTime") || null,
+    p_end_time: readString(formData, "endTime") || null,
+    p_priority_override: priorityOverride,
+    p_route_scope: routeScope,
+    p_route_limit: routeLimit,
+    p_assignment_payload_json: {},
+  });
 
   if (error) {
     throw new Error(error.message);
