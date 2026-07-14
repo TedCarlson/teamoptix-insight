@@ -52,8 +52,10 @@ const secondaryLinksByDomain: Record<string, NavItem[]> = {
   ],
   automation: [
     { href: "/teamoptix/automation", label: "Overview" },
-    { href: "/teamoptix/automation/runners", label: "Runner Fleet" },
+    { href: "/teamoptix/automation/ticket-library", label: "Ticket Library" },
+    { href: "/teamoptix/automation/assignments", label: "Company Assignments" },
     { href: "/teamoptix/automation/collections", label: "Collections" },
+    { href: "/teamoptix/automation/runners", label: "Runner Fleet" },
     { href: "/teamoptix/automation/telemetry", label: "Telemetry" },
   ],
   ai: [
