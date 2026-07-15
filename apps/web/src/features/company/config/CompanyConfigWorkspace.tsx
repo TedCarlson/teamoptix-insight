@@ -3,7 +3,6 @@ import CompanyRouteSortConfig from "@/features/company/components/CompanyRouteSo
 import CompanyTimekeepingOversightConfig from "@/features/company/components/CompanyTimekeepingOversightConfig";
 import CompanyConfigAccessPanel from "./CompanyConfigAccessPanel";
 import AutomationConfigPanel from "@/features/automation/components/AutomationConfigPanel";
-import CompanyWorkOrderControlTable from "@/features/automation/components/CompanyWorkOrderControlTable";
 
 export type CompanyConfigSection = "company" | "leadership" | "access" | "operations" | "automation";
 
@@ -133,19 +132,6 @@ function CompanySection(props: CompanyConfigWorkspaceProps) {
         )}
       </SectionCard>
 
-      <SectionCard
-        eyebrow="Insight Collection Center"
-        title="Collection health and connection"
-      >
-        <AutomationConfigPanel
-          slug={props.slug}
-          canEdit={props.canEditCompany}
-          credentialMode="customer_managed"
-          workspaceMode="customer"
-          showOperationsWorkspace={false}
-        />
-      </SectionCard>
-
       <SectionCard eyebrow="Company identity" title="Contract / Terminal Identity / Service Area">
         <CompanyContractConfigManager slug={props.slug} canEdit={false} />
       </SectionCard>
@@ -205,17 +191,12 @@ export default function CompanyConfigWorkspace(props: CompanyConfigWorkspaceProp
   if (props.section === "operations") return <OperationsSection {...props} />;
   if (props.section === "automation") {
     return (
-      <section style={{ display: "grid", gap: 10 }}>
-        <SectionCard eyebrow="Automation control center" title="Company work-order table">
-          <CompanyWorkOrderControlTable slug={props.slug} canEdit={props.canEditCompany} />
-        </SectionCard>
-        <AutomationConfigPanel
-          slug={props.slug}
-          canEdit={props.canEditCompany}
-          credentialMode="customer_managed"
-          workspaceMode="customer"
-        />
-      </section>
+      <AutomationConfigPanel
+        slug={props.slug}
+        canEdit={props.canEditCompany}
+        credentialMode="customer_managed"
+        workspaceMode="customer"
+      />
     );
   }
   return <CompanySection {...props} />;
