@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 const EXPRESS_MAP_TAB_ENABLED = process.env.NEXT_PUBLIC_EXPRESS_MAP_TAB_ENABLED === "true";
 
@@ -99,6 +99,7 @@ type TimeFrameGroup = {
     open_count: number;
     complete_count: number;
     stop_count: number;
+    packages: ExpressPackageRow[];
   }>;
   package_count: number;
   open_count: number;
@@ -188,6 +189,7 @@ function buildTimeFrameGroups(rows: ExpressPackageRow[]): TimeFrameGroup[] {
         open_count: routePackages.filter((pkg) => !isComplete(pkg.completed)).length,
         complete_count: routePackages.filter((pkg) => isComplete(pkg.completed)).length,
         stop_count: new Set(routePackages.map(stopKey)).size,
+        packages: routePackages,
       }));
 
       const openCount = packages.filter((pkg) => !isComplete(pkg.completed)).length;
@@ -736,6 +738,8 @@ function MetricCard({
 
 function TimeFrameCard({ group }: { group: TimeFrameGroup }) {
   const openTone = group.open_count > 0;
+  const [expandedRoute, setExpandedRoute] = useState<string | null>(null);
+  const [expandedStop, setExpandedStop] = useState<string | null>(null);
 
   return (
     <section
@@ -743,12 +747,21 @@ function TimeFrameCard({ group }: { group: TimeFrameGroup }) {
         border: openTone ? "1px solid #fed7aa" : "1px solid #bbf7d0",
         borderRadius: 18,
         background: "#fff",
-        padding: 13,
-        display: "grid",
-        gap: 12,
+        overflow: "hidden",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          alignItems: "center",
+          flexWrap: "wrap",
+          padding: "12px 14px",
+          background: openTone ? "#fffaf5" : "#f0fdf4",
+          borderBottom: "1px solid #e2e8f0",
+        }}
+      >
         <div>
           <strong style={{ display: "block", fontSize: 16 }}>{group.label}</strong>
           <span style={{ color: "#64748b", fontSize: 12, fontWeight: 850 }}>
@@ -761,30 +774,251 @@ function TimeFrameCard({ group }: { group: TimeFrameGroup }) {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 8 }}>
-        {group.routes.map((route) => (
-          <div
-            key={`${group.key}-${route.route_key}`}
-            style={{
-              border: "1px solid #edf2f7",
-              borderRadius: 14,
-              padding: "9px 10px",
-              display: "grid",
-              gap: 5,
-              background: route.open_count > 0 ? "#fffaf5" : "#f8fafc",
-            }}
-          >
-            <strong style={{ fontSize: 13 }}>{route.route_label || route.route_key}</strong>
-            <span style={{ color: "#64748b", fontSize: 12, fontWeight: 850 }}>
-              {route.stop_count} stops · {route.package_count} packages
-            </span>
-            <span style={{ color: route.open_count > 0 ? "#9a3412" : "#166534", fontSize: 12, fontWeight: 950 }}>
-              {route.open_count > 0 ? `${route.open_count} open` : "Clear"} · {route.complete_count} complete
-            </span>
-          </div>
-        ))}
+      <div style={{ overflowX: "auto" }}>
+        <table
+          style={{
+            width: "100%",
+            minWidth: 760,
+            borderCollapse: "collapse",
+            fontSize: 12,
+          }}
+        >
+          <thead>
+            <tr style={{ background: "#f8fafc", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              <TableHead align="left">Route</TableHead>
+              <TableHead>Stops</TableHead>
+              <TableHead>Packages</TableHead>
+              <TableHead>Open</TableHead>
+              <TableHead>Complete</TableHead>
+              <TableHead align="left">Status</TableHead>
+            </tr>
+          </thead>
+          <tbody>
+            {group.routes.map((route) => {
+              const routeId = `${group.key}-${route.route_key}`;
+              const isExpanded = expandedRoute === routeId;
+              const stops = buildRouteStops(route.packages);
+
+              return (
+                <RouteTableRows
+                  key={routeId}
+                  routeId={routeId}
+                  route={route}
+                  stops={stops}
+                  expanded={isExpanded}
+                  expandedStop={expandedStop}
+                  onToggleRoute={() => {
+                    setExpandedRoute(isExpanded ? null : routeId);
+                    setExpandedStop(null);
+                  }}
+                  onToggleStop={(key) => setExpandedStop((current) => (current === key ? null : key))}
+                />
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </section>
+  );
+}
+
+type RouteStopGroup = {
+  key: string;
+  st_number: string | null;
+  sid: string | null;
+  address: string;
+  window: string;
+  packages: ExpressPackageRow[];
+  open_count: number;
+  complete_count: number;
+};
+
+function buildRouteStops(packages: ExpressPackageRow[]): RouteStopGroup[] {
+  const grouped = new Map<string, ExpressPackageRow[]>();
+
+  for (const pkg of packages) {
+    const key = stopKey(pkg) || pkg.tracking_id || `${pkg.route_key}|${pkg.st_number ?? ""}|${pkg.sid ?? ""}`;
+    grouped.set(key, [...(grouped.get(key) ?? []), pkg]);
+  }
+
+  return Array.from(grouped.entries())
+    .map(([key, stopPackages]) => {
+      const first = stopPackages[0];
+      const completeCount = stopPackages.filter((pkg) => isComplete(pkg.completed)).length;
+      return {
+        key,
+        st_number: first.st_number,
+        sid: first.sid,
+        address: fmtAddress(first) || "Address unavailable",
+        window: serviceWindow(first),
+        packages: stopPackages,
+        open_count: stopPackages.length - completeCount,
+        complete_count: completeCount,
+      };
+    })
+    .sort((a, b) => Number(a.st_number || 9999) - Number(b.st_number || 9999));
+}
+
+function RouteTableRows({
+  routeId,
+  route,
+  stops,
+  expanded,
+  expandedStop,
+  onToggleRoute,
+  onToggleStop,
+}: {
+  routeId: string;
+  route: TimeFrameGroup["routes"][number];
+  stops: RouteStopGroup[];
+  expanded: boolean;
+  expandedStop: string | null;
+  onToggleRoute: () => void;
+  onToggleStop: (key: string) => void;
+}) {
+  return (
+    <>
+      <tr
+        onClick={onToggleRoute}
+        style={{
+          cursor: "pointer",
+          background: route.open_count > 0 ? "#fffaf5" : "#fff",
+          borderTop: "1px solid #e2e8f0",
+        }}
+      >
+        <TableCell align="left">
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 950, color: "#0f172a" }}>
+            <span aria-hidden="true" style={{ width: 14, color: "#64748b" }}>{expanded ? "▾" : "▸"}</span>
+            {route.route_label || route.route_key}
+          </span>
+        </TableCell>
+        <TableCell>{route.stop_count}</TableCell>
+        <TableCell>{route.package_count}</TableCell>
+        <TableCell tone={route.open_count > 0 ? "hot" : undefined}>{route.open_count}</TableCell>
+        <TableCell tone="cool">{route.complete_count}</TableCell>
+        <TableCell align="left">
+          <span style={{ fontWeight: 950, color: route.open_count > 0 ? "#9a3412" : "#166534" }}>
+            {route.open_count > 0 ? "Exposure" : "Clear"}
+          </span>
+        </TableCell>
+      </tr>
+
+      {expanded ? (
+        <tr>
+          <td colSpan={6} style={{ padding: 0, background: "#f8fafc", borderTop: "1px solid #e2e8f0" }}>
+            <div style={{ padding: "10px 12px 12px 28px" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", border: "1px solid #dbe3ef" }}>
+                <thead>
+                  <tr style={{ background: "#f1f5f9", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    <TableHead align="left">Stop</TableHead>
+                    <TableHead align="left">Address</TableHead>
+                    <TableHead align="left">Window</TableHead>
+                    <TableHead>Packages</TableHead>
+                    <TableHead align="left">Status</TableHead>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stops.map((stop) => {
+                    const stopId = `${routeId}-${stop.key}`;
+                    const stopExpanded = expandedStop === stopId;
+                    return (
+                      <StopTableRows
+                        key={stopId}
+                        stop={stop}
+                        expanded={stopExpanded}
+                        onToggle={() => onToggleStop(stopId)}
+                      />
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </td>
+        </tr>
+      ) : null}
+    </>
+  );
+}
+
+function StopTableRows({ stop, expanded, onToggle }: { stop: RouteStopGroup; expanded: boolean; onToggle: () => void }) {
+  return (
+    <>
+      <tr onClick={onToggle} style={{ cursor: "pointer", borderTop: "1px solid #e2e8f0" }}>
+        <TableCell align="left">
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontWeight: 900 }}>
+            <span aria-hidden="true" style={{ width: 12, color: "#64748b" }}>{expanded ? "▾" : "▸"}</span>
+            {stop.st_number && stop.st_number !== "0" ? `ST ${stop.st_number}` : "Unnumbered"}
+            {stop.sid ? ` · SID ${stop.sid}` : ""}
+          </span>
+        </TableCell>
+        <TableCell align="left">{stop.address}</TableCell>
+        <TableCell align="left">{stop.window}</TableCell>
+        <TableCell>{stop.packages.length}</TableCell>
+        <TableCell align="left" tone={stop.open_count > 0 ? "hot" : "cool"}>
+          {stop.open_count > 0 ? `${stop.open_count} open` : "Complete"}
+        </TableCell>
+      </tr>
+      {expanded ? (
+        <tr>
+          <td colSpan={5} style={{ padding: 0, background: "#f8fafc", borderTop: "1px solid #e2e8f0" }}>
+            <div style={{ padding: "8px 10px 10px 26px" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff" }}>
+                <thead>
+                  <tr style={{ color: "#64748b", background: "#f8fafc", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    <TableHead align="left">Tracking number</TableHead>
+                    <TableHead align="left">Service</TableHead>
+                    <TableHead align="left">Status</TableHead>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stop.packages.map((pkg, index) => (
+                    <tr key={`${pkg.tracking_id ?? "package"}-${index}`} style={{ borderTop: "1px solid #edf2f7" }}>
+                      <TableCell align="left">
+                        <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontWeight: 850 }}>
+                          {pkg.tracking_id || "—"}
+                        </span>
+                      </TableCell>
+                      <TableCell align="left">{pkg.prem_svc_raw || "—"}</TableCell>
+                      <TableCell align="left" tone={isComplete(pkg.completed) ? "cool" : "hot"}>
+                        {isComplete(pkg.completed) ? "Complete" : "Open"}
+                      </TableCell>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </td>
+        </tr>
+      ) : null}
+    </>
+  );
+}
+
+function TableHead({ children, align = "right" }: { children: ReactNode; align?: "left" | "right" }) {
+  return <th style={{ padding: "8px 10px", textAlign: align, fontSize: 10, fontWeight: 950 }}>{children}</th>;
+}
+
+function TableCell({
+  children,
+  align = "right",
+  tone,
+}: {
+  children: ReactNode;
+  align?: "left" | "right";
+  tone?: "hot" | "cool";
+}) {
+  return (
+    <td
+      style={{
+        padding: "9px 10px",
+        textAlign: align,
+        color: tone === "hot" ? "#9a3412" : tone === "cool" ? "#166534" : "#334155",
+        fontWeight: tone ? 950 : 800,
+        verticalAlign: "top",
+      }}
+    >
+      {children}
+    </td>
   );
 }
 
