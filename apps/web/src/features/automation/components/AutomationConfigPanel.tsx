@@ -563,12 +563,11 @@ export default function AutomationConfigPanel(
                 <th style={th}>Created</th>
                 <th style={th}>Request</th>
                 <th style={th}>Status</th>
-                <th style={th}>Priority</th>
                 <th style={th}>Date</th>
                 <th style={th}>Reports</th>
                 <th style={th}>Timing</th>
                 <th style={th}>Duration</th>
-                <th style={th}>Artifacts</th>
+                <th style={th}>Collection Output</th>
               </tr>
             </thead>
 
@@ -580,7 +579,6 @@ export default function AutomationConfigPanel(
                   </td>
                   <td style={td}>{request.request_type}</td>
                   <td style={td}>{request.request_status}</td>
-                  <td style={td}>{request.priority}</td>
                   <td style={td}>
                     {request.service_date ??
                       request.service_date_start ??
@@ -597,20 +595,16 @@ export default function AutomationConfigPanel(
                     {formatDuration(request.duration_ms)}
                   </td>
                   <td style={td}>
-                    {request.report_batch_ids?.length
-                      ? `${request.report_batch_ids.length} batch${
-                          request.report_batch_ids.length === 1
-                            ? ""
-                            : "es"
-                        }`
-                      : "—"}
+                    {`${request.report_count ?? 0} reports · ${
+                      request.manifest_count ?? 0
+                    } manifests · ${request.route_count ?? 0} routes`}
                   </td>
                 </tr>
               ))}
 
               {collectionRequests.length === 0 ? (
                 <tr>
-                  <td style={td} colSpan={9}>
+                  <td style={td} colSpan={8}>
                     No collection requests recorded today.
                   </td>
                 </tr>
