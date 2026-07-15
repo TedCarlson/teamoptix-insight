@@ -293,8 +293,8 @@ export async function GET(
           daily_pay_eligible:
             row.daily_pay_eligible === true ||
             (resolvedDailyPay.daily_pay_rate != null &&
-              resolvedDailyPay.daily_pay_effective_date != null &&
-              resolvedDailyPay.daily_pay_effective_date <= row.service_date),
+              (resolvedDailyPay.daily_pay_effective_date == null ||
+                resolvedDailyPay.daily_pay_effective_date <= row.service_date)),
           daily_pay_rate: resolvedDailyPay.daily_pay_rate,
           daily_pay_effective_date: resolvedDailyPay.daily_pay_effective_date,
           daily_pay_source: resolvedDailyPay.daily_pay_source,
@@ -320,8 +320,8 @@ export async function GET(
         daily_pay_eligible:
           row.daily_pay_eligible === true ||
           (resolvedDailyPay.daily_pay_rate != null &&
-            resolvedDailyPay.daily_pay_effective_date != null &&
-            resolvedDailyPay.daily_pay_effective_date <= row.service_date),
+            (resolvedDailyPay.daily_pay_effective_date == null ||
+              resolvedDailyPay.daily_pay_effective_date <= row.service_date)),
         daily_pay_rate: resolvedDailyPay.daily_pay_rate,
         daily_pay_effective_date: resolvedDailyPay.daily_pay_effective_date,
         daily_pay_source: resolvedDailyPay.daily_pay_source,
