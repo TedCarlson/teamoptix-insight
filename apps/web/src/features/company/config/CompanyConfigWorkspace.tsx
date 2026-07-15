@@ -3,6 +3,7 @@ import CompanyRouteSortConfig from "@/features/company/components/CompanyRouteSo
 import CompanyTimekeepingOversightConfig from "@/features/company/components/CompanyTimekeepingOversightConfig";
 import CompanyConfigAccessPanel from "./CompanyConfigAccessPanel";
 import AutomationConfigPanel from "@/features/automation/components/AutomationConfigPanel";
+import CompanyWorkOrderControlTable from "@/features/automation/components/CompanyWorkOrderControlTable";
 
 export type CompanyConfigSection = "company" | "leadership" | "access" | "operations" | "automation";
 
@@ -204,12 +205,17 @@ export default function CompanyConfigWorkspace(props: CompanyConfigWorkspaceProp
   if (props.section === "operations") return <OperationsSection {...props} />;
   if (props.section === "automation") {
     return (
-      <AutomationConfigPanel
-        slug={props.slug}
-        canEdit={props.canEditCompany}
-        credentialMode="customer_managed"
-        workspaceMode="customer"
-      />
+      <section style={{ display: "grid", gap: 10 }}>
+        <SectionCard eyebrow="Automation control center" title="Company work-order table">
+          <CompanyWorkOrderControlTable slug={props.slug} canEdit={props.canEditCompany} />
+        </SectionCard>
+        <AutomationConfigPanel
+          slug={props.slug}
+          canEdit={props.canEditCompany}
+          credentialMode="customer_managed"
+          workspaceMode="customer"
+        />
+      </section>
     );
   }
   return <CompanySection {...props} />;

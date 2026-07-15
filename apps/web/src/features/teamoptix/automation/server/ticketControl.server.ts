@@ -20,12 +20,20 @@ export type OperationsTicketTemplateRow = {
 export type CompanyOperationsTicketAssignmentRow = {
   id: string;
   company_id: string;
+  company_name: string | null;
   company_slug: string;
   template_id: string;
   template_key: string;
   template_name: string;
   ticket_family: string;
   execution_lane: string;
+  operational_contract: string;
+  cook_key: string;
+  artifact_keys: string[];
+  active_start_date: string;
+  inactive_end_date: string | null;
+  release_order: number;
+  operator_notes: string | null;
   assignment_status: string;
   is_enabled: boolean;
   generation_mode: string;
@@ -72,7 +80,8 @@ export async function listCompanyOperationsTicketAssignments() {
     .from("company_operations_ticket_assignment_v")
     .select("*")
     .order("company_slug", { ascending: true })
-    .order("template_key", { ascending: true });
+    .order("release_order", { ascending: true })
+    .order("created_at", { ascending: true });
 
   if (error) {
     throw new Error(error.message);

@@ -31,21 +31,6 @@ function parseTimeToMinutes(time: string | null | undefined) {
   return hours * 60 + minutes;
 }
 
-function newYorkCurrentMinutes() {
-  const date = new Date();
-  const formatted = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-
-  const [hourText, minuteText] = formatted.split(":");
-  const hour = Number(hourText);
-  const minute = Number(minuteText);
-  return hour * 60 + minute;
-}
-
 function zonedDateParts(timeZone: string) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone,
@@ -95,7 +80,62 @@ function isWithinWindow(currentMinutes: number, startTime: string | null | undef
   return currentMinutes >= start || currentMinutes < end;
 }
 
-function buildRequestPayload(activeRows: any[]) {
+type ScheduledManifestAssignment = {
+  id: string;
+  template_key: string;
+  effective_priority: number;
+  cadence_minutes: number | null;
+  window_preset: string;
+  start_time: string | null;
+  end_time: string | null;
+  last_generated_at: string | null;
+  default_payload_json: Record<string, unknown> | null;
+  assignment_payload_json: Record<string, unknown> | null;
+};
+
+function manifestTargets(assignment: ScheduledManifestAssignment | null) {
+  if (!assignment) return [];
+
+  const templatePayload = assignment.default_payload_json ?? {};
+  const assignmentPayload = assignment.assignment_payload_json ?? {};
+  const configuredTargets = assignmentPayload.targets ?? templatePayload.targets;
+
+  return Array.isArray(configuredTargets) ? configuredTargets : [];
+}
+
+function buildRequestPayload(activeRows: any[], manifestAssignment: ScheduledManifestAssignment | null) {
+  const firstTargets = manifestTargets(manifestAssignment);
+  const activeReports = new Set(
+    activeRows.map((row) => String(row?.automation_type ?? "").toUpperCase())
+  );
+  const cadenceValues = [
+    ...activeRows.map((row) => Number(row?.cadence_minutes) || 0),
+    ...(manifestAssignment ? [Number(manifestAssignment.cadence_minutes) || 15] : []),
+  ].filter((value) => value > 0);
+
+  const legacyTargets = [
+    ...(activeReports.has("DSW")
+      ? [{
+          key: "DSW_DAILY_SERVICE",
+          label: "DSW · Daily Service Worksheet",
+          artifact_key: "DSW",
+          report_family_key: "DSW",
+          runner_section: "DAILY_SERVICE",
+          expected_filename_match: ["daily service worksheet"],
+        }]
+      : []),
+    ...(activeReports.has("FCC")
+      ? [{
+          key: "FCC_SERVICE_AREA_STATUS",
+          label: "FCC · Service Area Status",
+          artifact_key: "FCC",
+          report_family_key: "FCC",
+          runner_section: "SERVICE",
+          expected_filename_match: ["serviceareastatus", "sastatus", "work area summary"],
+        }]
+      : []),
+  ];
+
   return {
     source: "automation_scheduler",
     preset: "operations_pulse",
@@ -105,32 +145,27 @@ function buildRequestPayload(activeRows: any[]) {
     control_level: "platform_managed",
     customer_language: "Operations Pulse",
     runner_goal: "keep_operations_current",
-    cadence_minutes: Math.min(...activeRows.map((row) => Number(row.cadence_minutes) || 0)),
-    targets: [
-      {
-        key: "DSW_DAILY_SERVICE",
-        label: "DSW · Daily Service Worksheet",
-        artifact_key: "DSW",
-        report_family_key: "DSW",
-        runner_section: "DAILY_SERVICE",
-        expected_filename_match: ["daily service worksheet"],
-      },
-      {
-        key: "FCC_SERVICE_AREA_STATUS",
-        label: "FCC · Service Area Status",
-        artifact_key: "FCC",
-        report_family_key: "FCC",
-        runner_section: "SERVICE",
-        expected_filename_match: ["serviceareastatus", "sastatus", "work area summary"],
-      },
+    cadence_minutes: cadenceValues.length > 0 ? Math.min(...cadenceValues) : 15,
+    ticket_library_assignment_id: manifestAssignment?.id ?? null,
+    targets: [...firstTargets, ...legacyTargets],
+    windows: [
+      ...(manifestAssignment
+        ? [{
+            report: manifestAssignment.template_key,
+            window_preset: manifestAssignment.window_preset,
+            start_time: manifestAssignment.start_time,
+            end_time: manifestAssignment.end_time,
+            cadence_minutes: manifestAssignment.cadence_minutes ?? 15,
+          }]
+        : []),
+      ...activeRows.map((row) => ({
+        report: row.automation_type,
+        window_preset: row.window_preset,
+        start_time: row.start_time,
+        end_time: row.end_time,
+        cadence_minutes: row.cadence_minutes,
+      })),
     ],
-    windows: activeRows.map((row) => ({
-      report: row.automation_type,
-      window_preset: row.window_preset,
-      start_time: row.start_time,
-      end_time: row.end_time,
-      cadence_minutes: row.cadence_minutes,
-    })),
   };
 }
 
@@ -155,6 +190,53 @@ function buildPreviousDayClosePayload() {
       },
     ],
   };
+}
+
+async function loadScheduledManifestAssignment(params: {
+  supabase: any;
+  companyId: string;
+  currentMinutes: number;
+  operationalDate: string;
+}) {
+  const { supabase, companyId, currentMinutes, operationalDate } = params;
+  const { data, error } = await supabase
+    .from("company_operations_ticket_assignment_v")
+    .select("id,template_key,effective_priority,cadence_minutes,window_preset,start_time,end_time,last_generated_at,assignment_payload_json,template_id,release_order,operational_contract,active_start_date,inactive_end_date")
+    .eq("company_id", companyId)
+    .eq("ticket_family", "manifest")
+    .eq("execution_lane", "operations_collection_request")
+    .eq("assignment_status", "active")
+    .eq("is_enabled", true)
+    .eq("generation_mode", "scheduled")
+    .eq("operational_contract", "IN_DAY_OPERATIONS")
+    .lte("active_start_date", operationalDate)
+    .or(`inactive_end_date.is.null,inactive_end_date.gt.${operationalDate}`)
+    .order("release_order", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  if (!isWithinWindow(currentMinutes, data.start_time, data.end_time)) return null;
+
+  const cadenceMinutes = Number(data.cadence_minutes) || 15;
+  if (data.last_generated_at) {
+    const elapsed = Date.now() - new Date(data.last_generated_at).getTime();
+    if (elapsed < cadenceMinutes * 60_000) return null;
+  }
+
+  const { data: template, error: templateError } = await supabase
+    .from("operations_ticket_template_v")
+    .select("default_payload_json")
+    .eq("id", data.template_id)
+    .maybeSingle();
+
+  if (templateError) throw new Error(templateError.message);
+
+  return {
+    ...data,
+    default_payload_json: template?.default_payload_json ?? null,
+  } as ScheduledManifestAssignment;
 }
 
 async function companyHasPreviousDayClose(params: {
@@ -236,7 +318,6 @@ async function companyHasRecentRequest(supabase: any, companySlug: string, caden
 export async function GET() {
   const startedAt = Date.now();
   const supabase = createSupabaseServiceRoleClient();
-  const currentMinutes = newYorkCurrentMinutes();
 
   const { data: companies, error: companyError } = await supabase
     .from("companies")
@@ -270,6 +351,12 @@ export async function GET() {
       }
 
       const terminalState = terminalLocalState(terminalTimeZone);
+      const manifestAssignment = await loadScheduledManifestAssignment({
+        supabase,
+        companyId,
+        currentMinutes: terminalState.currentMinutes,
+        operationalDate: terminalState.todayIso,
+      });
       const serviceDateStart = addIsoDays(
         terminalState.todayIso,
         -3
@@ -361,15 +448,18 @@ export async function GET() {
 
       const activeRows = enabledRows.filter((row: any) =>
         AUTOMATION_REPORTS.has(row?.automation_type) &&
-        isWithinWindow(currentMinutes, row?.start_time, row?.end_time)
+        isWithinWindow(terminalState.currentMinutes, row?.start_time, row?.end_time)
       );
 
-      if (activeRows.length === 0) {
+      if (activeRows.length === 0 && !manifestAssignment) {
         results.push({ company_slug: companySlug, status: "skipped", reason: "no active automation window" });
         continue;
       }
 
-      const requestReports = [...new Set(activeRows.map((row: any) => String(row.automation_type).toUpperCase()))].filter(
+      const requestReports = [...new Set([
+        ...(manifestAssignment ? ["FCC"] : []),
+        ...activeRows.map((row: any) => String(row.automation_type).toUpperCase()),
+      ])].filter(
         (value): value is string => typeof value === "string" && AUTOMATION_REPORTS.has(value)
       );
 
@@ -383,7 +473,11 @@ export async function GET() {
         continue;
       }
 
-      const cadenceMinutes = Math.min(...activeRows.map((row: any) => Number(row.cadence_minutes) || 0)) || 60;
+      const cadenceValues = [
+        ...activeRows.map((row: any) => Number(row.cadence_minutes) || 0),
+        ...(manifestAssignment ? [Number(manifestAssignment.cadence_minutes) || 15] : []),
+      ].filter((value) => value > 0);
+      const cadenceMinutes = cadenceValues.length > 0 ? Math.min(...cadenceValues) : 60;
       if (await companyHasRecentRequest(supabase, companySlug, cadenceMinutes)) {
         results.push({ company_slug: companySlug, status: "skipped", reason: "recent request exists" });
         continue;
@@ -395,8 +489,8 @@ export async function GET() {
           p_company_slug: companySlug,
           p_request_type: "OPERATIONS_PULSE",
           p_requested_reports: requestReports,
-          p_priority: 80,
-          p_request_payload: buildRequestPayload(activeRows),
+          p_priority: manifestAssignment?.effective_priority ?? 80,
+          p_request_payload: buildRequestPayload(activeRows, manifestAssignment),
         }
       );
 
@@ -405,7 +499,23 @@ export async function GET() {
         continue;
       }
 
-      results.push({ company_slug: company.company_slug, status: "created", request_id: requestData?.id });
+      if (manifestAssignment) {
+        const { error: assignmentUpdateError } = await supabase
+          .schema("core")
+          .from("company_operations_ticket_assignment")
+          .update({ last_generated_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq("id", manifestAssignment.id);
+
+        if (assignmentUpdateError) throw new Error(assignmentUpdateError.message);
+      }
+
+      results.push({
+        company_slug: company.company_slug,
+        status: "created",
+        request_id: requestData?.id,
+        manifest_first: Boolean(manifestAssignment),
+        ticket_library_assignment_id: manifestAssignment?.id ?? null,
+      });
     } catch (error) {
       results.push({ company_slug: company.company_slug, status: "error", error: error instanceof Error ? error.message : String(error) });
     }

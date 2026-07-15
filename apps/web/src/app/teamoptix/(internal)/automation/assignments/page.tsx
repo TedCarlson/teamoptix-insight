@@ -6,518 +6,240 @@ import {
   listCompanyOperationsTicketAssignments,
   listOperationsTicketTemplates,
   listTeamOptixCompanyOptions,
-  type CompanyOperationsTicketAssignmentRow,
 } from "@/features/teamoptix/automation/server/ticketControl.server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-const ASSIGNMENT_STATUSES = ["draft", "ready", "active", "paused", "retired"];
-const GENERATION_MODES = ["manual", "scheduled", "event_triggered"];
-const WINDOW_PRESETS = ["OFF", "SORT_DELIVERY_DAY", "BUSINESS_DAY", "CUSTOM"];
-const ROUTE_SCOPES = [
-  "selected_routes",
-  "active_routes",
-  "full_active_route_set",
-  "route_batch",
-];
+const CONTRACTS = [
+  ["IN_DAY_OPERATIONS", "In-Day Operations"],
+  ["PREVIOUS_DAY_FINAL", "Previous-Day Final"],
+  ["LAST_LOOK", "Last Look"],
+  ["HISTORICAL_SWEEP", "Historical Sweep"],
+  ["TARGETED_COLLECTION", "Targeted Collection"],
+] as const;
 
-function readString(formData: FormData, key: string) {
-  return String(formData.get(key) ?? "").trim();
+const COOKS = [
+  ["GENERAL_COOK", "General Cook · current VPS runner"],
+  ["IN_DAY_REPORT_COOK", "In-Day Report Cook · DSW + FCC"],
+  ["IN_DAY_MANIFEST_COOK", "In-Day Manifest Cook"],
+  ["CATERING_COOK", "Catering Cook · sweeps + targeted"],
+] as const;
+
+function text(fd: FormData, key: string) {
+  return String(fd.get(key) ?? "").trim();
 }
 
-function readNullableInteger(formData: FormData, key: string) {
-  const raw = readString(formData, key);
-
-  if (!raw) {
-    return null;
-  }
-
-  const value = Number(raw);
-
-  if (!Number.isInteger(value)) {
-    throw new Error(`${key} must be an integer.`);
-  }
-
-  return value;
-}
-
-function readAllowed(formData: FormData, key: string, allowed: string[]) {
-  const value = readString(formData, key);
-
-  if (!allowed.includes(value)) {
-    throw new Error(`${key} is invalid.`);
-  }
-
-  return value;
-}
-
-async function upsertCompanyTicketAssignment(formData: FormData) {
+async function saveWorkOrderRule(formData: FormData) {
   "use server";
 
-  const companyId = readString(formData, "companyId");
-  const templateId = readString(formData, "templateId");
-
-  if (!companyId || !templateId) {
-    throw new Error("Company and ticket template are required.");
-  }
-
-  const assignmentStatus = readAllowed(formData, "assignmentStatus", ASSIGNMENT_STATUSES);
-  const generationMode = readAllowed(formData, "generationMode", GENERATION_MODES);
-  const windowPreset = readAllowed(formData, "windowPreset", WINDOW_PRESETS);
-  const routeScope = readAllowed(formData, "routeScope", ROUTE_SCOPES);
-  const cadenceMinutes = readNullableInteger(formData, "cadenceMinutes");
-  const priorityOverride = readNullableInteger(formData, "priorityOverride");
-  const routeLimit = readNullableInteger(formData, "routeLimit");
-  const isEnabled = formData.get("isEnabled") === "on";
-
-  if (cadenceMinutes !== null && ![15, 30, 60].includes(cadenceMinutes)) {
-    throw new Error("Cadence must be blank, 15, 30, or 60.");
-  }
-
-  if (priorityOverride !== null && (priorityOverride < 1 || priorityOverride > 999)) {
-    throw new Error("Priority override must be between 1 and 999.");
-  }
-
-  if (routeLimit !== null && routeLimit < 1) {
-    throw new Error("Route limit must be greater than zero.");
-  }
-
   const supabase = await getSupabaseServerClient();
-
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (!session) {
-    throw new Error("Unauthorized.");
-  }
-
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Unauthorized.");
   const { data: access, error: accessError } = await supabase.rpc("access_context");
+  if (accessError) throw new Error(accessError.message);
+  if (!access?.is_platform_owner) throw new Error("Only Team Optix platform owners can ship work orders.");
 
-  if (accessError) {
-    throw new Error(accessError.message);
+  const companyId = text(formData, "companyId");
+  const templateId = text(formData, "templateId");
+  const operationalContract = text(formData, "operationalContract");
+  const cookKey = text(formData, "cookKey");
+  if (!companyId || !templateId || !operationalContract || !cookKey) {
+    throw new Error("Company, work order, contract, and cook are required.");
   }
 
-  if (!access?.is_platform_owner) {
-    throw new Error("Only Team Optix platform owners can edit ticket assignments.");
-  }
+  const artifacts = ["DSW", "FCC", "DELIVERY_MANIFEST", "PICKUP_MANIFEST"]
+    .filter((key) => formData.get(`artifact_${key}`) === "on");
+  if (artifacts.length === 0) throw new Error("Select at least one collection item.");
 
-  const { error } = await supabase.rpc("upsert_company_operations_ticket_assignment", {
+  const cadenceRaw = text(formData, "cadenceMinutes");
+  const releaseOrderRaw = text(formData, "releaseOrder");
+  const generationMode = text(formData, "generationMode");
+  const startTime = text(formData, "startTime") || null;
+  const endTime = text(formData, "endTime") || null;
+
+  const { error } = await supabase.rpc("upsert_company_operations_work_order_rule", {
     p_company_id: companyId,
     p_template_id: templateId,
-    p_assignment_status: assignmentStatus,
-    p_is_enabled: isEnabled,
+    p_operational_contract: operationalContract,
+    p_cook_key: cookKey,
+    p_artifact_keys: artifacts,
+    p_active_start_date: text(formData, "activeStartDate"),
+    p_inactive_end_date: text(formData, "inactiveEndDate") || null,
+    p_release_order: Number(releaseOrderRaw || 100),
+    p_operator_notes: text(formData, "operatorNotes") || null,
+    p_assignment_status: text(formData, "assignmentStatus") || "draft",
+    p_is_enabled: formData.get("isEnabled") === "on",
     p_generation_mode: generationMode,
-    p_cadence_minutes: cadenceMinutes,
-    p_window_preset: windowPreset,
-    p_start_time: readString(formData, "startTime") || null,
-    p_end_time: readString(formData, "endTime") || null,
-    p_priority_override: priorityOverride,
-    p_route_scope: routeScope,
-    p_route_limit: routeLimit,
-    p_assignment_payload_json: {},
+    p_cadence_minutes: cadenceRaw ? Number(cadenceRaw) : null,
+    p_window_preset: generationMode === "scheduled" ? "CUSTOM" : "OFF",
+    p_start_time: startTime,
+    p_end_time: endTime,
+    p_route_scope: text(formData, "routeScope") || "full_active_route_set",
+    p_assignment_payload_json: {
+      authored_from: "teamoptix_ticket_terminal",
+      operational_contract: operationalContract,
+      cook_key: cookKey,
+      artifact_keys: artifacts,
+    },
   });
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
 
   revalidatePath("/teamoptix/automation/assignments");
   redirect("/teamoptix/automation/assignments");
 }
 
-function formatSchedule(row: {
-  generation_mode: string;
-  cadence_minutes: number | null;
-  window_preset: string;
-  start_time: string | null;
-  end_time: string | null;
-}) {
-  if (row.generation_mode === "manual") return "Manual";
-  const cadence = row.cadence_minutes ? `${row.cadence_minutes} min` : "No cadence";
-  const window =
-    row.start_time && row.end_time
-      ? `${row.window_preset} · ${row.start_time}–${row.end_time}`
-      : row.window_preset;
-
-  return `${cadence} · ${window}`;
+function label(value: string) {
+  return value.toLowerCase().split("_").map((part) => part[0]?.toUpperCase() + part.slice(1)).join(" ");
 }
 
-
-function buildRunnerCollectionRequestPayloadPreview(assignment: CompanyOperationsTicketAssignmentRow) {
-  return {
-    rpc: "public.create_operations_collection_request",
-    arguments: {
-      p_company_slug: assignment.company_slug,
-      p_request_type: "TARGETED_RECOVERY",
-      p_service_date: "SERVICE_DATE_TO_APPROVE",
-      p_service_date_start: null,
-      p_service_date_end: null,
-      p_requested_reports: ["FCC"],
-      p_priority: assignment.effective_priority,
-      p_request_payload: {
-        source: "teamoptix_assignment_runner_payload",
-        intent: "all_route_manifest_capture",
-        collect_scope: "all_route_manifests",
-        control_level: "platform_managed",
-        runner_goal: "collect_delivery_pickup_manifests_for_all_p_and_d_work_areas",
-        assignment_id: assignment.id,
-        template_key: assignment.template_key,
-        manifest_work_area_mode: "all_options_except_zero",
-        manifest_types: ["delivery", "pickup"],
-        skip_combined: true,
-        targets: [
-          {
-            key: "P_AND_D_DELIVERY_MANIFEST",
-            label: "P&D · Delivery Manifest",
-            artifact_key: "DELIVERY_MANIFEST",
-            report_family_key: "FCC",
-            runner_section: "P_AND_D",
-            expected_filename_match: ["DeliveryManifest"],
-          },
-          {
-            key: "P_AND_D_PICKUP_MANIFEST",
-            label: "P&D · Pickup Manifest",
-            artifact_key: "PICKUP_MANIFEST",
-            report_family_key: "FCC",
-            runner_section: "P_AND_D",
-            expected_filename_match: ["PickupManifest", "PM"],
-          },
-        ],
-      },
-    },
-    runner_runtime_effect: {
-      FCMS_TARGET_SECTIONS: "P_AND_D",
-      FCMS_TARGET_ARTIFACT_KEYS: "DELIVERY_MANIFEST,PICKUP_MANIFEST",
-      FCMS_MANIFEST_TYPES: "delivery,pickup",
-      FCMS_SKIP_COMBINED: "1",
-      p_and_d_behavior: "Loop all manifestForm:workAreas options except option 0; download Delivery and Pickup; skip Combined.",
-    },
-  };
-}
-
-async function queueAllRouteManifestCollection(formData: FormData) {
-  "use server";
-
-  const assignmentId = readString(formData, "assignmentId");
-  const serviceDate = readString(formData, "serviceDate");
-
-  if (!assignmentId) {
-    throw new Error("Assignment is required.");
-  }
-
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(serviceDate)) {
-    throw new Error("Service date is required.");
-  }
-
-  const supabase = await getSupabaseServerClient();
-
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (!session) {
-    throw new Error("Unauthorized.");
-  }
-
-  const { data: access, error: accessError } = await supabase.rpc("access_context");
-
-  if (accessError) {
-    throw new Error(accessError.message);
-  }
-
-  if (!access?.is_platform_owner) {
-    throw new Error("Only Team Optix platform owners can queue manifest collections.");
-  }
-
-  const { data: assignment, error: assignmentError } = await supabase
-    .from("company_operations_ticket_assignment_v")
-    .select("*")
-    .eq("id", assignmentId)
-    .maybeSingle();
-
-  if (assignmentError) {
-    throw new Error(assignmentError.message);
-  }
-
-  if (!assignment) {
-    throw new Error("Assignment not found.");
-  }
-
-  const preview = buildRunnerCollectionRequestPayloadPreview(assignment as CompanyOperationsTicketAssignmentRow);
-  const args = preview.rpc === "public.create_operations_collection_request"
-    ? preview.arguments
-    : null;
-
-  if (!args) {
-    throw new Error("Unsupported payload preview.");
-  }
-
-  const { error } = await supabase.rpc("create_operations_collection_request", {
-    p_company_slug: args.p_company_slug,
-    p_request_type: args.p_request_type,
-    p_service_date: serviceDate,
-    p_service_date_start: null,
-    p_service_date_end: null,
-    p_requested_reports: args.p_requested_reports,
-    p_priority: args.p_priority,
-    p_request_payload: {
-      ...args.p_request_payload,
-      service_date: serviceDate,
-      queued_from_assignment_id: assignmentId,
-    },
-  });
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  revalidatePath("/teamoptix/automation/assignments");
-  redirect("/teamoptix/automation/assignments");
+function scheduleText(row: any) {
+  if (row.generation_mode === "manual") return "Ship on demand";
+  if (row.generation_mode === "event_triggered") return "Event triggered";
+  const cadence = row.cadence_minutes ? `Every ${row.cadence_minutes} min` : "Scheduled";
+  return row.start_time && row.end_time ? `${cadence} · ${row.start_time.slice(0, 5)}–${row.end_time.slice(0, 5)}` : cadence;
 }
 
 export default async function Page() {
-  const [assignments, templates, companies] = await Promise.all([
+  const [rows, templates, companies] = await Promise.all([
     listCompanyOperationsTicketAssignments(),
     listOperationsTicketTemplates(),
     listTeamOptixCompanyOptions(),
   ]);
+  const today = new Date().toISOString().slice(0, 10);
 
   return (
     <TeamOptixShell>
       <main className="workspace-shell">
         <section className="workspace-main">
           <WorkspaceHeader
-            eyebrow="TeamOptix · Automation"
-            title="Company Assignments"
-            description="Customer-specific bindings between Team Optix ticket templates, schedules, route scopes, priorities, and automation parameters."
+            eyebrow="Team Optix · Automation Control Center"
+            title="Ticket Terminal"
+            description="Author the standing work orders each company places with the VPS kitchen. The database carries the order; the current General Cook executes every work order."
           />
 
           <section className="teamoptix-console">
             <WorkspaceSection
-              eyebrow="Assignment Editor"
-              title="Create or Update Assignment"
-              description="Bind a ticket template to a customer workspace. This only records Team Optix control settings; it does not generate tickets."
+              eyebrow="Authoring"
+              title="Prepare and Ship a Work Order"
+              description="Choose the company table, the operational contract, and the cook. The terminal writes the machine language behind the scenes."
             >
-              <form action={upsertCompanyTicketAssignment} className="app-card" style={{ display: "grid", gap: 14, padding: 18 }}>
+              <form action={saveWorkOrderRule} className="app-card" style={{ display: "grid", gap: 18, padding: 18 }}>
                 <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-                  <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 800 }}>
-                    Company
-                    <select name="companyId" required>
-                      <option value="">Select company</option>
-                      {companies.map((company) => (
-                        <option key={company.id} value={company.id}>
-                          {company.company_name || company.company_slug}
-                        </option>
-                      ))}
+                  <label style={{ display: "grid", gap: 6, fontWeight: 800, fontSize: 12 }}>
+                    Company Table
+                    <select name="companyId" required defaultValue="">
+                      <option value="" disabled>Select company</option>
+                      {companies.map((company) => <option key={company.id} value={company.id}>{company.company_name || company.company_slug}</option>)}
                     </select>
+                    <small>The customer whose standing order receives this row.</small>
                   </label>
 
-                  <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 800 }}>
-                    Ticket Template
-                    <select name="templateId" required>
-                      <option value="">Select template</option>
-                      {templates.map((template) => (
-                        <option key={template.id} value={template.id}>
-                          {template.template_name}
-                        </option>
-                      ))}
+                  <label style={{ display: "grid", gap: 6, fontWeight: 800, fontSize: 12 }}>
+                    Work Order Definition
+                    <select name="templateId" required defaultValue="">
+                      <option value="" disabled>Select work order</option>
+                      {templates.filter((item) => item.is_active).map((item) => <option key={item.id} value={item.id}>{item.template_name}</option>)}
                     </select>
+                    <small>The proven runner recipe used to compile the ticket.</small>
                   </label>
 
-                  <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 800 }}>
-                    Status
-                    <select name="assignmentStatus" defaultValue="draft">
-                      {ASSIGNMENT_STATUSES.map((status) => (
-                        <option key={status} value={status}>
-                          {status}
-                        </option>
-                      ))}
+                  <label style={{ display: "grid", gap: 6, fontWeight: 800, fontSize: 12 }}>
+                    Operational Contract
+                    <select name="operationalContract" defaultValue="IN_DAY_OPERATIONS">
+                      {CONTRACTS.map(([value, title]) => <option key={value} value={value}>{title}</option>)}
                     </select>
+                    <small>Why this standing order exists.</small>
                   </label>
 
-                  <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 800 }}>
-                    Generation Mode
-                    <select name="generationMode" defaultValue="manual">
-                      {GENERATION_MODES.map((mode) => (
-                        <option key={mode} value={mode}>
-                          {mode}
-                        </option>
-                      ))}
+                  <label style={{ display: "grid", gap: 6, fontWeight: 800, fontSize: 12 }}>
+                    Send to Cook
+                    <select name="cookKey" defaultValue="GENERAL_COOK">
+                      {COOKS.map(([value, title]) => <option key={value} value={value}>{title}</option>)}
                     </select>
-                  </label>
-
-                  <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 800 }}>
-                    Window
-                    <select name="windowPreset" defaultValue="OFF">
-                      {WINDOW_PRESETS.map((preset) => (
-                        <option key={preset} value={preset}>
-                          {preset}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 800 }}>
-                    Route Scope
-                    <select name="routeScope" defaultValue="selected_routes">
-                      {ROUTE_SCOPES.map((scope) => (
-                        <option key={scope} value={scope}>
-                          {scope}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 800 }}>
-                    Cadence Minutes
-                    <input name="cadenceMinutes" inputMode="numeric" placeholder="blank, 15, 30, or 60" />
-                  </label>
-
-                  <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 800 }}>
-                    Priority Override
-                    <input name="priorityOverride" inputMode="numeric" placeholder="blank or 1-999" />
-                  </label>
-
-                  <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 800 }}>
-                    Route Limit
-                    <input name="routeLimit" inputMode="numeric" placeholder="optional" />
-                  </label>
-
-                  <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 800 }}>
-                    Start Time
-                    <input name="startTime" type="time" />
-                  </label>
-
-                  <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 800 }}>
-                    End Time
-                    <input name="endTime" type="time" />
-                  </label>
-
-                  <label style={{ alignItems: "center", display: "flex", gap: 8, fontSize: 12, fontWeight: 800 }}>
-                    <input name="isEnabled" type="checkbox" />
-                    Enabled
+                    <small>All choices currently route to the same General Cook.</small>
                   </label>
                 </div>
 
-                <button className="primary-action" type="submit">
-                  Save Assignment
-                </button>
+                <div className="app-card" style={{ padding: 14 }}>
+                  <strong style={{ display: "block", marginBottom: 10 }}>What goes on the order?</strong>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+                    {["DSW", "FCC", "DELIVERY_MANIFEST", "PICKUP_MANIFEST"].map((key) => (
+                      <label key={key} style={{ display: "flex", alignItems: "center", gap: 7, fontWeight: 750 }}>
+                        <input type="checkbox" name={`artifact_${key}`} defaultChecked={key.includes("MANIFEST")} />
+                        {label(key)}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+                  <label style={{ display: "grid", gap: 6, fontWeight: 800, fontSize: 12 }}>Order Behavior
+                    <select name="generationMode" defaultValue="scheduled">
+                      <option value="scheduled">Standing schedule</option>
+                      <option value="manual">Ship on demand</option>
+                      <option value="event_triggered">Event triggered</option>
+                    </select>
+                  </label>
+                  <label style={{ display: "grid", gap: 6, fontWeight: 800, fontSize: 12 }}>Cadence
+                    <select name="cadenceMinutes" defaultValue="15">
+                      <option value="">One run at scheduled time</option>
+                      <option value="15">Every 15 minutes</option>
+                      <option value="30">Every 30 minutes</option>
+                      <option value="60">Every 60 minutes</option>
+                    </select>
+                  </label>
+                  <label style={{ display: "grid", gap: 6, fontWeight: 800, fontSize: 12 }}>Window Starts<input name="startTime" type="time" /></label>
+                  <label style={{ display: "grid", gap: 6, fontWeight: 800, fontSize: 12 }}>Window Ends<input name="endTime" type="time" /></label>
+                  <label style={{ display: "grid", gap: 6, fontWeight: 800, fontSize: 12 }}>Route Scope
+                    <select name="routeScope" defaultValue="full_active_route_set">
+                      <option value="full_active_route_set">All active routes</option>
+                      <option value="active_routes">Current active routes</option>
+                      <option value="selected_routes">Selected routes</option>
+                      <option value="route_batch">Route batch</option>
+                    </select>
+                  </label>
+                  <label style={{ display: "grid", gap: 6, fontWeight: 800, fontSize: 12 }}>Release Order<input name="releaseOrder" type="number" min="1" defaultValue="1" /></label>
+                  <label style={{ display: "grid", gap: 6, fontWeight: 800, fontSize: 12 }}>Active Start Date<input name="activeStartDate" type="date" defaultValue={today} required /></label>
+                  <label style={{ display: "grid", gap: 6, fontWeight: 800, fontSize: 12 }}>Inactive End Date<input name="inactiveEndDate" type="date" /><small>Leave open to keep honoring this recipe.</small></label>
+                  <label style={{ display: "grid", gap: 6, fontWeight: 800, fontSize: 12 }}>Status
+                    <select name="assignmentStatus" defaultValue="draft">
+                      <option value="draft">Draft</option><option value="ready">Ready</option><option value="active">Active</option><option value="paused">Paused</option><option value="retired">Retired</option>
+                    </select>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 12, paddingTop: 24 }}><input name="isEnabled" type="checkbox" />Automation enabled</label>
+                </div>
+
+                <label style={{ display: "grid", gap: 6, fontWeight: 800, fontSize: 12 }}>Operator Notes<textarea name="operatorNotes" rows={2} placeholder="Why this order exists or what changed." /></label>
+                <button className="primary-action" type="submit">Ship Work Order to Company Table</button>
               </form>
             </WorkspaceSection>
 
             <WorkspaceSection
-              eyebrow="Assignments"
-              title={`${assignments.length} Company Assignment${assignments.length === 1 ? "" : "s"}`}
-              description="Saved bindings. Ticket generation remains intentionally disconnected."
+              eyebrow="Company Tables"
+              title="Standing Work Orders"
+              description="Rows are evaluated in release order. Open-ended rows remain the active recipe until paused, retired, or given an inactive end date."
             >
               <div className="operations-table-wrap">
                 <table className="operations-table">
-                  <thead>
-                    <tr>
-                      <th>Company</th>
-                      <th>Template</th>
-                      <th>Status</th>
-                      <th>Mode</th>
-                      <th>Schedule</th>
-                      <th>Route Scope</th>
-                      <th>Priority</th>
-                    </tr>
-                  </thead>
+                  <thead><tr><th>Order</th><th>Company</th><th>Contract</th><th>Cook</th><th>Collection</th><th>Timing</th><th>Effective</th><th>Status</th></tr></thead>
                   <tbody>
-                    {assignments.length === 0 ? (
-                      <tr>
-                        <td colSpan={7}>No company ticket assignments found.</td>
+                    {rows.length === 0 ? <tr><td colSpan={8}>No standing work orders yet.</td></tr> : rows.map((row: any) => (
+                      <tr key={row.id}>
+                        <td><strong>{row.release_order ?? 100}</strong></td>
+                        <td><strong>{row.company_name || row.company_slug}</strong><br /><span>{row.template_name}</span></td>
+                        <td>{label(row.operational_contract || "IN_DAY_OPERATIONS")}</td>
+                        <td>{label(row.cook_key || "GENERAL_COOK")}</td>
+                        <td>{Array.isArray(row.artifact_keys) && row.artifact_keys.length ? row.artifact_keys.map(label).join(" · ") : "Recipe defaults"}</td>
+                        <td>{scheduleText(row)}</td>
+                        <td>{row.active_start_date || "—"} → {row.inactive_end_date || "Open"}</td>
+                        <td>{row.assignment_status}{row.is_enabled ? " · enabled" : ""}</td>
                       </tr>
-                    ) : (
-                      assignments.map((assignment) => (
-                        <tr key={assignment.id}>
-                          <td>{assignment.company_slug}</td>
-                          <td>
-                            <strong>{assignment.template_name}</strong>
-                            <br />
-                            <span>{assignment.template_key}</span>
-                          </td>
-                          <td>{assignment.is_enabled ? assignment.assignment_status : "disabled"}</td>
-                          <td>{assignment.generation_mode}</td>
-                          <td>{formatSchedule(assignment)}</td>
-                          <td>
-                            {assignment.route_scope}
-                            {assignment.route_limit ? ` · limit ${assignment.route_limit}` : ""}
-                          </td>
-                          <td>{assignment.effective_priority}</td>
-                        </tr>
-                      ))
-                    )}
+                    ))}
                   </tbody>
                 </table>
               </div>
             </WorkspaceSection>
-
-            {assignments.length > 0 ? (
-              <WorkspaceSection
-                eyebrow="Runner Payload"
-                title="All-Route Manifest Collection"
-                description="Queues the current VPS runner lane: all P&D work areas, Delivery + Pickup manifests, Combined skipped."
-              >
-                <div style={{ display: "grid", gap: 16 }}>
-                  {assignments.map((assignment) => {
-                    const preview = buildRunnerCollectionRequestPayloadPreview(assignment);
-
-                    return (
-                      <article className="app-card" key={`payload-${assignment.id}`} style={{ display: "grid", gap: 12, padding: 18 }}>
-                        <div>
-                          <h3 style={{ margin: 0 }}>{assignment.company_slug} · {assignment.template_name}</h3>
-                          <p style={{ margin: "6px 0 0", color: "#64748b", fontSize: 13 }}>
-                            Runner lane: operations_collection_request · P_AND_D · all dropdown work areas · Delivery/Pickup only.
-                          </p>
-                        </div>
-
-                        <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
-                          <div><strong>Request Type</strong><br />TARGETED_RECOVERY</div>
-                          <div><strong>Runner Section</strong><br />P_AND_D</div>
-                          <div><strong>Manifest Types</strong><br />delivery, pickup</div>
-                          <div><strong>Skip Combined</strong><br />true</div>
-                        </div>
-
-                        <form action={queueAllRouteManifestCollection} style={{ alignItems: "end", display: "flex", flexWrap: "wrap", gap: 10 }}>
-                          <input name="assignmentId" type="hidden" value={assignment.id} />
-                          <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 800 }}>
-                            Service Date
-                            <input name="serviceDate" required type="date" />
-                          </label>
-                          <button className="primary-action" type="submit">
-                            Queue All-Route Delivery + Pickup
-                          </button>
-                        </form>
-
-                        <details style={{ border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
-                          <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 800, padding: "10px 12px" }}>
-                            View runner payload
-                          </summary>
-                          <pre
-                            style={{
-                              background: "#020617",
-                              color: "#e2e8f0",
-                              fontSize: 12,
-                              lineHeight: 1.45,
-                              margin: 0,
-                              maxHeight: 420,
-                              overflow: "auto",
-                              padding: 14,
-                              whiteSpace: "pre-wrap",
-                            }}
-                          >
-                            {JSON.stringify(preview, null, 2)}
-                          </pre>
-                        </details>
-                      </article>
-                    );
-                  })}
-                </div>
-              </WorkspaceSection>
-            ) : null}
           </section>
         </section>
       </main>
