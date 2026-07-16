@@ -17,6 +17,10 @@ export async function GET(
       .trim()
       .toUpperCase();
 
+    const rosterMemberId = (
+      req.nextUrl.searchParams.get("rosterMemberId") ?? ""
+    ).trim();
+
     if (!ALLOWED_TYPES.has(assetTypeKey)) {
       return NextResponse.json(
         { error: "Unsupported asset type." },
@@ -26,14 +30,25 @@ export async function GET(
 
     const supabase = await getSupabaseServerClient();
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("company_assets_v")
       .select(
         "asset_id, company_slug, asset_type_key, asset_type_label, asset_identifier, display_name, status_key, status_label, is_assignable, assignment_muted, assigned_roster_member_id, assigned_roster_member_name, assigned_at",
       )
       .eq("company_slug", slug)
       .eq("asset_type_key", assetTypeKey)
-      .order("asset_identifier", { ascending: true });
+      .eq("assignment_muted", false);
+
+    query = rosterMemberId
+      ? query.or(
+          `assigned_roster_member_id.is.null,assigned_roster_member_id.eq.${rosterMemberId}`,
+        )
+      : query.is("assigned_roster_member_id", null);
+
+    const { data, error } = await query.order(
+      "asset_identifier",
+      { ascending: true },
+    );
 
     if (error) {
       return NextResponse.json(

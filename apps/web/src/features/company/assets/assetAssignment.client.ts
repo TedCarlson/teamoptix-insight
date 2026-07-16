@@ -12,11 +12,12 @@ async function readJson(response: Response) {
 export async function loadAssetsForAssignment(
   companySlug: string,
   assetTypeKey: string,
+  rosterMemberId: string,
 ): Promise<CompanyAssetRow[]> {
   const response = await fetch(
     `/api/company/${companySlug}/assets/assignable?type=${encodeURIComponent(
       assetTypeKey,
-    )}`,
+    )}&rosterMemberId=${encodeURIComponent(rosterMemberId)}`,
     {
       credentials: "include",
       cache: "no-store",

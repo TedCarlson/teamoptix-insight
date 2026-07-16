@@ -56,6 +56,7 @@ export default function RosterAssetAssignmentOverlay({
         const rows = await loadAssetsForAssignment(
           companySlug,
           assetTypeKey,
+          rosterMemberId,
         );
 
         if (!active) return;
@@ -99,6 +100,12 @@ export default function RosterAssetAssignmentOverlay({
     return assets.filter((asset) => {
       if (asset.assignment_muted) return false;
 
+      const assignedElsewhere =
+        asset.assigned_roster_member_id !== null &&
+        asset.assigned_roster_member_id !== rosterMemberId;
+
+      if (assignedElsewhere) return false;
+
       if (!query) return true;
 
       return [
@@ -112,7 +119,7 @@ export default function RosterAssetAssignmentOverlay({
           String(value).toLowerCase().includes(query),
         );
     });
-  }, [assets, search]);
+  }, [assets, rosterMemberId, search]);
 
   if (!open) return null;
 
