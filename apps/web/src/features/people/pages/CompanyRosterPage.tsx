@@ -365,21 +365,21 @@ export default function CompanyRosterPage() {
         return;
       }
 
-      const optimistic = {
-        ...managedPerson,
-        ...draft,
-      };
+      const nextPerson = data?.roster
+        ? normalizeRosterRow(data.roster as ApiRosterRow)
+        : {
+            ...managedPerson,
+            ...draft,
+          };
 
       setRows((current) =>
         current.map((row) =>
           row.roster_member_id === managedPerson.roster_member_id
-            ? optimistic
+            ? nextPerson
             : row
         )
       );
-      setManagedPerson(optimistic);
-
-      await hydrateRosterPerson(managedPerson.roster_member_id);
+      setManagedPerson(nextPerson);
     } catch {
       setError("Failed to save person details.");
     } finally {
@@ -391,13 +391,10 @@ export default function CompanyRosterPage() {
   async function saveOperations(draft: {
     fx_id: string;
     dswid: string;
-    scanner_serial: string;
     dot_expiration_date: string;
     qual_cert_expiration_date: string;
     daily_pay_effective_date: string;
-  daily_pay_rate: string;
-    fuel_card: string;
-    pin_id_no: string;
+    daily_pay_rate: string;
   }) {
     if (!managedPerson) return;
 
@@ -422,21 +419,21 @@ export default function CompanyRosterPage() {
         return;
       }
 
-      const optimistic = {
-        ...managedPerson,
-        ...draft,
-      };
+      const nextPerson = data?.roster
+        ? normalizeRosterRow(data.roster as ApiRosterRow)
+        : {
+            ...managedPerson,
+            ...draft,
+          };
 
       setRows((current) =>
         current.map((row) =>
           row.roster_member_id === managedPerson.roster_member_id
-            ? optimistic
+            ? nextPerson
             : row
         )
       );
-      setManagedPerson(optimistic);
-
-      await hydrateRosterPerson(managedPerson.roster_member_id);
+      setManagedPerson(nextPerson);
     } catch {
       setError("Failed to save operations.");
     } finally {
@@ -656,6 +653,7 @@ export default function CompanyRosterPage() {
 
         <ManagePersonDrawer
           open={Boolean(managedPerson)}
+          companySlug={slug}
           person={managedPerson}
           savingDetails={savingDetails}
           savingOperations={savingOperations}
@@ -665,6 +663,12 @@ export default function CompanyRosterPage() {
           inviteMessage={inviteMessage}
           onSaveDetails={savePersonDetails}
           onSaveOperations={saveOperations}
+          onRefreshPerson={async () => {
+            if (!managedPerson) return;
+            await hydrateRosterPerson(
+              managedPerson.roster_member_id,
+            );
+          }}
           onSaveStatus={saveStatus}
           onSendInvite={sendManagedPersonInvite}
           timelineEvents={timelineEvents}

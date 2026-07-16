@@ -1,0 +1,209 @@
+begin;
+
+create or replace function core.import_company_roster_rows(
+  p_company_slug text,
+  p_rows jsonb
+) returns jsonb
+language plpgsql
+security definer
+set search_path = core, public
+as $$
+declare
+  v_company_id uuid;
+  v_row jsonb;
+  v_roster_id uuid;
+  v_profile_id uuid;
+  v_inserted int := 0;
+  v_updated int := 0;
+  v_skipped int := 0;
+  v_errors jsonb := '[]'::jsonb;
+  v_decision text;
+  v_email text;
+  v_phone text;
+  v_fx_id text;
+  v_dswid text;
+begin
+  select id into v_company_id from core.companies where company_slug = p_company_slug;
+  if v_company_id is null then raise exception 'Company not found.'; end if;
+  if not core.can_admin_company(v_company_id) then raise exception 'Forbidden.'; end if;
+
+  for v_row in select * from jsonb_array_elements(p_rows)
+  loop
+    begin
+      if coalesce((v_row->>'approved')::boolean, false) is not true then
+        v_skipped := v_skipped + 1;
+        continue;
+      end if;
+
+      v_decision := upper(trim(coalesce(v_row->>'import_decision', '')));
+      if v_decision not in ('NEW', 'UPDATE_DRAFT') then
+        v_skipped := v_skipped + 1;
+        continue;
+      end if;
+
+      v_roster_id := nullif(trim(coalesce(v_row->>'roster_member_id', '')), '')::uuid;
+      v_email := nullif(lower(trim(coalesce(v_row->>'email', ''))), '');
+      v_phone := nullif(regexp_replace(coalesce(v_row->>'phone', ''), '\D', '', 'g'), '');
+      v_fx_id := nullif(trim(coalesce(v_row->>'fx_id', '')), '');
+      v_dswid := nullif(lower(trim(coalesce(v_row->>'dswid', ''))), '');
+
+      if v_decision = 'UPDATE_DRAFT' then
+        if v_roster_id is null then raise exception 'Approved update is missing roster_member_id.'; end if;
+        select profile_id into v_profile_id
+        from core.company_roster
+        where id = v_roster_id and company_id = v_company_id;
+        if not found then raise exception 'Roster member is invalid for this company.'; end if;
+      else
+        if v_roster_id is not null then raise exception 'Approved new row cannot include roster_member_id.'; end if;
+
+        if exists (
+          select 1 from core.company_roster r
+          left join core.company_roster_operations_fact ops on ops.roster_id = r.id
+          left join core.profile_driver_license dl on dl.profile_id = r.profile_id
+          where r.company_id = v_company_id
+            and (
+              (v_email is not null and lower(trim(r.email)) = v_email)
+              or (v_phone is not null and regexp_replace(coalesce(r.phone, ''), '\D', '', 'g') = v_phone)
+              or (v_fx_id is not null and trim(coalesce(ops.fx_id, '')) = v_fx_id)
+              or (v_dswid is not null and lower(trim(coalesce(ops.dswid, ''))) = v_dswid)
+              or (nullif(lower(trim(coalesce(v_row->>'license_number', ''))), '') is not null
+                  and lower(trim(coalesce(dl.license_number, ''))) = lower(trim(v_row->>'license_number')))
+            )
+        ) then
+          raise exception 'Duplicate identity field discovered after analysis; re-analyze before commit.';
+        end if;
+
+        insert into core.company_roster (
+          company_id, full_name, email, phone, worker_type, job_title,
+          employment_status, market_code, hire_date, separation_date,
+          invite_status, compliance_summary, notes
+        ) values (
+          v_company_id,
+          nullif(trim(coalesce(v_row->>'full_name', '')), ''),
+          v_email,
+          nullif(trim(coalesce(v_row->>'phone', '')), ''),
+          nullif(trim(coalesce(v_row->>'worker_type', v_row->>'role', '')), ''),
+          nullif(trim(coalesce(v_row->>'job_title', '')), ''),
+          coalesce(nullif(trim(coalesce(v_row->>'employment_status', v_row->>'status', '')), ''), 'Active'),
+          nullif(trim(coalesce(v_row->>'market_code', v_row->>'market', '')), ''),
+          nullif(trim(coalesce(v_row->>'hire_date', v_row->>'start_date', '')), '')::date,
+          nullif(trim(coalesce(v_row->>'separation_date', '')), '')::date,
+          'Not Invited', 'Missing', nullif(trim(coalesce(v_row->>'notes', '')), '')
+        ) returning id, profile_id into v_roster_id, v_profile_id;
+        v_inserted := v_inserted + 1;
+      end if;
+
+      if v_decision = 'UPDATE_DRAFT' then
+        update core.company_roster set
+          full_name = coalesce(nullif(trim(coalesce(v_row->>'full_name', '')), ''), full_name),
+          email = coalesce(v_email, email),
+          phone = coalesce(nullif(trim(coalesce(v_row->>'phone', '')), ''), phone),
+          worker_type = coalesce(nullif(trim(coalesce(v_row->>'worker_type', v_row->>'role', '')), ''), worker_type),
+          job_title = coalesce(nullif(trim(coalesce(v_row->>'job_title', '')), ''), job_title),
+          employment_status = coalesce(nullif(trim(coalesce(v_row->>'employment_status', v_row->>'status', '')), ''), employment_status),
+          market_code = coalesce(nullif(trim(coalesce(v_row->>'market_code', v_row->>'market', '')), ''), market_code),
+          hire_date = coalesce(nullif(trim(coalesce(v_row->>'hire_date', v_row->>'start_date', '')), '')::date, hire_date),
+          separation_date = coalesce(nullif(trim(coalesce(v_row->>'separation_date', '')), '')::date, separation_date),
+          notes = coalesce(nullif(trim(coalesce(v_row->>'notes', '')), ''), notes)
+        where id = v_roster_id and company_id = v_company_id;
+        v_updated := v_updated + 1;
+      end if;
+
+      -- Profiles are never created here. Profile-owned facts update only when a profile is already linked.
+      if v_profile_id is not null then
+        insert into core.profile_private_fact (
+          profile_id, date_of_birth, address_line_1, address_line_2, city, state_region, postal_code, updated_at
+        ) values (
+          v_profile_id,
+          nullif(trim(coalesce(v_row->>'date_of_birth', '')), '')::date,
+          nullif(trim(coalesce(v_row->>'address_line_1', '')), ''),
+          nullif(trim(coalesce(v_row->>'address_line_2', '')), ''),
+          nullif(trim(coalesce(v_row->>'city', '')), ''),
+          nullif(trim(coalesce(v_row->>'state_region', '')), ''),
+          nullif(trim(coalesce(v_row->>'postal_code', '')), ''), now()
+        ) on conflict (profile_id) do update set
+          date_of_birth = coalesce(excluded.date_of_birth, core.profile_private_fact.date_of_birth),
+          address_line_1 = coalesce(excluded.address_line_1, core.profile_private_fact.address_line_1),
+          address_line_2 = coalesce(excluded.address_line_2, core.profile_private_fact.address_line_2),
+          city = coalesce(excluded.city, core.profile_private_fact.city),
+          state_region = coalesce(excluded.state_region, core.profile_private_fact.state_region),
+          postal_code = coalesce(excluded.postal_code, core.profile_private_fact.postal_code),
+          updated_at = now();
+
+        if nullif(trim(coalesce(v_row->>'license_number', '')), '') is not null then
+          if exists (select 1 from core.profile_driver_license where profile_id = v_profile_id) then
+            update core.profile_driver_license set
+              license_number = coalesce(nullif(trim(coalesce(v_row->>'license_number', '')), ''), license_number),
+              issuing_state = coalesce(nullif(trim(coalesce(v_row->>'issuing_state', '')), ''), issuing_state),
+              issue_date = coalesce(nullif(trim(coalesce(v_row->>'license_issue_date', '')), '')::date, issue_date),
+              expiration_date = coalesce(nullif(trim(coalesce(v_row->>'license_expiration_date', '')), '')::date, expiration_date),
+              updated_at = now()
+            where id = (select id from core.profile_driver_license where profile_id = v_profile_id order by created_at desc limit 1);
+          else
+            insert into core.profile_driver_license (profile_id, license_number, issuing_state, issue_date, expiration_date)
+            values (
+              v_profile_id,
+              nullif(trim(coalesce(v_row->>'license_number', '')), ''),
+              nullif(trim(coalesce(v_row->>'issuing_state', '')), ''),
+              nullif(trim(coalesce(v_row->>'license_issue_date', '')), '')::date,
+              nullif(trim(coalesce(v_row->>'license_expiration_date', '')), '')::date
+            );
+          end if;
+        end if;
+      end if;
+
+      insert into core.company_roster_operations_fact (
+        roster_id, scanner_serial, dot_exp, qual_cert_exp, fuel_card, pin_id_no,
+        daily_pay_effective_date, daily_pay_rate, fx_id, dswid
+      ) values (
+        v_roster_id,
+        nullif(trim(coalesce(v_row->>'scanner_serial', '')), ''),
+        nullif(trim(coalesce(v_row->>'dot_expiration_date', '')), '')::date,
+        nullif(trim(coalesce(v_row->>'qual_cert_expiration_date', '')), '')::date,
+        nullif(trim(coalesce(v_row->>'fuel_card', '')), ''),
+        nullif(trim(coalesce(v_row->>'pin_id_no', '')), ''),
+        nullif(trim(coalesce(v_row->>'daily_pay_effective_date', '')), '')::date,
+        nullif(trim(coalesce(v_row->>'daily_pay_rate', '')), '')::numeric,
+        v_fx_id,
+        nullif(trim(coalesce(v_row->>'dswid', '')), '')
+      ) on conflict (roster_id) do update set
+        scanner_serial = coalesce(excluded.scanner_serial, core.company_roster_operations_fact.scanner_serial),
+        dot_exp = coalesce(excluded.dot_exp, core.company_roster_operations_fact.dot_exp),
+        qual_cert_exp = coalesce(excluded.qual_cert_exp, core.company_roster_operations_fact.qual_cert_exp),
+        fuel_card = coalesce(excluded.fuel_card, core.company_roster_operations_fact.fuel_card),
+        pin_id_no = coalesce(excluded.pin_id_no, core.company_roster_operations_fact.pin_id_no),
+        daily_pay_effective_date = coalesce(excluded.daily_pay_effective_date, core.company_roster_operations_fact.daily_pay_effective_date),
+        daily_pay_rate = coalesce(excluded.daily_pay_rate, core.company_roster_operations_fact.daily_pay_rate),
+        fx_id = coalesce(excluded.fx_id, core.company_roster_operations_fact.fx_id),
+        dswid = coalesce(excluded.dswid, core.company_roster_operations_fact.dswid),
+        updated_at = now();
+
+    exception when others then
+      v_skipped := v_skipped + 1;
+      v_errors := v_errors || jsonb_build_array(jsonb_build_object(
+        'row_number', v_row->>'row_number', 'full_name', v_row->>'full_name', 'error', sqlerrm
+      ));
+    end;
+  end loop;
+
+  return jsonb_build_object(
+    'ok', jsonb_array_length(v_errors) = 0,
+    'inserted_count', v_inserted,
+    'updated_count', v_updated,
+    'skipped_count', v_skipped,
+    'errors', v_errors
+  );
+end;
+$$;
+
+create or replace function public.import_company_roster_rows(p_company_slug text, p_rows jsonb)
+returns jsonb
+language sql
+security definer
+set search_path = public, core
+as $$ select core.import_company_roster_rows(p_company_slug, p_rows); $$;
+
+revoke all on function public.import_company_roster_rows(text, jsonb) from public;
+grant execute on function public.import_company_roster_rows(text, jsonb) to authenticated, service_role;
+
+commit;

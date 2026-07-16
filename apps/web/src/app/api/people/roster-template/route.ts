@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 
 const HEADERS = [
+  "Roster Member ID",
   "Full Name",
   "Email",
   "Phone",
@@ -31,11 +32,11 @@ const HEADERS = [
   "Employment Status",
   "Market",
   "Job Title",
-  "DSW Driver Name",
   "Notes",
 ];
 
 const EXAMPLE = [
+  "",
   "Alton Fletcher",
   "alton5437@gmail.com",
   "7068334802",
@@ -64,7 +65,6 @@ const EXAMPLE = [
   "Active",
   "249",
   "Driver",
-  "FLETCHER, ALTON",
   "",
 ];
 

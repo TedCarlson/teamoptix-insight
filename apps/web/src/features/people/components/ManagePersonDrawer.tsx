@@ -5,6 +5,7 @@ import PersonCoreSection from "@/features/people/components/person-drawer/Person
 import PersonOperationsSection from "@/features/people/components/person-drawer/PersonOperationsSection";
 import PersonLifecycleSection from "@/features/people/components/person-drawer/PersonLifecycleSection";
 import PersonTimelineSection from "@/features/people/components/person-drawer/PersonTimelineSection";
+import RosterAssignedResourcesSection from "@/features/company/assets/RosterAssignedResourcesSection";
 
 type CoreDraft = {
   full_name: string;
@@ -31,13 +32,10 @@ type CoreDraft = {
 type OperationsDraft = {
   fx_id: string;
   dswid: string;
-  scanner_serial: string;
   dot_expiration_date: string;
   qual_cert_expiration_date: string;
   daily_pay_effective_date: string;
   daily_pay_rate: string;
-  fuel_card: string;
-  pin_id_no: string;
 };
 
 type StatusDraft = {
@@ -58,6 +56,7 @@ type TimelineEvent = {
 
 type Props = {
   open: boolean;
+  companySlug: string;
   person: RosterRow | null;
   savingDetails: boolean;
   savingOperations: boolean;
@@ -70,12 +69,14 @@ type Props = {
   onClose: () => void;
   onSaveDetails: (draft: CoreDraft) => Promise<void>;
   onSaveOperations: (draft: OperationsDraft) => Promise<void>;
+  onRefreshPerson: () => Promise<void>;
   onSaveStatus: (draft: StatusDraft) => Promise<void>;
   onSendInvite?: () => Promise<void>;
 };
 
 export default function ManagePersonDrawer({
   open,
+  companySlug,
   person,
   savingDetails,
   savingOperations,
@@ -88,6 +89,7 @@ export default function ManagePersonDrawer({
   onClose,
   onSaveDetails,
   onSaveOperations,
+  onRefreshPerson,
   onSaveStatus,
   onSendInvite,
 }: Props) {
@@ -167,6 +169,12 @@ export default function ManagePersonDrawer({
           person={person}
           saving={savingOperations}
           onSave={onSaveOperations}
+        />
+
+        <RosterAssignedResourcesSection
+          companySlug={companySlug}
+          person={person}
+          onChanged={onRefreshPerson}
         />
 
         <PersonTimelineSection events={timelineEvents} loading={loadingTimeline} />

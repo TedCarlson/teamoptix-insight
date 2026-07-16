@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { loadRosterAssetValues } from "@/features/people/server/assetAssignments";
 
 export const runtime = "nodejs";
 
@@ -45,6 +46,7 @@ export async function GET(
     let stageByRosterId = new Map<string, any>();
     let opsByRosterId = new Map<string, any>();
     let traineePayByRosterId = new Map<string, any>();
+    let assetValuesByRosterId = new Map<string, { scanner_serial: string | null; fuel_card: string | null; pin_id_no: string | null }>();
 
     if (rosterIds.length > 0) {
       const { data: opsRows } = await supabase
@@ -55,6 +57,8 @@ export async function GET(
       opsByRosterId = new Map(
         (opsRows ?? []).map((ops: any) => [ops.roster_id, ops])
       );
+
+      assetValuesByRosterId = await loadRosterAssetValues(supabase, slug, rosterIds);
     }
 
     if (rosterIds.length > 0) {
@@ -94,20 +98,25 @@ export async function GET(
         const stage = stageByRosterId.get(row.roster_member_id);
         const ops = opsByRosterId.get(row.roster_member_id);
         const traineePay = traineePayByRosterId.get(row.roster_member_id);
+        const assetValues = assetValuesByRosterId.get(row.roster_member_id) ?? {
+          scanner_serial: null,
+          fuel_card: null,
+          pin_id_no: null,
+        };
 
         return {
           ...row,
           fx_id: ops?.fx_id ?? row.fx_id ?? null,
           dswid: ops?.dswid ?? row.dswid ?? null,
-          scanner_serial: ops?.scanner_serial ?? null,
+          scanner_serial: assetValues.scanner_serial ?? ops?.scanner_serial ?? null,
           dot_expiration_date: ops?.dot_exp ?? null,
           qual_cert_expiration_date: ops?.qual_cert_exp ?? null,
           daily_pay_effective_date: ops?.daily_pay_effective_date ?? null,
           daily_pay_rate: ops?.daily_pay_rate ?? null,
           trainee_daily_pay_rate: traineePay?.trainee_daily_pay_rate ?? null,
           trainee_pay_effective_start: traineePay?.effective_start ?? null,
-          fuel_card: ops?.fuel_card ?? null,
-          pin_id_no: ops?.pin_id_no ?? null,
+          fuel_card: assetValues.fuel_card ?? ops?.fuel_card ?? null,
+          pin_id_no: assetValues.pin_id_no ?? ops?.pin_id_no ?? null,
           candidate_stage_key: stage?.stage_key ?? null,
           candidate_stage_label: stage?.default_label ?? null,
           candidate_stage_is_terminal: Boolean(stage?.is_terminal ?? false),

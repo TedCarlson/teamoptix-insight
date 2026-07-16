@@ -33,13 +33,10 @@ type CoreDraft = {
 type OperationsDraft = {
   fx_id: string;
   dswid: string;
-  scanner_serial: string;
   dot_expiration_date: string;
   qual_cert_expiration_date: string;
   daily_pay_effective_date: string;
   daily_pay_rate: string;
-  fuel_card: string;
-  pin_id_no: string;
 };
 
 type StatusDraft = {
@@ -451,7 +448,8 @@ export default function CandidateWorkflowDrawer({
         ...person,
         fx_id: saved.fx_id ?? draft.fx_id,
         dswid: saved.dswid ?? draft.dswid,
-        scanner_serial: saved.scanner_serial ?? draft.scanner_serial,
+        scanner_serial:
+          saved.scanner_serial ?? person.scanner_serial,
         dot_expiration_date:
           saved.dot_expiration_date ?? draft.dot_expiration_date,
         qual_cert_expiration_date:
@@ -459,8 +457,8 @@ export default function CandidateWorkflowDrawer({
         daily_pay_effective_date:
           saved.daily_pay_effective_date ?? draft.daily_pay_effective_date,
         daily_pay_rate: saved.daily_pay_rate ?? draft.daily_pay_rate,
-        fuel_card: saved.fuel_card ?? draft.fuel_card,
-        pin_id_no: saved.pin_id_no ?? draft.pin_id_no,
+        fuel_card: saved.fuel_card ?? person.fuel_card,
+        pin_id_no: saved.pin_id_no ?? person.pin_id_no,
       });
 
       await onRefresh?.();

@@ -7,6 +7,7 @@ import { useLob } from "@/features/lob/hooks/useLob";
 
 type ParsedRow = {
   row_number: number;
+  roster_member_id: string;
   full_name: string;
   email: string;
   phone: string;
@@ -39,12 +40,12 @@ type ParsedRow = {
   market: string;
   market_code: string;
   job_title: string;
-  dsw_driver_name: string;
   notes: string;
   issues: string[];
 };
 
 const EXPECTED_HEADERS = [
+  "Roster Member ID",
   "Full Name",
   "Email",
   "Phone",
@@ -73,7 +74,6 @@ const EXPECTED_HEADERS = [
   "Employment Status",
   "Market",
   "Job Title",
-  "DSW Driver Name",
   "Notes",
 ] as const;
 
@@ -186,6 +186,15 @@ export default function CompanyRosterImportPage() {
   const [commitError, setCommitError] = useState<string | null>(null);
   const [commitMessage, setCommitMessage] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [decisions, setDecisions] = useState<Array<{
+    row_number: number;
+    decision: "NEW" | "UPDATE_DRAFT" | "UNCHANGED" | "CONFLICT" | "INVALID";
+    roster_member_id: string | null;
+    matched_fields: string[];
+    changed_fields: string[];
+    issues: string[];
+  }>>([]);
 
   const validRows = useMemo(
     () => rows.filter((row) => row.issues.length === 0),
@@ -215,6 +224,7 @@ export default function CompanyRosterImportPage() {
     setError(null);
     setCommitError(null);
     setCommitMessage(null);
+    setDecisions([]);
 
     try {
       const text = await file.text();
@@ -255,6 +265,7 @@ export default function CompanyRosterImportPage() {
 
         const row: ParsedRow = {
           row_number: index + 2,
+          roster_member_id: valueFor(cells, "Roster Member ID"),
           full_name: valueFor(cells, "Full Name"),
           email: valueFor(cells, "Email"),
           phone: valueFor(cells, "Phone"),
@@ -287,7 +298,6 @@ export default function CompanyRosterImportPage() {
           market: valueFor(cells, "Market"),
           market_code: valueFor(cells, "Market"),
           job_title: valueFor(cells, "Job Title"),
-          dsw_driver_name: valueFor(cells, "DSW Driver Name"),
           notes: valueFor(cells, "Notes"),
           issues: [],
         };
@@ -327,6 +337,30 @@ export default function CompanyRosterImportPage() {
     }
   }
 
+  async function handleAnalyzeImport() {
+    try {
+      setAnalyzing(true);
+      setCommitError(null);
+      setCommitMessage(null);
+      const res = await fetch(`/api/company/${slug}/people/roster/import/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ rows }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCommitError(data?.error ?? "Failed to analyze roster import.");
+        return;
+      }
+      setDecisions(Array.isArray(data?.decisions) ? data.decisions : []);
+    } catch {
+      setCommitError("Analysis request failed.");
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
   async function handleCommitImport() {
     try {
       setCommitting(true);
@@ -344,7 +378,12 @@ export default function CompanyRosterImportPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ rows }),
+          body: JSON.stringify({
+            rows,
+            approved_row_numbers: decisions
+              .filter((item) => item.decision === "NEW" || item.decision === "UPDATE_DRAFT")
+              .map((item) => item.row_number),
+          }),
         }
       );
 
@@ -417,11 +456,20 @@ export default function CompanyRosterImportPage() {
 
               <button
                 type="button"
+                className="button"
+                onClick={handleAnalyzeImport}
+                disabled={analyzing || validRows.length === 0}
+              >
+                {analyzing ? "Analyzing..." : "Analyze import"}
+              </button>
+
+              <button
+                type="button"
                 className="button button-primary"
                 onClick={handleCommitImport}
-                disabled={committing || validRows.length === 0}
+                disabled={committing || decisions.every((item) => item.decision !== "NEW" && item.decision !== "UPDATE_DRAFT")}
               >
-                {committing ? "Importing..." : "Commit import"}
+                {committing ? "Importing..." : "Commit approved rows"}
               </button>
             </div>
 
@@ -448,8 +496,8 @@ export default function CompanyRosterImportPage() {
 
           <StepCard
             eyebrow="Step 3"
-            title="Commit valid rows"
-            body="Valid rows enrich existing people first, then create new roster rows only when no match is found."
+            title="Review and commit"
+            body="Insight reconciles each row as new, update draft, unchanged, conflict, or invalid before any database write."
           />
 
           <article className="value-card" style={{ gridColumn: "1 / -1" }}>
@@ -490,6 +538,21 @@ export default function CompanyRosterImportPage() {
             </div>
           </article>
 
+          {decisions.length > 0 ? (
+            <article className="value-card" style={{ gridColumn: "1 / -1" }}>
+              <p className="value-card__eyebrow">Reconciliation</p>
+              <h3 className="value-card__title">Import decision set</h3>
+              <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 14 }}>
+                {["NEW", "UPDATE_DRAFT", "UNCHANGED", "CONFLICT", "INVALID"].map((kind) => (
+                  <div className="hero-stat" key={kind}>
+                    <span className="hero-stat__label">{kind.replace("_", " ")}</span>
+                    <strong>{decisions.filter((item) => item.decision === kind).length}</strong>
+                  </div>
+                ))}
+              </div>
+            </article>
+          ) : null}
+
           <article className="value-card" style={{ gridColumn: "1 / -1" }}>
             <p className="value-card__eyebrow">Preview</p>
             <h3 className="value-card__title">Parsed roster rows</h3>
@@ -511,6 +574,8 @@ export default function CompanyRosterImportPage() {
                     <tr>
                       {[
                         "Row",
+                        "Decision",
+                        "Roster ID",
                         "Full Name",
                         "Email",
                         "Phone",
@@ -550,6 +615,8 @@ export default function CompanyRosterImportPage() {
                     {rows.map((row) => (
                       <tr key={row.row_number}>
                         <td style={cellStyle}>{row.row_number}</td>
+                        <td style={cellStyle}>{decisions.find((item) => item.row_number === row.row_number)?.decision ?? "Not analyzed"}</td>
+                        <td style={cellStyle}>{row.roster_member_id || decisions.find((item) => item.row_number === row.row_number)?.roster_member_id || "—"}</td>
                         <td style={cellStyle}>{row.full_name || "—"}</td>
                         <td style={cellStyle}>{row.email || "—"}</td>
                         <td style={cellStyle}>{row.phone || "—"}</td>

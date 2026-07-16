@@ -23,7 +23,7 @@ export async function POST(
       );
     }
 
-    const { data, error } = await supabase.rpc("assign_company_asset", {
+    const { data, error } = await supabase.rpc("assign_company_asset_to_roster_slot", {
       p_company_slug: slug,
       p_asset_id: assetId,
       p_roster_member_id: rosterMemberId,

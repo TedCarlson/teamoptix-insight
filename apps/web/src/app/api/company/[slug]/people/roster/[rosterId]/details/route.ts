@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { loadRosterAuthoritativeDto } from "@/features/people/server/loadRosterAuthoritativeDto";
 
 export const runtime = "nodejs";
 
@@ -17,7 +18,7 @@ function dateOrNull(value: unknown) {
 
 export async function PATCH(
   req: NextRequest,
-  context: { params: Promise<{ slug: string; rosterId: string }> }
+  context: { params: Promise<{ slug: string; rosterId: string }> },
 ) {
   try {
     const { slug, rosterId } = await context.params;
@@ -34,9 +35,10 @@ export async function PATCH(
       return NextResponse.json(
         {
           error: "Failed to load current person record.",
-          detail: currentError?.message ?? "Current person record not found.",
+          detail:
+            currentError?.message ?? "Current person record not found.",
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -50,57 +52,82 @@ export async function PATCH(
         ? dateOrNull(body[key])
         : (current[key] ?? null);
 
-    const { data, error } = await supabase.rpc("update_company_roster_details", {
-      p_company_slug: slug,
-      p_roster_id: rosterId,
+    const { data, error } = await supabase.rpc(
+      "update_company_roster_details",
+      {
+        p_company_slug: slug,
+        p_roster_id: rosterId,
+        p_full_name: pickText("full_name"),
+        p_email: pickText("email")?.toLowerCase() ?? null,
+        p_phone: pickText("phone"),
+        p_worker_type: pickText("worker_type"),
+        p_market_code: pickText("market_code"),
+        p_notes: pickText("notes"),
+        p_date_of_birth: pickDate("date_of_birth"),
+        p_hire_date: pickDate("hire_date"),
+        p_address_line_1: pickText("address_line_1"),
+        p_address_line_2: pickText("address_line_2"),
+        p_city: pickText("city"),
+        p_state_region: pickText("state_region"),
+        p_postal_code: pickText("postal_code"),
+        p_license_number: pickText("license_number"),
+        p_issuing_state: pickText("issuing_state"),
+        p_license_issue_date: pickDate("license_issue_date"),
+        p_license_expiration_date: pickDate(
+          "license_expiration_date",
+        ),
+      },
+    );
 
-      p_full_name: pickText("full_name"),
-      p_email: pickText("email")?.toLowerCase() ?? null,
-      p_phone: pickText("phone"),
-      p_worker_type: pickText("worker_type"),
-      p_market_code: pickText("market_code"),
-      p_notes: pickText("notes"),
-
-      p_date_of_birth: pickDate("date_of_birth"),
-      p_hire_date: pickDate("hire_date"),
-      p_address_line_1: pickText("address_line_1"),
-      p_address_line_2: pickText("address_line_2"),
-      p_city: pickText("city"),
-      p_state_region: pickText("state_region"),
-      p_postal_code: pickText("postal_code"),
-
-      p_license_number: pickText("license_number"),
-      p_issuing_state: pickText("issuing_state"),
-      p_license_issue_date: pickDate("license_issue_date"),
-      p_license_expiration_date: pickDate("license_expiration_date"),
-    });
-
-    
-if (error) {
+    if (error) {
       return NextResponse.json(
         {
           error: "Failed to update details.",
           detail: error.message,
           code: error.code ?? null,
         },
-        { status: 500 }
+        { status: 500 },
+      );
+    }
+
+    const roster = await loadRosterAuthoritativeDto({
+      supabase,
+      companySlug: slug,
+      companyId: String(current.company_id),
+      rosterId,
+    });
+
+    if (!roster) {
+      return NextResponse.json(
+        {
+          error:
+            "Details saved, but roster record could not be reloaded.",
+        },
+        { status: 500 },
       );
     }
 
     return NextResponse.json(
       {
         ok: true,
-        roster: data ?? {},
+        roster: {
+          ...roster,
+          ...(data ?? {}),
+        },
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to update details.";
+      error instanceof Error
+        ? error.message
+        : "Failed to update details.";
+
+    console.error("[roster-details:patch] failed", error);
 
     return NextResponse.json(
       { error: "Failed to update details.", detail: message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
