@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import ManagePersonDrawer from "@/features/people/components/ManagePersonDrawer";
 import CandidateWorkflowDrawer from "@/features/hiring/components/candidate-drawer/CandidateWorkflowDrawer";
 import TraineePayOverrideOverlay from "@/features/people/components/TraineePayOverrideOverlay";
@@ -10,6 +10,7 @@ import RosterControlsBar, {
 } from "@/features/people/components/RosterControlsBar";
 import RosterTable from "@/features/people/components/RosterTable";
 import type { RosterRow } from "@/features/people/types/roster.types";
+import type { RosterComplianceSignal } from "@/features/compliance/lib/rosterCompliance";
 
 type TimelineEvent = {
   id: string;
@@ -46,7 +47,7 @@ type ApiRosterRow = {
   license_issue_date?: string | null;
   license_expiration_date?: string | null;
   invite_status: string | null;
-  compliance_summary: string | null;
+  compliance_signals?: RosterComplianceSignal[];
   fx_id?: string | null;
   dswid?: string | null;
   dot_expiration_date?: string | null;
@@ -89,7 +90,7 @@ function normalizeRosterRow(row: ApiRosterRow): RosterRow {
     license_issue_date: row.license_issue_date ?? null,
     license_expiration_date: row.license_expiration_date ?? null,
     invite_status: row.invite_status ?? "Not Invited",
-    compliance_summary: row.compliance_summary ?? "Missing",
+    compliance_signals: row.compliance_signals ?? [],
     fx_id: row.fx_id ?? null,
     dswid: row.dswid ?? null,
     dot_expiration_date: row.dot_expiration_date ?? null,
@@ -124,6 +125,7 @@ function StatCard(props: { label: string; value: number }) {
 export default function CompanyRosterPage() {
   const params = useParams();
   const slug = String(params?.slug ?? "");
+  const searchParams = useSearchParams();
 
   const [tab, setTab] = useState<RosterTab>("active");
   const [search, setSearch] = useState("");
@@ -181,6 +183,21 @@ export default function CompanyRosterPage() {
       active = false;
     };
   }, [slug]);
+
+  useEffect(() => {
+    const rosterId = searchParams.get("person");
+    if (!rosterId || rows.length === 0 || managedPerson) return;
+    const person = rows.find((row) => row.roster_member_id === rosterId);
+    if (!person) return;
+    setManagedPerson(person);
+    void hydrateRosterPerson(rosterId).then(() => {
+      if (searchParams.get("section") === "compliance") {
+        window.setTimeout(() => document.getElementById("compliance")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+      }
+    });
+  // The URL is an opening instruction; managedPerson prevents repeated opening.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [managedPerson, rows, searchParams]);
 
   async function refreshRoster() {
     if (!slug) return;
@@ -266,7 +283,7 @@ export default function CompanyRosterPage() {
         row.market_code,
         row.reports_to_name,
         row.invite_status,
-        row.compliance_summary,
+        ...row.compliance_signals.map((signal) => `${signal.label} ${signal.status}`),
       ]
         .join(" ")
         .toLowerCase()
@@ -279,7 +296,7 @@ export default function CompanyRosterPage() {
   const candidateCount = rows.filter((r) => r.employment_status === "Candidate").length;
   const formerCount = rows.filter((r) => r.employment_status === "Former").length;
   const complianceAlertCount = rows.filter(
-    (r) => r.compliance_summary !== "Compliant"
+    (r) => r.compliance_signals.length > 0
   ).length;
 
   async function hydrateManagedPerson(row: RosterRow) {

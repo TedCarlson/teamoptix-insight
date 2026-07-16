@@ -16,6 +16,7 @@ import {
   IntentVerificationDrawer,
   type IntentVerificationAction,
 } from "@/features/security/components/IntentVerificationDrawer";
+import type { RosterComplianceSignal } from "@/features/compliance/lib/rosterCompliance";
 
 type ScheduleRow = {
   roster_member_id: string;
@@ -230,6 +231,7 @@ export default function CompanyUserHomePage() {
   const [correctionSaving, setCorrectionSaving] = useState(false);
   const [clockConfirm, setClockConfirm] = useState<IntentVerificationAction | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
+  const [complianceSignals, setComplianceSignals] = useState<RosterComplianceSignal[]>([]);
 
   const loadActivity = useCallback(async () => {
     if (!slug) return;
@@ -339,6 +341,10 @@ export default function CompanyUserHomePage() {
       void loadActivity();
       void loadTimekeepingDiscrepancies();
       void loadDriverMessages();
+      void fetch(`/api/company/${slug}/driver/compliance`, { credentials: "include", cache: "no-store" })
+        .then((response) => response.json())
+        .then((data) => setComplianceSignals(Array.isArray(data?.compliance_signals) ? data.compliance_signals : []))
+        .catch(() => setComplianceSignals([]));
     }
 
     return () => {
@@ -652,12 +658,20 @@ export default function CompanyUserHomePage() {
           <div className="company-user-section-header">
             <div>
               <p className="value-card__eyebrow">Compliance</p>
-              <h2>No urgent expirations</h2>
+              <h2>{complianceSignals.length ? "Documents need attention" : "No urgent expirations"}</h2>
             </div>
           </div>
-          <p className="company-user-muted">
-            DOT, license, badge, and other upcoming expiration reminders will appear here.
-          </p>
+          {complianceSignals.length === 0 ? (
+            <p className="company-user-muted">Your required documents are current.</p>
+          ) : complianceSignals.map((signal) => (
+            <article key={signal.documentType} style={{ borderTop: "1px solid #e6edf5", paddingTop: 10, marginTop: 10 }}>
+              <strong>{signal.label}</strong>
+              <p className="company-user-muted" style={{ margin: "4px 0" }}>
+                {signal.status === "missing" ? "Document is missing" : signal.status === "expired" ? `Expired ${signal.expirationDate}` : `Expires in ${signal.daysRemaining} days · ${signal.expirationDate}`}
+              </p>
+              <strong style={{ color: "#b42318", fontSize: 13 }}>Update Required</strong>
+            </article>
+          ))}
         </section>
 
         <section className="app-card company-user-card">

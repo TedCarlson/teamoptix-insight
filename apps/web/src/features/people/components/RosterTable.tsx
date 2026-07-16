@@ -1,6 +1,6 @@
 "use client";
 
-import ComplianceSignal from "@/features/compliance/components/ComplianceSignal";
+import RosterComplianceIndicators from "@/features/compliance/components/RosterComplianceIndicators";
 import type { RosterRow } from "@/features/people/types/roster.types";
 
 type Props = {
@@ -47,10 +47,6 @@ function Pill(props: {
       {value || "—"}
     </span>
   );
-}
-
-function complianceTone(value: string | null | undefined) {
-  return value === "Compliant" ? "good" : "warn";
 }
 
 function inviteTone(value: string | null | undefined) {
@@ -126,7 +122,7 @@ export default function RosterTable(props: Props) {
                 <Pill value={row.invite_status} tone={inviteTone(row.invite_status)} />
               </td>
               <td style={cellStyle}>
-                <ComplianceSignal value={row.compliance_summary} compact />
+                <RosterComplianceIndicators signals={row.compliance_signals} />
               </td>
             </tr>
           ))}

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { RosterEmploymentStatus } from "@/features/people/types/roster.types";
 import type { RosterRow } from "@/features/people/types/roster.types";
+import RosterComplianceIndicators from "@/features/compliance/components/RosterComplianceIndicators";
 
 type Props = {
   person: RosterRow;
@@ -73,7 +74,7 @@ export default function PersonStatusEditor({
         <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
           <div><strong>Status:</strong> {person.employment_status}</div>
           <div><strong>Invite:</strong> {person.invite_status}</div>
-          <div><strong>Compliance:</strong> {person.compliance_summary}</div>
+          <div><strong>Compliance:</strong> <RosterComplianceIndicators signals={person.compliance_signals} /></div>
           <div><strong>Hire Date:</strong> {person.hire_date}</div>
         </div>
       ) : (

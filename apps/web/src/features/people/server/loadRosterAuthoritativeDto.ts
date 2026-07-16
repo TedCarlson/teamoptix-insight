@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadRosterAssetValues } from "@/features/people/server/assetAssignments";
+import { deriveRosterComplianceSignals } from "@/features/compliance/lib/rosterCompliance";
 
 type Input = {
   supabase: SupabaseClient;
@@ -24,7 +25,7 @@ export async function loadRosterAuthoritativeDto({
     supabase
       .from("company_roster_view")
       .select(
-        "roster_member_id, company_id, profile_id, person_id, full_name, email, phone, worker_type, job_title, employment_status, market_code, reports_to_name, hire_date, separation_date, reports_to_roster_id, invite_status, compliance_summary, notes",
+        "roster_member_id, company_id, profile_id, person_id, full_name, email, phone, worker_type, job_title, employment_status, market_code, reports_to_name, hire_date, separation_date, reports_to_roster_id, invite_status, notes",
       )
       .eq("company_id", companyId)
       .eq("roster_member_id", rosterId)
@@ -113,7 +114,11 @@ export async function loadRosterAuthoritativeDto({
     hire_date: roster.hire_date,
     separation_date: roster.separation_date,
     invite_status: roster.invite_status,
-    compliance_summary: roster.compliance_summary,
+    compliance_signals: deriveRosterComplianceSignals({
+      licenseExpirationDate: license?.expiration_date ?? null,
+      dotExpirationDate: operations?.dot_exp ?? null,
+      qualificationExpirationDate: operations?.qual_cert_exp ?? null,
+    }),
     notes: roster.notes ?? null,
 
     scanner_serial:

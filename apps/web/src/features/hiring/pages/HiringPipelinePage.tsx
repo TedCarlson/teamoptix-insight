@@ -235,6 +235,7 @@ function ReadinessBlocks(props: { progress?: CandidateProgress | null }) {
 
 function toRosterRow(row: PipelineCandidateRow): RosterRow {
   return {
+    compliance_signals: [],
     roster_member_id: row.id,
     profile_id: row.profile_id ?? null,
     person_id: row.person_id ?? null,

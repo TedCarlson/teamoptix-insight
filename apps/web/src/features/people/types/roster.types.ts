@@ -6,13 +6,7 @@ export type RosterInviteStatus =
   | "Linked"
   | string;
 
-export type RosterComplianceSummary =
-  | "Compliant"
-  | "Missing"
-  | "Expiring"
-  | "Expired"
-  | "Archived"
-  | string;
+import type { RosterComplianceSignal } from "@/features/compliance/lib/rosterCompliance";
 
 export type RosterRow = {
   roster_member_id: string;
@@ -36,7 +30,9 @@ export type RosterRow = {
   separation_date?: string | null;
 
   invite_status: RosterInviteStatus;
-  compliance_summary: RosterComplianceSummary;
+  compliance_signals: RosterComplianceSignal[];
+  /** @deprecated Candidate workflows only; workforce compliance uses compliance_signals. */
+  compliance_summary?: string | null;
 
   notes?: string | null;
 

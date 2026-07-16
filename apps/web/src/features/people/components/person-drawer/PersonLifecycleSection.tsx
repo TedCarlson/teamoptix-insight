@@ -11,6 +11,7 @@ import {
   compactInput,
   compactTextarea,
 } from "./PersonDrawerRows";
+import RosterComplianceIndicators from "@/features/compliance/components/RosterComplianceIndicators";
 
 type Draft = {
   employment_status: RosterEmploymentStatus;
@@ -75,7 +76,10 @@ export default function PersonLifecycleSection({
           <div style={{ display: "grid", gap: 8 }}>
             <FactRow label="Employment" value={person.employment_status} />
             <FactRow label="Invite" value={person.invite_status} />
-            <FactRow label="Compliance" value={person.compliance_summary} />
+            <div id="compliance" style={{ display: "grid", gridTemplateColumns: "130px 1fr", gap: 8 }}>
+              <span className="workspace-card-body">Compliance</span>
+              <RosterComplianceIndicators signals={person.compliance_signals} />
+            </div>
             <FactRow label="Hire Date" value={person.hire_date} />
             <FactRow label="Separation" value={person.separation_date} />
           </div>

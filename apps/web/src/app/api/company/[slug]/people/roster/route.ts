@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { loadRosterAssetValues } from "@/features/people/server/assetAssignments";
+import { deriveRosterComplianceSignals } from "@/features/compliance/lib/rosterCompliance";
 
 export const runtime = "nodejs";
 
@@ -45,6 +46,7 @@ export async function GET(
 
     let stageByRosterId = new Map<string, any>();
     let opsByRosterId = new Map<string, any>();
+    let licenseByRosterId = new Map<string, any>();
     let traineePayByRosterId = new Map<string, any>();
     let assetValuesByRosterId = new Map<string, { scanner_serial: string | null; fuel_card: string | null; pin_id_no: string | null }>();
 
@@ -56,6 +58,15 @@ export async function GET(
 
       opsByRosterId = new Map(
         (opsRows ?? []).map((ops: any) => [ops.roster_id, ops])
+      );
+
+      const { data: licenseRows } = await supabase
+        .from("company_roster_license_fact_v")
+        .select("roster_id, expiration_date")
+        .eq("company_id", company.id)
+        .in("roster_id", rosterIds);
+      licenseByRosterId = new Map(
+        (licenseRows ?? []).map((license: any) => [license.roster_id, license])
       );
 
       assetValuesByRosterId = await loadRosterAssetValues(supabase, slug, rosterIds);
@@ -97,6 +108,7 @@ export async function GET(
       .map((row: any) => {
         const stage = stageByRosterId.get(row.roster_member_id);
         const ops = opsByRosterId.get(row.roster_member_id);
+        const license = licenseByRosterId.get(row.roster_member_id);
         const traineePay = traineePayByRosterId.get(row.roster_member_id);
         const assetValues = assetValuesByRosterId.get(row.roster_member_id) ?? {
           scanner_serial: null,
@@ -120,6 +132,11 @@ export async function GET(
           candidate_stage_key: stage?.stage_key ?? null,
           candidate_stage_label: stage?.default_label ?? null,
           candidate_stage_is_terminal: Boolean(stage?.is_terminal ?? false),
+          compliance_signals: deriveRosterComplianceSignals({
+            licenseExpirationDate: license?.expiration_date ?? row.license_expiration_date ?? null,
+            dotExpirationDate: ops?.dot_exp ?? null,
+            qualificationExpirationDate: ops?.qual_cert_exp ?? null,
+          }),
         };
       })
       .filter((row: any) => {
