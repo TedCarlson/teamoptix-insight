@@ -76,6 +76,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const payrollBase = `${base}/payroll`;
   const billingBase = `${base}/billing`;
   const analyticsBase = `${base}/analytics`;
+  const fleetBase = `${base}/fleet`;
   const legalRequiredBase = `${base}/admin/legal/required`;
 
   const mainItems: NavItem[] = isAdminUser
@@ -98,6 +99,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
         { label: "Operations", href: operationsBase, match: (path) => path.startsWith(operationsBase) || path.startsWith(`${base}/dispatch`) || path === `${base}/prior-day` },
         { label: "People", href: peopleBase, match: (path) => path.startsWith(peopleBase) || path.startsWith(`${base}/hiring`) },
         { label: "Schedule", href: scheduleBase, match: (path) => path.startsWith(scheduleBase) },
+        { label: "Fleet", href: fleetBase, match: (path) => path.startsWith(fleetBase) },
         { label: "Routes", href: `${base}/routes`, match: (path) => path.startsWith(`${base}/routes`) },
       ]
     : [
@@ -209,6 +211,13 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     { label: "Ops Reports", href: `${base}/prior-day`, match: (path) => path === `${base}/prior-day` },
   ];
 
+  const fleetSubItems: NavItem[] = [
+    { label: "Home", href: fleetBase, match: (path) => path === fleetBase },
+    { label: "Vehicles", href: `${fleetBase}/vehicles`, match: (path) => path.startsWith(`${fleetBase}/vehicles`) },
+    { label: "Maintenance", href: `${fleetBase}/maintenance`, match: (path) => path.startsWith(`${fleetBase}/maintenance`) },
+    { label: "Inspections", href: `${fleetBase}/inspections`, match: (path) => path.startsWith(`${fleetBase}/inspections`) },
+  ];
+
   const homeSubItems: NavItem[] = [
     { label: "Announcements", href: announcementsBase, match: (path) => path.startsWith(announcementsBase) },
   ];
@@ -255,6 +264,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const inAssetsBranch = pathname === assetsBase || pathname.startsWith(`${assetsBase}/`);
   const inPayrollBranch = pathname === payrollBase || pathname.startsWith(`${payrollBase}/`);
   const inLegalBranch = pathname.startsWith(`${base}/admin/legal`);
+  const inFleetBranch = pathname === fleetBase || pathname.startsWith(`${fleetBase}/`);
 
 
   const subItems = !isAdminUser
@@ -282,6 +292,8 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
               ? peopleSubItems
               : inScheduleBranch
                 ? scheduleSubItems
+                : inFleetBranch
+                  ? fleetSubItems
                 : inOperationsBranch
                   ? operationsSubItems
                   : [];

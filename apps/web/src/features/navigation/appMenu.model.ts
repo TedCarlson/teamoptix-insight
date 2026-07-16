@@ -1,5 +1,6 @@
 import type { AppMenuSection } from "./appMenu.types";
 import { buildAdministrationMenu } from "./workspaces/administration.menu";
+import { buildFleetMenu } from "./workspaces/fleet.menu";
 import { buildHomeMenu } from "./workspaces/home.menu";
 import { buildOperationsMenu } from "./workspaces/operations.menu";
 import { buildPeopleMenu } from "./workspaces/people.menu";
@@ -35,6 +36,7 @@ export function buildCompanyMenu(params: {
     buildHomeMenu(base),
     buildOperationsMenu(base),
     buildScheduleMenu(base),
+    buildFleetMenu(base),
     buildPeopleMenu(base),
     buildAdministrationMenu(base),
   ];

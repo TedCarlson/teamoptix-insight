@@ -1,0 +1,9 @@
+export const fleetInspectionItems = [
+  ["CAB", "service_brakes", "Service brakes"], ["CAB", "parking_brake", "Parking brake"],
+  ["CAB", "steering", "Steering mechanism"], ["CAB", "horn", "Horn"], ["CAB", "seat_belt", "Seat belt"],
+  ["VISIBILITY", "lights", "Lights and reflectors"], ["VISIBILITY", "wipers", "Windshield and wipers"], ["VISIBILITY", "mirrors", "Mirrors and cameras"],
+  ["RUNNING_GEAR", "tires", "Tires, tread, pressure, and sidewalls"], ["RUNNING_GEAR", "wheels", "Wheels, rims, lugs, and hubs"],
+  ["BODY", "doors", "Cab and cargo doors/latches"], ["BODY", "steps", "Steps and grab handles"], ["BODY", "leaks", "Visible fluid or exhaust leaks"],
+  ["CARGO", "shelves", "Shelves and cargo-area equipment"], ["CARGO", "securement", "Cargo distribution and securement"],
+  ["EMERGENCY", "equipment", "Fire extinguisher and warning triangles"], ["DOCUMENTS", "documents", "Registration, insurance, and inspection documents"],
+] as const;

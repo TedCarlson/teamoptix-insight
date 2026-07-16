@@ -554,7 +554,7 @@ h1 {
 }
 
 .workspace-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .directory-grid {
@@ -2371,6 +2371,30 @@ body {
   width: 100%;
 }
 
+.driver-inspection-form { display: grid; gap: 12px; padding: 16px 14px 96px; max-width: 680px; margin: 0 auto; }
+.driver-inspection-form h1, .driver-inspection-form h2 { margin: 0; }
+.driver-inspection-form h2 { font-size: 1rem; }
+.driver-inspection-form input, .driver-inspection-form select, .driver-inspection-form textarea { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 10px; background: white; color: #0f172a; font: inherit; }
+.driver-inspection-scan, .driver-inspection-details { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 10px; }
+.driver-inspection-details { grid-template-columns: 1fr 1fr; }
+.driver-inspection-or { display: block; text-align: center; margin: 8px 0; color: #64748b; font-size: 12px; text-transform: uppercase; }
+.driver-inspection-vehicle { display: grid; gap: 3px; padding: 12px; margin-top: 10px; border-radius: 10px; background: #f1f5f9; }
+.driver-inspection-warning, .driver-inspection-message { color: #b45309; }
+.driver-inspection-progress { position: sticky; top: 64px; z-index: 2; padding: 10px 12px; border: 1px solid #dbeafe; border-radius: 12px; background: rgba(255,255,255,.96); display: grid; grid-template-columns: 1fr auto; gap: 6px; }
+.driver-inspection-progress > div { grid-column: 1 / -1; height: 6px; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
+.driver-inspection-progress i { display: block; height: 100%; background: #2563eb; transition: width .2s ease; }
+.driver-inspection-section { display: grid; gap: 8px; }
+.driver-inspection-section > h2 { padding: 6px 2px 0; color: #475569; text-transform: capitalize; }
+.driver-inspection-item { display: grid; gap: 10px; }
+.driver-inspection-result { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+.driver-inspection-result button { min-height: 44px; border: 1px solid #cbd5e1; border-radius: 9px; background: white; font-weight: 700; }
+.driver-inspection-result .is-pass { background: #dcfce7; border-color: #22c55e; color: #166534; }
+.driver-inspection-result .is-defect { background: #fee2e2; border-color: #ef4444; color: #991b1b; }
+.driver-inspection-result .is-not_applicable { background: #e2e8f0; border-color: #64748b; color: #334155; }
+.driver-inspection-submit { min-height: 50px; font-size: 16px; }
+.driver-inspection-camera { display: grid; place-items: center; min-height: 46px; border: 1px dashed #2563eb; border-radius: 10px; background: #eff6ff; color: #1d4ed8; font-weight: 800; cursor: pointer; }
+.driver-inspection-camera input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
 .driver-bottom-nav {
   position: fixed;
   left: 0;
@@ -2475,7 +2499,7 @@ body {
 }
 
 .driver-bottom-nav {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 @media (max-width: 680px) {
@@ -5344,10 +5368,10 @@ body {
   font-weight: 800;
 }
 
-/* Driver mobile nav: four fixed tabs */
+/* Driver mobile nav: five fixed tabs */
 .driver-bottom-nav {
   display: grid !important;
-  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
   gap: 6px !important;
 }
 

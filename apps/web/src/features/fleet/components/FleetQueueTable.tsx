@@ -1,0 +1,4 @@
+type Row = Record<string, unknown>;
+export default function FleetQueueTable({ title, rows, columns }: { title: string; rows: Row[]; columns: Array<{ key: string; label: string }> }) {
+  return <article className="app-card" style={{ padding: 14, overflowX: "auto" }}><h2 className="app-card__title">{title}</h2>{rows.length===0 ? <p className="app-card__body" style={{ marginTop: 12 }}>No records yet.</p> : <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12 }}><thead><tr>{columns.map(c=><th key={c.key} style={{ textAlign: "left", padding: 8, borderBottom: "1px solid #e2e8f0" }}>{c.label}</th>)}</tr></thead><tbody>{rows.map((row,index)=><tr key={String(row.id ?? index)}>{columns.map(c=><td key={c.key} style={{ padding: 8, borderBottom: "1px solid #eef2f7" }}>{row[c.key] == null ? "—" : String(row[c.key]).replaceAll("_"," ")}</td>)}</tr>)}</tbody></table>}</article>;
+}

@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 
-export type IntentVerificationAction = "CLOCK_IN" | "CLOCK_OUT" | "TIME_OFF_REQUEST";
+export type IntentVerificationAction = "CLOCK_IN" | "CLOCK_OUT" | "TIME_OFF_REQUEST" | "VEHICLE_INSPECTION";
 
 type IntentChallenge = {
   correctCode: string;
@@ -19,6 +19,7 @@ type IntentVerificationDrawerProps = {
 function actionLabel(action: IntentVerificationAction) {
   if (action === "CLOCK_OUT") return "Clock Out";
   if (action === "TIME_OFF_REQUEST") return "Time Off Request";
+  if (action === "VEHICLE_INSPECTION") return "Vehicle Inspection";
   return "Clock In";
 }
 
