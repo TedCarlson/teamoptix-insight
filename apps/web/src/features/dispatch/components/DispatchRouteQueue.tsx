@@ -137,8 +137,8 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
   }
 
   return (
-    <section style={panel}>
-      <div style={panelHeader}>
+    <section className="dispatch-route-queue" style={panel}>
+      <div className="dispatch-route-queue__header" style={panelHeader}>
         <div>
           <p style={eyebrow}>Route Queue</p>
           <div style={{ display: "flex", alignItems: "baseline", gap: 18, flexWrap: "wrap" }}>
@@ -178,6 +178,7 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
       </div>
 
       <div
+        className="dispatch-route-row dispatch-route-row--labels"
         style={{
           ...routeRowBase,
           position: "sticky",
@@ -255,7 +256,7 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
         </div>
       </div>
 
-      <div style={{ maxHeight: "calc(100vh - 236px)", overflow: "auto" }}>
+      <div className="dispatch-route-queue__scroll" style={{ maxHeight: "calc(100vh - 236px)", overflow: "auto" }}>
         {loading ? (
           <div style={{ padding: 14 }}>Loading dispatch...</div>
         ) : routes.length === 0 ? (
@@ -268,8 +269,8 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
               : false;
 
             return (
-              <div key={route.route_key} style={routeRowBase}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div key={route.route_key} className="dispatch-route-row" style={routeRowBase}>
+                <div className="dispatch-route-row__arrival" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {route.driver ? (
                     <button
                       type="button"
@@ -294,7 +295,7 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
                   )}
                 </div>
 
-                <div style={{ minWidth: 0 }}>
+                <div className="dispatch-route-row__identity" style={{ minWidth: 0 }}>
                   <strong
                     style={{
                       display: "block",
@@ -358,7 +359,7 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
                   </span>
                 </div>
 
-                <div style={{ display: "grid", gap: 4 }}>
+                <div className="dispatch-route-row__driver" style={{ display: "grid", gap: 4 }}>
                   <SeatButton
                     route={route}
                     seat="driver"
@@ -403,6 +404,7 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
                 </div>
 
                 <div
+                  className="dispatch-route-row__signals"
                   title={
                     planSignalsByRouteKey[route.route_key]?.title ??
                     dswSignalsByRouteKey[route.route_key]?.title ??

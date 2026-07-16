@@ -26,6 +26,7 @@ export default function OperationsWorkspaceToolbar(props: OperationsWorkspaceToo
 
   return (
     <div
+      className="operations-workspace-toolbar"
       style={{
         display: "flex",
         justifyContent: "space-between",
@@ -34,11 +35,11 @@ export default function OperationsWorkspaceToolbar(props: OperationsWorkspaceToo
         marginBottom: 10,
       }}
     >
-      <span style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>
+      <span className="operations-workspace-toolbar__status" style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>
         Last updated {formatLastUpdated(lastUpdatedAt)}
       </span>
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div className="operations-workspace-toolbar__actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {actions}
         <button
           type="button"

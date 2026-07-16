@@ -23,13 +23,19 @@ export async function POST(req: NextRequest, context: { params: Promise<{ slug: 
     const { data, error } = await supabase.rpc("import_company_roster_rows", { p_company_slug: slug, p_rows: commitRows });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+    const rowErrors = Array.isArray(data?.errors) ? data.errors : [];
+    const skippedCount = Number(data?.skipped_count ?? 0);
+
     return NextResponse.json({
-      ok: Boolean(data?.ok ?? true),
+      ok: Boolean(data?.ok ?? true) && skippedCount === 0 && rowErrors.length === 0,
       inserted_count: Number(data?.inserted_count ?? 0),
       updated_count: Number(data?.updated_count ?? 0),
-      skipped_count: Number(data?.skipped_count ?? 0),
-      errors: Array.isArray(data?.errors) ? data.errors : [],
-    }, { status: 200 });
+      skipped_count: skippedCount,
+      errors: rowErrors,
+      error: skippedCount > 0 || rowErrors.length > 0
+        ? "Roster import completed with row-level failures. Review the affected rows and retry."
+        : null,
+    }, { status: skippedCount > 0 || rowErrors.length > 0 ? 409 : 200 });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Import commit failed." }, { status: 500 });
   }

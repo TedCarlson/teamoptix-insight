@@ -44,6 +44,12 @@ type ParsedRow = {
   issues: string[];
 };
 
+type ImportRowError = {
+  row_number?: number | string | null;
+  full_name?: string | null;
+  error?: string | null;
+};
+
 const EXPECTED_HEADERS = [
   "Roster Member ID",
   "Full Name",
@@ -185,6 +191,7 @@ export default function CompanyRosterImportPage() {
   const [error, setError] = useState<string | null>(null);
   const [commitError, setCommitError] = useState<string | null>(null);
   const [commitMessage, setCommitMessage] = useState<string | null>(null);
+  const [commitRowErrors, setCommitRowErrors] = useState<ImportRowError[]>([]);
   const [committing, setCommitting] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [decisions, setDecisions] = useState<Array<{
@@ -217,6 +224,7 @@ export default function CompanyRosterImportPage() {
       setError(null);
       setCommitError(null);
       setCommitMessage(null);
+      setCommitRowErrors([]);
       return;
     }
 
@@ -389,8 +397,13 @@ export default function CompanyRosterImportPage() {
 
       const data = await res.json();
 
+      const rowErrors = Array.isArray(data?.errors)
+        ? (data.errors as ImportRowError[])
+        : [];
+
       if (!res.ok) {
         setCommitError(data?.error ?? "Failed to commit roster import.");
+        setCommitRowErrors(rowErrors);
         return;
       }
 
@@ -475,6 +488,17 @@ export default function CompanyRosterImportPage() {
 
             {commitError ? (
               <p style={{ color: "#c62828", marginTop: 14 }}>{commitError}</p>
+            ) : null}
+
+            {commitRowErrors.length > 0 ? (
+              <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+                {commitRowErrors.map((rowError, index) => (
+                  <p key={`${rowError.row_number ?? "row"}-${index}`} style={{ color: "#c62828", margin: 0, fontSize: 13 }}>
+                    <strong>{rowError.full_name || `Row ${rowError.row_number ?? "unknown"}`}:</strong>{" "}
+                    {rowError.error || "Import failed for this row."}
+                  </p>
+                ))}
+              </div>
             ) : null}
 
             {commitMessage ? (

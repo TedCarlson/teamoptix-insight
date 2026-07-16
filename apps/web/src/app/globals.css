@@ -795,6 +795,99 @@ h1 {
   }
 }
 
+/* Operations mobile workspace */
+.operations-workspace-toolbar__actions {
+  justify-content: flex-end;
+}
+
+@media (max-width: 640px) {
+  .operations-workspace-toolbar {
+    align-items: stretch !important;
+    flex-direction: column;
+    gap: 8px !important;
+    margin-bottom: 8px !important;
+  }
+
+  .operations-workspace-toolbar__status {
+    padding-inline: 2px;
+  }
+
+  .operations-workspace-toolbar__actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .operations-workspace-toolbar__actions .button {
+    justify-content: center;
+    min-height: 42px !important;
+    width: 100%;
+  }
+
+  .dispatch-grid {
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .dispatch-route-queue,
+  .dispatch-workforce-rail,
+  .dispatch-right-column > * {
+    border-radius: 14px !important;
+  }
+
+  .dispatch-route-queue__header {
+    align-items: flex-start !important;
+    flex-direction: column;
+    gap: 6px !important;
+    padding: 10px !important;
+  }
+
+  .dispatch-route-queue__header > span {
+    font-size: 11px !important;
+    line-height: 1.35;
+  }
+
+  .dispatch-route-row--labels {
+    display: none !important;
+  }
+
+  .dispatch-route-queue__scroll {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .dispatch-route-row:not(.dispatch-route-row--labels) {
+    grid-template-columns: 32px minmax(0, 1fr) !important;
+    gap: 7px 8px !important;
+    padding: 10px !important;
+  }
+
+  .dispatch-route-row__arrival {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .dispatch-route-row__identity {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .dispatch-route-row__driver,
+  .dispatch-route-row__signals {
+    grid-column: 2;
+  }
+
+  .dispatch-route-row__signals {
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .dispatch-route-row__signals::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* Legacy operational layout bridge
    Keeps older value-strip/value-grid pages aligned to the app frame while
    we gradually migrate internals to app-card/workspace-grid.

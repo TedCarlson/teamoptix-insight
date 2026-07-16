@@ -7,6 +7,7 @@ import OperationsIntelligenceFeed from "@/features/operations/components/Operati
 import OperationsUploadCard from "@/features/operations/components/OperationsUploadCard";
 import ServiceSnapshotCard from "@/features/operations/components/ServiceSnapshotCard";
 import ExpressReportOverlay from "@/features/operations/manifests/components/ExpressReportOverlay";
+import ComplianceReportOverlay from "@/features/operations/components/ComplianceReportOverlay";
 import RouteHealthOverlay, {
   type ManifestRouteHealthCard,
 } from "@/features/operations/manifests/components/RouteHealthOverlay";
@@ -299,6 +300,7 @@ function driverSignal(
 
 export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
   const [expressReportOpen, setExpressReportOpen] = useState(false);
+  const [complianceReportOpen, setComplianceReportOpen] = useState(false);
   const [routeHealthPayload, setRouteHealthPayload] = useState<RouteHealthPayload | null>(null);
   const [selectedRouteHealth, setSelectedRouteHealth] =
     useState<SelectedManifestRouteHealth | null>(null);
@@ -792,6 +794,9 @@ console.log(
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
+            <button type="button" className="button" onClick={() => setComplianceReportOpen(true)} style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}>
+              Compliance Report
+            </button>
             <button
               type="button"
               className="button"
@@ -1031,6 +1036,7 @@ console.log(
         surfaceLabel="Service"
         onClose={() => setExpressReportOpen(false)}
       />
+      <ComplianceReportOverlay open={complianceReportOpen} slug={slug} onClose={() => setComplianceReportOpen(false)} />
 
       <RouteHealthOverlay
         open={Boolean(selectedRouteHealth)}

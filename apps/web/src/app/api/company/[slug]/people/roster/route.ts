@@ -62,7 +62,7 @@ export async function GET(
 
       const { data: licenseRows } = await supabase
         .from("company_roster_license_fact_v")
-        .select("roster_id, expiration_date")
+        .select("roster_id, license_number, issuing_state, issue_date, expiration_date")
         .eq("company_id", company.id)
         .in("roster_id", rosterIds);
       licenseByRosterId = new Map(
@@ -123,6 +123,10 @@ export async function GET(
           scanner_serial: assetValues.scanner_serial ?? ops?.scanner_serial ?? null,
           dot_expiration_date: ops?.dot_exp ?? null,
           qual_cert_expiration_date: ops?.qual_cert_exp ?? null,
+          license_number: license?.license_number ?? null,
+          issuing_state: license?.issuing_state ?? null,
+          license_issue_date: license?.issue_date ?? null,
+          license_expiration_date: license?.expiration_date ?? null,
           daily_pay_effective_date: ops?.daily_pay_effective_date ?? null,
           daily_pay_rate: ops?.daily_pay_rate ?? null,
           trainee_daily_pay_rate: traineePay?.trainee_daily_pay_rate ?? null,

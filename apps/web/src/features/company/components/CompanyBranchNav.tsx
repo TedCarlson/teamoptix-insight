@@ -329,6 +329,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
               key={item.href}
               href={item.href}
               className={`app-workspace-tile${active ? " app-workspace-tile--active" : ""}`}
+              aria-current={active ? "page" : undefined}
             >
               {item.label}
             </Link>
@@ -346,6 +347,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
                 key={item.href}
                 href={item.href}
                 className={`app-workspace-tile app-workspace-tile--surface${active ? " app-workspace-tile--active" : ""}`}
+                aria-current={active ? "page" : undefined}
                 style={
                   item.label.startsWith("Signature Required")
                     ? { background: "#fee2e2", borderColor: "#ef4444", color: "#991b1b" }

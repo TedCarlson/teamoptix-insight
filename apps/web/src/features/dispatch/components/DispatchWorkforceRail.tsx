@@ -36,7 +36,7 @@ export function DispatchWorkforceRail(props: DispatchWorkforceRailProps) {
   } = props;
 
   return (
-    <aside style={panel}>
+    <aside className="dispatch-workforce-rail" style={panel}>
       <div style={panelHeader}>
         <div>
           <p style={eyebrow}>Workforce</p>

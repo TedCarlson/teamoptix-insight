@@ -33,6 +33,7 @@ import { useDispatchWorkspaceData } from "../hooks/useDispatchWorkspaceData";
 import OperationsReportUploadOverlay from "@/features/operations/components/OperationsReportUploadOverlay";
 import OperationsWorkspaceToolbar from "@/features/operations/components/OperationsWorkspaceToolbar";
 import ExpressReportOverlay from "@/features/operations/manifests/components/ExpressReportOverlay";
+import ComplianceReportOverlay from "@/features/operations/components/ComplianceReportOverlay";
 import OperationsIntelligenceFeed from "@/features/operations/components/OperationsIntelligenceFeed";
 import OperationsUploadCard from "@/features/operations/components/OperationsUploadCard";
 import { DispatchEventOverlay } from "../components/DispatchEventOverlay";
@@ -51,6 +52,7 @@ export default function DispatchPage() {
   const [locking, setLocking] = useState(false);
   const [uploadOverlayOpen, setUploadOverlayOpen] = useState(false);
   const [expressReportOpen, setExpressReportOpen] = useState(false);
+  const [complianceReportOpen, setComplianceReportOpen] = useState(false);
   const persistedCalloutKeys = useRef(new Set<string>());
 
   const serviceDate = todayIso();
@@ -679,7 +681,10 @@ export default function DispatchPage() {
           lastUpdatedAt={lastUpdatedAt}
           refreshing={loading}
           onRefresh={refreshWorkspace}
-          actions={
+          actions={<>
+            <button type="button" className="button" onClick={() => setComplianceReportOpen(true)} style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}>
+              Compliance Report
+            </button>
             <button
               type="button"
               className="button"
@@ -688,7 +693,7 @@ export default function DispatchPage() {
             >
               Express Report
             </button>
-          }
+          </>}
         />
 
         {error ? (
@@ -728,7 +733,7 @@ export default function DispatchPage() {
               planSourceLabel={droPlanSourceFrame ? `${droPlanSourceFrame} DRO` : null}
             />
 
-            <div style={{ display: "grid", gap: 12 }}>
+            <div className="dispatch-right-column" style={{ display: "grid", gap: 12 }}>
               {!dispatchLocked ? (
                 <OperationsUploadCard onUpload={() => setUploadOverlayOpen(true)} />
               ) : null}
@@ -762,6 +767,7 @@ export default function DispatchPage() {
         surfaceLabel="Dispatch"
         onClose={() => setExpressReportOpen(false)}
       />
+      <ComplianceReportOverlay open={complianceReportOpen} slug={slug} onClose={() => setComplianceReportOpen(false)} />
 
       <OperationsReportUploadOverlay
         open={uploadOverlayOpen}
