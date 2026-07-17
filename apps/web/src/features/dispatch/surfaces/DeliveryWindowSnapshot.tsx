@@ -81,6 +81,7 @@ type RouteHealthPayload = {
 type SelectedManifestRouteHealth = {
   routeLabel: string;
   health: ManifestRouteHealthCard | null;
+  dsw: DswCurrentRow | null;
 };
 
 
@@ -1004,6 +1005,7 @@ console.log(
                           ? routeLabelForDisplay(item.route)
                           : dswDisplayKey(row!, item.sortOrder),
                         health: manifestHealthForItem(item),
+                        dsw: row ?? null,
                       })
                     }
                   />
@@ -1044,6 +1046,7 @@ console.log(
         serviceDate={serviceDate}
         routeLabel={selectedRouteHealth?.routeLabel ?? "Route"}
         health={selectedRouteHealth?.health ?? null}
+        dsw={selectedRouteHealth?.dsw ?? null}
         onClose={() => setSelectedRouteHealth(null)}
       />
 
