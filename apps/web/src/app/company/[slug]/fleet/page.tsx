@@ -7,11 +7,6 @@ export default async function FleetPage(props: { params: Promise<{ slug: string 
   const status = await getFleetStatus(slug);
 
   return (
-    <FleetSeamPage
-      slug={slug}
-      eyebrow="Fleet"
-      title="Fleet Home"
-      description="A single operational home for vehicle readiness, maintenance, and inspections."
-    ><FleetStatusScan status={status} /></FleetSeamPage>
+    <FleetSeamPage><FleetStatusScan status={status} /></FleetSeamPage>
   );
 }

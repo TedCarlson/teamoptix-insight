@@ -6,7 +6,7 @@ export default async function FleetVehiclesPage(props: { params: Promise<{ slug:
   const { slug } = await props.params;
   const vehicles = await listFleetVehicles(slug);
   return (
-    <FleetSeamPage slug={slug} eyebrow="Fleet · Vehicles" title="Vehicles" description="Vehicle inventory, readiness, assignment, inspections, and maintenance exposure.">
+    <FleetSeamPage>
       <FleetVehicleGrid rows={vehicles} companySlug={slug} />
     </FleetSeamPage>
   );
