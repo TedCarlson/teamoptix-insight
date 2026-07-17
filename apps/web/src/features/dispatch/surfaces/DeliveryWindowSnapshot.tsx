@@ -1040,6 +1040,7 @@ console.log(
 
       <RouteHealthOverlay
         open={Boolean(selectedRouteHealth)}
+        slug={slug}
         serviceDate={serviceDate}
         routeLabel={selectedRouteHealth?.routeLabel ?? "Route"}
         health={selectedRouteHealth?.health ?? null}

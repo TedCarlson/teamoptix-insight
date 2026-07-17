@@ -272,6 +272,51 @@ export async function GET(
       );
     }
 
+    const routeKey = String(req.nextUrl.searchParams.get("routeKey") ?? "").trim();
+
+    if (routeKey) {
+      const [deliveryStopsResult, packagesResult, pickupsResult] = await Promise.all([
+        supabase
+          .from("operations_delivery_manifest_stop_v")
+          .select("*")
+          .eq("company_id", company.id)
+          .eq("service_date", serviceDate)
+          .eq("route_key", routeKey)
+          .order("st_number", { ascending: true }),
+        supabase
+          .from("operations_delivery_manifest_package_v")
+          .select("*")
+          .eq("company_id", company.id)
+          .eq("service_date", serviceDate)
+          .eq("route_key", routeKey)
+          .order("st_number", { ascending: true })
+          .order("tracking_id", { ascending: true }),
+        supabase
+          .from("operations_pickup_manifest_stop_v")
+          .select("*")
+          .eq("company_id", company.id)
+          .eq("service_date", serviceDate)
+          .eq("route_key", routeKey)
+          .order("ready_at", { ascending: true }),
+      ]);
+
+      const detailError =
+        deliveryStopsResult.error ?? packagesResult.error ?? pickupsResult.error;
+
+      if (detailError) {
+        return NextResponse.json({ error: detailError.message }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        company_slug: slug,
+        service_date: serviceDate,
+        route_key: routeKey,
+        delivery_stops: deliveryStopsResult.data ?? [],
+        packages: packagesResult.data ?? [],
+        pickups: pickupsResult.data ?? [],
+      });
+    }
+
     const { data, error } = await supabase
       .from("operations_manifest_route_health_v")
       .select("*")
