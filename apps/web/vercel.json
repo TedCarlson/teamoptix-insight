@@ -5,6 +5,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/fleet/archive-evidence",
+      "schedule": "17 4 * * *"
+    },
+    {
       "path": "/api/cron/operations/generate-collection-requests",
       "schedule": "* * * * *"
     },
