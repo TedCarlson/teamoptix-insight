@@ -30,6 +30,18 @@ import type {
   CredentialResponse,
 } from "./automation.types";
 
+function formatRequestDate(request: CollectionRequest) {
+  if (request.service_date) return request.service_date;
+  if (!request.service_date_start) return "—";
+  if (
+    request.service_date_end &&
+    request.service_date_end !== request.service_date_start
+  ) {
+    return `${request.service_date_start} – ${request.service_date_end}`;
+  }
+  return request.service_date_start;
+}
+
 export default function AutomationConfigPanel(
   props: AutomationConfigPanelProps
 ) {
@@ -580,9 +592,7 @@ export default function AutomationConfigPanel(
                   <td style={td}>{request.request_type}</td>
                   <td style={td}>{request.request_status}</td>
                   <td style={td}>
-                    {request.service_date ??
-                      request.service_date_start ??
-                      "—"}
+                    {formatRequestDate(request)}
                   </td>
                   <td style={td}>
                     {request.requested_reports?.join(", ") ||

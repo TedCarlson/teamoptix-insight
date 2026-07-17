@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { cellText } from "@/features/operations/reports/dsw/dsw.parse";
 import { ingestDswWorkbook } from "@/features/operations/reports/dsw/dsw.ingest";
 
 export const runtime = "nodejs";
@@ -19,10 +18,9 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     const form = await req.formData();
     const file = form.get("file");
-    const requestedDate = cellText(form.get("service_date"));
     const debugCandidates =
       req.nextUrl.searchParams.get("debug_candidates") === "true" ||
-      cellText(form.get("debug_candidates")) === "true";
+      String(form.get("debug_candidates") ?? "").trim() === "true";
 
     if (!(file instanceof File)) {
       return NextResponse.json({ error: "File is required." }, { status: 400 });
@@ -42,7 +40,6 @@ export async function POST(req: NextRequest, context: RouteContext) {
       buffer,
       filename: file.name,
       fileSize: file.size,
-      requestedDate,
       uploadedByAuthUserId: auth.user.id,
       uploadedByProfileId: profile?.profile_id ?? null,
       debugCandidates,

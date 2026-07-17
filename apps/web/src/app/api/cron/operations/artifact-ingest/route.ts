@@ -4,6 +4,21 @@ import { ingestArtifactWorkbook } from "@/features/operations/reports/automation
 
 export const runtime = "nodejs";
 
+function artifactAuditContext(artifact: any) {
+  return {
+    artifact_id: artifact.id,
+    collection_request_id: artifact.collection_request_id,
+    request_type: artifact.request_type,
+    report_family_key: artifact.report_family_key,
+    report_shape_key: artifact.report_shape_key,
+    original_filename: artifact.original_filename,
+    normalized_filename: artifact.normalized_filename,
+    source_hash: artifact.source_hash,
+    storage_bucket: artifact.storage_bucket,
+    storage_path: artifact.storage_path,
+  };
+}
+
 async function markArtifact(params: {
   supabase: any;
   artifactId: string;
@@ -167,7 +182,12 @@ export async function GET() {
         supabase,
         artifactId: artifact.id,
         status: "INGESTING",
-        metadata: { source: "cron_artifact_ingest", started_at: new Date().toISOString() },
+        metadata: {
+          source: "cron_artifact_ingest",
+          phase: "INGESTING",
+          started_at: new Date().toISOString(),
+          artifact: artifactAuditContext(artifact),
+        },
       });
 
       const ingest = await ingestArtifactWorkbook({
@@ -180,7 +200,13 @@ export async function GET() {
         supabase,
         artifactId: artifact.id,
         status: "INGESTED",
-        metadata: { source: "cron_artifact_ingest", completed_at: new Date().toISOString(), ingest },
+        metadata: {
+          source: "cron_artifact_ingest",
+          phase: "INGESTED",
+          completed_at: new Date().toISOString(),
+          artifact: artifactAuditContext(artifact),
+          ingest,
+        },
         reportBatchId: ingest.batch_id ?? null,
       });
 
@@ -200,7 +226,13 @@ export async function GET() {
         supabase,
         artifactId: artifact.id,
         status: "FAILED",
-        metadata: { source: "cron_artifact_ingest", failed_at: new Date().toISOString() },
+        metadata: {
+          source: "cron_artifact_ingest",
+          phase: "FAILED",
+          failed_at: new Date().toISOString(),
+          artifact: artifactAuditContext(artifact),
+          error: message,
+        },
         errorMessage: message,
       }).catch(() => null);
 

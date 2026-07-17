@@ -35,7 +35,6 @@ export async function ingestDswWorkbook(params: {
   buffer: Buffer;
   filename: string;
   fileSize: number;
-  requestedDate?: string;
   uploadedByAuthUserId?: string | null;
   uploadedByProfileId?: string | null;
   debugCandidates?: boolean;
@@ -46,7 +45,6 @@ export async function ingestDswWorkbook(params: {
     buffer,
     filename,
     fileSize,
-    requestedDate = "",
     uploadedByAuthUserId = null,
     uploadedByProfileId = null,
     debugCandidates = false,
