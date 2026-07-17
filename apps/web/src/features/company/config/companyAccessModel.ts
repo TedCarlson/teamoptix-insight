@@ -10,7 +10,8 @@ export type CompanyWorkspaceGrantKey =
   | "hiring"
   | "payroll"
   | "admin_config"
-  | "grant_management";
+  | "grant_management"
+  | "opportunity_analysis";
 
 export type CompanyWorkspaceGrant = {
   key: CompanyWorkspaceGrantKey;
@@ -32,4 +33,5 @@ export const COMPANY_WORKSPACE_GRANTS: CompanyWorkspaceGrant[] = [
   { key: "payroll", label: "Payroll", group: "Business", description: "Access Payroll Aide." },
   { key: "admin_config", label: "Company Config", group: "Business", description: "Access company configuration." },
   { key: "grant_management", label: "Grant Management", group: "Business", description: "Manage workspace access for other users." },
+  { key: "opportunity_analysis", label: "Opportunity Analysis", group: "Business", description: "Evaluate prospective contracted service opportunities." },
 ];

@@ -11,6 +11,7 @@ type Membership = {
   relationship_type: string;
   membership_status: string;
   title: string | null;
+  grants: string[];
 };
 
 type AccessState = {

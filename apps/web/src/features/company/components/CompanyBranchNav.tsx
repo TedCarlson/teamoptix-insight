@@ -63,6 +63,11 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const isAdminUser =
     Boolean(access.is_platform_owner) ||
     (membership?.relationship_type === "admin" && membership?.membership_status === "active");
+  const canAccessOpportunities =
+    Boolean(access.is_platform_owner) ||
+    (membership?.membership_status === "active" &&
+      (membership.relationship_type === "admin" ||
+        membership.grants?.includes("opportunity_analysis")));
 
   const base = `/company/${slug}`;
   const announcementsBase = `${base}/announcements`;
@@ -76,6 +81,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const payrollBase = `${base}/payroll`;
   const billingBase = `${base}/billing`;
   const analyticsBase = `${base}/analytics`;
+  const opportunitiesBase = `${base}/opportunity-analysis`;
   const fleetBase = `${base}/fleet`;
   const legalRequiredBase = `${base}/admin/legal/required`;
 
@@ -101,10 +107,16 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
         { label: "Schedule", href: scheduleBase, match: (path) => path.startsWith(scheduleBase) },
         { label: "Fleet", href: fleetBase, match: (path) => path.startsWith(fleetBase) },
         { label: "Routes", href: `${base}/routes`, match: (path) => path.startsWith(`${base}/routes`) },
+        ...(canAccessOpportunities
+          ? [{ label: "Opportunities", href: opportunitiesBase, match: (path: string) => path.startsWith(opportunitiesBase) }]
+          : []),
       ]
     : [
         { label: "Home", href: homeBase, match: (path) => path === homeBase || path.startsWith(announcementsBase) },
         { label: "Schedule", href: scheduleBase, match: (path) => path.startsWith(scheduleBase) },
+        ...(canAccessOpportunities
+          ? [{ label: "Opportunities", href: opportunitiesBase, match: (path: string) => path.startsWith(opportunitiesBase) }]
+          : []),
       ];
 
   const overviewSubItems: NavItem[] = [
@@ -179,6 +191,14 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
       href: `${analyticsBase}/exports`,
       match: (path) => path.startsWith(`${analyticsBase}/exports`),
     },
+  ];
+
+  const opportunitySubItems: NavItem[] = [
+    { label: "Opportunities", href: opportunitiesBase, match: (path) => path === opportunitiesBase },
+    { label: "New Analysis", href: `${opportunitiesBase}/new`, match: (path) => path.startsWith(`${opportunitiesBase}/new`) },
+    { label: "Comparisons", href: `${opportunitiesBase}/comparisons`, match: (path) => path.startsWith(`${opportunitiesBase}/comparisons`) },
+    { label: "Assumptions", href: `${opportunitiesBase}/assumptions`, match: (path) => path.startsWith(`${opportunitiesBase}/assumptions`) },
+    { label: "Reference Data", href: `${opportunitiesBase}/reference-data`, match: (path) => path.startsWith(`${opportunitiesBase}/reference-data`) },
   ];
 
   const payrollSubItems: NavItem[] = [
@@ -260,6 +280,9 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     pathname.startsWith(`${analyticsBase}/`) ||
     pathname === `${base}/readiness`;
 
+  const inOpportunitiesBranch =
+    pathname === opportunitiesBase || pathname.startsWith(`${opportunitiesBase}/`);
+
   const inConfigBranch = pathname === configBase || pathname.startsWith(`${configBase}/`);
   const inAssetsBranch = pathname === assetsBase || pathname.startsWith(`${assetsBase}/`);
   const inPayrollBranch = pathname === payrollBase || pathname.startsWith(`${payrollBase}/`);
@@ -277,6 +300,8 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
       ? homeSubItems
       : inAnalyticsBranch
         ? analyticsSubItems
+        : inOpportunitiesBranch
+          ? opportunitySubItems
         : inPayrollBranch
           ? payrollSubItems
         : inAssetsBranch

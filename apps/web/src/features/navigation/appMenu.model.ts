@@ -3,6 +3,7 @@ import { buildAdministrationMenu } from "./workspaces/administration.menu";
 import { buildFleetMenu } from "./workspaces/fleet.menu";
 import { buildHomeMenu } from "./workspaces/home.menu";
 import { buildOperationsMenu } from "./workspaces/operations.menu";
+import { buildOpportunityAnalysisMenu } from "./workspaces/opportunity-analysis.menu";
 import { buildPeopleMenu } from "./workspaces/people.menu";
 import { buildScheduleMenu } from "./workspaces/schedule.menu";
 
@@ -35,6 +36,7 @@ export function buildCompanyMenu(params: {
   return [
     buildHomeMenu(base),
     buildOperationsMenu(base),
+    buildOpportunityAnalysisMenu(base),
     buildScheduleMenu(base),
     buildFleetMenu(base),
     buildPeopleMenu(base),
