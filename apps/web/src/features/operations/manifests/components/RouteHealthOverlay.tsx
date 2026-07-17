@@ -58,6 +58,7 @@ type Props = {
     planned_pickup_stops: number;
     actual_pickup_stops: number;
     actual_pickup_packages: number;
+    generated_at_text?: string | null;
     ils_percent?: number | string | null;
     miles?: number | null;
   } | null;
@@ -84,6 +85,7 @@ export default function RouteHealthOverlay({
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const routeKey = health?.route_key ?? null;
+  const asOf = dsw?.generated_at_text ?? health?.artifacts.latest_processed_at ?? null;
 
   useEffect(() => {
     if (!open || !routeKey) return;
@@ -175,6 +177,9 @@ export default function RouteHealthOverlay({
             <p style={{ margin: "6px 0 0", color: "#64748b", fontSize: 13, fontWeight: 800 }}>
               Service date {serviceDate}
             </p>
+            <p style={{ margin: "3px 0 0", color: "#475569", fontSize: 12, fontWeight: 900 }}>
+              As of {formatAsOf(asOf)}
+            </p>
           </div>
 
           <button
@@ -213,6 +218,18 @@ export default function RouteHealthOverlay({
       </section>
     </div>
   );
+}
+
+function formatAsOf(input: string | null) {
+  if (!input) return "—";
+  const parsed = new Date(input);
+  if (Number.isNaN(parsed.getTime())) return input;
+  return parsed.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function DswContract({ dsw }: { dsw: Props["dsw"] }) {
