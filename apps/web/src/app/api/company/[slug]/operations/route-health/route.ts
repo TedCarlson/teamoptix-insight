@@ -33,6 +33,7 @@ type RouteHealthRow = {
   express_stop_count: number | null;
   completed_express_package_count: number | null;
   incomplete_express_package_count: number | null;
+  tracking_gap_express_package_count: number | null;
   residential_express_package_count: number | null;
   signature_express_package_count: number | null;
   hazmat_express_package_count: number | null;
@@ -82,6 +83,7 @@ type RouteHealthCard = {
     stop_count: number;
     completed_package_count: number;
     incomplete_package_count: number;
+    tracking_gap_package_count: number;
     residential_package_count: number;
     signature_package_count: number;
     hazmat_package_count: number;
@@ -157,6 +159,7 @@ function toRouteHealthCard(row: RouteHealthRow): RouteHealthCard {
       stop_count: n(row.express_stop_count),
       completed_package_count: n(row.completed_express_package_count),
       incomplete_package_count: n(row.incomplete_express_package_count),
+      tracking_gap_package_count: n(row.tracking_gap_express_package_count),
       residential_package_count: n(row.residential_express_package_count),
       signature_package_count: n(row.signature_express_package_count),
       hazmat_package_count: n(row.hazmat_express_package_count),
@@ -199,6 +202,9 @@ function buildTotals(rows: RouteHealthRow[]) {
       incomplete_express_package_count:
         totals.incomplete_express_package_count +
         n(row.incomplete_express_package_count),
+      tracking_gap_express_package_count:
+        totals.tracking_gap_express_package_count +
+        n(row.tracking_gap_express_package_count),
       pickup_stop_count:
         totals.pickup_stop_count + n(row.pickup_stop_count),
       pickup_expected_package_count:
@@ -218,6 +224,7 @@ function buildTotals(rows: RouteHealthRow[]) {
       express_package_count: 0,
       express_stop_count: 0,
       incomplete_express_package_count: 0,
+      tracking_gap_express_package_count: 0,
       pickup_stop_count: 0,
       pickup_expected_package_count: 0,
       pickup_actual_package_count: 0,
@@ -232,6 +239,44 @@ function buildFreshness(rows: RouteHealthRow[]) {
     status_counts: statusCounts(rows),
     severity_counts: severityCounts(rows),
   };
+}
+
+function canonicalRouteRows(rows: RouteHealthRow[]) {
+  const byRoute = new Map<string, RouteHealthRow>();
+
+  function activityScore(row: RouteHealthRow) {
+    return (
+      n(row.artifact_count) * 1_000_000 +
+      n(row.delivery_package_count) * 10_000 +
+      n(row.delivery_stop_count) * 1_000 +
+      n(row.pickup_stop_count) * 100 +
+      n(row.express_package_count)
+    );
+  }
+
+  rows.forEach((row) => {
+    const key = String(row.route_key ?? "").trim();
+    const current = byRoute.get(key);
+    if (!current) {
+      byRoute.set(key, row);
+      return;
+    }
+
+    const rowScore = activityScore(row);
+    const currentScore = activityScore(current);
+    const rowFreshness = row.latest_processed_at ?? row.latest_captured_at ?? "";
+    const currentFreshness =
+      current.latest_processed_at ?? current.latest_captured_at ?? "";
+
+    if (
+      rowScore > currentScore ||
+      (rowScore === currentScore && rowFreshness > currentFreshness)
+    ) {
+      byRoute.set(key, row);
+    }
+  });
+
+  return Array.from(byRoute.values());
 }
 
 export async function GET(
@@ -336,7 +381,34 @@ export async function GET(
       );
     }
 
-    const rows = (data ?? []) as RouteHealthRow[];
+    const canonicalRows = canonicalRouteRows((data ?? []) as RouteHealthRow[]);
+    const { data: expressSignals, error: expressSignalError } = await supabase
+      .from("operations_manifest_express_route_signal_v")
+      .select("route_key,package_count,completed_package_count,open_package_count,tracking_gap_package_count")
+      .eq("company_id", company.id)
+      .eq("service_date", serviceDate);
+
+    if (expressSignalError) {
+      return NextResponse.json(
+        { error: expressSignalError.message, routes: [], totals: null },
+        { status: 500 }
+      );
+    }
+
+    const expressByRoute = new Map(
+      (expressSignals ?? []).map((signal) => [String(signal.route_key), signal])
+    );
+    const rows = canonicalRows.map((row) => {
+      const signal = expressByRoute.get(String(row.route_key));
+      if (!signal) return { ...row, tracking_gap_express_package_count: 0 };
+      return {
+        ...row,
+        express_package_count: n(signal.package_count),
+        completed_express_package_count: n(signal.completed_package_count),
+        incomplete_express_package_count: n(signal.open_package_count),
+        tracking_gap_express_package_count: n(signal.tracking_gap_package_count),
+      };
+    });
 
     return NextResponse.json({
       company_slug: slug,

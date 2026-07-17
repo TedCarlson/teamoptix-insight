@@ -34,8 +34,8 @@ type DispatchRouteQueueProps = {
   planTotals?: DroPlanTotals;
   dswTotals?: DswDispatchTotals;
   planSourceLabel?: string | null;
-  expressSignalsByRouteKey?: Record<string, { packages: number; open: number }>;
-  expressTotals?: { packages: number; open: number };
+  expressSignalsByRouteKey?: Record<string, { packages: number; open: number; gaps: number }>;
+  expressTotals?: { packages: number; open: number; gaps: number };
 };
 
 
@@ -173,14 +173,30 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
                 <span>📥 {dswTotals.pickupStops}</span>
               </PlanTotalLine>
             ) : null}
-            {expressTotals && expressTotals.packages > 0 ? (
-              <PlanTotalLine label="Express">
-                <span style={{ color: "#9a3412" }}>🕒 {expressTotals.open} open / {expressTotals.packages}</span>
-              </PlanTotalLine>
-            ) : null}
           </div>
           </div>
         </div>
+        {expressTotals && expressTotals.packages > 0 ? (
+          <div
+            className="dispatch-route-queue__express-summary"
+            title={`${expressTotals.open} open, ${expressTotals.gaps} tracking gaps, ${expressTotals.packages} Express packages`}
+            style={{
+              minWidth: 190,
+              border: `1px solid ${expressTotals.gaps > 0 ? "#fca5a5" : expressTotals.open > 0 ? "#fdba74" : "#86efac"}`,
+              borderRadius: 12,
+              background: expressTotals.gaps > 0 ? "#fef2f2" : expressTotals.open > 0 ? "#fff7ed" : "#f0fdf4",
+              color: expressTotals.gaps > 0 ? "#991b1b" : expressTotals.open > 0 ? "#9a3412" : "#166534",
+              padding: "8px 12px",
+            }}
+          >
+            <div style={{ fontSize: 10, fontWeight: 950, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              Express
+            </div>
+            <div style={{ marginTop: 2, fontSize: 14, fontWeight: 950, whiteSpace: "nowrap" }}>
+              {expressTotals.open} open · {expressTotals.gaps} gaps / {expressTotals.packages}
+            </div>
+          </div>
+        ) : null}
         <span style={{ fontSize: 12, color: "#64748b", fontWeight: 800 }}>
           Tap driver seat. Helper / trainee actions live in right rail.
         </span>
@@ -263,6 +279,7 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
             </div>
           ) : null}
         </div>
+        <div>Express</div>
       </div>
 
       <div className="dispatch-route-queue__scroll" style={{ maxHeight: "calc(100vh - 236px)", overflow: "auto" }}>
@@ -277,6 +294,15 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
               ? arrivedPersonIds.has(route.driver.roster_member_id)
               : false;
             const expressSignal = expressSignalsByRouteKey[route.route_key];
+            const expressHasGap = Boolean(expressSignal && expressSignal.gaps > 0);
+            const expressClear = Boolean(expressSignal && expressSignal.open === 0 && expressSignal.gaps === 0);
+            const expressTone = expressHasGap
+              ? { border: "#fca5a5", background: "#fef2f2", color: "#991b1b" }
+              : expressClear
+              ? { border: "#86efac", background: "#ecfdf5", color: "#166534" }
+              : expressSignal
+                ? { border: "#fdba74", background: "#fff7ed", color: "#9a3412" }
+                : { border: "#e5ecf6", background: "#f8fafc", color: "#94a3b8" };
 
             return (
               <div key={route.route_key} className="dispatch-route-row" style={routeRowBase}>
@@ -418,7 +444,6 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
                   title={
                     planSignalsByRouteKey[route.route_key]?.title ??
                     dswSignalsByRouteKey[route.route_key]?.title ??
-                    (expressSignal ? `${expressSignal.open} open of ${expressSignal.packages} Express packages` : null) ??
                     "No DRO plan signal matched."
                   }
                   style={{
@@ -427,13 +452,13 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
                     justifyContent: "flex-start",
                     gap: 8,
                     minWidth: 0,
-                    color: planSignalsByRouteKey[route.route_key] || dswSignalsByRouteKey[route.route_key] || expressSignal ? "#334155" : "#94a3b8",
+                    color: planSignalsByRouteKey[route.route_key] || dswSignalsByRouteKey[route.route_key] ? "#334155" : "#94a3b8",
                     fontSize: 12,
                     fontWeight: 900,
                     lineHeight: 1.2,
                   }}
                 >
-                  {planSignalsByRouteKey[route.route_key] || dswSignalsByRouteKey[route.route_key] || expressSignal ? (
+                  {planSignalsByRouteKey[route.route_key] || dswSignalsByRouteKey[route.route_key] ? (
                     <span
                       style={{
                         display: "inline-grid",
@@ -458,13 +483,33 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
                       {dswSignalsByRouteKey[route.route_key] ? (
                         <DswSignalLine signal={dswSignalsByRouteKey[route.route_key]} />
                       ) : null}
-                      {expressSignal ? (
-                        <span style={{ color: "#9a3412" }}><strong>EXP</strong> · 🕒 {expressSignal.open} open / {expressSignal.packages}</span>
-                      ) : null}
                     </span>
                   ) : (
                     <span>—</span>
                   )}
+                </div>
+
+                <div className="dispatch-route-row__express" style={{ minWidth: 0 }}>
+                  <div
+                    title={expressSignal ? `${expressSignal.open} open, ${expressSignal.gaps} tracking gaps, ${expressSignal.packages} Express packages` : "No Express packages"}
+                    style={{
+                      minHeight: 44,
+                      border: `1px solid ${expressTone.border}`,
+                      borderRadius: 12,
+                      background: expressTone.background,
+                      color: expressTone.color,
+                      padding: "7px 9px",
+                      display: "grid",
+                      alignContent: "center",
+                      gap: 2,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <span style={{ fontSize: 9, fontWeight: 950, textTransform: "uppercase", letterSpacing: "0.06em" }}>Express</span>
+                    <strong style={{ fontSize: 12 }}>
+                      {expressSignal ? `${expressSignal.open} open · ${expressSignal.gaps} gap / ${expressSignal.packages}` : "0 / 0"}
+                    </strong>
+                  </div>
                 </div>
 
                 {intent?.route_key === route.route_key ? (

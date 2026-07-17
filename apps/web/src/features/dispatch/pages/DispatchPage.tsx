@@ -44,7 +44,11 @@ import { DispatchWorkforceRail } from "../components/DispatchWorkforceRail";
 type DispatchExpressHealth = {
   route_key: string;
   route_label: string | null;
-  express: { package_count: number; incomplete_package_count: number };
+  express: {
+    package_count: number;
+    incomplete_package_count: number;
+    tracking_gap_package_count: number;
+  };
 };
 
 export default function DispatchPage() {
@@ -61,7 +65,7 @@ export default function DispatchPage() {
   const [complianceReportOpen, setComplianceReportOpen] = useState(false);
   const persistedCalloutKeys = useRef(new Set<string>());
   const [expressHealthRows, setExpressHealthRows] = useState<DispatchExpressHealth[]>([]);
-  const [expressHealthTotals, setExpressHealthTotals] = useState({ packages: 0, open: 0 });
+  const [expressHealthTotals, setExpressHealthTotals] = useState({ packages: 0, open: 0, gaps: 0 });
 
   const serviceDate = todayIso();
   const planningDate = addDaysIso(serviceDate, 1);
@@ -101,11 +105,12 @@ export default function DispatchPage() {
         setExpressHealthTotals({
           packages: Number(payload.totals?.express_package_count ?? 0),
           open: Number(payload.totals?.incomplete_express_package_count ?? 0),
+          gaps: Number(payload.totals?.tracking_gap_express_package_count ?? 0),
         });
       } catch {
         if (active) {
           setExpressHealthRows([]);
-          setExpressHealthTotals({ packages: 0, open: 0 });
+          setExpressHealthTotals({ packages: 0, open: 0, gaps: 0 });
         }
       }
     }
@@ -198,7 +203,7 @@ export default function DispatchPage() {
       });
     });
 
-    return dispatchRoutes.reduce<Record<string, { packages: number; open: number }>>(
+    return dispatchRoutes.reduce<Record<string, { packages: number; open: number; gaps: number }>>(
       (signals, route) => {
         const candidates = [route.route_key, route.current_wa_num, route.route_name];
         let health: DispatchExpressHealth | undefined;
@@ -214,6 +219,7 @@ export default function DispatchPage() {
           signals[route.route_key] = {
             packages: Number(health.express.package_count),
             open: Number(health.express.incomplete_package_count),
+            gaps: Number(health.express.tracking_gap_package_count),
           };
         }
         return signals;

@@ -30,6 +30,7 @@ export type ManifestRouteHealthCard = {
     stop_count: number;
     completed_package_count: number;
     incomplete_package_count: number;
+    tracking_gap_package_count: number;
     residential_package_count: number;
     signature_package_count: number;
     hazmat_package_count: number;

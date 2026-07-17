@@ -847,6 +847,11 @@ h1 {
     line-height: 1.35;
   }
 
+  .dispatch-route-queue__express-summary {
+    box-sizing: border-box;
+    width: 100%;
+  }
+
   .dispatch-route-row--labels {
     display: none !important;
   }
@@ -873,7 +878,8 @@ h1 {
   }
 
   .dispatch-route-row__driver,
-  .dispatch-route-row__signals {
+  .dispatch-route-row__signals,
+  .dispatch-route-row__express {
     grid-column: 2;
   }
 

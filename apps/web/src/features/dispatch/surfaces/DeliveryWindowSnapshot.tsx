@@ -790,6 +790,9 @@ console.log(
   const openExpressPackageTotal = Number(
     routeHealthPayload?.totals?.incomplete_express_package_count ?? 0
   );
+  const expressTrackingGapTotal = Number(
+    routeHealthPayload?.totals?.tracking_gap_express_package_count ?? 0
+  );
 
   return (
     <section className="delivery-window-grid">
@@ -843,7 +846,7 @@ console.log(
             [
               "🕒 Express",
               expressPackageTotal > 0
-                ? `${openExpressPackageTotal.toLocaleString()} open / ${expressPackageTotal.toLocaleString()}`
+                ? `${openExpressPackageTotal.toLocaleString()} open · ${expressTrackingGapTotal.toLocaleString()} gap / ${expressPackageTotal.toLocaleString()}`
                 : "0",
             ],
             ["ILS %", companyIlsPercent],
@@ -997,6 +1000,7 @@ console.log(
                       <ExpressPill
                         packages={routeManifestHealth.express.package_count}
                         open={routeManifestHealth.express.incomplete_package_count}
+                        gaps={routeManifestHealth.express.tracking_gap_package_count}
                       />
                     ) : null}
                   </div>
@@ -1108,23 +1112,23 @@ function ProgressPill(props: {
   );
 }
 
-function ExpressPill(props: { packages: number; open: number }) {
+function ExpressPill(props: { packages: number; open: number; gaps: number }) {
   return (
     <span
       style={{
         display: "inline-flex",
         alignItems: "center",
         gap: 5,
-        border: "1px solid #fdba74",
+        border: `1px solid ${props.gaps > 0 ? "#fca5a5" : props.open === 0 ? "#86efac" : "#fdba74"}`,
         borderRadius: 999,
         padding: "7px 10px",
-        background: "#fff7ed",
-        color: "#9a3412",
+        background: props.gaps > 0 ? "#fef2f2" : props.open === 0 ? "#ecfdf5" : "#fff7ed",
+        color: props.gaps > 0 ? "#991b1b" : props.open === 0 ? "#166534" : "#9a3412",
         whiteSpace: "nowrap",
       }}
-      title={`${props.open} open Express packages`}
+      title={`${props.open} open Express packages; ${props.gaps} tracking gaps`}
     >
-      🕒 {props.open} open / {props.packages}
+      🕒 {props.open} open · {props.gaps} gap / {props.packages}
     </span>
   );
 }
