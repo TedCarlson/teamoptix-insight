@@ -5672,9 +5672,91 @@ body {
   color: var(--text, #13203a);
 }
 
+.prospectus-fleet-print {
+  display: none;
+}
+
+.prospectus-page-one-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.prospectus-fact-card {
+  border: 1px solid #cbd5e1;
+  border-radius: 14px;
+  padding: 13px 15px;
+  background: #fff;
+}
+
+.prospectus-fact-card h2 {
+  margin: 0 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.prospectus-fact-card dl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0 16px;
+  margin: 0;
+}
+
+.prospectus-fact-card dl > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.prospectus-fact-card dt {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.prospectus-fact-card dd {
+  margin: 0;
+  color: #13203a;
+  font-weight: 800;
+  text-align: right;
+}
+
+.prospectus-methodology {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.prospectus-methodology h3,
+.prospectus-methodology p {
+  margin: 0;
+}
+
+.prospectus-methodology h3 {
+  color: #123d5a;
+}
+
+.prospectus-source-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 16px;
+}
+
 @media print {
   .teamoptix-shell__rail,
   .app-nav,
+  .app-nav-shell,
   .workspace-actions,
   .evidence-print-hide {
     display: none !important;
@@ -5692,4 +5774,258 @@ body {
     border-radius: 0 !important;
     padding: 0 !important;
   }
+
+  @page {
+    size: letter landscape;
+    margin: 0.42in 0.45in 0.55in;
+  }
+
+  body {
+    color: #13203a !important;
+    font-size: 10pt !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .opportunity-prospectus-layout {
+    display: block !important;
+  }
+
+  .opportunity-prospectus {
+    width: 100% !important;
+    max-width: none !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    gap: 12px !important;
+  }
+
+  .opportunity-prospectus > section {
+    break-before: page;
+    break-inside: auto;
+  }
+
+  .opportunity-prospectus > section:first-of-type {
+    break-before: auto;
+  }
+
+  .prospectus-page-one-details {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+    break-inside: avoid-page;
+  }
+
+  .prospectus-fact-card {
+    padding: 8px 10px !important;
+    border-radius: 8px !important;
+    border-color: #b9d3dd !important;
+    background: #fbfdfe !important;
+    break-inside: avoid-page;
+  }
+
+  .prospectus-fact-card h2 {
+    margin-bottom: 4px !important;
+    padding-bottom: 4px !important;
+    font-size: 12pt !important;
+    color: #123d5a !important;
+    border-bottom-color: #67b8b0 !important;
+  }
+
+  .prospectus-fact-card dl {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 0 !important;
+  }
+
+  .prospectus-fact-card dl > div {
+    padding: 3px 0 !important;
+  }
+
+  .prospectus-fact-card dl > div:nth-child(even) {
+    margin: 0 -4px;
+    padding-right: 4px !important;
+    padding-left: 4px !important;
+    background: #f1f7f9 !important;
+  }
+
+  .prospectus-fact-card dt {
+    font-size: 7.5pt !important;
+  }
+
+  .prospectus-fact-card dd {
+    font-size: 8.5pt !important;
+  }
+
+  .prospectus-methodology {
+    gap: 5px !important;
+    margin-top: 8px !important;
+    padding: 8px 10px !important;
+    border-color: #b9d3dd !important;
+    border-radius: 7px !important;
+    background: #f4f8fa !important;
+    color: #475569 !important;
+    font-size: 7pt !important;
+    line-height: 1.3 !important;
+    break-inside: auto;
+  }
+
+  .prospectus-methodology h3 {
+    color: #123d5a !important;
+    font-size: 9pt !important;
+    break-after: avoid-page;
+  }
+
+  .prospectus-source-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 2px 12px !important;
+  }
+
+  .opportunity-prospectus h1 {
+    font-size: 27pt !important;
+  }
+
+  .prospectus-brand-band {
+    break-inside: avoid;
+    border-bottom: 2px solid #13203a !important;
+    padding-bottom: 8px !important;
+  }
+
+  .prospectus-brand-band img {
+    width: 0.55in !important;
+    height: 0.55in !important;
+  }
+
+  .opportunity-prospectus h2 {
+    font-size: 16pt !important;
+    break-after: avoid-page;
+    color: #123d5a !important;
+    border-bottom-color: #159a8c !important;
+  }
+
+  .opportunity-prospectus p {
+    line-height: 1.4 !important;
+  }
+
+  .opportunity-prospectus table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: auto !important;
+    font-size: 8pt !important;
+  }
+
+  .opportunity-prospectus thead {
+    display: table-header-group;
+  }
+
+  .opportunity-prospectus tr {
+    break-inside: avoid;
+  }
+
+  .opportunity-prospectus th,
+  .opportunity-prospectus td {
+    padding: 3px 4px !important;
+  }
+
+  .opportunity-prospectus thead th {
+    color: #123d5a !important;
+    background: #eaf3f7 !important;
+    border-bottom: 1.5px solid #159a8c !important;
+  }
+
+  .opportunity-prospectus tbody tr:nth-child(even) td {
+    background: #f4f8fa !important;
+  }
+
+  .opportunity-prospectus .context-stat {
+    background: #f1f7f9 !important;
+    border-color: #c8dce4 !important;
+    border-top: 2px solid #168aa0 !important;
+  }
+
+  .opportunity-prospectus .context-stat__label {
+    color: #42677b !important;
+  }
+
+  .prospectus-fleet-table {
+    display: none !important;
+  }
+
+  .prospectus-fleet-print {
+    display: grid !important;
+    gap: 6px !important;
+  }
+
+  .prospectus-fleet-print h3 {
+    margin: 5px 0 0 !important;
+    break-after: avoid-page;
+    font-size: 11pt !important;
+    color: #0f766e !important;
+  }
+
+  .prospectus-fleet-print table {
+    font-size: 8.5pt !important;
+    break-inside: auto;
+  }
+
+  .opportunity-prospectus input,
+  .opportunity-prospectus select {
+    border: 0 !important;
+    background: transparent !important;
+    padding: 0 !important;
+    appearance: none;
+  }
+
+  .prospectus-labor-table td > span,
+  .prospectus-labor-table td > span > span {
+    display: inline !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .prospectus-labor-table input,
+  .prospectus-labor-table select {
+    width: auto !important;
+    min-width: 0 !important;
+    color: #13203a !important;
+    font: inherit !important;
+    font-weight: 700 !important;
+    text-align: left !important;
+  }
+
+  .prospectus-labor-table small {
+    color: #64748b !important;
+    font-size: 7pt !important;
+  }
+
+  .opportunity-prospectus button {
+    display: none !important;
+  }
+
+  .prospectus-labor-table th:last-child,
+  .prospectus-labor-table td:last-child,
+  .prospectus-fleet-table th:last-child,
+  .prospectus-fleet-table td:last-child {
+    display: none !important;
+  }
+
+  .prospectus-print-footer {
+    display: block !important;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: -0.35in;
+    color: #64748b;
+    font-size: 8pt;
+    text-align: center;
+  }
+
+}
+
+.prospectus-print-footer {
+  display: none;
 }

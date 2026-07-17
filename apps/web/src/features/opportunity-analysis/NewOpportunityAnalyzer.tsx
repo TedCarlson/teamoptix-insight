@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { parseOpportunityListing, type OpportunityListing } from "./parseOpportunityListing";
 
 function display(value: string | number | null) {
@@ -39,18 +40,21 @@ type ZipAnalysisRow = {
 };
 
 type ZipAnalysis = {
-  terminal: { matched_address: string; source: string; status: string };
+  terminal: { matched_address: string; source: string; status: string; latitude: number; longitude: number };
   rows: ZipAnalysisRow[];
   unresolved_zip_codes: string[];
 };
 
 export default function NewOpportunityAnalyzer({ companySlug }: { companySlug: string }) {
+  const router = useRouter();
   const [source, setSource] = useState("");
   const [listing, setListing] = useState<OpportunityListing | null>(null);
   const [terminalAddress, setTerminalAddress] = useState("");
   const [zipAnalysis, setZipAnalysis] = useState<ZipAnalysis | null>(null);
   const [zipLoading, setZipLoading] = useState(false);
   const [zipError, setZipError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const totals = useMemo(() => listing ? {
     stops: (listing.weeklyDeliveryStops ?? 0) + (listing.weeklyPickupStops ?? 0),
     packages: (listing.weeklyDeliveryPackages ?? 0) + (listing.weeklyPickupPackages ?? 0),
@@ -97,6 +101,43 @@ export default function NewOpportunityAnalyzer({ companySlug }: { companySlug: s
     } catch (error) {
       setZipError(error instanceof Error ? error.message : "ZIP analysis failed.");
     } finally { setZipLoading(false); }
+  }
+
+  async function saveOpportunity() {
+    if (!listing || !zipAnalysis) return;
+    setSaving(true); setSaveError("");
+    try {
+      const response = await fetch(`/api/company/${companySlug}/opportunity-analysis/opportunities`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          opportunity_number: listing.opportunityNumber,
+          station_name: listing.station,
+          opportunity_type: listing.opportunityType,
+          listing_location: listing.location,
+          source_text: source,
+          terminal_address: terminalAddress,
+          zip_codes: listing.uniqueZips,
+          weekly_mileage: listing.weeklyMileage,
+          weekly_delivery_stops: listing.weeklyDeliveryStops,
+          weekly_delivery_packages: listing.weeklyDeliveryPackages,
+          weekly_pickup_stops: listing.weeklyPickupStops,
+          weekly_pickup_packages: listing.weeklyPickupPackages,
+          weekly_dispatch_min: listing.weeklyDispatchMin,
+          weekly_dispatch_max: listing.weeklyDispatchMax,
+          negotiation_start_date: listing.negotiationStartDate,
+          contract_start_date: listing.contractStartDate,
+          parsed_listing: listing,
+          zip_analysis: zipAnalysis,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data?.id) throw new Error(data?.error ?? "Save failed.");
+      router.push(`/company/${companySlug}/opportunity-analysis/${data.id}`);
+      router.refresh();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Save failed.");
+      setSaving(false);
+    }
   }
 
   return (
@@ -200,6 +241,10 @@ export default function NewOpportunityAnalyzer({ companySlug }: { companySlug: s
             {zipAnalysis.unresolved_zip_codes.map((zipCode) => <p key={zipCode} style={{ margin: "8px 0 0" }}><strong>{zipCode}</strong> · ZIP not found in the reference database</p>)}
           </details> : null}
           <small className="app-card__body">Terminal miles are straight-line distance to the ZIP centroid, not driving miles. Residential density uses ACS population. Commercial density uses Census business establishments and employment. Rurality uses USDA ERS 2020 RUCA ZIP codes; TeamOptix maps metro, micropolitan, small-town, and rural classes to a 0.00–1.00 operating continuum. Area-based density is shown only where a Census ZCTA exists.</small>
+          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            {saveError ? <span style={{ color: "#b91c1c" }}>{saveError}</span> : null}
+            <button className="button button-primary" type="button" disabled={saving} onClick={saveOpportunity}>{saving ? "Saving…" : "Save opportunity"}</button>
+          </div>
         </article> : <article className="app-card" style={{ padding: 16, display: "grid", gap: 8 }}><strong>ZIP Codes</strong><p style={{ margin: 0, lineHeight: 1.7 }}>{listing.uniqueZips.join(", ") || "No ZIP Codes found."}</p></article>}
       </> : null}
     </section>

@@ -3,10 +3,20 @@ import {
   OpportunityWorkspaceGrid,
   OpportunityWorkspaceHeader,
 } from "@/features/opportunity-analysis/OpportunityWorkspace";
+import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const base = `/company/${slug}/opportunity-analysis`;
+  const supabase = await getSupabaseServerClient();
+  const { data } = await supabase.rpc("list_opportunity_analyses", { p_company_slug: slug });
+  const opportunities = (data ?? []) as Array<{
+    id: string; opportunity_number: string | null; station_name: string | null;
+    opportunity_type: string; listing_location: string | null; status: string;
+    zip_count: number; weekly_mileage: number | null; weekly_dispatch_min: number | null;
+    weekly_dispatch_max: number | null; contract_start_date: string | null;
+  }>;
+  const count = (status: string) => opportunities.filter((item) => item.status === status).length;
 
   return (
     <main className="workspace-shell">
@@ -19,10 +29,27 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
         />
 
         <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-          <div className="context-stat"><span className="context-stat__label">Draft opportunities</span><strong>0</strong></div>
-          <div className="context-stat"><span className="context-stat__label">Under review</span><strong>0</strong></div>
-          <div className="context-stat"><span className="context-stat__label">Ready to compare</span><strong>0</strong></div>
-          <div className="context-stat"><span className="context-stat__label">Decisions recorded</span><strong>0</strong></div>
+          <div className="context-stat"><span className="context-stat__label">Draft opportunities</span><strong>{count("DRAFT")}</strong></div>
+          <div className="context-stat"><span className="context-stat__label">Under review</span><strong>{count("UNDER_REVIEW")}</strong></div>
+          <div className="context-stat"><span className="context-stat__label">Ready to compare</span><strong>{count("READY_TO_COMPARE")}</strong></div>
+          <div className="context-stat"><span className="context-stat__label">Decisions recorded</span><strong>{opportunities.filter((item) => ["PURSUED", "AWARDED", "DECLINED"].includes(item.status)).length}</strong></div>
+        </section>
+
+        <section className="app-card" style={{ padding: 16, display: "grid", gap: 10 }}>
+          <div><h2 className="app-card__title">Saved opportunities</h2><p className="app-card__body" style={{ margin: "4px 0 0" }}>Durable analyses available for review and future comparison.</p></div>
+          {opportunities.length ? <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", minWidth: 820 }}>
+            <thead><tr>{["Opportunity", "Station", "Location", "Status", "ZIPs", "Weekly miles", "Dispatches", "Contract start"].map((label) => <th key={label} style={{ textAlign: "left", padding: 8, borderBottom: "1px solid #cbd5e1" }}>{label}</th>)}</tr></thead>
+            <tbody>{opportunities.map((item) => <tr key={item.id}>
+              <td style={{ padding: 8, borderBottom: "1px solid #e2e8f0" }}><Link href={`${base}/${item.id}`} style={{ fontWeight: 800 }}>{item.opportunity_number ?? "Unnumbered"}</Link></td>
+              <td style={{ padding: 8, borderBottom: "1px solid #e2e8f0" }}>{item.station_name ?? "—"}</td>
+              <td style={{ padding: 8, borderBottom: "1px solid #e2e8f0" }}>{item.listing_location ?? "—"}</td>
+              <td style={{ padding: 8, borderBottom: "1px solid #e2e8f0" }}>{item.status.replaceAll("_", " ")}</td>
+              <td style={{ padding: 8, borderBottom: "1px solid #e2e8f0" }}>{item.zip_count}</td>
+              <td style={{ padding: 8, borderBottom: "1px solid #e2e8f0" }}>{item.weekly_mileage?.toLocaleString() ?? "—"}</td>
+              <td style={{ padding: 8, borderBottom: "1px solid #e2e8f0" }}>{item.weekly_dispatch_min === null ? "—" : `${item.weekly_dispatch_min}–${item.weekly_dispatch_max}`}</td>
+              <td style={{ padding: 8, borderBottom: "1px solid #e2e8f0" }}>{item.contract_start_date ?? "—"}</td>
+            </tr>)}</tbody>
+          </table></div> : <p className="app-card__body" style={{ margin: 0 }}>No opportunities saved yet. Analyze a listing and save its report to begin the portfolio.</p>}
         </section>
 
         <OpportunityWorkspaceGrid links={[
