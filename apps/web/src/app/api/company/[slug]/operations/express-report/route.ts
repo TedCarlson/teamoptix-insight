@@ -87,6 +87,17 @@ function normalizeDate(value: string | null) {
   return raw;
 }
 
+function currentOperatingDate() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
 function stopKey(row: ExpressReportRow) {
   return `${row.st_number ?? ""}|${row.sid ?? ""}`;
 }
@@ -270,19 +281,10 @@ export async function GET(
 ) {
   try {
     const { slug } = await context.params;
-    const serviceDate = normalizeDate(req.nextUrl.searchParams.get("serviceDate"));
-
-    if (!serviceDate) {
-      return NextResponse.json(
-        {
-          error: "serviceDate is required as YYYY-MM-DD.",
-          packages: [],
-          route_summaries: [],
-          totals: null,
-        },
-        { status: 400 }
-      );
-    }
+    const requestedServiceDate = normalizeDate(
+      req.nextUrl.searchParams.get("serviceDate")
+    );
+    const serviceDate = currentOperatingDate();
 
     const supabase = await getSupabaseServerClient();
 
@@ -313,6 +315,7 @@ export async function GET(
     return NextResponse.json({
       company_slug: slug,
       service_date: serviceDate,
+      requested_service_date: requestedServiceDate,
       route_summaries: routeSummaries,
       totals: buildTotals(routeSummaries),
       freshness: buildFreshness(rows),
