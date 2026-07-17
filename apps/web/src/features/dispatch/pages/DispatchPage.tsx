@@ -41,6 +41,12 @@ import { DispatchRightRail } from "../components/DispatchRightRail";
 import { DispatchRouteQueue } from "../components/DispatchRouteQueue";
 import { DispatchWorkforceRail } from "../components/DispatchWorkforceRail";
 
+type DispatchExpressHealth = {
+  route_key: string;
+  route_label: string | null;
+  express: { package_count: number; incomplete_package_count: number };
+};
+
 export default function DispatchPage() {
   const params = useParams();
   const slug = String(params?.slug ?? "");
@@ -54,6 +60,8 @@ export default function DispatchPage() {
   const [expressReportOpen, setExpressReportOpen] = useState(false);
   const [complianceReportOpen, setComplianceReportOpen] = useState(false);
   const persistedCalloutKeys = useRef(new Set<string>());
+  const [expressHealthRows, setExpressHealthRows] = useState<DispatchExpressHealth[]>([]);
+  const [expressHealthTotals, setExpressHealthTotals] = useState({ packages: 0, open: 0 });
 
   const serviceDate = todayIso();
   const planningDate = addDaysIso(serviceDate, 1);
@@ -78,6 +86,32 @@ export default function DispatchPage() {
     setError,
   } = useDispatchWorkspaceData(slug, serviceDate);
   const dispatchLocked = dispatchDay?.status === "LOCKED";
+
+  useEffect(() => {
+    let active = true;
+    async function loadExpressHealth() {
+      try {
+        const response = await fetch(
+          `/api/company/${slug}/operations/route-health?serviceDate=${serviceDate}`,
+          { credentials: "include", cache: "no-store" }
+        );
+        const payload = await response.json();
+        if (!active || !response.ok) return;
+        setExpressHealthRows(Array.isArray(payload.routes) ? payload.routes : []);
+        setExpressHealthTotals({
+          packages: Number(payload.totals?.express_package_count ?? 0),
+          open: Number(payload.totals?.incomplete_express_package_count ?? 0),
+        });
+      } catch {
+        if (active) {
+          setExpressHealthRows([]);
+          setExpressHealthTotals({ packages: 0, open: 0 });
+        }
+      }
+    }
+    if (slug) void loadExpressHealth();
+    return () => { active = false; };
+  }, [refreshKey, serviceDate, slug]);
 
   const arrivedPersonIds = useMemo(
     () => buildArrivedPersonIds(dispatchEvents),
@@ -152,6 +186,41 @@ export default function DispatchPage() {
     unscheduledDrivers,
     workforce,
   } = workspaceModel;
+
+  const expressSignalsByRouteKey = useMemo(() => {
+    const normalize = (value: string | null | undefined) =>
+      String(value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const healthIndex = new Map<string, DispatchExpressHealth>();
+    expressHealthRows.forEach((health) => {
+      [health.route_key, health.route_label].forEach((key) => {
+        const normalized = normalize(key);
+        if (normalized) healthIndex.set(normalized, health);
+      });
+    });
+
+    return dispatchRoutes.reduce<Record<string, { packages: number; open: number }>>(
+      (signals, route) => {
+        const candidates = [route.route_key, route.current_wa_num, route.route_name];
+        let health: DispatchExpressHealth | undefined;
+        for (const candidate of candidates) {
+          const normalized = normalize(candidate);
+          health = healthIndex.get(normalized);
+          if (!health && normalized) {
+            health = expressHealthRows.find((row) => normalize(row.route_label).endsWith(normalized));
+          }
+          if (health) break;
+        }
+        if (health?.express.package_count) {
+          signals[route.route_key] = {
+            packages: Number(health.express.package_count),
+            open: Number(health.express.incomplete_package_count),
+          };
+        }
+        return signals;
+      },
+      {}
+    );
+  }, [dispatchRoutes, expressHealthRows]);
 
 
   function openSeat(route: DispatchRoute, seat: Seat) {
@@ -730,6 +799,8 @@ export default function DispatchPage() {
               dswSignalsByRouteKey={dswSignalsByRouteKey}
               planTotals={planTotals}
               dswTotals={dswTotals}
+              expressSignalsByRouteKey={expressSignalsByRouteKey}
+              expressTotals={expressHealthTotals}
               planSourceLabel={droPlanSourceFrame ? `${droPlanSourceFrame} DRO` : null}
             />
 

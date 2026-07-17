@@ -784,6 +784,12 @@ console.log(
   }, [routeRows]);
 
   const companyIlsPercent = findContractIlsPercent(serviceSnapshotPayload) ?? "—";
+  const expressPackageTotal = Number(
+    routeHealthPayload?.totals?.express_package_count ?? 0
+  );
+  const openExpressPackageTotal = Number(
+    routeHealthPayload?.totals?.incomplete_express_package_count ?? 0
+  );
 
   return (
     <section className="delivery-window-grid">
@@ -834,7 +840,12 @@ console.log(
             ["📍 Del Stops", `${executionTotals.actualStops.toLocaleString()} / ${executionTotals.plannedStops.toLocaleString()}`],
             ["📦 Del Packages", `${executionTotals.actualPackages.toLocaleString()} / ${executionTotals.plannedPackages.toLocaleString()}`],
             ["🛻 Pickups", `${executionTotals.actualPickupStops.toLocaleString()} / ${executionTotals.plannedPickupStops.toLocaleString()}`],
-            ["🕒 Express", "—"],
+            [
+              "🕒 Express",
+              expressPackageTotal > 0
+                ? `${openExpressPackageTotal.toLocaleString()} open / ${expressPackageTotal.toLocaleString()}`
+                : "0",
+            ],
             ["ILS %", companyIlsPercent],
             ["Completion", `${fleetCompletion}%`],
           ].map(([label, value]) => (
@@ -903,6 +914,7 @@ console.log(
         <div style={{ display: "grid", gap: 8 }}>
           {visibleRouteRows.map((item) => {
             const { route, row, signal, completion, fccHealth } = item;
+            const routeManifestHealth = manifestHealthForItem(item);
 
             return (
               <div
@@ -981,6 +993,12 @@ console.log(
                       actual={row.actual_pickup_stops ?? 0}
                       planned={row.planned_pickup_stops ?? 0}
                     />
+                    {routeManifestHealth && routeManifestHealth.express.package_count > 0 ? (
+                      <ExpressPill
+                        packages={routeManifestHealth.express.package_count}
+                        open={routeManifestHealth.express.incomplete_package_count}
+                      />
+                    ) : null}
                   </div>
                 ) : (
                   <div style={{ color: "#94a3b8", fontSize: 12, fontWeight: 900 }}>
@@ -1004,7 +1022,7 @@ console.log(
                         routeLabel: item.route
                           ? routeLabelForDisplay(item.route)
                           : dswDisplayKey(row!, item.sortOrder),
-                        health: manifestHealthForItem(item),
+                        health: routeManifestHealth,
                         dsw: row ?? null,
                       })
                     }
@@ -1086,6 +1104,27 @@ function ProgressPill(props: {
       }}
     >
       {props.icon} {props.actual} of {props.planned}
+    </span>
+  );
+}
+
+function ExpressPill(props: { packages: number; open: number }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
+        border: "1px solid #fdba74",
+        borderRadius: 999,
+        padding: "7px 10px",
+        background: "#fff7ed",
+        color: "#9a3412",
+        whiteSpace: "nowrap",
+      }}
+      title={`${props.open} open Express packages`}
+    >
+      🕒 {props.open} open / {props.packages}
     </span>
   );
 }

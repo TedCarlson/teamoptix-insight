@@ -34,6 +34,8 @@ type DispatchRouteQueueProps = {
   planTotals?: DroPlanTotals;
   dswTotals?: DswDispatchTotals;
   planSourceLabel?: string | null;
+  expressSignalsByRouteKey?: Record<string, { packages: number; open: number }>;
+  expressTotals?: { packages: number; open: number };
 };
 
 
@@ -87,6 +89,8 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
     planTotals,
     dswTotals,
     planSourceLabel = null,
+    expressSignalsByRouteKey = {},
+    expressTotals,
   } = props;
 
   const [legendOpen, setLegendOpen] = useState(false);
@@ -167,6 +171,11 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
                 <span>📦 {dswTotals.packages}</span>
                 <span style={{ color: timeCriticalColor(dswTotals.timeCritical) }}>🕒 {dswTotals.timeCritical}</span>
                 <span>📥 {dswTotals.pickupStops}</span>
+              </PlanTotalLine>
+            ) : null}
+            {expressTotals && expressTotals.packages > 0 ? (
+              <PlanTotalLine label="Express">
+                <span style={{ color: "#9a3412" }}>🕒 {expressTotals.open} open / {expressTotals.packages}</span>
               </PlanTotalLine>
             ) : null}
           </div>
@@ -267,6 +276,7 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
             const driverArrived = route.driver
               ? arrivedPersonIds.has(route.driver.roster_member_id)
               : false;
+            const expressSignal = expressSignalsByRouteKey[route.route_key];
 
             return (
               <div key={route.route_key} className="dispatch-route-row" style={routeRowBase}>
@@ -408,6 +418,7 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
                   title={
                     planSignalsByRouteKey[route.route_key]?.title ??
                     dswSignalsByRouteKey[route.route_key]?.title ??
+                    (expressSignal ? `${expressSignal.open} open of ${expressSignal.packages} Express packages` : null) ??
                     "No DRO plan signal matched."
                   }
                   style={{
@@ -416,13 +427,13 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
                     justifyContent: "flex-start",
                     gap: 8,
                     minWidth: 0,
-                    color: planSignalsByRouteKey[route.route_key] || dswSignalsByRouteKey[route.route_key] ? "#334155" : "#94a3b8",
+                    color: planSignalsByRouteKey[route.route_key] || dswSignalsByRouteKey[route.route_key] || expressSignal ? "#334155" : "#94a3b8",
                     fontSize: 12,
                     fontWeight: 900,
                     lineHeight: 1.2,
                   }}
                 >
-                  {planSignalsByRouteKey[route.route_key] || dswSignalsByRouteKey[route.route_key] ? (
+                  {planSignalsByRouteKey[route.route_key] || dswSignalsByRouteKey[route.route_key] || expressSignal ? (
                     <span
                       style={{
                         display: "inline-grid",
@@ -446,6 +457,9 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
                       ) : null}
                       {dswSignalsByRouteKey[route.route_key] ? (
                         <DswSignalLine signal={dswSignalsByRouteKey[route.route_key]} />
+                      ) : null}
+                      {expressSignal ? (
+                        <span style={{ color: "#9a3412" }}><strong>EXP</strong> · 🕒 {expressSignal.open} open / {expressSignal.packages}</span>
                       ) : null}
                     </span>
                   ) : (
