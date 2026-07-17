@@ -19,6 +19,7 @@ apps/web/.env.local
 .automation-downloads/
 apps/web/.automation-downloads/
 tmp/automation-downloads/
+tmp/pdfs/
 *.xls
 *.xlsx
 .vercel/
