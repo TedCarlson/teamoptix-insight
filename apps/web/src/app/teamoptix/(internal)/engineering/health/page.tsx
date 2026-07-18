@@ -30,7 +30,7 @@ export default async function Page() {
             {health.services.map((service) => (
               <article className={`engineering-service-card engineering-service-card--${String(service.health_state).toLowerCase()}`} key={String(service.service_key)}>
                 <div><p>{String(service.service_role)}</p><h2>{String(service.service_name)}</h2></div>
-                <strong>{String(service.health_state)}</strong>
+                <strong className={`signal-pill signal-pill--${String(service.health_state).toLowerCase()}`}>{String(service.health_state)}</strong>
                 <dl><div><dt>Last observed</dt><dd>{time(service.last_observed_at)}</dd></div><div><dt>Max latency</dt><dd>{service.max_latency_ms == null ? "—" : `${String(service.max_latency_ms)} ms`}</dd></div></dl>
               </article>
             ))}
@@ -45,7 +45,7 @@ export default async function Page() {
                 {health.checks.length ? health.checks.map((check) => (
                   <div className="engineering-check-row" key={String(check.id)}>
                     <span><strong>{String(check.service_key)} · {String(check.check_name)}</strong><small>{checkDetail(check as Record<string, unknown>)}</small></span>
-                    <em>{String(check.status)}</em><time>{time(check.started_at)}</time>
+                    <em className={`signal-pill signal-pill--${String(check.status).toLowerCase()}`}>{String(check.status)}</em><time>{time(check.started_at)}</time>
                   </div>
                 )) : <div className="command-empty"><strong>No checks collected yet</strong><span>The five-minute collector will populate this ledger after configuration.</span></div>}
               </div>

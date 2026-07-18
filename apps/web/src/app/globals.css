@@ -1988,14 +1988,19 @@ body {
 .domain-row > span { display: grid; gap: 3px; min-width: 0; }
 .domain-row strong { color: #14203a; font-size: 13px; }
 .domain-row small { color: #68768f; font-size: 11px; line-height: 1.35; }
-.domain-row em { background: #edf4ff; border-radius: 999px; color: #275bb7; font-size: 9px; font-style: normal; font-weight: 950; padding: 5px 8px; white-space: nowrap; }
+.domain-row em { border-radius: 999px; font-size: 9px; font-style: normal; font-weight: 950; padding: 5px 8px; white-space: nowrap; }
+.signal-pill { background: #edf4ff; border: 1px solid transparent; border-radius: 999px; color: #275bb7; display: inline-flex; font-size: 9px; font-style: normal; font-weight: 950; line-height: 1; padding: 5px 8px; width: fit-content; }
+.signal-pill--healthy { background: #e8f8f1 !important; border-color: #b9ead5 !important; color: #047857 !important; }
+.signal-pill--degraded { background: #fff7df !important; border-color: #f0d58b !important; color: #946200 !important; }
+.signal-pill--failed { background: #fff0ed !important; border-color: #f2b8ad !important; color: #c2412d !important; }
+.signal-pill--unknown { background: #f1f5f9 !important; border-color: #d8e0ea !important; color: #64748b !important; }
 .domain-row b { color: #2563eb; font-size: 12px; }
 .engineering-service-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(190px,1fr)); }
 .engineering-service-card { background: #fff; border: 1px solid #dbe4ef; border-radius: 18px; box-shadow: var(--shadow-sm); display: grid; gap: 14px; padding: 16px; }
 .engineering-service-card > div:first-child { display: grid; gap: 3px; }
 .engineering-service-card p { color: #758198; font-size: 9px; font-weight: 950; letter-spacing: .08em; margin: 0; text-transform: uppercase; }
 .engineering-service-card h2 { color: #14203a; font-size: 18px; margin: 0; }
-.engineering-service-card > strong { color: #64748b; font-size: 11px; letter-spacing: .05em; }
+.engineering-service-card > strong { font-size: 9px; letter-spacing: .05em; }
 .engineering-service-card--healthy { border-top: 4px solid #059669; }
 .engineering-service-card--degraded { border-top: 4px solid #d79b16; }
 .engineering-service-card--failed { border-top: 4px solid #dc5b45; }
@@ -2010,7 +2015,7 @@ body {
 .engineering-check-row > span { display: grid; gap: 3px; }
 .engineering-check-row strong { color: #14203a; font-size: 12px; }
 .engineering-check-row small, .engineering-check-row time { color: #748198; font-size: 10px; }
-.engineering-check-row em { background: #edf4ff; border-radius: 99px; color: #275bb7; font-size: 9px; font-style: normal; font-weight: 950; padding: 5px 8px; }
+.engineering-check-row em { font-size: 9px; font-style: normal; font-weight: 950; }
 .dependency-stack { display: grid; gap: 8px; }
 .dependency-stack div { background: #f6f8fb; border: 1px solid #e4eaf2; border-radius: 12px; display: grid; gap: 2px; padding: 10px 12px; }
 .dependency-stack strong { color: #14203a; font-size: 12px; }

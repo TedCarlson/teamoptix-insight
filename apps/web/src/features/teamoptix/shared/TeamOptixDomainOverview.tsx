@@ -5,6 +5,11 @@ export type DomainMetric = { label: string; value: string | number; detail: stri
 export type DomainRow = { id?: string; title: string; detail: string; status?: string; href: string };
 export type DomainPanel = { eyebrow: string; title: string; actionLabel?: string; actionHref?: string; rows: DomainRow[] };
 
+function signalClass(status?: string) {
+  const normalized = status?.trim().toLowerCase();
+  return normalized && ["healthy", "degraded", "failed", "unknown"].includes(normalized) ? ` signal-pill--${normalized}` : "";
+}
+
 export default function TeamOptixDomainOverview(props: {
   eyebrow: string;
   title: string;
@@ -39,7 +44,7 @@ export default function TeamOptixDomainOverview(props: {
                   {panel.rows.map((row, index) => (
                     <Link className="domain-row" href={row.href} key={row.id ?? `${row.href}:${row.title}:${index}`}>
                       <span><strong>{row.title}</strong><small>{row.detail}</small></span>
-                      {row.status ? <em>{row.status}</em> : null}
+                      {row.status ? <em className={`signal-pill${signalClass(row.status)}`}>{row.status}</em> : null}
                       <b aria-hidden="true">→</b>
                     </Link>
                   ))}
