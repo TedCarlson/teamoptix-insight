@@ -19,6 +19,7 @@ const PREVIOUS_DAY_CLOSE_STATUSES = [
   "ARTIFACTS_READY",
   "INGESTING",
   "COMPLETE",
+  "FAILED",
 ];
 
 function parseTimeToMinutes(time: string | null | undefined) {
@@ -172,13 +173,13 @@ function buildRequestPayload(activeRows: any[], manifestAssignment: ScheduledMan
 function buildPreviousDayClosePayload() {
   return {
     source: "teamoptix_automation",
-    preset: "daily_historical_sweep",
-    intent: "historical_backfill",
-    request_origin: "teamoptix_governed_daily_sweep",
+    preset: "previous_day_close",
+    intent: "previous_day_finalization",
+    request_origin: "teamoptix_governed_previous_day_close",
     collect_scope: "dsw_only",
     control_level: "platform_managed",
-    customer_language: "Daily Historical Sweep",
-    runner_goal: "protect_recent_operational_history",
+    customer_language: "Previous Day Close",
+    runner_goal: "collect_previous_day_dsw",
     targets: [
       {
         key: "DSW_DAILY_SERVICE",
@@ -242,14 +243,12 @@ async function loadScheduledManifestAssignment(params: {
 async function companyHasPreviousDayClose(params: {
   supabase: any;
   companyId: string;
-  serviceDateStart: string;
-  serviceDateEnd: string;
+  serviceDate: string;
 }) {
   const {
     supabase,
     companyId,
-    serviceDateStart,
-    serviceDateEnd,
+    serviceDate,
   } = params;
 
   const { data, error } = await supabase
@@ -257,8 +256,7 @@ async function companyHasPreviousDayClose(params: {
     .select("id, request_status")
     .eq("company_id", companyId)
     .eq("request_type", "PREVIOUS_DAY_CLOSE")
-    .eq("service_date_start", serviceDateStart)
-    .eq("service_date_end", serviceDateEnd)
+    .eq("service_date", serviceDate)
     .in("request_status", PREVIOUS_DAY_CLOSE_STATUSES)
     .limit(1);
 
@@ -357,11 +355,7 @@ export async function GET() {
         currentMinutes: terminalState.currentMinutes,
         operationalDate: terminalState.todayIso,
       });
-      const serviceDateStart = addIsoDays(
-        terminalState.todayIso,
-        -3
-      );
-      const serviceDateEnd = addIsoDays(
+      const previousServiceDate = addIsoDays(
         terminalState.todayIso,
         -1
       );
@@ -372,8 +366,7 @@ export async function GET() {
         const closeExists = await companyHasPreviousDayClose({
           supabase,
           companyId,
-          serviceDateStart,
-          serviceDateEnd,
+          serviceDate: previousServiceDate,
         });
 
         if (!closeExists) {
@@ -383,8 +376,7 @@ export async function GET() {
               status: "skipped",
               request_type: "PREVIOUS_DAY_CLOSE",
               reason: "active request exists",
-              service_date_start: serviceDateStart,
-              service_date_end: serviceDateEnd,
+              service_date: previousServiceDate,
               timezone: terminalTimeZone,
             });
             continue;
@@ -398,9 +390,9 @@ export async function GET() {
             {
               p_company_slug: companySlug,
               p_request_type: "PREVIOUS_DAY_CLOSE",
-              p_service_date: null,
-              p_service_date_start: serviceDateStart,
-              p_service_date_end: serviceDateEnd,
+              p_service_date: previousServiceDate,
+              p_service_date_start: null,
+              p_service_date_end: null,
               p_requested_reports: ["DSW"],
               p_priority: 60,
               p_request_payload:
@@ -423,8 +415,7 @@ export async function GET() {
             status: "created",
             request_id: closeRequest?.id,
             request_type: "PREVIOUS_DAY_CLOSE",
-            service_date_start: serviceDateStart,
-            service_date_end: serviceDateEnd,
+            service_date: previousServiceDate,
             requested_reports: ["DSW"],
             timezone: terminalTimeZone,
           });

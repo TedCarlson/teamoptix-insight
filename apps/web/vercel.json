@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/operations/manifest-artifact-process",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/engineering/platform-telemetry",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
