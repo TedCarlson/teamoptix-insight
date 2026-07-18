@@ -12,6 +12,7 @@ All credentials are server-only environment variables. Use read-only or least-pr
 | Supabase | Existing `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | REST API reachability and latency |
 | DigitalOcean | `DIGITALOCEAN_ACCESS_TOKEN`, `DIGITALOCEAN_DROPLET_ID` | Runner Droplet is active |
 | Backblaze | Existing `B2_S3_ENDPOINT`, `B2_S3_REGION`, `B2_KEY_ID`, `B2_APPLICATION_KEY`, `B2_FLEET_EVIDENCE_BUCKET` | Archive bucket is accessible |
+| Resend | Existing `RESEND_API_KEY` | API availability and sending-domain verification status |
 
 The collector is scheduled every five minutes at `/api/cron/engineering/platform-telemetry`. When `CRON_SECRET` is configured, direct calls must provide it as a bearer token.
 
@@ -23,6 +24,8 @@ The collector is scheduled every five minutes at `/api/cron/engineering/platform
 - `UNKNOWN`: credentials are missing, no evidence exists, or the latest evidence is more than 15 minutes old.
 
 Overall platform state follows the weakest critical dependency. Unknown is never treated as healthy.
+
+Resend domain readiness belongs to Engineering because SPF/DKIM verification and sending capability determine whether the platform can send reliably. Delivery, bounce, open, click, and campaign performance are communications or product outcomes and are intentionally outside this infrastructure grade.
 
 ## Authority boundaries
 

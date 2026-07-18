@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { AccessProvider } from "@/features/access/AccessProvider";
 
@@ -17,6 +18,7 @@ export default function RootLayout(props: { children: React.ReactNode }) {
     <html lang="en">
       <body>
         <AccessProvider>{props.children}</AccessProvider>
+        <Analytics />
       </body>
     </html>
   );

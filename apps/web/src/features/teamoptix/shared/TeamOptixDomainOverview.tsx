@@ -2,7 +2,7 @@ import Link from "next/link";
 import TeamOptixShell from "@/features/teamoptix/navigation/TeamOptixShell";
 
 export type DomainMetric = { label: string; value: string | number; detail: string };
-export type DomainRow = { title: string; detail: string; status?: string; href: string };
+export type DomainRow = { id?: string; title: string; detail: string; status?: string; href: string };
 export type DomainPanel = { eyebrow: string; title: string; actionLabel?: string; actionHref?: string; rows: DomainRow[] };
 
 export default function TeamOptixDomainOverview(props: {
@@ -36,8 +36,8 @@ export default function TeamOptixDomainOverview(props: {
                   {panel.actionHref && panel.actionLabel ? <Link href={panel.actionHref}>{panel.actionLabel} →</Link> : null}
                 </div>
                 <div className="domain-row-list">
-                  {panel.rows.map((row) => (
-                    <Link className="domain-row" href={row.href} key={`${row.href}:${row.title}`}>
+                  {panel.rows.map((row, index) => (
+                    <Link className="domain-row" href={row.href} key={row.id ?? `${row.href}:${row.title}:${index}`}>
                       <span><strong>{row.title}</strong><small>{row.detail}</small></span>
                       {row.status ? <em>{row.status}</em> : null}
                       <b aria-hidden="true">→</b>

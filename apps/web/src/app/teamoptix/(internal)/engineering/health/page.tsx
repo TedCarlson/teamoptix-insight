@@ -9,6 +9,15 @@ function time(value: unknown) {
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }).format(new Date(String(value)));
 }
 
+function checkDetail(check: Record<string, unknown>) {
+  if (check.error_message) return String(check.error_message);
+  if (check.service_key === "RESEND") {
+    const metadata = (check.metadata ?? {}) as Record<string, unknown>;
+    return `${String(metadata.verified_domain_count ?? 0)} of ${String(metadata.domain_count ?? 0)} sending domains verified · ${String(check.latency_ms ?? "—")} ms`;
+  }
+  return `${String(check.latency_ms ?? "—")} ms · HTTP ${String(check.status_code ?? "—")}`;
+}
+
 export default async function Page() {
   const health = await getPlatformHealth();
   return (
@@ -35,7 +44,7 @@ export default async function Page() {
               <div className="domain-row-list">
                 {health.checks.length ? health.checks.map((check) => (
                   <div className="engineering-check-row" key={String(check.id)}>
-                    <span><strong>{String(check.service_key)} · {String(check.check_name)}</strong><small>{check.error_message ? String(check.error_message) : `${String(check.latency_ms ?? "—")} ms · HTTP ${String(check.status_code ?? "—")}`}</small></span>
+                    <span><strong>{String(check.service_key)} · {String(check.check_name)}</strong><small>{checkDetail(check as Record<string, unknown>)}</small></span>
                     <em>{String(check.status)}</em><time>{time(check.started_at)}</time>
                   </div>
                 )) : <div className="command-empty"><strong>No checks collected yet</strong><span>The five-minute collector will populate this ledger after configuration.</span></div>}
@@ -49,6 +58,7 @@ export default async function Page() {
                 <div><strong>Supabase</strong><span>Database, authentication, warehouse, storage state</span></div>
                 <div><strong>DigitalOcean</strong><span>Runner host, source collection, transport execution</span></div>
                 <div><strong>Backblaze B2</strong><span>Inspection evidence archive and retrieval</span></div>
+                <div><strong>Resend</strong><span>Transactional email delivery and sending-domain readiness</span></div>
               </div>
               <p className="engineering-authority-note">Engineering grades provider capability. Automation grades workflow outcomes. Product governance determines customer impact.</p>
             </article>

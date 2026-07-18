@@ -25,12 +25,14 @@ export default async function Page() {
     ]}
     panels={[
       { eyebrow: "Infrastructure", title: "Service health", actionLabel: "Code health", actionHref: "/teamoptix/engineering/health", rows: health.services.map((service) => ({
+        id: `service:${String(service.service_key)}`,
         title: String(service.service_name),
         detail: `${String(service.service_role)} · ${stateDetail(String(service.health_state), service.last_observed_at)}`,
         status: String(service.health_state),
         href: "/teamoptix/engineering/health",
       })) },
       { eyebrow: "Observation ledger", title: "Latest provider checks", actionLabel: "Releases", actionHref: "/teamoptix/engineering/releases", rows: recentChecks.length ? recentChecks.map((check) => ({
+        id: `check:${String(check.id)}`,
         title: `${String(check.service_key)} · ${String(check.check_name)}`,
         detail: check.error_message ? String(check.error_message) : `${String(check.latency_ms ?? "—")} ms · ${new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }).format(new Date(String(check.started_at)))}`,
         status: String(check.status),

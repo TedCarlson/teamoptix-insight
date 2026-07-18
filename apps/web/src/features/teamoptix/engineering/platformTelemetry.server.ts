@@ -3,7 +3,7 @@ import "server-only";
 import { HeadBucketCommand, S3Client } from "@aws-sdk/client-s3";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 
-export type ServiceKey = "VERCEL" | "SUPABASE" | "DIGITALOCEAN" | "BACKBLAZE";
+export type ServiceKey = "VERCEL" | "SUPABASE" | "DIGITALOCEAN" | "BACKBLAZE" | "RESEND";
 type CheckResult = {
   serviceKey: ServiceKey;
   checkKey: string;
@@ -56,15 +56,57 @@ async function digitalOceanCheck(): Promise<CheckResult> {
 
 async function backblazeCheck(): Promise<CheckResult> {
   const endpoint = process.env.B2_S3_ENDPOINT;
-  const region = process.env.B2_S3_REGION;
+  const configuredRegion = process.env.B2_S3_REGION;
   const accessKeyId = process.env.B2_KEY_ID;
   const secretAccessKey = process.env.B2_APPLICATION_KEY;
   const bucket = process.env.B2_FLEET_EVIDENCE_BUCKET;
-  if (!endpoint || !region || !accessKeyId || !secretAccessKey || !bucket) return { serviceKey: "BACKBLAZE", checkKey: "bucket_access", checkName: "Evidence archive", status: "UNKNOWN", errorCode: "NOT_CONFIGURED", errorMessage: "Backblaze telemetry credentials are not configured." };
+  if (!endpoint || !configuredRegion || !accessKeyId || !secretAccessKey || !bucket) return { serviceKey: "BACKBLAZE", checkKey: "bucket_access", checkName: "Evidence archive", status: "UNKNOWN", errorCode: "NOT_CONFIGURED", errorMessage: "Backblaze telemetry credentials are not configured." };
+  const region = configuredRegion.replace(/^https?:\/\//, "").replace(/^s3\./, "").replace(/\.backblazeb2\.com\/?$/, "");
   const started = Date.now();
   const s3 = new S3Client({ endpoint, region, forcePathStyle: true, credentials: { accessKeyId, secretAccessKey } });
   await s3.send(new HeadBucketCommand({ Bucket: bucket }));
   return { serviceKey: "BACKBLAZE", checkKey: "bucket_access", checkName: "Evidence archive", status: "HEALTHY", latencyMs: Date.now() - started, metadata: { bucket } };
+}
+
+type ResendDomain = {
+  id?: string;
+  name?: string;
+  status?: string;
+  region?: string;
+  capabilities?: { sending?: string; receiving?: string };
+};
+
+async function resendCheck(): Promise<CheckResult> {
+  const token = process.env.RESEND_API_KEY;
+  if (!token) return { serviceKey: "RESEND", checkKey: "domain_readiness", checkName: "Sending domains", status: "UNKNOWN", errorCode: "NOT_CONFIGURED", errorMessage: "Resend telemetry credentials are not configured." };
+
+  const { response, latencyMs } = await timedFetch("https://api.resend.com/domains", {
+    headers: { Authorization: `Bearer ${token}`, "User-Agent": "TeamOptix-Insight/engineering-telemetry" },
+  });
+  const payload = await response.json() as { data?: ResendDomain[]; message?: string; name?: string };
+  if (!response.ok) {
+    return { serviceKey: "RESEND", checkKey: "domain_readiness", checkName: "Sending domains", status: "FAILED", latencyMs, statusCode: response.status, errorCode: payload.name ?? "RESEND_API_ERROR", errorMessage: payload.message ?? "Resend domain check failed." };
+  }
+
+  const domains = payload.data ?? [];
+  const verified = domains.filter((domain) => domain.status === "verified").length;
+  const failed = domains.filter((domain) => ["failed", "temporary_failure", "partially_failed"].includes(String(domain.status))).length;
+  const status = domains.length > 0 && verified === domains.length ? "HEALTHY" : failed > 0 ? "FAILED" : "DEGRADED";
+  return {
+    serviceKey: "RESEND",
+    checkKey: "domain_readiness",
+    checkName: "Sending domains",
+    status,
+    latencyMs,
+    statusCode: response.status,
+    errorCode: domains.length ? undefined : "NO_DOMAINS",
+    errorMessage: domains.length ? undefined : "No sending domains are configured in Resend.",
+    metadata: {
+      domain_count: domains.length,
+      verified_domain_count: verified,
+      domains: domains.map((domain) => ({ id: domain.id, name: domain.name, status: domain.status, region: domain.region, sending: domain.capabilities?.sending, receiving: domain.capabilities?.receiving })),
+    },
+  };
 }
 
 function failedResult(serviceKey: ServiceKey, error: unknown): CheckResult {
@@ -77,10 +119,11 @@ export async function collectPlatformTelemetry() {
     supabaseCheck().catch((error) => failedResult("SUPABASE", error)),
     digitalOceanCheck().catch((error) => failedResult("DIGITALOCEAN", error)),
     backblazeCheck().catch((error) => failedResult("BACKBLAZE", error)),
+    resendCheck().catch((error) => failedResult("RESEND", error)),
   ]);
   const db = createSupabaseServiceRoleClient();
   const completedAt = new Date().toISOString();
-  const { error } = await db.schema("core").from("platform_service_check_run").insert(checks.map((check) => ({
+  const rows = checks.map((check) => ({
     service_key: check.serviceKey,
     check_key: check.checkKey,
     check_name: check.checkName,
@@ -92,7 +135,8 @@ export async function collectPlatformTelemetry() {
     error_code: check.errorCode,
     error_message: check.errorMessage,
     metadata: check.metadata ?? {},
-  })));
+  }));
+  const { error } = await db.rpc("record_platform_service_checks", { p_checks: rows });
   if (error) throw new Error(error.message);
   return checks;
 }
@@ -101,7 +145,7 @@ export async function getPlatformHealth() {
   const db = createSupabaseServiceRoleClient();
   const [{ data: services, error }, { data: checks }] = await Promise.all([
     db.from("platform_service_health_v").select("*").order("display_order"),
-    db.schema("core").from("platform_service_check_run").select("*").order("started_at", { ascending: false }).limit(40),
+    db.from("platform_service_check_run_v").select("*").order("started_at", { ascending: false }).limit(40),
   ]);
   if (error) {
     return {
@@ -110,6 +154,7 @@ export async function getPlatformHealth() {
         { service_key: "SUPABASE", service_name: "Supabase", service_role: "DATA", health_state: "UNKNOWN", last_observed_at: null, max_latency_ms: null, check_count: 0 },
         { service_key: "DIGITALOCEAN", service_name: "DigitalOcean", service_role: "COMPUTE", health_state: "UNKNOWN", last_observed_at: null, max_latency_ms: null, check_count: 0 },
         { service_key: "BACKBLAZE", service_name: "Backblaze B2", service_role: "ARCHIVE", health_state: "UNKNOWN", last_observed_at: null, max_latency_ms: null, check_count: 0 },
+        { service_key: "RESEND", service_name: "Resend", service_role: "COMMUNICATIONS", health_state: "UNKNOWN", last_observed_at: null, max_latency_ms: null, check_count: 0 },
       ],
       checks: [],
       foundationReady: false,

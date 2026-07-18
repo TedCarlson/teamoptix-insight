@@ -1990,7 +1990,7 @@ body {
 .domain-row small { color: #68768f; font-size: 11px; line-height: 1.35; }
 .domain-row em { background: #edf4ff; border-radius: 999px; color: #275bb7; font-size: 9px; font-style: normal; font-weight: 950; padding: 5px 8px; white-space: nowrap; }
 .domain-row b { color: #2563eb; font-size: 12px; }
-.engineering-service-grid { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0,1fr)); }
+.engineering-service-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(190px,1fr)); }
 .engineering-service-card { background: #fff; border: 1px solid #dbe4ef; border-radius: 18px; box-shadow: var(--shadow-sm); display: grid; gap: 14px; padding: 16px; }
 .engineering-service-card > div:first-child { display: grid; gap: 3px; }
 .engineering-service-card p { color: #758198; font-size: 9px; font-weight: 950; letter-spacing: .08em; margin: 0; text-transform: uppercase; }
