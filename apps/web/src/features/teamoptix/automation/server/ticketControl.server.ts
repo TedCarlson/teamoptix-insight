@@ -55,6 +55,7 @@ export type TeamOptixCompanyOption = {
   id: string;
   company_slug: string;
   company_name: string | null;
+  timezone: string | null;
 };
 
 export async function listOperationsTicketTemplates() {
@@ -102,5 +103,12 @@ export async function listTeamOptixCompanyOptions() {
     throw new Error(error.message);
   }
 
-  return (data ?? []) as TeamOptixCompanyOption[];
+  const companies = data ?? [];
+  const ids = companies.map((company) => company.id);
+  const { data: terminals, error: terminalError } = ids.length
+    ? await db.from("company_terminal").select("company_id,timezone").in("company_id", ids).eq("is_active", true)
+    : { data: [], error: null };
+  if (terminalError) throw new Error(terminalError.message);
+  const timezoneByCompany = new Map((terminals ?? []).map((terminal) => [String(terminal.company_id), terminal.timezone ? String(terminal.timezone) : null]));
+  return companies.map((company) => ({ ...company, timezone: timezoneByCompany.get(String(company.id)) ?? null })) as TeamOptixCompanyOption[];
 }

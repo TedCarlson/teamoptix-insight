@@ -1,71 +1,62 @@
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import TeamOptixShell from "@/features/teamoptix/navigation/TeamOptixShell";
-import { WorkspaceHeader, WorkspaceSection } from "@/features/ui/workspace";
+import AutomationWorkbench from "@/features/teamoptix/automation/components/AutomationWorkbench";
 import { listOperationsTicketTemplates } from "@/features/teamoptix/automation/server/ticketControl.server";
+import { getSupabaseServerClient } from "@/lib/supabase/server";
 
-function formatManifestTypes(values: string[] | null) {
-  if (!values || values.length === 0) return "—";
-  return values.join(", ");
+export const dynamic = "force-dynamic";
+
+function value(formData: FormData, key: string) {
+  return String(formData.get(key) ?? "").trim();
+}
+
+async function saveTicket(formData: FormData) {
+  "use server";
+
+  const supabase = await getSupabaseServerClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Unauthorized.");
+
+  const payloadText = value(formData, "payload");
+  let payload: Record<string, unknown>;
+  try { payload = JSON.parse(payloadText); } catch { throw new Error("The compiled runner instruction is invalid."); }
+
+  const reports = value(formData, "reports").split(",").filter(Boolean);
+  if (reports.length === 0) throw new Error("Select at least one report or manifest.");
+
+  const requestType = value(formData, "requestType");
+  const dateMode = value(formData, "dateMode");
+  if (requestType === "PREVIOUS_DAY_CLOSE" && dateMode !== "YESTERDAY") {
+    throw new Error("Previous Day Close must use Yesterday only. Use Historical Recovery for a date range.");
+  }
+
+  const family = requestType === "HISTORICAL_BACKFILL" || requestType === "TARGETED_RECOVERY" ? "sweep" : "report";
+  const { error } = await supabase.rpc("upsert_operations_ticket_template", {
+    p_template_id: value(formData, "templateId") || null,
+    p_template_key: value(formData, "templateKey"),
+    p_template_name: value(formData, "templateName"),
+    p_ticket_family: family,
+    p_execution_lane: "operations_collection_request",
+    p_description: value(formData, "description"),
+    p_default_priority: Number(value(formData, "priority") || 100),
+    p_default_collection_mode: dateMode,
+    p_default_manifest_types: reports.filter((item) => item.includes("MANIFEST")).map((item) => item.replace("_MANIFEST", "").toLowerCase()),
+    p_default_skip_combined: true,
+    p_default_payload_json: payload,
+    p_is_active: formData.get("isActive") === "on",
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/teamoptix/automation/ticket-library");
+  revalidatePath("/teamoptix/automation");
+  redirect("/teamoptix/automation/ticket-library");
 }
 
 export default async function Page() {
   const templates = await listOperationsTicketTemplates();
-
-  return (
-    <TeamOptixShell>
-      <main className="workspace-shell">
-        <section className="workspace-main">
-          <WorkspaceHeader
-            eyebrow="TeamOptix · Automation"
-            title="Ticket Library"
-            description="Reusable Team Optix ticket templates that define what the platform is allowed to generate for downstream execution lanes."
-          />
-
-          <section className="teamoptix-console">
-            <WorkspaceSection
-              eyebrow="Library"
-              title={`${templates.length} Ticket Template${templates.length === 1 ? "" : "s"}`}
-              description="Read-only foundation. Template editing and assignment generation come in later passes."
-            >
-              <div className="operations-table-wrap">
-                <table className="operations-table">
-                  <thead>
-                    <tr>
-                      <th>Template</th>
-                      <th>Family</th>
-                      <th>Execution Lane</th>
-                      <th>Priority</th>
-                      <th>Manifest Types</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {templates.length === 0 ? (
-                      <tr>
-                        <td colSpan={6}>No ticket templates found.</td>
-                      </tr>
-                    ) : (
-                      templates.map((template) => (
-                        <tr key={template.id}>
-                          <td>
-                            <strong>{template.template_name}</strong>
-                            <br />
-                            <span>{template.template_key}</span>
-                          </td>
-                          <td>{template.ticket_family}</td>
-                          <td>{template.execution_lane}</td>
-                          <td>{template.default_priority}</td>
-                          <td>{formatManifestTypes(template.default_manifest_types)}</td>
-                          <td>{template.is_active ? "Active" : "Inactive"}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </WorkspaceSection>
-          </section>
-        </section>
-      </main>
-    </TeamOptixShell>
-  );
+  return <TeamOptixShell><main className="workspace-shell"><section className="workspace-main">
+    <header className="automation-domain-header"><span className="workspace-eyebrow">TeamOptix · Automation</span><h1>Automation Workbench</h1><p>Author operational instructions in plain language. Insight translates them into governed runner contracts.</p></header>
+    <AutomationWorkbench templates={templates} saveAction={saveTicket} />
+  </section></main></TeamOptixShell>;
 }

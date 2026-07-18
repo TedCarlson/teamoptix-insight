@@ -30,15 +30,21 @@ export async function getAutomationOverview() {
   const [{ data: templates }, { data: assignments }, { data: requests }, { data: runs }, { data: artifacts }] = await Promise.all([
     db.from("operations_ticket_template_v").select("id, is_active"),
     db.from("company_operations_ticket_assignment_v").select("id, is_enabled, company_id"),
-    ids.length ? db.from("operations_collection_request_v").select("id, request_status, company_slug, request_type, error_message, created_at").in("company_id", ids).gte("created_at", since) : Promise.resolve({ data: [] }),
-    ids.length ? db.from("operations_automation_run_v").select("id, status, company_slug, automation_type, error_message, started_at").in("company_id", ids).gte("started_at", since) : Promise.resolve({ data: [] }),
+    ids.length ? db.from("operations_collection_request_v").select("id, request_status, company_slug, request_type, error_message, created_at").in("company_id", ids).gte("created_at", since).order("created_at", { ascending: false }) : Promise.resolve({ data: [] }),
+    ids.length ? db.from("operations_automation_run_v").select("id, status, company_slug, automation_type, error_message, started_at").in("company_id", ids).gte("started_at", since).order("started_at", { ascending: false }) : Promise.resolve({ data: [] }),
     ids.length ? db.from("operations_collection_artifact_v").select("id, artifact_status, company_slug, updated_at").in("company_id", ids) : Promise.resolve({ data: [] }),
   ]);
   const runRows = runs ?? [];
+  const requestRows = requests ?? [];
   return {
     templates: (templates ?? []).filter((row) => row.is_active).length,
     assignments: (assignments ?? []).filter((row) => row.is_enabled && ids.includes(String(row.company_id))).length,
-    requests: requests ?? [],
+    requests: requestRows,
+    failedRequests: requestRows.filter((row) => String(row.request_status).toUpperCase() === "FAILED"),
+    successfulRequests: requestRows.filter((row) => String(row.request_status).toUpperCase() === "COMPLETE"),
+    activeRequests: requestRows.filter((row) => ["QUEUED", "CLAIMED", "RUNNING", "ARTIFACTS_READY", "INGESTING"].includes(String(row.request_status).toUpperCase())),
+    runs: runRows,
+    artifacts: artifacts ?? [],
     failedRuns: runRows.filter((row) => String(row.status).toUpperCase() === "FAILED"),
     successfulRuns: runRows.filter((row) => ["COMPLETE", "SUCCESS", "SUCCEEDED"].includes(String(row.status).toUpperCase())),
     awaitingArtifacts: (artifacts ?? []).filter((row) => ["UPLOADED", "READY_FOR_INGEST", "INGESTING"].includes(String(row.artifact_status))).length,

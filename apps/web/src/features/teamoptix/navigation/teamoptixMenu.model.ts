@@ -67,7 +67,7 @@ export function buildTeamOptixMenu(): AppMenuSection[] {
           label: "Automation",
           href: "/teamoptix/automation",
           children: [
-            { key: "automation-ticket-library", label: "Ticket Library", href: "/teamoptix/automation/ticket-library" },
+            { key: "automation-ticket-library", label: "Automation Workbench", href: "/teamoptix/automation/ticket-library" },
             { key: "automation-assignments", label: "Company Assignments", href: "/teamoptix/automation/assignments" },
             { key: "automation-collections", label: "Collections", href: "/teamoptix/automation/collections" },
             { key: "automation-runners", label: "Runner Fleet", href: "/teamoptix/automation/runners" },

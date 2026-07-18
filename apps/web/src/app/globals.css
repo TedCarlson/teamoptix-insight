@@ -881,6 +881,93 @@ h1 {
 }
 
 .fleet-vehicle-form__grid--three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.automation-domain-header { margin: 30px 0 22px; }
+.automation-domain-header h1 { margin: 8px 0 4px; font-size: clamp(34px, 4vw, 52px); letter-spacing: -.045em; }
+.automation-domain-header p { margin: 0; color: var(--muted); font-size: 15px; }
+.automation-workbench-stack { display: grid; gap: 18px; }
+.automation-workbench-terminal,
+.automation-ticket-library { background: #fff; border: 1px solid #cfdaeb; border-radius: 24px; padding: 22px; box-shadow: 0 16px 40px rgba(26, 45, 78, .06); }
+.automation-workbench-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
+.automation-workbench-heading h2 { margin: 5px 0 3px; font-size: 24px; letter-spacing: -.025em; }
+.automation-workbench-heading p { margin: 0; color: var(--muted); }
+.automation-workbench-form { display: grid; gap: 18px; }
+.automation-workbench-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.automation-workbench-grid label { display: grid; gap: 7px; }
+.automation-workbench-grid label > span,
+.automation-workbench-reports legend { color: #536683; font-size: 11px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.automation-workbench-grid input,
+.automation-workbench-grid select,
+.automation-workbench-grid textarea { width: 100%; border: 1px solid #c7d4e7; border-radius: 11px; background: #f8fbff; padding: 11px 12px; color: #12203b; font: inherit; }
+.automation-workbench-wide { grid-column: 1 / -1; }
+.automation-workbench-reports { display: flex; flex-wrap: wrap; gap: 12px 22px; margin: 0; padding: 16px; border: 1px solid #d4deed; border-radius: 15px; }
+.automation-workbench-reports legend { padding: 0 7px; }
+.automation-workbench-reports label { display: flex; align-items: center; gap: 7px; font-weight: 750; }
+.automation-compiled-preview { border-radius: 17px; padding: 18px; color: #edf5ff; background: #101f3d; }
+.automation-compiled-preview .workspace-eyebrow { color: #63dfa9; }
+.automation-compiled-preview p { margin: 9px 0 0; line-height: 1.6; }
+.automation-compiled-preview details { margin-top: 12px; }
+.automation-compiled-preview summary { cursor: pointer; color: #9ebeff; font-weight: 750; }
+.automation-compiled-preview pre { overflow: auto; max-height: 330px; padding: 14px; border-radius: 12px; background: #09152c; font-size: 12px; white-space: pre-wrap; }
+.automation-workbench-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.automation-publish-toggle { display: flex; align-items: center; gap: 8px; font-weight: 750; }
+.table-link { border: 0; background: transparent; color: #125cff; font-weight: 850; cursor: pointer; }
+.automation-workbench-actions .primary-action { min-width: 150px; border: 0; border-radius: 999px; padding: 12px 22px; background: #1764ff; color: white; font-weight: 850; cursor: pointer; }
+.automation-library-list { display: grid; gap: 12px; }
+.automation-library-record { display: grid; grid-template-columns: minmax(240px, 1.15fr) minmax(420px, 2fr) auto; align-items: center; gap: 22px; padding: 18px; border: 1px solid #d3deed; border-radius: 17px; background: #fbfdff; }
+.automation-library-record__identity h3 { margin: 7px 0 2px; font-size: 18px; }
+.automation-library-record__identity code { color: #667894; font-size: 11px; }
+.automation-library-record__identity p { margin: 9px 0 0; color: #526681; line-height: 1.45; }
+.automation-ticket-state { display: inline-flex; border-radius: 999px; padding: 4px 8px; background: #eef2f8; color: #687790; font-size: 10px; font-weight: 900; letter-spacing: .07em; text-transform: uppercase; }
+.automation-ticket-state.is-published { background: #e5f8ef; color: #08774f; }
+.automation-library-record__facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px 20px; margin: 0; }
+.automation-library-record__facts div { min-width: 0; }
+.automation-library-record__facts dt { color: #687a95; font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.automation-library-record__facts dd { margin: 4px 0 0; color: #182641; font-weight: 750; line-height: 1.35; }
+.automation-library-open { white-space: nowrap; }
+.automation-library-empty { padding: 28px; border: 1px dashed #cbd7e8; border-radius: 15px; text-align: center; color: #687a95; }
+.assignment-workspace-stack { display: grid; gap: 18px; }
+.assignment-editor,
+.assignment-library { padding: 22px; border: 1px solid #cfdaeb; border-radius: 24px; background: #fff; box-shadow: 0 16px 40px rgba(26,45,78,.06); }
+.assignment-form { display: grid; gap: 18px; }
+.assignment-form-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; }
+.assignment-form-grid--identity { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.assignment-form label { display: grid; align-content: start; gap: 7px; }
+.assignment-form label > span,
+.assignment-notes > span { color: #536683; font-size: 11px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.assignment-form input,
+.assignment-form select,
+.assignment-form textarea { width: 100%; border: 1px solid #c7d4e7; border-radius: 11px; background: #f8fbff; padding: 11px 12px; color: #12203b; font: inherit; }
+.assignment-form small { color: #667894; line-height: 1.35; }
+.assignment-control-group { display: grid; gap: 14px; padding: 17px; border: 1px solid #d5dfed; border-radius: 16px; }
+.assignment-control-group h3 { margin: 4px 0 0; font-size: 17px; }
+.assignment-enable { display: flex !important; align-items: center; align-self: center; grid-template-columns: auto 1fr; padding-top: 18px; }
+.assignment-enable input { width: auto; }
+.assignment-enable span { color: #172541 !important; font-size: 13px !important; letter-spacing: 0 !important; text-transform: none !important; }
+.assignment-preview { padding: 16px 18px; border-radius: 15px; background: #101f3d; color: #edf5ff; }
+.assignment-preview .workspace-eyebrow { color: #63dfa9; }
+.assignment-preview p { margin: 7px 0 0; line-height: 1.55; }
+.assignment-form > .primary-action { justify-self: end; min-width: 210px; border: 0; border-radius: 999px; padding: 12px 22px; background: #1764ff; color: white; font-weight: 850; cursor: pointer; }
+.assignment-record-list { display: grid; gap: 12px; }
+.assignment-record { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(540px, 2fr); gap: 22px; padding: 18px; border: 1px solid #d3deed; border-radius: 17px; background: #fbfdff; }
+.assignment-record h3 { margin: 8px 0 2px; font-size: 18px; }
+.assignment-record p { margin: 0; color: #60718d; }
+.assignment-record dl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin: 0; }
+.assignment-record dt { color: #687a95; font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.assignment-record dd { margin: 5px 0 0; color: #182641; font-weight: 750; line-height: 1.4; }
+
+@media (max-width: 760px) {
+  .automation-workbench-grid { grid-template-columns: 1fr; }
+  .automation-workbench-wide { grid-column: auto; }
+  .automation-workbench-actions,
+  .automation-workbench-heading { align-items: stretch; flex-direction: column; }
+  .automation-library-record { grid-template-columns: 1fr; }
+  .automation-library-record__facts { grid-template-columns: 1fr; }
+  .assignment-form-grid,
+  .assignment-form-grid--identity,
+  .assignment-record,
+  .assignment-record dl { grid-template-columns: 1fr; }
+}
 .fleet-vehicle-form__grid--four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .fleet-vehicle-form__grid--registration { grid-template-columns: 2fr 1fr 0.65fr; }
 
@@ -6186,4 +6273,21 @@ body {
 
 .prospectus-print-footer {
   display: none;
+}
+.assignment-remove-action {
+  border: 1px solid #f2b8b5;
+  border-radius: 999px;
+  background: #fff8f7;
+  color: #b42318;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 0.55rem 0.8rem;
+  white-space: nowrap;
+}
+
+.assignment-remove-action:hover {
+  background: #feeceb;
+  border-color: #e88982;
 }
