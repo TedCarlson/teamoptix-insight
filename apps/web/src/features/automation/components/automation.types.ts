@@ -78,6 +78,7 @@ export type CollectionRequest = {
   report_count: number;
   manifest_count: number;
   route_count: number;
+  output_receipt_json: Record<string, unknown> | null;
   error_message: string | null;
   created_at: string;
   updated_at: string;
@@ -122,4 +123,3 @@ export type CollectionProfile = {
   footer: string;
   priority: number;
 };
-
