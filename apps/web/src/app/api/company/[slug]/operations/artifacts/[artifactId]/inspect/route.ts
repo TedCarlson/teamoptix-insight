@@ -116,13 +116,10 @@ function headerValue(rows: unknown[][], labels: string[]) {
 }
 
 function inspectDsw(rows: unknown[][]): InspectResult {
-  const metaLine = rows.flat().map(cellText).find((cell) =>
-    cell.startsWith("FedEx - ")
-  );
+  const metaLine = cellText(rows[0]?.[0]);
+  const reportTitle = cellText(rows[0]?.[5]);
 
-  const generatedLine = rows.flat().map(cellText).find((cell) =>
-    cell.startsWith("Generated - ")
-  );
+  const generatedLine = cellText(rows[0]?.[10]);
 
   const match = metaLine?.match(
     /^FedEx - (.+?) - Contract: (.+?) - (\d{1,2}\/\d{1,2}\/\d{4})$/
@@ -180,12 +177,12 @@ function inspectDsw(rows: unknown[][]): InspectResult {
     report_family_key: "DSW",
     report_shape_key: "DSW_DAILY_SERVICE_WORKSHEET",
     report_family_label: "Daily Service Worksheet",
-    confidence: headerIndex >= 0 ? 0.98 : 0,
+    confidence: headerIndex >= 0 && reportTitle.toLowerCase() === "daily service worksheet" ? 0.98 : 0,
     detected_header_row: headerIndex >= 0 ? headerIndex + 1 : null,
     service_date: match?.[3] ? parseUsDateToIso(match[3]) : null,
     terminal_code: match?.[1] ?? null,
     contract_filter: match?.[2] ?? null,
-    generated_at_text: generatedLine?.replace("Generated - ", "") ?? null,
+    generated_at_text: generatedLine.startsWith("Generated - ") ? generatedLine.replace("Generated - ", "") : null,
     route_row_count: routeRows,
     participant_row_count: participantRows,
     summary_row_count: summaryRows,

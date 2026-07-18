@@ -49,18 +49,23 @@ export function objectRows(rows: unknown[][], headerIndex: number) {
 }
 
 export function extractMeta(rows: unknown[][]): DswMeta {
-  const flat = rows.flat().map(cellText);
-  const metaLine = flat.find((cell) => cell.startsWith("FedEx - "));
-  const generatedLine = flat.find((cell) => cell.startsWith("Generated - "));
+  // DSW workbook contract: A1 owns the activity date and F1 identifies the
+  // report. Never infer the load date from filenames, folders, or timestamps.
+  const metaLine = cellText(rows[0]?.[0]);
+  const reportTitle = cellText(rows[0]?.[5]);
+  const generatedLine = cellText(rows[0]?.[10]);
 
   const match = metaLine?.match(
     /^FedEx - (.+?) - Contract: (.+?) - (\d{1,2}\/\d{1,2}\/\d{4})$/
   );
 
   return {
+    report_title: reportTitle || null,
     terminal_identity: match?.[1] ?? null,
     contract_filter: match?.[2] ?? null,
     service_date_text: match?.[3] ?? null,
-    generated_at_text: generatedLine?.replace("Generated - ", "") ?? null,
+    generated_at_text: generatedLine.startsWith("Generated - ")
+      ? generatedLine.replace("Generated - ", "")
+      : null,
   };
 }

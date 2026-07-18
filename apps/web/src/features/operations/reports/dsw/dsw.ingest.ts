@@ -75,6 +75,9 @@ export async function ingestDswWorkbook(params: {
   });
 
   const meta = extractMeta(rows);
+  if (meta.report_title?.toLowerCase() !== "daily service worksheet") {
+    throw new Error("F1 does not identify this file as a Daily Service Worksheet.");
+  }
   const headerServiceDate = meta.service_date_text
     ? excelDateToIso(meta.service_date_text)
     : "";

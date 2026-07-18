@@ -57,32 +57,45 @@ async function deleteArtifactObject(artifact: any) {
 async function refreshRequestStatus(params: { supabase: any; requestId: string }) {
   const { supabase, requestId } = params;
 
-  const { data: remaining, error: remainingError } = await supabase
+  const { data: artifacts, error: artifactError } = await supabase
     .from("operations_collection_artifact_v")
-    .select("id")
+    .select("artifact_status,report_batch_id,request_type,report_family_key,service_date,ingest_metadata_json")
     .eq("collection_request_id", requestId)
-    .eq("artifact_kind", "REPORT_FILE")
-    .eq("artifact_status", "READY_FOR_INGEST")
-    .limit(1);
+    .eq("artifact_kind", "REPORT_FILE");
 
-  if (remainingError) throw new Error(remainingError.message);
-  if ((remaining ?? []).length > 0) return;
+  if (artifactError) throw new Error(artifactError.message);
+  const rows = artifacts ?? [];
+  if (rows.some((row: any) => ["READY_FOR_INGEST", "INGESTING", "ARTIFACTS_READY"].includes(row.artifact_status))) return;
 
-  const { data: ingested, error: ingestedError } = await supabase
-    .from("operations_collection_artifact_v")
-    .select("report_batch_id")
-    .eq("collection_request_id", requestId)
-    .eq("artifact_kind", "REPORT_FILE")
-    .eq("artifact_status", "INGESTED");
+  const isPreviousDayClose = rows.some((row: any) => row.request_type === "PREVIOUS_DAY_CLOSE");
+  const validClose = rows.length > 0 && rows.every((row: any) => {
+    const ingest = row?.ingest_metadata_json?.ingest;
+    return row.artifact_status === "INGESTED" &&
+      row.report_family_key === "DSW" &&
+      Boolean(ingest?.service_date) &&
+      ingest?.snapshot_kind === "FINAL" &&
+      Boolean(ingest?.batch_id);
+  });
 
-  if (ingestedError) throw new Error(ingestedError.message);
+  if (isPreviousDayClose && !validClose) {
+    await supabase.rpc("update_operations_collection_request_status", {
+      p_request_id: requestId,
+      p_request_status: "FAILED",
+      p_error_message: "Previous-day close failed: ingested DSW A1 dates must cover the ticket range and produce FINAL report batches.",
+      p_automation_run_id: null,
+      p_report_batch_ids: null,
+    });
+    return;
+  }
+
+  const ingested = rows.filter((row: any) => row.artifact_status === "INGESTED");
 
   await supabase.rpc("update_operations_collection_request_status", {
     p_request_id: requestId,
     p_request_status: "COMPLETE",
     p_error_message: null,
     p_automation_run_id: null,
-    p_report_batch_ids: (ingested ?? []).map((row: any) => row.report_batch_id).filter(Boolean),
+    p_report_batch_ids: ingested.map((row: any) => row.report_batch_id).filter(Boolean),
   });
 }
 

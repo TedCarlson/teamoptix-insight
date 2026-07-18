@@ -10,15 +10,15 @@ export function contractCodeFromLabel(label: string) {
 }
 
 export function excelDateToIso(value: string) {
-  const parsed = new Date(value);
-  if (!Number.isNaN(parsed.getTime())) {
-    return parsed.toISOString().slice(0, 10);
-  }
-
   const parts = value.split("/");
   if (parts.length === 3) {
     const [month, day, year] = parts;
     return `${year.padStart(4, "20")}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
   }
 
   return value;

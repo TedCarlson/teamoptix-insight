@@ -59,30 +59,55 @@ async function deleteArtifactObject(artifact: any) {
   }).catch(() => null);
 }
 
+function isValidPreviousDayCloseArtifact(row: any) {
+  const ingest = row?.ingest_metadata_json?.ingest;
+  return (
+    row?.artifact_status === "INGESTED" &&
+    row?.report_family_key === "DSW" &&
+    Boolean(ingest?.service_date) &&
+    ingest?.snapshot_kind === "FINAL" &&
+    Boolean(ingest?.batch_id)
+  );
+}
+
+async function failRequest(supabase: any, requestId: string, message: string) {
+  await supabase.rpc("update_operations_collection_request_status", {
+    p_request_id: requestId,
+    p_request_status: "FAILED",
+    p_error_message: message,
+    p_automation_run_id: null,
+    p_report_batch_ids: null,
+  });
+}
+
 async function completeRequest(supabase: any, requestId: string) {
-  const { data: remaining } = await supabase
+  const { data: artifacts } = await supabase
     .from("operations_collection_artifact_v")
-    .select("id")
+    .select("artifact_status,report_batch_id,request_type,report_family_key,service_date,ingest_metadata_json")
     .eq("collection_request_id", requestId)
-    .eq("artifact_kind", "REPORT_FILE")
-    .in("artifact_status", ["READY_FOR_INGEST", "INGESTING"])
-    .limit(1);
+    .eq("artifact_kind", "REPORT_FILE");
 
-  if ((remaining ?? []).length > 0) return;
+  const rows = artifacts ?? [];
+  if (rows.some((row: any) => ["READY_FOR_INGEST", "INGESTING", "ARTIFACTS_READY"].includes(row.artifact_status))) return;
 
-  const { data: ingested } = await supabase
-    .from("operations_collection_artifact_v")
-    .select("report_batch_id")
-    .eq("collection_request_id", requestId)
-    .eq("artifact_kind", "REPORT_FILE")
-    .eq("artifact_status", "INGESTED");
+  const isPreviousDayClose = rows.some((row: any) => row.request_type === "PREVIOUS_DAY_CLOSE");
+  if (isPreviousDayClose && (rows.length === 0 || !rows.every(isValidPreviousDayCloseArtifact))) {
+    await failRequest(
+      supabase,
+      requestId,
+      "Previous-day close failed: ingested DSW A1 dates must cover the ticket range and produce FINAL report batches."
+    );
+    return;
+  }
+
+  const ingested = rows.filter((row: any) => row.artifact_status === "INGESTED");
 
   await supabase.rpc("update_operations_collection_request_status", {
     p_request_id: requestId,
     p_request_status: "COMPLETE",
     p_error_message: null,
     p_automation_run_id: null,
-    p_report_batch_ids: (ingested ?? []).map((row: any) => row.report_batch_id).filter(Boolean),
+    p_report_batch_ids: ingested.map((row: any) => row.report_batch_id).filter(Boolean),
   });
 }
 
@@ -99,7 +124,7 @@ async function reconcileArtifactReadyRequests(supabase: any) {
   for (const request of requests ?? []) {
     const { data: artifacts } = await supabase
       .from("operations_collection_artifact_v")
-      .select("artifact_status, report_batch_id")
+      .select("artifact_status,report_batch_id,request_type,report_family_key,service_date,ingest_metadata_json")
       .eq("collection_request_id", request.collection_request_id)
       .eq("artifact_kind", "REPORT_FILE");
 
@@ -109,8 +134,19 @@ async function reconcileArtifactReadyRequests(supabase: any) {
     );
     const failed = rows.some((row: any) => row.artifact_status === "FAILED");
     const ingested = rows.filter((row: any) => row.artifact_status === "INGESTED");
+    const isPreviousDayClose = rows.some((row: any) => row.request_type === "PREVIOUS_DAY_CLOSE");
 
     if (readyOrIngesting) continue;
+
+    if (isPreviousDayClose && !rows.every(isValidPreviousDayCloseArtifact)) {
+      await failRequest(
+        supabase,
+        request.collection_request_id,
+        "Previous-day close failed: ingested DSW A1 dates must cover the ticket range and produce FINAL report batches."
+      );
+      reconciled.push({ request_id: request.collection_request_id, status: "FAILED", reason: "INVALID_DSW_CLOSE_CONTRACT" });
+      continue;
+    }
 
     if (rows.length === 0) {
       await supabase.rpc("update_operations_collection_request_status", {

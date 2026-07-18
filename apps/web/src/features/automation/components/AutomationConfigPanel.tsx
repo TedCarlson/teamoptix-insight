@@ -590,7 +590,14 @@ export default function AutomationConfigPanel(
                     {formatTime(request.created_at)}
                   </td>
                   <td style={td}>{request.request_type}</td>
-                  <td style={td}>{request.request_status}</td>
+                  <td style={td}>
+                    <strong>{request.request_status}</strong>
+                    {request.error_message ? (
+                      <span style={{ display: "block", maxWidth: 280, marginTop: 3, color: "#b91c1c", lineHeight: 1.35 }}>
+                        {request.error_message}
+                      </span>
+                    ) : null}
+                  </td>
                   <td style={td}>
                     {formatRequestDate(request)}
                   </td>

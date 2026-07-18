@@ -8,6 +8,7 @@ export type DswRouteMatch = {
 };
 
 export type DswMeta = {
+  report_title: string | null;
   terminal_identity: string | null;
   contract_filter: string | null;
   service_date_text: string | null;
