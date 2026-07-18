@@ -10,7 +10,6 @@ const ACTIVE_REQUEST_STATUSES = [
   "ARTIFACTS_READY",
   "INGESTING",
 ];
-const AUTOMATION_REPORTS = new Set(["DSW", "FCC"]);
 const PREVIOUS_DAY_CLOSE_MINUTES = 3 * 60;
 const PREVIOUS_DAY_CLOSE_STATUSES = [
   "QUEUED",
@@ -136,38 +135,8 @@ function uniqueTargets(targets: any[]) {
   });
 }
 
-function buildRequestPayload(activeRows: any[], manifestAssignment: ScheduledManifestAssignment | null) {
+function buildRequestPayload(manifestAssignment: ScheduledManifestAssignment) {
   const firstTargets = manifestTargets(manifestAssignment);
-  const activeReports = new Set(
-    activeRows.map((row) => String(row?.automation_type ?? "").toUpperCase())
-  );
-  const cadenceValues = [
-    ...activeRows.map((row) => Number(row?.cadence_minutes) || 0),
-    ...(manifestAssignment ? [Number(manifestAssignment.cadence_minutes) || 15] : []),
-  ].filter((value) => value > 0);
-
-  const legacyTargets = [
-    ...(activeReports.has("DSW")
-      ? [{
-          key: "DSW_DAILY_SERVICE",
-          label: "DSW · Daily Service Worksheet",
-          artifact_key: "DSW",
-          report_family_key: "DSW",
-          runner_section: "DAILY_SERVICE",
-          expected_filename_match: ["daily service worksheet"],
-        }]
-      : []),
-    ...(activeReports.has("FCC")
-      ? [{
-          key: "FCC_SERVICE_AREA_STATUS",
-          label: "FCC · Service Area Status",
-          artifact_key: "FCC",
-          report_family_key: "FCC",
-          runner_section: "SERVICE",
-          expected_filename_match: ["serviceareastatus", "sastatus", "work area summary"],
-        }]
-      : []),
-  ];
 
   return {
     source: "automation_scheduler",
@@ -178,26 +147,17 @@ function buildRequestPayload(activeRows: any[], manifestAssignment: ScheduledMan
     control_level: "platform_managed",
     customer_language: "Operations Pulse",
     runner_goal: "keep_operations_current",
-    cadence_minutes: cadenceValues.length > 0 ? Math.min(...cadenceValues) : 15,
-    ticket_library_assignment_id: manifestAssignment?.id ?? null,
-    targets: uniqueTargets([...firstTargets, ...legacyTargets]),
+    cadence_minutes: Number(manifestAssignment.cadence_minutes) || 15,
+    ticket_library_assignment_id: manifestAssignment.id,
+    targets: uniqueTargets(firstTargets),
     windows: [
-      ...(manifestAssignment
-        ? [{
-            report: manifestAssignment.template_key,
-            window_preset: manifestAssignment.window_preset,
-            start_time: manifestAssignment.start_time,
-            end_time: manifestAssignment.end_time,
-            cadence_minutes: manifestAssignment.cadence_minutes ?? 15,
-          }]
-        : []),
-      ...activeRows.map((row) => ({
-        report: row.automation_type,
-        window_preset: row.window_preset,
-        start_time: row.start_time,
-        end_time: row.end_time,
-        cadence_minutes: row.cadence_minutes,
-      })),
+      {
+        report: manifestAssignment.template_key,
+        window_preset: manifestAssignment.window_preset,
+        start_time: manifestAssignment.start_time,
+        end_time: manifestAssignment.end_time,
+        cadence_minutes: manifestAssignment.cadence_minutes ?? 15,
+      },
     ],
   };
 }
@@ -541,55 +501,23 @@ export async function GET() {
         }
       }
 
-      const { data: rows, error: scheduleError } = await supabase.rpc(
-        "get_operations_automation_schedule_config",
-        { p_company_slug: companySlug }
-      );
-
-      if (scheduleError) {
-        results.push({ company_slug: companySlug, status: "error", error: scheduleError.message });
+      if (!manifestAssignment) {
+        results.push({ company_slug: companySlug, status: "skipped", reason: "no active in-day assignment" });
         continue;
       }
 
-      const enabledRows = (rows ?? []).filter(
-        (row: any) => row?.is_enabled && row?.window_preset !== "OFF"
-      );
-
-      const activeRows = enabledRows.filter((row: any) =>
-        AUTOMATION_REPORTS.has(row?.automation_type) &&
-        isWithinWindow(terminalState.currentMinutes, row?.start_time, row?.end_time)
-      );
-
-      if (activeRows.length === 0 && !manifestAssignment) {
-        results.push({ company_slug: companySlug, status: "skipped", reason: "no active automation window" });
-        continue;
-      }
-
-      const assignmentReports = manifestTargets(manifestAssignment)
-        .map((target: any) => String(target?.report_family_key ?? "").toUpperCase())
-        .filter((value: string) => AUTOMATION_REPORTS.has(value));
-      const requestReports = [...new Set([
-        ...assignmentReports,
-        ...activeRows.map((row: any) => String(row.automation_type).toUpperCase()),
-      ])].filter(
-        (value): value is string => typeof value === "string" && AUTOMATION_REPORTS.has(value)
-      );
-
-      if (requestReports.length === 0) {
-        results.push({ company_slug: companySlug, status: "skipped", reason: "no supported reports" });
-        continue;
-      }
+      const requestReports = [...new Set(
+        manifestTargets(manifestAssignment)
+          .map((target: any) => String(target?.artifact_key ?? target?.report_family_key ?? "").toUpperCase())
+          .filter((value: string) => value === "DSW" || value === "FCC")
+      )];
 
       if (await companyHasActiveRequest(supabase, companyId)) {
         results.push({ company_slug: companySlug, status: "skipped", reason: "active request exists" });
         continue;
       }
 
-      const cadenceValues = [
-        ...activeRows.map((row: any) => Number(row.cadence_minutes) || 0),
-        ...(manifestAssignment ? [Number(manifestAssignment.cadence_minutes) || 15] : []),
-      ].filter((value) => value > 0);
-      const cadenceMinutes = cadenceValues.length > 0 ? Math.min(...cadenceValues) : 60;
+      const cadenceMinutes = Number(manifestAssignment.cadence_minutes) || 15;
       if (await companyHasRecentRequest(supabase, companySlug, cadenceMinutes)) {
         results.push({ company_slug: companySlug, status: "skipped", reason: "recent request exists" });
         continue;
@@ -602,7 +530,7 @@ export async function GET() {
           p_request_type: "OPERATIONS_PULSE",
           p_requested_reports: requestReports,
           p_priority: manifestAssignment?.effective_priority ?? 80,
-          p_request_payload: buildRequestPayload(activeRows, manifestAssignment),
+          p_request_payload: buildRequestPayload(manifestAssignment),
         }
       );
 
