@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import IdentityPill from "@/features/access/components/IdentityPill";
+import CompanySwitcher from "@/features/teamoptix/navigation/CompanySwitcher";
 
 type NavItem = {
   href: string;
@@ -112,8 +113,9 @@ export default function TeamOptixShell(props: { children: React.ReactNode }) {
         </nav>
 
         <div className="teamoptix-header__right">
+          <CompanySwitcher />
           <Link className="button" href="/profile">
-            My Workspace
+            Profile
           </Link>
           <IdentityPill />
         </div>
