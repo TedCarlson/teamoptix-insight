@@ -8,6 +8,7 @@
     "lint": "pnpm --filter web lint",
     "typecheck": "pnpm --filter web typecheck",
     "artifact-ingest-poller": "node ./scripts/local-artifact-ingest-poller.js",
-    "verify": "pnpm lint && pnpm typecheck && pnpm build"
+    "verify": "pnpm lint && pnpm typecheck && pnpm build && pnpm build:worker",
+    "build:worker": "pnpm --filter automation-worker build"
   }
 }
