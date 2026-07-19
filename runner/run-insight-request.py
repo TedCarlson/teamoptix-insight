@@ -80,23 +80,36 @@ def infer_report_identity(filename: str) -> dict:
     compact_name = re.sub(r"[^a-z0-9]+", "", name)
 
     if "daily service worksheet" in name:
-        return {"report_family_key": "DSW", "report_shape_key": "DSW_DAILY_SERVICE_WORKSHEET", "report_frame": None, "display_filename": "Daily Service Worksheet.xlsx"}
+        return {"artifact_key": "DSW_DAILY_SERVICE", "report_family_key": "DSW", "report_shape_key": "DSW_DAILY_SERVICE_WORKSHEET", "report_frame": None, "display_filename": "Daily Service Worksheet.xlsx"}
     if "serviceareasummary" in name or "sasummary" in name:
-        return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Service Area Summary.xlsx"}
+        return {"artifact_key": "FCC_SERVICE_AREA_SUMMARY", "report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Service Area Summary.xlsx"}
     if "serviceareastatus" in name or "sastatus" in name:
-        return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Work Area Summary.xlsx"}
+        return {"artifact_key": "FCC_SERVICE_AREA_STATUS", "report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Work Area Summary.xlsx"}
     if "combinedmanifest" in compact_name or re.match(r"^cm\d{8}[_-]", name) or name.startswith("cm_"):
-        return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Combined Manifest.xlsx"}
+        return {"artifact_key": "COMBINED_MANIFEST", "report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Combined Manifest.xlsx"}
     if "deliverymanifest" in compact_name or re.match(r"^\d{8}_\d{3}\s+.+\.xls$", name):
-        return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Delivery Manifest.xlsx"}
+        return {"artifact_key": "DELIVERY_MANIFEST", "report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Delivery Manifest.xlsx"}
     if "pickupmanifest" in compact_name or re.match(r"^pm\d{8}[_-]", name) or name.startswith("pm"):
-        return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Pickup Manifest.xlsx"}
+        return {"artifact_key": "PICKUP_MANIFEST", "report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Pickup Manifest.xlsx"}
     if "pickupassignments" in name or name.startswith("pa"):
         return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Pickup Assignments.xlsx"}
     if "reorderpulistings" in name or name.startswith("rpl"):
         return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Reorder PU Listings.xlsx"}
 
-    return {"report_family_key": None, "report_shape_key": None, "report_frame": None, "display_filename": filename}
+    return {"artifact_key": "UNKNOWN", "report_family_key": None, "report_shape_key": None, "report_frame": None, "display_filename": filename}
+
+def artifact_priority(artifact: dict) -> int:
+    key = str(artifact.get("artifact_key") or "").upper()
+    family = str(artifact.get("report_family_key") or "").upper()
+    if family == "DSW":
+        return 10
+    if key.startswith("FCC_SERVICE_AREA"):
+        return 20
+    if key == "PICKUP_MANIFEST":
+        return 30
+    if key == "DELIVERY_MANIFEST":
+        return 40
+    return 100
 
 def storage_slug(value: str) -> str:
     cleaned = []
@@ -256,7 +269,7 @@ def collect_artifacts(request: dict, run_started_at: float) -> list[dict]:
             artifact["storage_path"] = local_storage_path(request, artifact)
             artifacts.append(artifact)
 
-    return artifacts
+    return sorted(artifacts, key=lambda artifact: (artifact_priority(artifact), artifact["filename"]))
 
 def upload_artifact_to_storage(artifact: dict) -> dict:
     local_path = Path(artifact["path"])
@@ -320,6 +333,33 @@ def register_artifacts(request: dict, artifacts: list[dict]) -> list[dict]:
     for artifact in artifacts:
         upload_artifact_to_storage(artifact)
         registered.append(register_artifact(request, artifact))
+    return registered
+
+def register_new_artifacts(
+    request: dict,
+    run_started_at: float,
+    registered_paths: set[str],
+    segment_started_at: float,
+) -> list[dict]:
+    registered = []
+    segment_elapsed_ms = int((time.time() - segment_started_at) * 1000)
+    for artifact in collect_artifacts(request, run_started_at):
+        local_path = str(artifact["path"])
+        if local_path in registered_paths:
+            continue
+        artifact["runner_elapsed_ms"] = segment_elapsed_ms
+        artifact["handoff_registered_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        upload_artifact_to_storage(artifact)
+        registered.append(register_artifact(request, artifact))
+        registered_paths.add(local_path)
+        print(json.dumps({
+            "event": "artifact_registered",
+            "request_id": request.get("id"),
+            "artifact_key": artifact.get("artifact_key"),
+            "service_date": artifact.get("service_date"),
+            "filename": artifact.get("filename"),
+            "runner_elapsed_ms": segment_elapsed_ms,
+        }))
     return registered
 
 def load_env_file(path: Path) -> dict:
@@ -458,37 +498,60 @@ def main() -> int:
             return 0
 
         started = time.time()
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             [str(DONOR_RUNNER)],
             cwd=str(APP_DIR),
             env=child_env,
             text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=1,
         )
+        registered = []
+        registered_paths: set[str] = set()
+        segment_started_at = started
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            print(line, end="")
+            if "[runner] section exit" in line or "[runner] governed date exit" in line:
+                registered.extend(register_new_artifacts(
+                    request,
+                    run_started_at,
+                    registered_paths,
+                    segment_started_at,
+                ))
+                segment_started_at = time.time()
+        return_code = proc.wait()
         elapsed_ms = int((time.time() - started) * 1000)
-        print(f"[insight-runner] donor exit={proc.returncode} elapsed_ms={elapsed_ms}")
+        print(f"[insight-runner] donor exit={return_code} elapsed_ms={elapsed_ms}")
 
+        registered.extend(register_new_artifacts(
+            request,
+            run_started_at,
+            registered_paths,
+            segment_started_at,
+        ))
         artifacts = collect_artifacts(request, run_started_at)
-        registered = register_artifacts(request, artifacts)
         print(json.dumps({
             "event": "artifact_manifest",
             "dry_run": False,
-            "donor_exit_code": proc.returncode,
+            "donor_exit_code": return_code,
             "artifact_count": len(artifacts),
             "registered_count": len(registered),
             "artifacts": artifacts,
         }, indent=2))
 
-        if proc.returncode != 0:
+        if return_code != 0:
             if registered:
                 update_status(
                     request_id,
                     "ARTIFACTS_READY",
-                    f"Donor runner failed with exit code {proc.returncode}; partial artifacts registered."
+                    f"Donor runner failed with exit code {return_code}; partial artifacts registered."
                 )
                 return 0
 
-            update_status(request_id, "FAILED", f"Donor runner failed with exit code {proc.returncode}")
-            return proc.returncode
+            update_status(request_id, "FAILED", f"Donor runner failed with exit code {return_code}")
+            return return_code
 
         runner_goal = governed_runner_goal(request)
         if runner_goal in RUNNER_GOALS.values() and not registered:
