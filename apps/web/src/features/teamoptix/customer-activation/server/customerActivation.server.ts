@@ -29,6 +29,7 @@ export type ActivationReadinessKey =
   | "commercial_ready"
   | "implementation_payment_ready"
   | "contract_ready"
+  | "legal_signatures_ready"
   | "workspace_ready"
   | "credentials_ready"
   | "automation_ready"
@@ -99,6 +100,7 @@ type LegalTaskReadinessRecord = {
   vault_item_id: string | null;
   teamoptix_executed_at: string | null;
   completed_at: string | null;
+  source_template_document_key: string | null;
 };
 
 type AutomationProfileRecord = {
@@ -246,6 +248,12 @@ const READINESS_DEFAULTS: ReadonlyArray<{
       "An active contract configuration has not yet been established.",
   },
   {
+    readiness_key: "legal_signatures_ready",
+    source_type: "computed",
+    blocking_reason:
+      "Required customer legal documents have not yet been executed and vaulted.",
+  },
+  {
     readiness_key: "workspace_ready",
     source_type: "manual",
     blocking_reason:
@@ -273,7 +281,7 @@ const READINESS_DEFAULTS: ReadonlyArray<{
     readiness_key: "customer_approval_ready",
     source_type: "manual",
     blocking_reason:
-      "Customer approval to Go Live has not yet been recorded.",
+      "Customer-provided authorization to Go Live has not yet been recorded by Team Optix.",
   },
 ];
 
@@ -605,7 +613,7 @@ async function syncComputedActivationReadiness(
 
     admin
       .from("legal_customer_legal_task_v")
-      .select("id, status, vault_item_id, teamoptix_executed_at, completed_at")
+      .select("id, status, vault_item_id, teamoptix_executed_at, completed_at, source_template_document_key")
       .eq("company_id", companyId),
 
     admin.rpc("get_or_create_automation_profile", {
@@ -673,8 +681,25 @@ async function syncComputedActivationReadiness(
     task.status === "EXECUTED_AND_VAULTED"
   );
 
-  const legalTasksReady =
-    typedLegalTasks.length === 0 || openLegalTasks.length === 0;
+  const requiredLegalDocumentKeys = [
+    "MASTER_SERVICE_AGREEMENT",
+    "STATEMENT_OF_WORK",
+    "DATA_PROCESSING_ADDENDUM",
+    "ACCEPTABLE_USE_POLICY",
+  ];
+
+  const executedLegalDocumentKeys = new Set(
+    executedLegalTasks
+      .filter((task) => task.vault_item_id)
+      .map((task) => task.source_template_document_key)
+      .filter((key): key is string => Boolean(key))
+  );
+
+  const missingLegalDocumentKeys = requiredLegalDocumentKeys.filter(
+    (key) => !executedLegalDocumentKeys.has(key)
+  );
+
+  const legalSignaturesReady = missingLegalDocumentKeys.length === 0;
 
   const latestLegalCompletion = executedLegalTasks
     .map((task) => task.completed_at ?? task.teamoptix_executed_at)
@@ -759,17 +784,19 @@ async function syncComputedActivationReadiness(
       typedActiveContract.service_area.trim()
   );
 
-  const contractReady = Boolean(activeContractReady && legalTasksReady);
+  const contractReady = activeContractReady;
 
   const contractBlockingReason = !activeContractReady
     ? "An active contract row with contract number, terminal identity, and service area is required."
-    : !legalTasksReady
-      ? openLegalTasks.some((task) => task.status === "READY_FOR_CUSTOMER_REVIEW")
-        ? "Customer legal review and acceptance is still required."
-        : openLegalTasks.some((task) => task.status === "CUSTOMER_ACCEPTED")
-          ? "Team Optix final execution and vaulting is still required."
-          : "Customer legal tasks must be executed and vaulted before Go Live."
-      : null;
+    : null;
+
+  const legalSignaturesBlockingReason = legalSignaturesReady
+    ? null
+    : openLegalTasks.some((task) => task.status === "READY_FOR_CUSTOMER_REVIEW")
+      ? "Customer legal review and signatures are still required."
+      : openLegalTasks.some((task) => task.status === "CUSTOMER_ACCEPTED")
+        ? "Team Optix final execution and vaulting is still required."
+        : `Required legal documents must be issued, signed, and vaulted: ${missingLegalDocumentKeys.join(", ")}.`;
 
   const credentialsReady = Boolean(
     typedCredential?.has_secret &&
@@ -840,12 +867,10 @@ async function syncComputedActivationReadiness(
       status: contractReady ? "ready" : "incomplete",
       source_type: "computed",
       source_basis: contractReady
-        ? typedLegalTasks.length > 0
-          ? "Verified from the active Team Optix contract configuration and executed/vaulted customer legal task evidence."
-          : "Verified from the active Team Optix contract configuration."
+        ? "Verified from the active Team Optix contract configuration."
         : null,
       is_blocking: true,
-      completed_at: contractReady ? latestLegalCompletion ?? now : null,
+      completed_at: contractReady ? now : null,
       completed_by: null,
       blocking_reason: contractReady ? null : contractBlockingReason,
       metadata: {
@@ -856,6 +881,24 @@ async function syncComputedActivationReadiness(
           typedActiveContract?.terminal_identity ?? null,
         service_area:
           typedActiveContract?.service_area ?? null,
+      },
+    },
+    {
+      company_id: companyId,
+      readiness_key: "legal_signatures_ready",
+      status: legalSignaturesReady ? "ready" : "incomplete",
+      source_type: "computed",
+      source_basis: legalSignaturesReady
+        ? "All required customer legal documents are executed and vaulted."
+        : null,
+      is_blocking: true,
+      completed_at: legalSignaturesReady ? latestLegalCompletion ?? now : null,
+      completed_by: null,
+      blocking_reason: legalSignaturesBlockingReason,
+      metadata: {
+        required_document_keys: requiredLegalDocumentKeys,
+        executed_document_keys: Array.from(executedLegalDocumentKeys),
+        missing_document_keys: missingLegalDocumentKeys,
         legal_task_count: typedLegalTasks.length,
         open_legal_task_count: openLegalTasks.length,
         executed_legal_task_count: executedLegalTasks.length,
@@ -1476,7 +1519,10 @@ export async function updateManualActivationReadiness(input: {
       ? {
           status: "ready",
           source_basis:
-            input.source_basis?.trim() || "Confirmed by Team Optix.",
+            input.source_basis?.trim() ||
+            (input.readiness_key === "customer_approval_ready"
+              ? "Customer-provided Go Live authorization recorded by Team Optix."
+              : "Confirmed by Team Optix."),
           blocking_reason: null,
           completed_at: now,
           completed_by: actorUserId,

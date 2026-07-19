@@ -59,23 +59,21 @@ type LegalDocumentAcceptance = {
 
 type LegalDocumentRecord = Record<string, unknown>;
 
+type LegalCustomerOption = {
+  id: string;
+  company_name: string;
+  company_slug: string;
+};
+
 type DocumentWorkspaceProps = {
   document?: LegalDocumentRecord | null;
   sections?: LegalSection[] | null;
   versions?: LegalDocumentVersion[] | null;
   acceptances?: LegalDocumentAcceptance[] | null;
+  customerOptions?: LegalCustomerOption[] | null;
+  customerWorkspaceSlug?: string | null;
   exitHref?: string;
 };
-
-
-function slugifyCustomerName(value: string | null) {
-  return (value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
 
 function formatVersionDate(value?: string | null) {
   if (!value) return "—";
@@ -92,6 +90,8 @@ export function DocumentWorkspace({
   sections,
   versions,
   acceptances,
+  customerOptions,
+  customerWorkspaceSlug = null,
   exitHref = "/teamoptix/business/contracts",
 }: DocumentWorkspaceProps) {
   const [documentRecord, setDocumentRecord] = useState<LegalDocumentRecord | null>(document);
@@ -130,13 +130,9 @@ export function DocumentWorkspace({
   const isClientDocument = documentScope === "CLIENT_DOCUMENT";
   const hasLockedVersions = versionRows.some((version) => version.status === "LOCKED");
   const hasAcceptance = acceptanceRows.length > 0;
-  const customerSlug = slugifyCustomerName(
-    documentValue(documentRecord, "customer_legal_name") ??
-      documentValue(documentRecord, "customer_document_label")
-  );
   const customerReviewHref =
-    isClientDocument && hasLockedVersions && customerSlug
-      ? `/company/${customerSlug}/admin/legal/required`
+    isClientDocument && hasLockedVersions && customerWorkspaceSlug
+      ? `/company/${customerWorkspaceSlug}/admin/legal/required`
       : null;
   const fieldsReady = Boolean(
     documentValue(documentRecord, "customer_legal_name") && documentValue(documentRecord, "effective_at")
@@ -408,7 +404,11 @@ export function DocumentWorkspace({
               }))}
             />
           ) : documentId ? (
-            <CreateClientDocumentPanel templateDocumentId={documentId} versions={versionRows} />
+            <CreateClientDocumentPanel
+              templateDocumentId={documentId}
+              versions={versionRows}
+              customerOptions={customerOptions ?? []}
+            />
           ) : null}
 
           <section className={styles.inspectorSection}>

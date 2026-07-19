@@ -21,6 +21,8 @@ export default function ReadinessStatusControl({
   status,
   editable,
 }: ReadinessStatusControlProps) {
+  const isCustomerAuthorization =
+    readinessKey === "customer_approval_ready";
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,8 +109,12 @@ export default function ReadinessStatusControl({
           )
         }
       >
-        <option value="incomplete">Incomplete</option>
-        <option value="ready">Ready</option>
+        <option value="incomplete">
+          {isCustomerAuthorization ? "Not recorded" : "Incomplete"}
+        </option>
+        <option value="ready">
+          {isCustomerAuthorization ? "Authorization recorded" : "Ready"}
+        </option>
         <option value="not_applicable">
           Not applicable
         </option>

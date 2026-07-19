@@ -3,10 +3,6 @@ import CompanyContractConfigManager from "@/features/company/components/CompanyC
 import CustomerActivationOverview from "@/features/teamoptix/customer-activation/components/CustomerActivationOverview";
 import { getCompanyActivationSnapshot } from "@/features/teamoptix/customer-activation/server/customerActivation.server";
 import TeamOptixShell from "@/features/teamoptix/navigation/TeamOptixShell";
-import {
-  WorkspaceHeader,
-  WorkspaceSection,
-} from "@/features/ui/workspace";
 
 type PageProps = {
   params: Promise<{
@@ -22,48 +18,40 @@ export default async function TeamOptixCustomerGovernancePage({
 
   return (
     <TeamOptixShell>
-      <main className="workspace-shell">
+      <main className="workspace-shell teamoptix-domain-overview customer-governance-workspace">
         <section className="workspace-main">
-          <WorkspaceHeader
-            eyebrow="Team Optix · Customers"
-            title={snapshot.company.company_name}
-            description="Team Optix governance for customer activation, contracts, terminal scope, and platform-managed automation."
-          />
+          <header className="domain-heading">
+            <p className="eyebrow">TeamOptix · Customers · Governance</p>
+            <h1>{snapshot.company.company_name}</h1>
+            <p>Activation truth, legal execution, operating scope, and platform-managed automation.</p>
+          </header>
 
-          <WorkspaceSection
-            eyebrow="Customer Activation"
-            title="Implementation and Go Live"
-            description="Review the authoritative customer lifecycle, readiness checklist, billing activation posture, and latest execution state."
-          >
-            <CustomerActivationOverview
-              slug={slug}
-              snapshot={snapshot}
-            />
-          </WorkspaceSection>
+          <CustomerActivationOverview slug={slug} snapshot={snapshot} />
 
-          <WorkspaceSection
-            eyebrow="Customer Governance"
-            title="Contracts and operating scope"
-            description="Manage the customer contract and terminal facts used to scope operations, reporting, and automation."
-          >
-            <CompanyContractConfigManager
-              slug={slug}
-              canEdit
-            />
-          </WorkspaceSection>
+          <details className="command-panel governance-domain-disclosure">
+            <summary>
+              <span><small>Customer Governance</small><strong>Contracts and operating scope</strong></span>
+              <em>Manage configuration</em>
+            </summary>
+            <div className="governance-domain-disclosure__body">
+              <CompanyContractConfigManager slug={slug} canEdit />
+            </div>
+          </details>
 
-          <WorkspaceSection
-            eyebrow="Platform Governance"
-            title="Automation"
-            description="Manage platform collection controls, schedules, orders, and runtime posture. Customer connection credentials remain customer-managed."
-          >
-            <AutomationConfigPanel
-              slug={slug}
-              canEdit
-              credentialMode="status_only"
-              workspaceMode="governance"
-            />
-          </WorkspaceSection>
+          <details className="command-panel governance-domain-disclosure">
+            <summary>
+              <span><small>Platform Governance</small><strong>Automation and collection</strong></span>
+              <em>Manage operations</em>
+            </summary>
+            <div className="governance-domain-disclosure__body">
+              <AutomationConfigPanel
+                slug={slug}
+                canEdit
+                credentialMode="status_only"
+                workspaceMode="governance"
+              />
+            </div>
+          </details>
         </section>
       </main>
     </TeamOptixShell>

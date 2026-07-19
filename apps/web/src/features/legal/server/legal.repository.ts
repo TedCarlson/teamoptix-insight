@@ -220,6 +220,52 @@ export async function getCustomerLegalTasksForCompanySlug(slug: string) {
   return data ?? [];
 }
 
+export async function getCustomerWorkspaceSlugForDocument(
+  documentId: string,
+  customerCompanyId?: string | null
+) {
+  const { data: task } = await db
+    .from("legal_customer_legal_task_v")
+    .select("company_slug")
+    .eq("document_id", documentId)
+    .not("company_slug", "is", null)
+    .order("released_at", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (typeof task?.company_slug === "string" && task.company_slug) {
+    return task.company_slug;
+  }
+
+  if (!customerCompanyId) return null;
+
+  const { data: company } = await db
+    .from("companies")
+    .select("company_slug")
+    .eq("id", customerCompanyId)
+    .maybeSingle();
+
+  return typeof company?.company_slug === "string" && company.company_slug
+    ? company.company_slug
+    : null;
+}
+
+export async function getLegalCustomerOptions() {
+  const { data, error } = await db
+    .from("companies")
+    .select("id,company_name,company_slug")
+    .order("company_name");
+
+  if (error) throw error;
+
+  return (data ?? []).filter(
+    (company) =>
+      typeof company.id === "string" &&
+      typeof company.company_name === "string" &&
+      typeof company.company_slug === "string"
+  );
+}
+
 export async function getDocumentVersionsByIds(versionIds: string[]) {
   const ids = Array.from(new Set(versionIds.filter(Boolean)));
 

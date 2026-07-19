@@ -14,16 +14,21 @@ type LegalDocumentVersion = {
 type Props = {
   templateDocumentId: string;
   versions: LegalDocumentVersion[];
+  customerOptions: Array<{
+    id: string;
+    company_name: string;
+    company_slug: string;
+  }>;
 };
 
 function dateValue() {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function CreateClientDocumentPanel({ templateDocumentId, versions }: Props) {
+export function CreateClientDocumentPanel({ templateDocumentId, versions, customerOptions }: Props) {
   const lockedVersions = versions.filter((version) => version.status === "LOCKED");
   const [templateVersionId, setTemplateVersionId] = useState(lockedVersions[0]?.id ?? "");
-  const [customerLegalName, setCustomerLegalName] = useState("");
+  const [customerCompanyId, setCustomerCompanyId] = useState("");
   const [effectiveDate, setEffectiveDate] = useState(dateValue());
   const [customerProjectLead, setCustomerProjectLead] = useState("");
   const [teamOptixProjectLead, setTeamOptixProjectLead] = useState("");
@@ -33,8 +38,9 @@ export function CreateClientDocumentPanel({ templateDocumentId, versions }: Prop
   const [errorMessage, setErrorMessage] = useState("");
 
   async function createClientDocument() {
-    if (!templateVersionId || !customerLegalName.trim()) {
-      setErrorMessage("Select a locked template version and enter a customer legal name.");
+    const customer = customerOptions.find((option) => option.id === customerCompanyId);
+    if (!templateVersionId || !customer) {
+      setErrorMessage("Select a locked template version and an established customer company.");
       setCreateState("error");
       return;
     }
@@ -49,7 +55,7 @@ export function CreateClientDocumentPanel({ templateDocumentId, versions }: Prop
         body: JSON.stringify({
           templateDocumentId,
           templateVersionId,
-          customerLegalName,
+          customerCompanyId: customer.id,
           effectiveDate,
           customerProjectLead,
           teamOptixProjectLead,
@@ -104,13 +110,19 @@ export function CreateClientDocumentPanel({ templateDocumentId, versions }: Prop
           </label>
 
           <label className={styles.metadataFieldLabel}>
-            <span>Customer legal name</span>
-            <input
+            <span>Customer company</span>
+            <select
               className={styles.metadataInput}
-              value={customerLegalName}
-              onChange={(event) => setCustomerLegalName(event.target.value)}
-              placeholder="Customer legal name"
-            />
+              value={customerCompanyId}
+              onChange={(event) => setCustomerCompanyId(event.target.value)}
+            >
+              <option value="">Select customer</option>
+              {customerOptions.map((company) => (
+                <option key={company.id} value={company.id}>
+                  {company.company_name} · {company.company_slug}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className={styles.metadataFieldLabel}>

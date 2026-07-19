@@ -62,57 +62,49 @@ export default function CustomerLegalRequiredClient({
     const status = text(task, "status");
     return status === "READY_FOR_CUSTOMER_REVIEW";
   });
+  const acceptedTasks = rows.filter((task) => text(task, "status") === "CUSTOMER_ACCEPTED");
 
   return (
     <>
-      <main className="workspace-shell">
+      <main className="workspace-shell teamoptix-domain-overview customer-legal-workspace">
         <section className="workspace-main">
-          <div className="workspace-header">
+          <header className="customer-legal-heading">
             <div>
-              <p className="workspace-eyebrow">Customer Admin · Legal</p>
-              <h1 className="workspace-title">Signature Required</h1>
-              <p className="workspace-description">
-                Review locked Team Optix implementation documents and accept them electronically on behalf of your organization.
-              </p>
+              <p className="eyebrow">Admin · Legal</p>
+              <h1>Contract review</h1>
+              <p>Review immutable contract versions released to your organization and record authorized acceptance.</p>
             </div>
-
             <Link className="secondary-action" href={`/company/${slug}`}>
               Back to Admin
             </Link>
-          </div>
+          </header>
 
-          <section className="summary-grid">
-            <article className="workspace-section">
-              <p className="workspace-eyebrow">Open</p>
-              <h2>{openTasks.length}</h2>
-              <p>Documents waiting for customer review.</p>
-            </article>
-            <article className="workspace-section">
-              <p className="workspace-eyebrow">Accepted</p>
-              <h2>{rows.filter((task) => text(task, "status") === "CUSTOMER_ACCEPTED").length}</h2>
-              <p>Accepted by customer; Team Optix finalization pending.</p>
-            </article>
+          <section className="operating-pulse customer-legal-pulse" aria-label="Legal review pulse">
+            <article><span>Released</span><strong>{rows.length}</strong><small>Locked contract versions</small></article>
+            <article><span>Customer Action</span><strong>{openTasks.length}</strong><small>{openTasks.length ? "Review and acceptance required" : "Customer queue clear"}</small></article>
+            <article><span>Accepted</span><strong>{acceptedTasks.length}</strong><small>{acceptedTasks.length ? "Team Optix finalization pending" : "No pending finalization"}</small></article>
           </section>
 
-          <section className="workspace-section">
-            <p className="workspace-eyebrow">Legal Review</p>
-            <h2>Documents awaiting action</h2>
-            <p>Only locked document versions are shown here. Draft edits do not appear in this review lane.</p>
-
-            <div className="signal-list">
+          <section className="command-panel customer-legal-panel">
+            <div className="command-panel__header">
+              <div><p className="value-card__eyebrow">Legal Review</p><h2>Released contracts</h2></div>
+              <span>Locked versions only</span>
+            </div>
+            <div className="domain-row-list">
               {rows.length ? (
                 rows.map((task) => {
                   const status = text(task, "status");
                   const canAccept = status === "READY_FOR_CUSTOMER_REVIEW";
                   const version = versionsById.get(text(task, "document_version_id"));
                   return (
-                    <div className="signal-list__row" key={text(task, "id")}>
-                      <div>
+                    <div className="customer-legal-row" key={text(task, "id")}>
+                      <span>
                         <strong>{text(task, "document_title") || "Client document"}</strong>
-                        <span>
+                        <small>
                           Version {text(task, "version_label") || "—"} · {text(task, "blocking_reason") || statusLabel(status)}
-                        </span>
-                      </div>
+                        </small>
+                      </span>
+                      <em className={`signal-pill${canAccept ? " signal-pill--degraded" : " signal-pill--healthy"}`}>{statusLabel(status)}</em>
                       <button
                         className={canAccept ? "primary-action" : "secondary-action"}
                         type="button"
@@ -125,12 +117,9 @@ export default function CustomerLegalRequiredClient({
                   );
                 })
               ) : (
-                <div className="signal-list__row">
-                  <div>
-                    <strong>No legal documents are waiting</strong>
-                    <span>Team Optix has not released any locked documents for customer acceptance.</span>
-                  </div>
-                  <em>Clear</em>
+                <div className="command-empty">
+                  <strong>No released contracts require action</strong>
+                  <span>Locked customer versions will appear here when Team Optix releases them.</span>
                 </div>
               )}
             </div>

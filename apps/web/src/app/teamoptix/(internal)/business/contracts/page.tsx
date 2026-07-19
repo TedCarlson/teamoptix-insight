@@ -1,7 +1,6 @@
 import Link from "next/link";
 import TeamOptixShell from "@/features/teamoptix/navigation/TeamOptixShell";
 import { getClientDocuments, getCustomerLegalTasks, getTemplateDocuments } from "@/features/legal/server/legal.repository";
-import { WorkspaceHeader, WorkspaceSection } from "@/features/ui/workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -91,6 +90,14 @@ function isArchivedClientDocument(document: Record<string, unknown>) {
   return status === "SUPERSEDED" || status === "CANCELLED";
 }
 
+function statusClass(status: string) {
+  const normalized = normalizedStatus(status);
+  if (["PUBLISHED", "EXECUTED", "EXECUTED_AND_VAULTED"].includes(normalized)) return " signal-pill--healthy";
+  if (["CUSTOMER ACTION", "TEAM OPTIX", "VAULTING", "READY_FOR_CUSTOMER_REVIEW", "CUSTOMER_ACCEPTED"].includes(normalized)) return " signal-pill--degraded";
+  if (["CANCELLED", "SUPERSEDED"].includes(normalized)) return " signal-pill--unknown";
+  return "";
+}
+
 export default async function TeamOptixContractsPage() {
   const documents = await getTemplateDocuments();
   const clientDocuments = await getClientDocuments();
@@ -126,152 +133,133 @@ export default async function TeamOptixContractsPage() {
 
   return (
     <TeamOptixShell>
-      <main className="workspace-shell">
+      <main className="workspace-shell teamoptix-domain-overview contracts-workspace">
         <section className="workspace-main">
-          <WorkspaceHeader
-            eyebrow="TeamOptix · Business"
-            title="Contracts"
-            description="Commercial document lifecycle, customer contracts, templates, and legal package readiness."
-          />
+          <header className="domain-heading">
+            <p className="eyebrow">TeamOptix · Business · Contracts</p>
+            <h1>Contracts</h1>
+            <p>Commercial documents, customer agreements, execution readiness, and governed legal evidence.</p>
+          </header>
 
-          <section className="summary-grid">
-            <WorkspaceSection eyebrow="Pulse" title="Draft" description={`${draftCount} commercial documents in draft.`}>
-              <div />
-            </WorkspaceSection>
-            <WorkspaceSection eyebrow="Pulse" title="Published" description={`${publishedCount} commercial documents published.`}>
-              <div />
-            </WorkspaceSection>
-            <WorkspaceSection eyebrow="Pulse" title="Legal Tasks" description={`${openLegalTaskCount} open legal task${openLegalTaskCount === 1 ? "" : "s"}; ${clientCount} client document${clientCount === 1 ? "" : "s"}.`}>
-              <div />
-            </WorkspaceSection>
+          <section className="operating-pulse domain-pulse" aria-label="Contract operating pulse">
+            <article><span>Document Library</span><strong>{rows.length}</strong><small>{missingCount ? `${missingCount} not started` : "All templates established"}</small></article>
+            <article><span>Draft Templates</span><strong>{draftCount}</strong><small>{publishedCount} published</small></article>
+            <article><span>Customer Contracts</span><strong>{actionableClientDocuments.length}</strong><small>{clientCount} total · {archivedClientDocuments.length} archived</small></article>
+            <article><span>Open Legal Tasks</span><strong>{openLegalTaskCount}</strong><small>{openLegalTaskCount ? "Execution work remains" : "Execution queue clear"}</small></article>
           </section>
 
-          <WorkspaceSection
-            eyebrow="Agreements"
-            title="Commercial Documents"
-            description="Open any document into the shared document workspace."
-          >
-            <div className="signal-list">
-              {rows.map((row) => (
-                <Link
-                  key={row.key}
-                  className="signal-list__row"
-                  href={row.href}
-                  style={{ color: "inherit", textDecoration: "none" }}
-                >
-                  <div>
-                    <strong>{row.title}</strong>
-                    <span>{row.type} · v{row.version}</span>
-                  </div>
-                  <em>{row.status}</em>
-                </Link>
-              ))}
-            </div>
-          </WorkspaceSection>
-
-          <section className="workspace-grid">
-            <WorkspaceSection eyebrow="Customer Contracts" title="Actionable Contracts" description="Current customer agreements that are draft, released for review, accepted, or awaiting Team Optix finalization.">
-              <div className="signal-list">
+          <section className="domain-panel-grid contracts-panel-grid">
+            <article className="command-panel domain-panel contracts-panel--primary">
+              <div className="command-panel__header">
+                <div><p className="value-card__eyebrow">Customer Contracts</p><h2>Execution queue</h2></div>
+                <Link href="/teamoptix/business/contracts/tasks">All tasks →</Link>
+              </div>
+              <div className="domain-row-list">
                 {actionableClientDocuments.length ? (
                   actionableClientDocuments.map((document: Record<string, unknown>) => (
                     <Link
                       key={String(document.id)}
-                      className="signal-list__row"
+                      className="domain-row"
                       href={`/teamoptix/business/contracts/client-documents/${encodeURIComponent(String(document.document_key))}`}
-                      style={{ color: "inherit", textDecoration: "none" }}
                     >
-                      <div>
+                      <span>
                         <strong>{String(document.title ?? "Client Document")}</strong>
-                        <span>{String(document.customer_legal_name ?? "Customer document")} · v{version(document)}</span>
-                      </div>
-                      <em>{customerDocumentDisplayStatus(document, legalTasks)}</em>
+                        <small>{String(document.customer_legal_name ?? "Customer document")} · v{version(document)}</small>
+                      </span>
+                      <em className={`signal-pill${statusClass(customerDocumentDisplayStatus(document, legalTasks))}`}>{customerDocumentDisplayStatus(document, legalTasks)}</em>
+                      <b aria-hidden="true">→</b>
                     </Link>
                   ))
                 ) : (
-                  <div className="signal-list__row">
-                    <div>
-                      <strong>No actionable customer documents</strong>
-                      <span>Create a customer document from a locked template, or open the task queue.</span>
-                    </div>
-                    <em>Ready</em>
+                  <div className="command-empty">
+                    <strong>No actionable customer contracts</strong>
+                    <span>Create a customer document from a locked template to begin the execution lane.</span>
                   </div>
                 )}
-
                 <Link
-                  className="signal-list__row"
+                  className="domain-row"
                   href="/teamoptix/business/contracts/vault"
-                  style={{ color: "inherit", textDecoration:"none" }}
                 >
-                  <div>
+                  <span>
                     <strong>Document Vault</strong>
-                    <span>Accepted versions, signer records, timestamps, and evidence artifact status.</span>
-                  </div>
-                  <em>Open</em>
+                    <small>Accepted versions, signer records, timestamps, and evidence artifacts.</small>
+                  </span>
+                  <em className="signal-pill">Open</em><b aria-hidden="true">→</b>
                 </Link>
-
                 <Link
-                  className="signal-list__row"
+                  className="domain-row"
                   href="/teamoptix/business/contracts/tasks"
-                  style={{ color: "inherit", textDecoration:"none" }}
                 >
-                  <div>
+                  <span>
                     <strong>Customer Legal Tasks</strong>
-                    <span>Customer review, acceptance, Team Optix finalization, and Go Live legal readiness.</span>
-                  </div>
-                  <em>{openLegalTaskCount ? `${openLegalTaskCount} Open` : "Ready"}</em>
+                    <small>Customer review, acceptance, finalization, and Go Live legal readiness.</small>
+                  </span>
+                  <em className={`signal-pill${openLegalTaskCount ? " signal-pill--degraded" : " signal-pill--healthy"}`}>{openLegalTaskCount ? `${openLegalTaskCount} Open` : "Ready"}</em><b aria-hidden="true">→</b>
                 </Link>
               </div>
-            </WorkspaceSection>
+            </article>
 
-            <WorkspaceSection eyebrow="Templates" title="Clause & Document Templates" description="Reusable contract structures and approved language. Open a template, lock a version, then create customer documents from it.">
-              <div className="signal-list">
+            <article className="command-panel domain-panel">
+              <div className="command-panel__header">
+                <div><p className="value-card__eyebrow">Document Library</p><h2>Governed templates</h2></div>
+                <span>{rows.length} documents</span>
+              </div>
+              <div className="domain-row-list">
                 {rows.map((row) => (
                   <Link
-                    key={`template-${row.key}`}
-                    className="signal-list__row"
+                    key={row.key}
+                    className="domain-row"
                     href={row.href}
-                    style={{ color: "inherit", textDecoration: "none" }}
                   >
-                    <div>
+                    <span>
                       <strong>{row.title}</strong>
-                      <span>Template · v{row.version}</span>
-                    </div>
-                    <em>{row.status}</em>
+                      <small>{row.type} · v{row.version}</small>
+                    </span>
+                    <em className={`signal-pill${statusClass(row.status)}`}>{row.status}</em><b aria-hidden="true">→</b>
                   </Link>
                 ))}
               </div>
-            </WorkspaceSection>
-            <WorkspaceSection eyebrow="Package Review" title="Counsel Review Package" description="Assemble MSA, SOW, DPA, AUP, and supporting policies for legal review.">
-              <div />
-            </WorkspaceSection>
-            <WorkspaceSection eyebrow="Archive" title="Superseded History" description="Superseded, cancelled, and historical customer contract records.">
-              <div className="signal-list">
+            </article>
+
+            <article className="command-panel domain-panel">
+              <div className="command-panel__header">
+                <div><p className="value-card__eyebrow">Archive</p><h2>Superseded history</h2></div>
+                <Link href="/teamoptix/business/contracts/vault">Open vault →</Link>
+              </div>
+              <div className="domain-row-list">
                 {archivedClientDocuments.length ? (
                   archivedClientDocuments.map((document: Record<string, unknown>) => (
                     <Link
                       key={`archived-${String(document.id)}`}
-                      className="signal-list__row"
+                      className="domain-row"
                       href={`/teamoptix/business/contracts/client-documents/${encodeURIComponent(String(document.document_key))}`}
-                      style={{ color: "inherit", textDecoration: "none" }}
                     >
-                      <div>
+                      <span>
                         <strong>{String(document.title ?? "Client Document")}</strong>
-                        <span>{String(document.customer_legal_name ?? "Customer document")} · v{version(document)}</span>
-                      </div>
-                      <em>{customerDocumentDisplayStatus(document, legalTasks)}</em>
+                        <small>{String(document.customer_legal_name ?? "Customer document")} · v{version(document)}</small>
+                      </span>
+                      <em className={`signal-pill${statusClass(customerDocumentDisplayStatus(document, legalTasks))}`}>{customerDocumentDisplayStatus(document, legalTasks)}</em><b aria-hidden="true">→</b>
                     </Link>
                   ))
                 ) : (
-                  <div className="signal-list__row">
-                    <div>
-                      <strong>No archived customer documents</strong>
-                      <span>Superseded and cancelled client documents will appear here.</span>
-                    </div>
-                    <em>Empty</em>
+                  <div className="command-empty">
+                    <strong>No archived customer contracts</strong>
+                    <span>Superseded and cancelled documents will appear here without crowding the active queue.</span>
                   </div>
                 )}
               </div>
-            </WorkspaceSection>
+            </article>
+
+            <article className="command-panel domain-panel contracts-package-panel">
+              <div className="command-panel__header">
+                <div><p className="value-card__eyebrow">Package Review</p><h2>Counsel review package</h2></div>
+              </div>
+              <p className="contracts-package-panel__copy">Assemble the MSA, SOW, DPA, AUP, and supporting evidence into one governed review package.</p>
+              <div className="contracts-package-panel__readiness">
+                <span>Library readiness</span><strong>{rows.length - missingCount} / {rows.length}</strong>
+                <i><b style={{ width: `${rows.length ? ((rows.length - missingCount) / rows.length) * 100 : 0}%` }} /></i>
+              </div>
+            </article>
           </section>
         </section>
       </main>
