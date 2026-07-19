@@ -162,7 +162,7 @@ function buildRequestPayload(manifestAssignment: ScheduledManifestAssignment) {
   };
 }
 
-function buildPreviousDayClosePayload() {
+function buildPreviousDayClosePayload(serviceDate: string) {
   return {
     source: "teamoptix_automation",
     preset: "previous_day_close",
@@ -172,6 +172,20 @@ function buildPreviousDayClosePayload() {
     control_level: "platform_managed",
     customer_language: "Previous Day Close",
     runner_goal: "collect_previous_day_dsw",
+    resolved_service_date: serviceDate,
+    date_selection_contract: {
+      authority: "ticket_service_date",
+      exact_date: serviceDate,
+      instruction:
+        "Select this exact service date in the FedEx DSW report before downloading. Do not substitute the current date and do not infer the date from the filename or storage path.",
+    },
+    ingestion_contract: {
+      authority: "DSW_A1",
+      expected_a1_date: serviceDate,
+      required_snapshot_kind: "FINAL",
+      instruction:
+        "Pass the downloaded workbook through unchanged. Ingestion reads A1 and is the sole authority for the activity date and FINAL classification.",
+    },
     targets: [
       {
         key: "DSW_DAILY_SERVICE",
@@ -474,7 +488,7 @@ export async function GET() {
               p_requested_reports: ["DSW"],
               p_priority: 60,
               p_request_payload:
-                buildPreviousDayClosePayload(),
+                buildPreviousDayClosePayload(previousServiceDate),
             }
           );
 
