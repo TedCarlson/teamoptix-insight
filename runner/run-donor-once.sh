@@ -57,15 +57,31 @@ export FCMS_SCRAPER_HOME="$SCRAPER_DIR"
 overall_status=0
 produced_total=0
 
-if { [ "${FCMS_REQUEST_TYPE:-}" = "HISTORICAL_BACKFILL" ] \
-    || [ "${FCMS_REQUEST_TYPE:-}" = "PREVIOUS_DAY_CLOSE" ]; } \
-  && [ -n "${FCMS_SERVICE_DATE_START:-}" ] \
-  && [ -n "${FCMS_SERVICE_DATE_END:-}" ]; then
+runner_goal="${FCMS_RUNNER_GOAL:-}"
+if [ -z "$runner_goal" ]; then
+  case "${FCMS_REQUEST_TYPE:-}" in
+    HISTORICAL_BACKFILL) runner_goal="collect_historical_dsw_range" ;;
+    PREVIOUS_DAY_CLOSE) runner_goal="collect_previous_day_dsw" ;;
+    TARGETED_RECOVERY) runner_goal="collect_targeted_artifacts" ;;
+  esac
+fi
 
-  mapfile -t HISTORICAL_DATES < <(
-    FCMS_RANGE_START="$FCMS_SERVICE_DATE_START" \
-    FCMS_RANGE_END="$FCMS_SERVICE_DATE_END" \
-    python3 - <<'PYDATES'
+if [ "$runner_goal" = "collect_historical_dsw_range" ] \
+  || [ "$runner_goal" = "collect_previous_day_dsw" ] \
+  || [ "$runner_goal" = "collect_targeted_artifacts" ]; then
+
+  HISTORICAL_DATES=()
+
+  if [ "$runner_goal" = "collect_historical_dsw_range" ]; then
+    if [ -z "${FCMS_SERVICE_DATE_START:-}" ] || [ -z "${FCMS_SERVICE_DATE_END:-}" ]; then
+      echo "[runner] invalid lane contract: historical range requires start and end dates"
+      exit 22
+    fi
+
+    mapfile -t HISTORICAL_DATES < <(
+      FCMS_RANGE_START="$FCMS_SERVICE_DATE_START" \
+      FCMS_RANGE_END="$FCMS_SERVICE_DATE_END" \
+      python3 - <<'PYDATES'
 from datetime import date, timedelta
 import os
 
@@ -80,15 +96,22 @@ while current <= end:
     print(current.isoformat())
     current += timedelta(days=1)
 PYDATES
-  )
+    )
+  else
+    if [ -z "${FCMS_SERVICE_DATE:-}" ]; then
+      echo "[runner] invalid lane contract: $runner_goal requires one exact service date"
+      exit 22
+    fi
+    HISTORICAL_DATES=("$FCMS_SERVICE_DATE")
+  fi
 
-  echo "[runner] historical range start=$FCMS_SERVICE_DATE_START end=$FCMS_SERVICE_DATE_END dates=${#HISTORICAL_DATES[@]}"
+  echo "[runner] governed lane goal=$runner_goal request_type=${FCMS_REQUEST_TYPE:-} dates=${HISTORICAL_DATES[*]}"
 
   for service_date in "${HISTORICAL_DATES[@]}"; do
     before_count="$(find "$SCRAPER_DIR/Excels" -type f -mmin -120 2>/dev/null | wc -l | tr -d ' ')"
     date_started_at="$(date +%s)"
 
-    echo "[runner] historical date start: $service_date"
+    echo "[runner] governed date start: $service_date"
 
     set +e
     FCMS_SERVICE_DATE="$service_date" "$PY" "$SCRAPER_DIR/scrape_particular_date.py"
@@ -101,7 +124,7 @@ PYDATES
     produced_total="$((produced_total + produced_count))"
     elapsed_seconds="$(($(date +%s) - date_started_at))"
 
-    echo "[runner] historical date exit status=$status service_date=$service_date produced_count=$produced_count elapsed_seconds=$elapsed_seconds"
+    echo "[runner] governed date exit status=$status service_date=$service_date produced_count=$produced_count elapsed_seconds=$elapsed_seconds"
 
     if [ "$status" -ne 0 ]; then
       overall_status="$status"

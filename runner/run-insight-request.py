@@ -22,6 +22,27 @@ PROVIDER_KEY = "FEDEX"
 DONOR_RUNNER = APP_DIR / "runner" / "run-donor-once.sh"
 SCRAPER_HOME = APP_DIR / "storage" / "app" / "public" / "scraper"
 
+RUNNER_GOALS = {
+    "PREVIOUS_DAY_CLOSE": "collect_previous_day_dsw",
+    "HISTORICAL_BACKFILL": "collect_historical_dsw_range",
+    "TARGETED_RECOVERY": "collect_targeted_artifacts",
+}
+
+
+def governed_runner_goal(request: dict) -> str:
+    request_type = str(request.get("request_type") or "").strip().upper()
+    payload = request.get("request_payload") or {}
+    authored_goal = str(payload.get("runner_goal") or "").strip()
+    expected_goal = RUNNER_GOALS.get(request_type, authored_goal)
+
+    if request_type in RUNNER_GOALS and authored_goal and authored_goal != expected_goal:
+        raise RuntimeError(
+            f"Ticket contract mismatch: {request_type} requires runner_goal "
+            f"{expected_goal}, received {authored_goal}."
+        )
+
+    return expected_goal
+
 def service_date_folder(service_date: str | None) -> str:
     if not service_date:
         return time.strftime("%m-%d-%Y")
@@ -378,6 +399,7 @@ def main() -> int:
         "id": request_id,
         "company_slug": request.get("company_slug"),
         "request_type": request.get("request_type"),
+        "runner_goal": governed_runner_goal(request),
         "priority": request.get("priority"),
         "service_date": request.get("service_date"),
         "collect_scope": (request.get("request_payload") or {}).get("collect_scope"),
@@ -411,6 +433,7 @@ def main() -> int:
         child_env["FCMS_SERVICE_DATE_START"] = request.get("service_date_start") or ""
         child_env["FCMS_SERVICE_DATE_END"] = request.get("service_date_end") or ""
         child_env["FCMS_REQUEST_TYPE"] = request.get("request_type") or ""
+        child_env["FCMS_RUNNER_GOAL"] = governed_runner_goal(request)
         child_env["FCMS_COLLECTION_SCOPE"] = (request.get("request_payload") or {}).get("collect_scope") or ""
         manifest_options = manifest_runtime_options(request)
 
@@ -466,6 +489,15 @@ def main() -> int:
 
             update_status(request_id, "FAILED", f"Donor runner failed with exit code {proc.returncode}")
             return proc.returncode
+
+        runner_goal = governed_runner_goal(request)
+        if runner_goal in RUNNER_GOALS.values() and not registered:
+            update_status(
+                request_id,
+                "FAILED",
+                f"{request.get('request_type')} produced no governed report artifact; completion is invalid."
+            )
+            return 1
 
         update_status(request_id, "ARTIFACTS_READY" if registered else "COMPLETE")
         return 0
