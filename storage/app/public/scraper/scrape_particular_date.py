@@ -512,15 +512,38 @@ def main(section_='', option_=0, retry=1):
             daily_service_week_page_title = driver.title
             logging.info("Title of the daily_service_week page: " + daily_service_week_page_title)
 
-            date_element = WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.XPATH, "//input[@class='form-control formField-header']")))
+            date_element = WebDriverWait(driver, 60).until(
+                EC.element_to_be_clickable(
+                    (By.XPATH, "//input[contains(@class, 'formField-header')]")
+                )
+            )
 
-            script = "document.getElementsByClassName('form-control formField-header')[0].value = '{}';".format(SCRAPE_DATE)
-            driver.execute_script(script)
-            time.sleep(1)
+            logging.info(
+                "DSW date before selection: %r; requested: %s",
+                date_element.get_attribute("value"),
+                SCRAPE_DATE,
+            )
 
-            date_element.send_keys(Keys.ENTER)
-            time.sleep(1)
-            date_element.send_keys(Keys.ESCAPE)
+            date_element.click()
+            date_element.send_keys(Keys.CONTROL, "a")
+            date_element.send_keys(SCRAPE_DATE)
+            date_element.send_keys(Keys.TAB)
+
+            WebDriverWait(driver, 15).until(
+                lambda active_driver: active_driver.find_element(
+                    By.XPATH,
+                    "//input[contains(@class, 'formField-header')]",
+                ).get_attribute("value").strip() == SCRAPE_DATE
+            )
+
+            date_element = driver.find_element(
+                By.XPATH,
+                "//input[contains(@class, 'formField-header')]",
+            )
+            logging.info(
+                "DSW date committed to page: %r",
+                date_element.get_attribute("value"),
+            )
             time.sleep(2)
 
             select_element = WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.XPATH, "//select[@id='facilitySelect']")))
