@@ -29,31 +29,6 @@ async function markArtifact(params: {
 }
 
 
-async function deleteArtifactObject(artifact: any) {
-  if (!artifact.storage_bucket || !artifact.storage_path) return;
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL.");
-  if (!serviceRoleKey) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY.");
-
-  const response = await fetch(`${supabaseUrl.replace(/\/$/, "")}/storage/v1/object/${encodeURIComponent(artifact.storage_bucket)}`, {
-    method: "DELETE",
-    headers: {
-      apikey: serviceRoleKey,
-      Authorization: `Bearer ${serviceRoleKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ prefixes: [artifact.storage_path] }),
-  });
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(`Artifact storage cleanup failed: HTTP ${response.status} ${body}`);
-  }
-}
-
 async function refreshRequestStatus(params: { supabase: any; requestId: string }) {
   const { supabase, requestId } = params;
 
@@ -150,7 +125,6 @@ async function handleArtifactIngest(req: NextRequest, context: RouteContext) {
           reportBatchId: ingest.batch_id ?? null,
         });
 
-        await deleteArtifactObject(artifact);
         await refreshRequestStatus({ supabase, requestId: artifact.collection_request_id });
 
         processed.push({
@@ -179,7 +153,6 @@ async function handleArtifactIngest(req: NextRequest, context: RouteContext) {
           p_report_batch_ids: null,
         });
 
-        await deleteArtifactObject(artifact).catch(() => null);
       }
     }
 

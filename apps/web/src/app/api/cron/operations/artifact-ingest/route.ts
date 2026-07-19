@@ -40,25 +40,6 @@ async function markArtifact(params: {
   if (error) throw new Error(error.message);
 }
 
-async function deleteArtifactObject(artifact: any) {
-  if (!artifact.storage_bucket || !artifact.storage_path) return;
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceRoleKey) return;
-
-  await fetch(`${supabaseUrl.replace(/\/$/, "")}/storage/v1/object/${encodeURIComponent(artifact.storage_bucket)}`, {
-    method: "DELETE",
-    headers: {
-      apikey: serviceRoleKey,
-      Authorization: `Bearer ${serviceRoleKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ prefixes: [artifact.storage_path] }),
-  }).catch(() => null);
-}
-
 function isValidPreviousDayCloseArtifact(row: any) {
   const ingest = row?.ingest_metadata_json?.ingest;
   return (
@@ -246,7 +227,6 @@ export async function GET() {
         reportBatchId: ingest.batch_id ?? null,
       });
 
-      await deleteArtifactObject(artifact);
       await completeRequest(supabase, artifact.collection_request_id);
 
       processed.push({
@@ -272,7 +252,6 @@ export async function GET() {
         errorMessage: message,
       }).catch(() => null);
 
-      await deleteArtifactObject(artifact);
     }
   }
 

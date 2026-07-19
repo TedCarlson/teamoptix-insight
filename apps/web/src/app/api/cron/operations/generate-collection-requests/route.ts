@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
+import { runnerGoalForRequestType } from "@/features/automation/contracts/runnerGoal";
 
 export const runtime = "nodejs";
 
@@ -10,7 +11,6 @@ const ACTIVE_REQUEST_STATUSES = [
   "ARTIFACTS_READY",
   "INGESTING",
 ];
-const PREVIOUS_DAY_CLOSE_MINUTES = 3 * 60;
 const PREVIOUS_DAY_CLOSE_STATUSES = [
   "QUEUED",
   "CLAIMED",
@@ -99,6 +99,24 @@ type ScheduledHistoricalAssignment = ScheduledManifestAssignment & {
   operational_contract: string;
 };
 
+function governedTemplatePayload(
+  assignment: ScheduledManifestAssignment,
+  requestType: string
+): Record<string, unknown> {
+  const templatePayload = assignment.default_payload_json ?? {};
+  const assignmentPayload = assignment.assignment_payload_json ?? {};
+  return {
+    ...templatePayload,
+    ...assignmentPayload,
+    request_type: requestType,
+    runner_goal: runnerGoalForRequestType(requestType),
+    runner_goal_label:
+      templatePayload.runner_goal_label ??
+      templatePayload.runner_goal ??
+      assignment.template_key,
+  };
+}
+
 function assignmentRunsToday(assignment: ScheduledHistoricalAssignment, dayOfWeek: number) {
   const payload = assignment.assignment_payload_json ?? {};
   const scheduleDays = Array.isArray(payload.schedule_days)
@@ -162,8 +180,9 @@ function buildRequestPayload(manifestAssignment: ScheduledManifestAssignment) {
   };
 }
 
-function buildPreviousDayClosePayload(serviceDate: string) {
+function buildPreviousDayClosePayload(assignment: ScheduledManifestAssignment, serviceDate: string) {
   return {
+    ...governedTemplatePayload(assignment, "PREVIOUS_DAY_CLOSE"),
     source: "teamoptix_automation",
     preset: "previous_day_close",
     intent: "previous_day_finalization",
@@ -171,7 +190,7 @@ function buildPreviousDayClosePayload(serviceDate: string) {
     collect_scope: "dsw_only",
     control_level: "platform_managed",
     customer_language: "Previous Day Close",
-    runner_goal: "collect_previous_day_dsw",
+    runner_goal: runnerGoalForRequestType("PREVIOUS_DAY_CLOSE"),
     resolved_service_date: serviceDate,
     date_selection_contract: {
       authority: "ticket_service_date",
@@ -276,9 +295,57 @@ async function loadScheduledHistoricalAssignments(params: {
       const generatedDate = new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(row.last_generated_at));
       if (generatedDate === operationalDate) continue;
     }
-    eligible.push(row);
+    const { data: template, error: templateError } = await supabase
+      .from("operations_ticket_template_v")
+      .select("default_payload_json")
+      .eq("id", row.template_id)
+      .maybeSingle();
+    if (templateError) throw new Error(templateError.message);
+    eligible.push({
+      ...row,
+      default_payload_json: template?.default_payload_json ?? null,
+    });
   }
   return eligible;
+}
+
+async function loadPreviousDayCloseAssignment(params: {
+  supabase: any;
+  companyId: string;
+  currentMinutes: number;
+  operationalDate: string;
+  dayOfWeek: number;
+}) {
+  const { supabase, companyId, currentMinutes, operationalDate, dayOfWeek } = params;
+  const { data, error } = await supabase
+    .from("company_operations_ticket_assignment_v")
+    .select("id,template_key,effective_priority,cadence_minutes,window_preset,start_time,end_time,last_generated_at,assignment_payload_json,template_id,operational_contract")
+    .eq("company_id", companyId)
+    .eq("execution_lane", "operations_collection_request")
+    .eq("assignment_status", "active")
+    .eq("is_enabled", true)
+    .eq("generation_mode", "scheduled")
+    .eq("operational_contract", "PREVIOUS_DAY_FINAL")
+    .lte("active_start_date", operationalDate)
+    .or(`inactive_end_date.is.null,inactive_end_date.gt.${operationalDate}`)
+    .order("release_order", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data || !assignmentRunsToday(data as ScheduledHistoricalAssignment, dayOfWeek)) return null;
+  const start = parseTimeToMinutes(data.start_time);
+  if (start !== null && currentMinutes < start) return null;
+
+  const { data: template, error: templateError } = await supabase
+    .from("operations_ticket_template_v")
+    .select("default_payload_json")
+    .eq("id", data.template_id)
+    .maybeSingle();
+  if (templateError) throw new Error(templateError.message);
+  return {
+    ...data,
+    default_payload_json: template?.default_payload_json ?? null,
+  } as ScheduledHistoricalAssignment;
 }
 
 async function historicalRequestExists(params: { supabase: any; companyId: string; start: string; end: string }) {
@@ -416,9 +483,16 @@ export async function GET() {
         operationalDate: terminalState.todayIso,
         dayOfWeek: terminalState.dayOfWeek,
       });
+      const previousDayCloseAssignment = await loadPreviousDayCloseAssignment({
+        supabase,
+        companyId,
+        currentMinutes: terminalState.currentMinutes,
+        operationalDate: terminalState.todayIso,
+        dayOfWeek: terminalState.dayOfWeek,
+      });
 
       for (const assignment of historicalAssignments) {
-        const assignmentPayload = assignment.assignment_payload_json ?? {};
+        const assignmentPayload = governedTemplatePayload(assignment, "HISTORICAL_BACKFILL");
         const range = resolveHistoricalRange(terminalState.todayIso, assignmentPayload.dynamic_date_range);
         if (!range || await historicalRequestExists({ supabase, companyId, ...range })) continue;
         if (await companyHasActiveRequest(supabase, companyId)) break;
@@ -452,9 +526,7 @@ export async function GET() {
         -1
       );
 
-      if (
-        terminalState.currentMinutes >= PREVIOUS_DAY_CLOSE_MINUTES
-      ) {
+      if (previousDayCloseAssignment) {
         const closeExists = await companyHasPreviousDayClose({
           supabase,
           companyId,
@@ -486,9 +558,9 @@ export async function GET() {
               p_service_date_start: null,
               p_service_date_end: null,
               p_requested_reports: ["DSW"],
-              p_priority: 60,
+              p_priority: previousDayCloseAssignment.effective_priority ?? 60,
               p_request_payload:
-                buildPreviousDayClosePayload(previousServiceDate),
+                buildPreviousDayClosePayload(previousDayCloseAssignment, previousServiceDate),
             }
           );
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { runnerGoalForRequestType } from "@/features/automation/contracts/runnerGoal";
 
 type Template = {
   id: string;
@@ -67,7 +68,8 @@ export default function AutomationWorkbench({ templates, saveAction }: { templat
     request_type: draft.requestType,
     date_mode: draft.dateMode,
     intent: draft.purpose,
-    runner_goal: draft.name || "Untitled work instruction",
+    runner_goal: runnerGoalForRequestType(draft.requestType),
+    runner_goal_label: draft.name || "Untitled work instruction",
     collect_scope: draft.reports.join("+").toLowerCase(),
     retry_policy: draft.retry,
     success_statement: draft.success,
@@ -110,7 +112,7 @@ export default function AutomationWorkbench({ templates, saveAction }: { templat
       <div className="automation-library-list">{templates.length === 0 ? <div className="automation-library-empty">No saved tickets.</div> : templates.map((template) => { const payload = template.default_payload_json ?? {}; const targets = Array.isArray(payload.targets) ? payload.targets : []; return <article className="automation-library-record" key={template.id}>
         <div className="automation-library-record__identity"><span className={`automation-ticket-state ${template.is_active ? "is-published" : ""}`}>{template.is_active ? "Published" : "Draft"}</span><h3>{template.template_name}</h3><code>{template.template_key}</code><p>{template.description || "No purpose statement recorded."}</p></div>
         <dl className="automation-library-record__facts"><div><dt>Business period</dt><dd>{String(payload.date_mode ?? template.default_collection_mode ?? "Not defined").replaceAll("_", " ")}</dd></div><div><dt>Collection</dt><dd>{targets.map((target: any) => target.label).filter(Boolean).join(" · ") || "No targets defined"}</dd></div><div><dt>Failure behavior</dt><dd>{String(payload.retry_policy ?? "Not defined").replaceAll("_", " ")}</dd></div><div><dt>Priority</dt><dd>{template.default_priority}</dd></div></dl>
-        <button type="button" className="secondary-action automation-library-open" onClick={() => { setDraft(fromTemplate(template)); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Open in workbench</button>
+        <button type="button" className="automation-action-button automation-action-button--secondary automation-library-open" onClick={() => { setDraft(fromTemplate(template)); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Open in workbench</button>
       </article>; })}</div>
     </section>
   </div>;

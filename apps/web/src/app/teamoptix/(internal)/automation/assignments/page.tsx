@@ -65,6 +65,7 @@ async function saveWorkOrderRule(formData: FormData) {
     p_end_time: requestType === "HISTORICAL_BACKFILL" ? null : endTime,
     p_route_scope: text(formData, "routeScope") || "full_active_route_set",
     p_assignment_payload_json: {
+      ...payload,
       authored_from: "teamoptix_ticket_terminal",
       operational_contract: operationalContract,
       request_type: requestType,

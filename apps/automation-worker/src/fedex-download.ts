@@ -1,7 +1,7 @@
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { chromium, type Browser, type Frame, type Page } from "playwright";
+import { chromium, type Browser, type Frame, type Locator, type Page } from "playwright";
 import { uploadAutomationArtifact } from "./artifact-storage.js";
 import { makeRunLogger } from "./run-log.js";
 
@@ -228,6 +228,104 @@ async function findDswPage(pages: Page[], parentPage: Page) {
   return null;
 }
 
+function formatFedexServiceDate(serviceDate: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(serviceDate);
+  if (!match) throw new Error(`Invalid DSW service date: ${serviceDate}. Expected YYYY-MM-DD.`);
+
+  const [, year, month, day] = match;
+  const parsed = new Date(`${serviceDate}T12:00:00Z`);
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.getUTCFullYear() !== Number(year) ||
+    parsed.getUTCMonth() + 1 !== Number(month) ||
+    parsed.getUTCDate() !== Number(day)
+  ) {
+    throw new Error(`Invalid DSW service date: ${serviceDate}.`);
+  }
+
+  return `${month}/${day}/${year}`;
+}
+
+async function findDswDateInput(page: Page): Promise<Locator | null> {
+  const candidates = [
+    "input[type='date']",
+    "input[name*='serviceDate' i]",
+    "input[id*='serviceDate' i]",
+    "input[name*='activityDate' i]",
+    "input[id*='activityDate' i]",
+    "input[name*='reportDate' i]",
+    "input[id*='reportDate' i]",
+    "input[name*='date' i]",
+    "input[id*='date' i]",
+    "input[placeholder*='date' i]",
+    "input.formField-header",
+  ];
+
+  for (const selector of candidates) {
+    const matches = page.locator(selector);
+    const count = await matches.count().catch(() => 0);
+    for (let index = 0; index < count; index += 1) {
+      const candidate = matches.nth(index);
+      if (await candidate.isVisible().catch(() => false)) return candidate;
+    }
+  }
+
+  return null;
+}
+
+async function selectDswServiceDate(page: Page, serviceDate: string, runId?: string | null) {
+  const fedexDate = formatFedexServiceDate(serviceDate);
+  const dateInput = await findDswDateInput(page);
+
+  if (!dateInput) {
+    const diagnostic = await saveDiagnostic(page, "dsw-service-date-input-missing", runId);
+    throw new Error(
+      `DSW ${serviceDate} was requested, but the FedEx service-date control was not found. Diagnostic: ${diagnostic.htmlPath}`
+    );
+  }
+
+  const inputType = (await dateInput.getAttribute("type").catch(() => null))?.toLowerCase();
+  const inputValue = inputType === "date" ? serviceDate : fedexDate;
+
+  await dateInput.click({ timeout: 10000 });
+  await dateInput.fill(inputValue, { timeout: 10000 });
+  await dateInput.dispatchEvent("input");
+  await dateInput.dispatchEvent("change");
+  await dateInput.blur();
+
+  const appliedValue = await dateInput.inputValue();
+  const normalizedApplied = appliedValue.replace(/[^0-9]/g, "");
+  const normalizedExpected = inputValue.replace(/[^0-9]/g, "");
+  if (normalizedApplied !== normalizedExpected) {
+    throw new Error(
+      `FedEx did not retain requested DSW service date ${serviceDate}; the control contains ${appliedValue || "an empty value"}.`
+    );
+  }
+
+  const applyCandidates = [
+    page.getByRole("button", { name: /^(view|search|apply|go|submit|refresh)$/i }),
+    page.locator("input[type='submit'][value*='View' i]"),
+    page.locator("input[type='submit'][value*='Search' i]"),
+    page.locator("input[type='button'][value*='Go' i]"),
+  ];
+
+  let applied = false;
+  for (const candidate of applyCandidates) {
+    if ((await candidate.count().catch(() => 0)) === 0) continue;
+    const button = candidate.first();
+    if (!(await button.isVisible().catch(() => false))) continue;
+    await button.click({ timeout: 10000 });
+    applied = true;
+    break;
+  }
+
+  if (!applied) await dateInput.press("Enter").catch(() => undefined);
+  await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => undefined);
+  await page.waitForTimeout(5000);
+
+  return { serviceDate, fedexDate, inputValue, applied };
+}
+
 async function createBrowser(): Promise<Browser> {
   return chromium.launch({ headless: true });
 }
@@ -319,6 +417,12 @@ export async function downloadDswExcel(input: {
     console.log("[DSW] dsw-page:ready");
     await dswPage.locator("select#facilitySelect").first().waitFor({ timeout: 60000 });
 
+    if (input.serviceDate) {
+      console.log("[DSW] service-date:select", input.serviceDate);
+      const selection = await selectDswServiceDate(dswPage, input.serviceDate, input.runId);
+      await runLog.log("service-date:selected", selection);
+    }
+
     const excelIcon = dswPage.locator("img.downloadIcon[alt='Excel'],download-icon img[alt='Excel'], img[alt='Excel']").last();
 
     if ((await excelIcon.count()) === 0) {
@@ -408,7 +512,7 @@ export async function downloadDswExcel(input: {
 
     return {
       ok: true,
-      stage: "today_dsw_excel_download",
+      stage: input.serviceDate ? "dated_dsw_excel_download" : "today_dsw_excel_download",
       dswUrl: dswPage.url(),
       dswTitle: await dswPage.title().catch(() => ""),
       excelDownload: {

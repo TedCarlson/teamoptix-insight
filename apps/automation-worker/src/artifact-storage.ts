@@ -53,12 +53,31 @@ export async function uploadAutomationArtifact(input: {
   const { error } = await supabase.storage
     .from(ARTIFACT_BUCKET)
     .upload(artifactPath, buffer, {
-      upsert: true,
+      upsert: false,
       contentType: "application/vnd.ms-excel",
     });
 
   if (error) {
     throw new Error(error.message);
+  }
+
+  const { data: verificationBlob, error: verificationError } = await supabase.storage
+    .from(ARTIFACT_BUCKET)
+    .download(artifactPath);
+
+  if (verificationError || !verificationBlob) {
+    throw new Error(
+      `Artifact upload could not be verified in storage: ${verificationError?.message ?? "object was not readable"}`
+    );
+  }
+
+  const verificationBuffer = Buffer.from(await verificationBlob.arrayBuffer());
+  const verificationHash = createHash("sha256")
+    .update(verificationBuffer)
+    .digest("hex");
+
+  if (verificationHash !== hash) {
+    throw new Error(`Artifact storage verification failed for ${artifactPath}: source and stored hashes differ.`);
   }
 
   return {
@@ -67,6 +86,8 @@ export async function uploadAutomationArtifact(input: {
     artifactFilename: input.suggestedFilename,
     artifactSize: fileStat.size,
     artifactHash: hash,
+    artifactStorageVerified: true,
+    artifactStorageVerifiedAt: new Date().toISOString(),
     artifactUploadedAt: new Date().toISOString(),
   };
 }

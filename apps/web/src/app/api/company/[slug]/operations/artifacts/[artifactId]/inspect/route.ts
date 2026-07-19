@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import { resolveCompanyBySlug } from "@/features/automation/server/automation.repository";
 
 export const runtime = "nodejs";
@@ -384,5 +385,70 @@ export async function POST(_req: NextRequest, context: RouteContext) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Artifact inspection failed.";
     return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function DELETE(_req: NextRequest, context: RouteContext) {
+  try {
+    const { slug, artifactId } = await context.params;
+    const session = await getSupabaseServerClient();
+    const { data: auth, error: userError } = await session.auth.getUser();
+    if (userError || !auth.user) {
+      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    }
+
+    const { data: access, error: accessError } = await session.rpc("access_context");
+    if (accessError) {
+      return NextResponse.json({ error: accessError.message }, { status: 500 });
+    }
+    if (!access?.is_platform_owner) {
+      return NextResponse.json({ error: "Platform owner access required." }, { status: 403 });
+    }
+
+    const resolved = await resolveCompanyBySlug(session, slug);
+    if (!resolved.company) {
+      return NextResponse.json({ error: resolved.error ?? "Company not found." }, { status: 404 });
+    }
+
+    const admin = createSupabaseServiceRoleClient();
+    const { data: artifact, error: artifactError } = await admin
+      .from("operations_collection_artifact_v")
+      .select("id,company_id,storage_bucket,storage_path,artifact_status,original_filename")
+      .eq("id", artifactId)
+      .eq("company_id", resolved.company.id)
+      .maybeSingle();
+
+    if (artifactError) {
+      return NextResponse.json({ error: artifactError.message }, { status: 500 });
+    }
+    if (!artifact) {
+      return NextResponse.json({ error: "Artifact not found." }, { status: 404 });
+    }
+    if (!artifact.storage_bucket || !artifact.storage_path) {
+      return NextResponse.json({ error: "Artifact has no storage object to remove." }, { status: 400 });
+    }
+
+    const { error: removeError } = await admin.storage
+      .from(artifact.storage_bucket)
+      .remove([artifact.storage_path]);
+    if (removeError) {
+      return NextResponse.json({ error: removeError.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      removed: {
+        artifact_id: artifact.id,
+        storage_bucket: artifact.storage_bucket,
+        storage_path: artifact.storage_path,
+        original_filename: artifact.original_filename,
+      },
+      artifact_record_retained: true,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Artifact removal failed." },
+      { status: 500 }
+    );
   }
 }

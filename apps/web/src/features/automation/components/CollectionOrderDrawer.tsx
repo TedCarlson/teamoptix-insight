@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { runnerGoalForRequestType } from "@/features/automation/contracts/runnerGoal";
 import type { CollectionOrderDraft, CollectionProfile } from "./automation.types";
 import { COLLECTION_TARGETS, defaultCollectionTargetKeys, requestedReportsFromTargets, selectedCollectionTargets, todayIso, yesterdayIso } from "./automationCollectionConfig";
 import { checkRow, drawerBackdrop, drawerPanel, fieldLabel, mutedCopy, orderSummaryBox, policyStrip, sourceBox, sourceTitle, summaryLabel, summaryLine, timeInputBox, twoCol } from "./automationStyles";
@@ -62,6 +63,8 @@ export function CollectionOrderDrawer(props: {
       request_payload: {
         source: "collection_center",
         request_origin: "manual_collection_order",
+        request_type: profile.type,
+        date_mode: isDateRange ? "SELECTED_RANGE" : "SELECTED_DATE",
         customer_language: profile.title,
         intent: profile.type.toLowerCase(),
         collect_scope:
@@ -79,12 +82,23 @@ export function CollectionOrderDrawer(props: {
           vps_target: target.vps_target,
           expected_filename_match: target.expected_filename_match,
         })),
-        runner_goal:
-          profile.type === "TARGETED_RECOVERY"
-            ? "litmus_test_runtime_and_capability"
-            : profile.type === "HISTORICAL_BACKFILL" && timeMachinePriorityMode === "onboarding"
-              ? "onboarding_historical_foundation"
-              : null,
+        runner_goal: runnerGoalForRequestType(profile.type),
+        runner_goal_label: profile.title,
+        resolved_service_date: isDateRange ? null : serviceDate,
+        resolved_service_date_start: isDateRange ? startDate : null,
+        resolved_service_date_end: isDateRange ? endDate : null,
+        date_selection_contract: isDateRange
+          ? {
+              authority: "ticket_service_date_range",
+              exact_start: startDate,
+              exact_end: endDate,
+              instruction: "Collect one unchanged source workbook for every service date in this exact inclusive range.",
+            }
+          : {
+              authority: "ticket_service_date",
+              exact_date: serviceDate,
+              instruction: "Collect the unchanged source artifact for this exact service date.",
+            },
         priority_mode:
           profile.type === "HISTORICAL_BACKFILL"
             ? timeMachinePriorityMode
@@ -280,4 +294,3 @@ export function CollectionOrderDrawer(props: {
     </div>
   );
 }
-
