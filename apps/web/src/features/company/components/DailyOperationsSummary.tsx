@@ -30,7 +30,76 @@ type SummaryPayload = {
     route_count: number;
     normalized_row_json: Record<string, unknown>;
   } | null;
+  time_critical: {
+    early_late_pickups: number;
+    potential_missed_pickups: number;
+    express: {
+      package_count: number;
+      completed_package_count: number;
+      open_package_count: number;
+      tracking_gap_package_count: number;
+    };
+  };
+  dispatch_actions: DispatchAction[];
 };
+
+type DispatchAction = {
+  id: string;
+  event_code: string;
+  event_label: string;
+  event_category: string;
+  route_key: string | null;
+  route_label: string | null;
+  seat: string | null;
+  person_name: string | null;
+  from_route_key: string | null;
+  from_route_label: string | null;
+  to_route_key: string | null;
+  to_route_label: string | null;
+  note: string | null;
+  created_at: string;
+  created_by_name: string | null;
+};
+
+type WatchlistNote = {
+  id: string;
+  note_type: "NOTE" | "ACTION" | "RESOLUTION" | "CORRECTION";
+  body: string;
+  client_visible: boolean;
+  created_at: string;
+  created_by_name: string | null;
+};
+
+type WatchlistItem = {
+  id: string;
+  service_date: string;
+  signal_type: string;
+  route_key: string | null;
+  title: string;
+  detail: string;
+  source_family: string;
+  severity: "INFO" | "WATCH" | "RISK" | "CRITICAL";
+  status: "NEW" | "ACKNOWLEDGED" | "IN_PROGRESS" | "MONITORING" | "RESOLVED" | "DISMISSED";
+  resolution_class: string | null;
+  assigned_profile_id: string | null;
+  assigned_to_name: string | null;
+  due_at: string | null;
+  client_visible: boolean;
+  updated_at: string;
+  notes: WatchlistNote[];
+  evidence: {
+    packages: Array<{
+      route_key: string;
+      route_label: string | null;
+      tracking_id: string | null;
+      st_number: string | null;
+      sid: string | null;
+      signal_state: "OPEN" | "TRACKING_GAP" | "COMPLETED";
+    }>;
+  };
+};
+
+type WatchlistAssignee = { id: string; name: string; title: string | null };
 
 type ReportMetric = {
   label: string;
@@ -82,6 +151,60 @@ function dateLabel(dateIso: string) {
   }).format(new Date(`${dateIso}T12:00:00.000Z`));
 }
 
+function timeLabel(timestamp: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/New_York",
+  }).format(new Date(timestamp));
+}
+
+function dispatchActionContext(action: DispatchAction) {
+  const route = action.route_label || action.route_key;
+  const from = action.from_route_label || action.from_route_key;
+  const to = action.to_route_label || action.to_route_key;
+  const movement = from || to ? [from || "Unassigned", to || "Unassigned"].join(" → ") : null;
+  return [route, movement, action.person_name, action.seat].filter(Boolean).join(" · ");
+}
+
+function rollupDispatchActions(actions: DispatchAction[]) {
+  const groups = new Map<string, {
+    key: string;
+    label: string;
+    category: string;
+    actions: DispatchAction[];
+    contexts: string[];
+    notes: string[];
+  }>();
+
+  for (const action of actions) {
+    const key = `${action.event_category}:${action.event_code}`;
+    const group = groups.get(key) ?? {
+      key,
+      label: action.event_label,
+      category: action.event_category,
+      actions: [],
+      contexts: [],
+      notes: [],
+    };
+    const context = dispatchActionContext(action);
+    group.actions.push(action);
+    if (context && !group.contexts.includes(context)) group.contexts.push(context);
+    if (action.note && !group.notes.includes(action.note)) group.notes.push(action.note);
+    groups.set(key, group);
+  }
+
+  return Array.from(groups.values()).sort((a, b) =>
+    new Date(a.actions[0].created_at).getTime() - new Date(b.actions[0].created_at).getTime()
+  );
+}
+
+function dispatchTimeRange(actions: DispatchAction[]) {
+  const first = timeLabel(actions[0].created_at);
+  const last = timeLabel(actions[actions.length - 1].created_at);
+  return first === last ? first : `${first}–${last}`;
+}
+
 function calendarCells(monthIso: string) {
   const first = new Date(`${monthStart(monthIso)}T12:00:00.000Z`);
   const startOffset = (first.getUTCDay() + 1) % 7;
@@ -113,11 +236,6 @@ function pct(value: number) {
 
 function safeDiv(a: number, b: number) {
   return b ? a / b : 0;
-}
-
-function signalFor(current: number, average: number, higherIsGood = true): ReportMetric["signal"] {
-  if (!average || Math.abs(current - average) < 0.001) return "neutral";
-  return higherIsGood ? (current > average ? "up" : "down") : current < average ? "up" : "down";
 }
 
 function signalGlyph(signal?: ReportMetric["signal"]) {
@@ -287,6 +405,287 @@ function SignalRow(props: { tone: "clear" | "watch" | "risk"; title: string; det
   );
 }
 
+function KpiCard(props: { label: string; value: string; detail: string; tone?: "neutral" | "good" | "watch" | "risk" | "data" }) {
+  const tones = {
+    neutral: { border: "#cbd5e1", bg: "#ffffff", fg: "#0f172a" },
+    good: { border: "#22c55e", bg: "#f0fdf4", fg: "#166534" },
+    watch: { border: "#f59e0b", bg: "#fffbeb", fg: "#92400e" },
+    risk: { border: "#ef4444", bg: "#fef2f2", fg: "#991b1b" },
+    data: { border: "#8b5cf6", bg: "#f5f3ff", fg: "#6d28d9" },
+  };
+  const tone = tones[props.tone ?? "neutral"];
+  return (
+    <article
+      style={{
+        borderTop: `4px solid ${tone.border}`,
+        borderRight: `1px solid ${tone.border}`,
+        borderBottom: `1px solid ${tone.border}`,
+        borderLeft: `1px solid ${tone.border}`,
+        borderRadius: 14,
+        padding: "12px 13px",
+        background: tone.bg,
+        minHeight: 92,
+      }}
+    >
+      <div style={{ color: "#64748b", fontSize: 10, fontWeight: 950, letterSpacing: "0.08em", textTransform: "uppercase" }}>{props.label}</div>
+      <strong style={{ display: "block", color: tone.fg, fontSize: 23, lineHeight: 1.1, marginTop: 7 }}>{props.value}</strong>
+      <span style={{ display: "block", color: "#64748b", fontSize: 11, marginTop: 6 }}>{props.detail}</span>
+    </article>
+  );
+}
+
+function prettyStatus(value: string) {
+  return value.toLowerCase().replaceAll("_", " ").replace(/(^|\s)\S/g, (letter) => letter.toUpperCase());
+}
+
+type WatchlistWorkflow = {
+  title: string;
+  objective: string;
+  steps: string[];
+  recommendedState: WatchlistItem["status"];
+  noteType: WatchlistNote["note_type"];
+  notePrompt: string;
+};
+
+function workflowForSignal(signalType: string): WatchlistWorkflow {
+  const workflows: Record<string, WatchlistWorkflow> = {
+    ILS_TARGET_MISS: {
+      title: "Review service exceptions and document the response",
+      objective: "Identify the service-code or scan pattern behind the ILS miss, then leave a concise corrective plan for the operating review.",
+      steps: [
+        "Review DSW code performance and exception counts.",
+        "Identify the affected routes, drivers, or systemic condition.",
+        "Record the finding and the corrective action or coaching plan.",
+        "Move the item to Monitoring; resolve it after the follow-up is confirmed.",
+      ],
+      recommendedState: "IN_PROGRESS",
+      noteType: "ACTION",
+      notePrompt: "Summarize the exception pattern, likely cause, and corrective plan. Keep the record factual and action-oriented.",
+    },
+    EXPRESS_OPEN: {
+      title: "Confirm the disposition of incomplete Express packages",
+      objective: "Investigate each manifest-linked package whose associated stop is not marked complete. This is an incomplete source status, not yet a confirmed service failure.",
+      steps: [
+        "Review each tracking ID in the evidence list.",
+        "Confirm disposition with the driver, terminal, or authoritative tracking source.",
+        "Record the verified outcome and any escalation or correction.",
+        "Resolve using the disposition supported by the investigation.",
+      ],
+      recommendedState: "IN_PROGRESS",
+      noteType: "ACTION",
+      notePrompt: "Record the tracking IDs reviewed, confirmed disposition, and any terminal or driver follow-up.",
+    },
+    EXPRESS_TRACKING_GAP: {
+      title: "Reconcile the Express stop-link gap",
+      objective: "Determine why the package has no matching completion link. The package remains provisionally treated as delivered until contrary evidence is found.",
+      steps: [
+        "Review the tracking ID and manifest identifiers below.",
+        "Compare the package with the authoritative tracking or terminal record.",
+        "Correct the source linkage or record the confirmed disposition.",
+        "Resolve as a tracking gap, source-data error, or verified service failure.",
+      ],
+      recommendedState: "IN_PROGRESS",
+      noteType: "CORRECTION",
+      notePrompt: "Record the tracking IDs reconciled, the authoritative result, and any linkage correction required.",
+    },
+    EARLY_LATE_PICKUPS: {
+      title: "Review early and late pickup execution",
+      objective: "Explain the DSW timing exception and document whether an operating response is required.",
+      steps: [
+        "Review the E/L pickup entries and scheduled windows.",
+        "Confirm actual execution time and operating context.",
+        "Record the cause, customer impact, and corrective response.",
+        "Monitor recurrence or resolve when the review is complete.",
+      ],
+      recommendedState: "IN_PROGRESS",
+      noteType: "ACTION",
+      notePrompt: "Summarize the pickup timing review, cause, impact, and corrective response.",
+    },
+    POTENTIAL_MISSED_PICKUPS: {
+      title: "Verify pickup completion before classifying the miss",
+      objective: "Confirm the pickup outcome against execution evidence before treating the DSW signal as a service failure.",
+      steps: [
+        "Identify the pickup and review the planned commitment.",
+        "Confirm the actual stop and package outcome.",
+        "Record the verified result and any recovery action.",
+        "Resolve as confirmed failure, corrected operation, or no action required.",
+      ],
+      recommendedState: "IN_PROGRESS",
+      noteType: "ACTION",
+      notePrompt: "Record the pickup reviewed, verified outcome, and recovery or follow-up action.",
+    },
+  };
+
+  return workflows[signalType] ?? {
+    title: "Validate the operating signal",
+    objective: "Establish what happened, record the evidence reviewed, and document the appropriate response.",
+    steps: ["Review the source evidence.", "Confirm the operating outcome.", "Record the response and disposition."],
+    recommendedState: "IN_PROGRESS",
+    noteType: "ACTION",
+    notePrompt: "Record what was reviewed, what happened, and what action is planned or complete.",
+  };
+}
+
+function WatchlistDrawer(props: {
+  item: WatchlistItem;
+  assignees: WatchlistAssignee[];
+  busy: boolean;
+  onClose: () => void;
+  onUpdate: (values: Partial<WatchlistItem>) => Promise<void>;
+  onAddNote: (body: string, noteType: string, clientVisible: boolean) => Promise<void>;
+}) {
+  const workflow = workflowForSignal(props.item.signal_type);
+  const [status, setStatus] = useState(props.item.status);
+  const [assignee, setAssignee] = useState(props.item.assigned_profile_id ?? "");
+  const [dueAt, setDueAt] = useState(props.item.due_at?.slice(0, 10) ?? "");
+  const [resolutionClass, setResolutionClass] = useState(props.item.resolution_class ?? "");
+  const [clientVisible, setClientVisible] = useState(props.item.client_visible);
+  const [noteBody, setNoteBody] = useState("");
+  const [noteType, setNoteType] = useState<WatchlistNote["note_type"]>(workflow.noteType);
+  const [noteVisible, setNoteVisible] = useState(true);
+  const [copiedTrackingId, setCopiedTrackingId] = useState<string | null>(null);
+  const isClosed = status === "RESOLVED" || status === "DISMISSED";
+
+  async function copyTrackingId(trackingId: string) {
+    try {
+      await navigator.clipboard.writeText(trackingId);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = trackingId;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
+    }
+
+    setCopiedTrackingId(trackingId);
+    window.setTimeout(() => {
+      setCopiedTrackingId((current) => current === trackingId ? null : current);
+    }, 1800);
+  }
+
+  return (
+    <div className="ops-watch-drawer-backdrop" onMouseDown={props.onClose}>
+      <aside className="ops-watch-drawer" aria-label="Watchlist action drawer" onMouseDown={(event) => event.stopPropagation()}>
+        <header className="ops-watch-drawer__header">
+          <div className="ops-watch-drawer__heading">
+            <div className="ops-watch-drawer__eyebrow"><span>Actionable watchlist</span><span className={`ops-watch-badge ops-watch-badge--${props.item.severity.toLowerCase()}`}>{prettyStatus(props.item.severity)}</span></div>
+            <h2>{props.item.title}</h2>
+            <p>{props.item.detail}</p>
+          </div>
+          <button className="ops-watch-drawer__close" type="button" aria-label="Close watchlist drawer" onClick={props.onClose}>×</button>
+        </header>
+
+        <div className="ops-watch-drawer__body">
+          <section className="ops-watch-signal-card">
+            <div><span>Route</span><strong>{props.item.route_key ?? "All routes"}</strong></div>
+            <div><span>Service date</span><strong>{dateLabel(props.item.service_date)}</strong></div>
+            <div><span>Source</span><strong>{props.item.source_family}</strong></div>
+            <div><span>Current state</span><strong>{prettyStatus(props.item.status)}</strong></div>
+          </section>
+
+          <section className="ops-watch-panel ops-watch-workflow">
+            <div className="ops-watch-panel__header">
+              <div><span className="ops-watch-panel__eyebrow">Workflow expectation</span><h3>{workflow.title}</h3></div>
+              <span className="ops-watch-state ops-watch-state--open">Next · {prettyStatus(workflow.recommendedState)}</span>
+            </div>
+            <p className="ops-watch-workflow__objective">{workflow.objective}</p>
+            <ol className="ops-watch-workflow__steps">{workflow.steps.map((step) => <li key={step}>{step}</li>)}</ol>
+            {props.item.evidence.packages.length ? (
+              <div className="ops-watch-evidence">
+                <div className="ops-watch-evidence__header"><strong>Package evidence</strong><span>{props.item.evidence.packages.length} tracking {props.item.evidence.packages.length === 1 ? "ID" : "IDs"}</span></div>
+                <div className="ops-watch-evidence__list">
+                  {props.item.evidence.packages.map((entry, index) => (
+                    <article key={`${entry.tracking_id ?? "missing"}-${index}`}>
+                      <span>{entry.signal_state === "OPEN" ? "Incomplete stop link" : "Tracking-link gap"}</span>
+                      {entry.tracking_id ? (
+                        <button
+                          className={`ops-watch-evidence__tracking${copiedTrackingId === entry.tracking_id ? " ops-watch-evidence__tracking--copied" : ""}`}
+                          type="button"
+                          title="Copy tracking number"
+                          aria-label={`Copy tracking number ${entry.tracking_id}`}
+                          onClick={() => copyTrackingId(entry.tracking_id as string)}
+                        >
+                          <strong>{entry.tracking_id}</strong>
+                          <span aria-live="polite">{copiedTrackingId === entry.tracking_id ? "Copied" : "Copy"}</span>
+                        </button>
+                      ) : <strong>Tracking number unavailable</strong>}
+                      <small>{[entry.route_label || entry.route_key, entry.st_number ? `Stop ${entry.st_number}` : null, entry.sid ? `SID ${entry.sid}` : null].filter(Boolean).join(" · ")}</small>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </section>
+
+          <section className="ops-watch-panel">
+            <div className="ops-watch-panel__header">
+              <div><span className="ops-watch-panel__eyebrow">Decision controls</span><h3>Ownership and disposition</h3></div>
+              <span className={`ops-watch-state ops-watch-state--${isClosed ? "closed" : "open"}`}>{isClosed ? "Closed" : "Action required"}</span>
+            </div>
+            <div className="ops-watch-form-grid">
+              <label className="ops-watch-field">Status
+                <select value={status} onChange={(event) => setStatus(event.target.value as WatchlistItem["status"])}>
+              {(["NEW", "ACKNOWLEDGED", "IN_PROGRESS", "MONITORING", "RESOLVED", "DISMISSED"] as const).map((value) => <option key={value} value={value}>{prettyStatus(value)}</option>)}
+                </select>
+              </label>
+              <label className="ops-watch-field">Owner
+                <select value={assignee} onChange={(event) => setAssignee(event.target.value)}>
+              <option value="">Unassigned</option>
+              {props.assignees.map((person) => <option key={person.id} value={person.id}>{person.name}{person.title ? ` · ${person.title}` : ""}</option>)}
+                </select>
+              </label>
+              <label className="ops-watch-field">Due date
+                <input type="date" value={dueAt} onChange={(event) => setDueAt(event.target.value)} />
+              </label>
+              <label className="ops-watch-field">Resolution
+                <select value={resolutionClass} onChange={(event) => setResolutionClass(event.target.value)}>
+              <option value="">Not resolved</option>
+              {["SERVICE_FAILURE_CONFIRMED", "CORRECTED_OPERATIONALLY", "TRACKING_GAP", "SOURCE_DATA_ERROR", "NO_ACTION_REQUIRED", "ESCALATED_EXTERNALLY"].map((value) => <option key={value} value={value}>{prettyStatus(value)}</option>)}
+                </select>
+              </label>
+            </div>
+            <div className="ops-watch-panel__footer">
+              <label className="ops-watch-visibility"><input type="checkbox" checked={clientVisible} onChange={(event) => setClientVisible(event.target.checked)} /><span><strong>Client report visibility</strong><small>Include this item in shared operating briefs.</small></span></label>
+              <button className="button buttonPrimary" type="button" disabled={props.busy} onClick={() => props.onUpdate({ status, assigned_profile_id: assignee || null, due_at: dueAt || null, resolution_class: resolutionClass || null, client_visible: clientVisible })}>{props.busy ? "Saving…" : "Save changes"}</button>
+            </div>
+          </section>
+
+          <section className="ops-watch-panel">
+            <div className="ops-watch-panel__header"><div><span className="ops-watch-panel__eyebrow">Evidence ledger</span><h3>Action trail</h3></div><span className="ops-watch-note-count">{props.item.notes.length} entries</span></div>
+          <div className="ops-watch-timeline">
+            {props.item.notes.length ? props.item.notes.map((note) => (
+              <article key={note.id} className="ops-watch-timeline__entry">
+                <div className="ops-watch-timeline__meta">
+                  <span>{prettyStatus(note.note_type)}{note.client_visible ? " · Client visible" : " · Internal"}</span>
+                  <span>{new Date(note.created_at).toLocaleString()}</span>
+                </div>
+                <p>{note.body}</p>
+                <small>{note.created_by_name ?? "Team Optix"}</small>
+              </article>
+            )) : <div className="ops-watch-empty"><strong>No activity recorded</strong><span>Record the first action below to establish the management trail.</span></div>}
+          </div>
+
+          <div className="ops-watch-composer">
+            <div className="ops-watch-composer__header"><div><span className="ops-watch-panel__eyebrow">Next action</span><h3>Record work performed</h3></div></div>
+            <div className="ops-watch-composer__controls">
+              <label className="ops-watch-field">Entry type<select value={noteType} onChange={(event) => setNoteType(event.target.value as WatchlistNote["note_type"])}>
+                <option value="ACTION">Action taken</option><option value="NOTE">Note</option><option value="RESOLUTION">Resolution</option><option value="CORRECTION">Data correction</option>
+              </select></label>
+              <label className="ops-watch-visibility ops-watch-visibility--compact"><input type="checkbox" checked={noteVisible} onChange={(event) => setNoteVisible(event.target.checked)} /><span><strong>Client visible</strong><small>Show in the shared report.</small></span></label>
+            </div>
+            <textarea className="ops-watch-composer__textarea" value={noteBody} onChange={(event) => setNoteBody(event.target.value)} rows={4} placeholder={workflow.notePrompt} />
+            <div className="ops-watch-composer__footer"><span>{noteBody.trim().length ? `${noteBody.trim().length} characters` : "A concise operational record is best."}</span><button className="button buttonPrimary" type="button" disabled={props.busy || !noteBody.trim()} onClick={async () => { await props.onAddNote(noteBody.trim(), noteType, noteVisible); setNoteBody(""); }}>Add entry</button></div>
+          </div>
+        </section>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
 export default function DailyOperationsSummary({ slug }: { slug: string }) {
   const today = todayNyIso();
   const defaultDate = addDaysIso(today, -1);
@@ -296,6 +695,16 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
   const [calendarDays, setCalendarDays] = useState<CalendarDay[]>([]);
   const [payload, setPayload] = useState<SummaryPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
+  const [assignees, setAssignees] = useState<WatchlistAssignee[]>([]);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [watchlistBusy, setWatchlistBusy] = useState(false);
+  const [watchlistError, setWatchlistError] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareRecipients, setShareRecipients] = useState("");
+  const [shareMessage, setShareMessage] = useState("");
+  const [shareStatus, setShareStatus] = useState<string | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
 
   const calendarMap = useMemo(
     () => new Map(calendarDays.map((day) => [day.service_date, day.status])),
@@ -356,6 +765,104 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
     };
   }, [slug, selectedDate]);
 
+  async function loadWatchlist() {
+    const res = await fetch(`/api/company/${slug}/operations/reports/watchlist?date=${selectedDate}`, {
+      cache: "no-store",
+      credentials: "include",
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setWatchlistError(data?.error ?? "Failed to load the Actionable Watchlist.");
+      return;
+    }
+    setWatchlist(Array.isArray(data.items) ? data.items : []);
+    setAssignees(Array.isArray(data.assignees) ? data.assignees : []);
+    setWatchlistError(null);
+  }
+
+  useEffect(() => {
+    let active = true;
+    const timer = window.setTimeout(() => {
+      if (active) void loadWatchlist();
+    }, 150);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+    // The summary request materializes canonical signal identities before this read.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug, selectedDate, payload?.summary?.batch_id]);
+
+  async function updateWatchlistItem(item: WatchlistItem, values: Partial<WatchlistItem>) {
+    setWatchlistBusy(true);
+    setWatchlistError(null);
+    try {
+      const next = { ...item, ...values };
+      const res = await fetch(`/api/company/${slug}/operations/reports/watchlist`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          item_id: item.id,
+          status: next.status,
+          assigned_profile_id: next.assigned_profile_id,
+          due_at: next.due_at,
+          resolution_class: next.resolution_class,
+          client_visible: next.client_visible,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "Failed to update watchlist item.");
+      await loadWatchlist();
+    } catch (caught) {
+      setWatchlistError(caught instanceof Error ? caught.message : "Failed to update watchlist item.");
+    } finally {
+      setWatchlistBusy(false);
+    }
+  }
+
+  async function addWatchlistNote(itemId: string, body: string, noteType: string, clientVisible: boolean) {
+    setWatchlistBusy(true);
+    setWatchlistError(null);
+    try {
+      const res = await fetch(`/api/company/${slug}/operations/reports/watchlist`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ item_id: itemId, body, note_type: noteType, client_visible: clientVisible }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "Failed to add action note.");
+      await loadWatchlist();
+    } catch (caught) {
+      setWatchlistError(caught instanceof Error ? caught.message : "Failed to add action note.");
+    } finally {
+      setWatchlistBusy(false);
+    }
+  }
+
+  async function shareReport() {
+    setShareBusy(true);
+    setShareStatus(null);
+    try {
+      const res = await fetch(`/api/company/${slug}/operations/reports/daily-operations-share`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ service_date: selectedDate, recipients: shareRecipients, message: shareMessage }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "Failed to share the report.");
+      setShareStatus(`Sent to ${data.recipients.join(", ")}.`);
+      setShareRecipients("");
+      setShareMessage("");
+    } catch (caught) {
+      setShareStatus(caught instanceof Error ? caught.message : "Failed to share the report.");
+    } finally {
+      setShareBusy(false);
+    }
+  }
+
   const summary = payload?.summary;
   const row = summary?.normalized_row_json ?? {};
 
@@ -376,6 +883,18 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
   const dna = n(row.dna);
   const exceptions = n(row.exceptions);
   const ilsPercent = n(row.ils_percent);
+  const earlyLatePickups = n(payload?.time_critical?.early_late_pickups);
+  const potentialMissedPickups = n(payload?.time_critical?.potential_missed_pickups);
+  const express = payload?.time_critical?.express ?? {
+    package_count: 0,
+    completed_package_count: 0,
+    open_package_count: 0,
+    tracking_gap_package_count: 0,
+  };
+  const pickupVariance = actPuStops - puStops;
+  const selectedWatchlistItem = watchlist.find((item) => item.id === selectedItemId) ?? null;
+  const openWatchlist = watchlist.filter((item) => !["RESOLVED", "DISMISSED"].includes(item.status));
+  const resolvedWatchlist = watchlist.filter((item) => ["RESOLVED", "DISMISSED"].includes(item.status));
 
   const avgVscan = safeDiv(vscan, routes);
   const avgDelStops = safeDiv(delStops, routes);
@@ -388,14 +907,14 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
 
   const routeStats: ReportMetric[] = [
     { label: "ROUTES", current: fmt(routes) },
-    { label: "VScan PKGS", current: fmt(avgVscan, 1), signal: signalFor(avgVscan, 100), average: "100" },
-    { label: "DEL STPS", current: fmt(avgDelStops, 1), signal: signalFor(avgDelStops, 66), average: "66" },
-    { label: "PU STPS", current: fmt(avgPuStops, 1), signal: signalFor(avgPuStops, 2), average: "2" },
-    { label: "DIFF", current: fmt(avgDiff, 1), signal: signalFor(avgDiff, 2, false), average: "2" },
-    { label: "ACT DEL STOPS", current: fmt(avgActDelStops, 1), signal: signalFor(avgActDelStops, 63), average: "63" },
-    { label: "ACT DEL PKGS", current: fmt(avgActDelPkgs, 1), signal: signalFor(avgActDelPkgs, 96), average: "96" },
-    { label: "ACT PU STPS", current: fmt(avgActPuStops, 1), signal: signalFor(avgActPuStops, 2), average: "2" },
-    { label: "ACT PU PKGS", current: fmt(avgActPuPkgs, 1), signal: signalFor(avgActPuPkgs, 9), average: "9" },
+    { label: "VScan PKGS / ROUTE", current: fmt(avgVscan, 1) },
+    { label: "DEL STPS / ROUTE", current: fmt(avgDelStops, 1) },
+    { label: "PU STPS / ROUTE", current: fmt(avgPuStops, 1) },
+    { label: "DIFF / ROUTE", current: fmt(avgDiff, 1) },
+    { label: "ACT DEL STOPS / ROUTE", current: fmt(avgActDelStops, 1) },
+    { label: "ACT DEL PKGS / ROUTE", current: fmt(avgActDelPkgs, 1) },
+    { label: "ACT PU STPS / ROUTE", current: fmt(avgActPuStops, 1) },
+    { label: "ACT PU PKGS / ROUTE", current: fmt(avgActPuPkgs, 1) },
   ];
 
   const rlsRate = 100 - safeDiv(rls, vscan) * 100;
@@ -432,6 +951,7 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
 
   return (
     <section
+      className="daily-operations-layout"
       style={{
         display: "grid",
         gridTemplateColumns: "minmax(0, 1fr) minmax(190px, 224px)",
@@ -441,14 +961,15 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
     >
       <section style={{ border: "1px solid #d7e2f2", borderRadius: 18, background: "#fff", padding: 16, boxShadow: "0 16px 32px rgba(15, 23, 42, 0.04)" }}>
           <header style={{ borderBottom: "1px solid #e2e8f0", paddingBottom: 10, marginBottom: 12 }}>
-            <div style={{ display: "grid", gap: 2 }}>
-              <h2 style={{ margin: 0, fontSize: 22 }}>{payload?.company_name ?? "Company"}</h2>
-              <div style={{ fontSize: 18, fontWeight: 750, color: "#475569" }}>
-                Daily Operations Summary
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 16 }}>
+              <div style={{ display: "grid", gap: 2 }}>
+                <h2 style={{ margin: 0, fontSize: 22 }}>{payload?.company_name ?? "Company"}</h2>
+                <div style={{ fontSize: 18, fontWeight: 750, color: "#475569" }}>Daily Operations Brief</div>
               </div>
+              <button className="button" type="button" disabled={!summary} onClick={() => { setShareStatus(null); setShareOpen(true); }}>Share report</button>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 8, marginTop: 12 }}>
+            <div className="daily-operations-meta" style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 8, marginTop: 12 }}>
               {reportMeta.map(([label, value]) => (
                 <div key={label} style={{ borderLeft: "3px solid #d7e2f2", paddingLeft: 8 }}>
                   <div style={{ color: "#64748b", fontSize: 10, fontWeight: 950, textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</div>
@@ -466,7 +987,27 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
             </ReportSection>
           ) : (
             <div style={{ display: "grid", gap: 14 }}>
-              <section style={{ display: "grid", gridTemplateColumns: "1.25fr 1.4fr", gap: 14 }}>
+              <section className="daily-operations-kpis" style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 9 }}>
+                <KpiCard label="Routes" value={fmt(routes)} detail="Routes represented in FINAL DSW" />
+                <KpiCard label="Delivery stops" value={`${fmt(actDelStops)} / ${fmt(delStops)}`} detail="Actual / planned" tone={actDelStops >= delStops ? "good" : "watch"} />
+                <KpiCard label="Delivery packages" value={`${fmt(actDelPkgs)} / ${fmt(vscan)}`} detail="Completed / tendered" tone={actDelPkgs >= vscan ? "good" : "data"} />
+                <KpiCard label="Pickups" value={`${fmt(actPuStops)} / ${fmt(puStops)}`} detail="Actual / planned" tone={potentialMissedPickups ? "risk" : pickupVariance < 0 ? "watch" : "good"} />
+                <KpiCard label="ILS" value={`${fmt(ilsPercent, 1)}%`} detail={`${fmt(ils)} impact packages`} tone={ilsPercent >= 99.5 ? "good" : "risk"} />
+                <KpiCard label="Express" value={`${fmt(express.open_package_count)} open`} detail={`${fmt(express.tracking_gap_package_count)} gaps / ${fmt(express.package_count)} total`} tone={express.open_package_count ? "watch" : express.tracking_gap_package_count ? "risk" : "good"} />
+              </section>
+
+              <ReportSection title="Time-critical execution">
+                <div className="daily-operations-critical" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+                  <SignalRow tone={express.open_package_count ? "watch" : "clear"} title={`Express · ${fmt(express.completed_package_count)} of ${fmt(express.package_count)} delivered or provisionally delivered`} detail={`${fmt(express.open_package_count)} manifest-linked incomplete packages. Incomplete status and tracking-link gaps remain separate.`} />
+                  <SignalRow tone={express.tracking_gap_package_count ? "risk" : "clear"} title={`Express tracking · ${fmt(express.tracking_gap_package_count)} gaps`} detail="A tracking gap is not presumed to be an undelivered package; it requires evidence review." />
+                  <SignalRow tone={earlyLatePickups ? "watch" : "clear"} title={`Pickup timing · ${fmt(earlyLatePickups)} early / late`} detail="DSW E/L pickup events that need timing review." />
+                  <SignalRow tone={potentialMissedPickups ? "risk" : "clear"} title={`Potential missed pickups · ${fmt(potentialMissedPickups)}`} detail="DSW potential-miss signal. Validate against pickup execution before closing." />
+                  <SignalRow tone={pickupVariance < 0 ? "watch" : "clear"} title={`Pickup coverage · ${fmt(actPuStops)} actual / ${fmt(puStops)} planned`} detail={`${pickupVariance >= 0 ? "+" : ""}${fmt(pickupVariance)} stop variance; ${fmt(actPuPkgs)} pickup packages.`} />
+                  <SignalRow tone={openWatchlist.length ? "watch" : "clear"} title={`Actionable watchlist · ${fmt(openWatchlist.length)} open`} detail={`${fmt(resolvedWatchlist.length)} resolved or dismissed items recorded for this service date.`} />
+                </div>
+              </ReportSection>
+
+              <section className="daily-operations-pair" style={{ display: "grid", gridTemplateColumns: "1.25fr 1.4fr", gap: 14 }}>
                 <ReportSection title="Volume">
                   <div style={{ display: "grid", gap: 12 }}>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
@@ -556,38 +1097,74 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
                 </ReportSection>
               </section>
 
-              <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <section className="daily-operations-pair" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                 <ReportSection title="Code Performance">
                   <CodePerformanceGrid rows={codeRows} />
                 </ReportSection>
 
                 <ReportSection title="Watchlist">
                   <div style={{ display: "grid", gap: 8 }}>
-                    <div
-                      style={{
-                        border: "1px dashed #cbd5e1",
-                        borderRadius: 12,
-                        padding: "9px 10px",
-                        background: "#f8fafc",
-                        color: "#475569",
-                        fontSize: 12,
-                        lineHeight: 1.35,
-                      }}
-                    >
-                      <strong style={{ display: "block", color: "#0f172a", marginBottom: 3 }}>
-                        No active operational concerns detected.
-                      </strong>
-                      This area surfaces pickup flags, helper-login signals, routes not dispatched, DOT-hour risks, and other operational exceptions.
-                    </div>
-
+                    {watchlistError ? <div style={{ color: "#b91c1c", fontWeight: 800, fontSize: 12 }}>{watchlistError}</div> : null}
+                    {openWatchlist.length ? openWatchlist.map((item) => {
+                      const tone = item.severity === "CRITICAL" ? { border: "#ef4444", bg: "#fef2f2" } : item.severity === "RISK" ? { border: "#f59e0b", bg: "#fffbeb" } : { border: "#60a5fa", bg: "#eff6ff" };
+                      return (
+                        <button key={item.id} type="button" onClick={() => setSelectedItemId(item.id)} style={{ width: "100%", textAlign: "left", border: `1px solid ${tone.border}`, borderLeftWidth: 5, borderRadius: 12, padding: "10px 11px", background: tone.bg, cursor: "pointer" }}>
+                          <span style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                            <strong style={{ color: "#0f172a" }}>{item.title}</strong>
+                            <span style={{ color: "#475569", fontSize: 10, fontWeight: 950, textTransform: "uppercase" }}>{prettyStatus(item.status)}</span>
+                          </span>
+                          <span style={{ display: "block", color: "#475569", fontSize: 11, marginTop: 3 }}>{item.detail}</span>
+                          <span style={{ display: "block", color: "#64748b", fontSize: 10, marginTop: 6 }}>Owner: {item.assigned_to_name ?? "Unassigned"} · {item.notes.length} action note{item.notes.length === 1 ? "" : "s"}</span>
+                        </button>
+                      );
+                    }) : (
+                      <div style={{ border: "1px dashed #86efac", borderRadius: 12, padding: "10px 11px", background: "#f0fdf4", color: "#166534", fontSize: 12 }}>
+                        <strong style={{ display: "block" }}>No open operational concerns.</strong>
+                        The FINAL report has no materialized Express, pickup, or service-quality signals requiring action.
+                      </div>
+                    )}
                   </div>
                 </ReportSection>
               </section>
 
-              <ReportSection title="Delivery Actions">
-                <p style={{ margin: 0, color: "#334155", fontSize: 13 }}>
-                  Driver assists, route rescues, package transfers, coverage actions, and supervisor interventions will surface here once the delivery actions seam is active.
-                </p>
+              <ReportSection title="Actions taken and resolutions">
+                {watchlist.flatMap((item) => item.notes.filter((note) => note.client_visible && ["ACTION", "RESOLUTION", "CORRECTION"].includes(note.note_type)).map((note) => ({ item, note }))).length ? (
+                  <div style={{ display: "grid", gap: 7 }}>
+                    {watchlist.flatMap((item) => item.notes.filter((note) => note.client_visible && ["ACTION", "RESOLUTION", "CORRECTION"].includes(note.note_type)).map((note) => ({ item, note }))).slice(0, 8).map(({ item, note }) => (
+                      <button key={note.id} type="button" onClick={() => setSelectedItemId(item.id)} style={{ display: "grid", gridTemplateColumns: "150px 1fr auto", gap: 12, alignItems: "center", border: 0, borderBottom: "1px solid #e2e8f0", background: "transparent", padding: "8px 0", textAlign: "left", cursor: "pointer" }}>
+                        <strong style={{ color: "#0f172a", fontSize: 12 }}>{item.title}</strong>
+                        <span style={{ color: "#475569", fontSize: 12 }}>{note.body}</span>
+                        <span style={{ color: "#64748b", fontSize: 10 }}>{prettyStatus(note.note_type)}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : <p style={{ margin: 0, color: "#64748b", fontSize: 13 }}>No client-visible actions have been recorded for this service date.</p>}
+              </ReportSection>
+
+              <ReportSection title="Dispatch actions">
+                {payload.dispatch_actions.length ? (
+                  <div className="daily-operations-dispatch-log">
+                    {rollupDispatchActions(payload.dispatch_actions).map((group) => {
+                      const authors = Array.from(new Set(group.actions.map((action) => action.created_by_name ?? "Dispatch")));
+                      return (
+                        <article key={group.key} className="daily-operations-dispatch-block">
+                          <div className="daily-operations-dispatch-title">
+                            <strong>{group.label}</strong>
+                            <span>{prettyStatus(group.category)}</span>
+                          </div>
+                          <strong className="daily-operations-dispatch-count">{group.actions.length}</strong>
+                          <p>{group.contexts.length ? group.contexts.join(" · ") : "Operational event"}</p>
+                          {group.notes.length ? <p className="daily-operations-dispatch-note">{group.notes.join(" · ")}</p> : null}
+                          <footer>{dispatchTimeRange(group.actions)} · {authors.join(", ")}</footer>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p style={{ margin: 0, color: "#64748b", fontSize: 13 }}>
+                    No dispatch actions were recorded for this service date.
+                  </p>
+                )}
               </ReportSection>
 
 
@@ -673,6 +1250,39 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
             </div>
           </section>
       </aside>
+      {selectedWatchlistItem ? (
+        <WatchlistDrawer
+          key={selectedWatchlistItem.id}
+          item={selectedWatchlistItem}
+          assignees={assignees}
+          busy={watchlistBusy}
+          onClose={() => setSelectedItemId(null)}
+          onUpdate={(values) => updateWatchlistItem(selectedWatchlistItem, values)}
+          onAddNote={(body, noteType, visible) => addWatchlistNote(selectedWatchlistItem.id, body, noteType, visible)}
+        />
+      ) : null}
+      {shareOpen ? (
+        <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(15,23,42,.44)", display: "grid", placeItems: "center", padding: 20 }} onMouseDown={() => setShareOpen(false)}>
+          <section onMouseDown={(event) => event.stopPropagation()} style={{ width: "min(520px, 100%)", borderRadius: 20, background: "#fff", padding: 22, boxShadow: "0 30px 80px rgba(15,23,42,.25)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <div><div style={{ color: "#059669", fontSize: 11, fontWeight: 950, textTransform: "uppercase", letterSpacing: ".1em" }}>Governed report share</div><h2 style={{ margin: "5px 0 0" }}>Email Daily Operations Brief</h2></div>
+              <button className="button" type="button" onClick={() => setShareOpen(false)} style={{ width: 40, height: 40, padding: 0 }}>×</button>
+            </div>
+            <p style={{ color: "#64748b" }}>A snapshot of the FINAL report, Express posture, and client-visible action state will be recorded at send time.</p>
+            <label style={{ display: "grid", gap: 5, fontWeight: 800, color: "#334155" }}>Recipients
+              <input type="text" value={shareRecipients} onChange={(event) => setShareRecipients(event.target.value)} placeholder="name@example.com, leader@example.com" />
+            </label>
+            <label style={{ display: "grid", gap: 5, fontWeight: 800, color: "#334155", marginTop: 12 }}>Message (optional)
+              <textarea rows={4} value={shareMessage} onChange={(event) => setShareMessage(event.target.value)} placeholder="Add context for the operating team…" />
+            </label>
+            {shareStatus ? <p style={{ color: shareStatus.startsWith("Sent") ? "#166534" : "#b91c1c", fontWeight: 800 }}>{shareStatus}</p> : null}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 9, marginTop: 16 }}>
+              <button className="button" type="button" onClick={() => setShareOpen(false)}>Cancel</button>
+              <button className="button buttonPrimary" type="button" disabled={shareBusy || !shareRecipients.trim()} onClick={shareReport}>{shareBusy ? "Sending…" : "Send report"}</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }
