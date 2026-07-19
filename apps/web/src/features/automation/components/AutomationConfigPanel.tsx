@@ -26,6 +26,7 @@ import {
 import type {
   AutomationConfigPanelProps,
   AutomationStatusResponse,
+  CollectionRecoveryCandidate,
   CollectionRequest,
   CredentialResponse,
 } from "./automation.types";
@@ -55,12 +56,16 @@ export default function AutomationConfigPanel(
   const [collectionRequests, setCollectionRequests] = useState<
     CollectionRequest[]
   >([]);
+  const [recoveryCandidates, setRecoveryCandidates] = useState<
+    CollectionRecoveryCandidate[]
+  >([]);
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [queuingRecovery, setQueuingRecovery] = useState<string | null>(null);
   const [showCredentialEditor, setShowCredentialEditor] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -134,13 +139,26 @@ export default function AutomationConfigPanel(
     );
   }, [props.slug]);
 
+  const loadRecoveryCandidates = useCallback(async () => {
+    const res = await fetch(
+      `/api/company/${props.slug}/collection-requests?mode=recovery&limit=50`,
+      { cache: "no-store", credentials: "include" }
+    );
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data?.error ?? "Failed to load recovery queue.");
+    }
+    setRecoveryCandidates(Array.isArray(data?.rows) ? data.rows : []);
+  }, [props.slug]);
+
   const loadAll = useCallback(async () => {
     await Promise.all([
       loadStatus(),
       loadCredential(),
       loadCollectionRequests(),
+      loadRecoveryCandidates(),
     ]);
-  }, [loadStatus, loadCredential, loadCollectionRequests]);
+  }, [loadStatus, loadCredential, loadCollectionRequests, loadRecoveryCandidates]);
 
   useEffect(() => {
     let active = true;
@@ -196,6 +214,7 @@ export default function AutomationConfigPanel(
       await Promise.all([
         loadStatus(),
         loadCollectionRequests(),
+        loadRecoveryCandidates(),
       ]);
     } catch (error) {
       setStatusError(
@@ -205,6 +224,34 @@ export default function AutomationConfigPanel(
       );
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function queueRecovery(candidate: CollectionRecoveryCandidate) {
+    try {
+      setQueuingRecovery(candidate.candidate_key);
+      setStatusError(null);
+      const res = await fetch(
+        `/api/company/${props.slug}/collection-requests`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            recovery_of_request_id: candidate.collection_request_id,
+            artifact_id: candidate.artifact_id,
+            service_date: candidate.service_date,
+          }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "Failed to queue recovery.");
+      await Promise.all([loadCollectionRequests(), loadRecoveryCandidates()]);
+      setMessage(`Recovery queued for ${candidate.service_date}.`);
+    } catch (error) {
+      setStatusError(error instanceof Error ? error.message : "Failed to queue recovery.");
+    } finally {
+      setQueuingRecovery(null);
     }
   }
 
@@ -579,7 +626,7 @@ export default function AutomationConfigPanel(
                 <th style={th}>Reports</th>
                 <th style={th}>Timing</th>
                 <th style={th}>Duration</th>
-                <th style={th}>Collection Output</th>
+                <th style={th}>Progress / Output</th>
               </tr>
             </thead>
 
@@ -612,9 +659,40 @@ export default function AutomationConfigPanel(
                     {formatDuration(request.duration_ms)}
                   </td>
                   <td style={td}>
-                    {`${request.report_count ?? 0} reports · ${
-                      request.manifest_count ?? 0
-                    } manifests · ${request.route_count ?? 0} routes`}
+                    <span style={{ display: "block", fontWeight: 850 }}>
+                      {`${request.ingested_count ?? 0}/${
+                        request.registered_count ?? 0
+                      } files ingested`}
+                    </span>
+                    {(request.ready_count ?? 0) > 0 ||
+                    (request.ingesting_count ?? 0) > 0 ||
+                    (request.failed_count ?? 0) > 0 ? (
+                      <span
+                        style={{
+                          display: "block",
+                          marginTop: 2,
+                          color:
+                            (request.failed_count ?? 0) > 0
+                              ? "#b91c1c"
+                              : "#64748b",
+                        }}
+                      >
+                        {`${request.ready_count ?? 0} ready · ${
+                          request.ingesting_count ?? 0
+                        } ingesting · ${request.failed_count ?? 0} failed`}
+                      </span>
+                    ) : null}
+                    <span
+                      style={{
+                        display: "block",
+                        marginTop: 2,
+                        color: "#64748b",
+                      }}
+                    >
+                      {`${request.report_count ?? 0} reports · ${
+                        request.manifest_count ?? 0
+                      } manifests · ${request.route_count ?? 0} routes`}
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -630,6 +708,51 @@ export default function AutomationConfigPanel(
           </table>
         </div>
       </SectionCard>
+
+      {recoveryCandidates.length > 0 ? (
+        <SectionCard eyebrow="Recovery Queue" title="Corrected recovery attempts">
+          <p style={mutedCopy}>
+            Failed files and missing service dates remain here until a governed
+            Targeted Recovery is queued.
+          </p>
+          <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+            {recoveryCandidates.map((candidate) => (
+              <div
+                key={candidate.candidate_key}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  padding: 12,
+                  border: "1px solid #dbe4f0",
+                  borderRadius: 14,
+                  background: "#fff",
+                }}
+              >
+                <div>
+                  <strong>{candidate.service_date}</strong>
+                  <span style={{ display: "block", color: "#64748b", marginTop: 2 }}>
+                    {candidate.report_family_key ?? candidate.failed_request_type}
+                    {candidate.original_filename ? ` · ${candidate.original_filename}` : ""}
+                    {` · ${candidate.attempt_count} prior ingest attempts`}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="button button-primary"
+                  disabled={!props.canEdit || queuingRecovery === candidate.candidate_key}
+                  onClick={() => queueRecovery(candidate)}
+                >
+                  {queuingRecovery === candidate.candidate_key
+                    ? "Queuing..."
+                    : "Queue Recovery"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      ) : null}
     </section>
   );
 }

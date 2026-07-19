@@ -64,12 +64,13 @@ async function failRequest(supabase: any, requestId: string, message: string) {
 async function completeRequest(supabase: any, requestId: string) {
   const { data: artifacts } = await supabase
     .from("operations_collection_artifact_v")
-    .select("artifact_status,report_batch_id,request_type,report_family_key,service_date,ingest_metadata_json")
+    .select("artifact_status,report_batch_id,request_type,request_status,report_family_key,service_date,ingest_metadata_json")
     .eq("collection_request_id", requestId)
     .eq("artifact_kind", "REPORT_FILE");
 
   const rows = artifacts ?? [];
   if (rows.some((row: any) => ["READY_FOR_INGEST", "INGESTING", "ARTIFACTS_READY"].includes(row.artifact_status))) return;
+  if (rows.some((row: any) => row.request_status !== "ARTIFACTS_READY")) return;
 
   const isPreviousDayClose = rows.some((row: any) => row.request_type === "PREVIOUS_DAY_CLOSE");
   if (isPreviousDayClose && (rows.length === 0 || !rows.every(isValidPreviousDayCloseArtifact))) {
@@ -181,9 +182,10 @@ export async function GET() {
     .from("operations_collection_artifact_v")
     .select("*")
     .eq("artifact_kind", "REPORT_FILE")
-    .eq("request_status", "ARTIFACTS_READY")
+    .in("request_status", ["RUNNING", "ARTIFACTS_READY", "INGESTING"])
     .in("artifact_status", ["READY_FOR_INGEST", "ARTIFACTS_READY"])
     .not("normalized_filename", "in", '("Delivery Manifest.xlsx","Pickup Manifest.xlsx","Combined Manifest.xlsx")')
+    .order("ingest_priority", { ascending: true })
     .order("created_at", { ascending: true })
     .limit(10);
 

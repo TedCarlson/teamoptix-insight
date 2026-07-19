@@ -79,9 +79,30 @@ export type CollectionRequest = {
   manifest_count: number;
   route_count: number;
   output_receipt_json: Record<string, unknown> | null;
+  lane_priority: number;
+  registered_count: number;
+  ready_count: number;
+  ingesting_count: number;
+  ingested_count: number;
+  failed_count: number;
   error_message: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type CollectionRecoveryCandidate = {
+  candidate_key: string;
+  artifact_id: string | null;
+  collection_request_id: string;
+  company_id: string;
+  company_slug: string;
+  service_date: string;
+  failed_request_type: string;
+  report_family_key: string | null;
+  original_filename: string | null;
+  error_message: string | null;
+  attempt_count: number;
+  failed_at: string | null;
 };
 
 export type ProtectedCollectionType =

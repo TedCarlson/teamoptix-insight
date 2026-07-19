@@ -56,6 +56,21 @@ export async function GET(
     const mode = String(req.nextUrl.searchParams.get("mode") ?? "queue").toLowerCase();
     const activeStatuses = ["QUEUED", "CLAIMED", "RUNNING", "ARTIFACTS_READY", "INGESTING"];
 
+    if (mode === "recovery") {
+      const { data, error } = await supabase
+        .from("operations_collection_recovery_candidate_v")
+        .select("*")
+        .eq("company_id", resolved.company.id)
+        .order("failed_at", { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        return NextResponse.json({ error: error.message, rows: [] }, { status: 500 });
+      }
+
+      return NextResponse.json({ rows: data ?? [] });
+    }
+
     if (mode === "today") {
       const timeZone = "America/New_York";
       const now = new Date();
@@ -160,6 +175,40 @@ export async function POST(
     const { slug } = await context.params;
     const supabase = await getSupabaseServerClient();
     const body = await req.json().catch(() => ({}));
+
+    const recoveryOfRequestId = String(
+      body.recovery_of_request_id ?? body.recoveryOfRequestId ?? ""
+    ).trim();
+
+    if (recoveryOfRequestId) {
+      const recoveryServiceDate = normalizeDate(
+        body.service_date ?? body.serviceDate
+      );
+      if (!recoveryServiceDate) {
+        return NextResponse.json(
+          { error: "A recovery service_date is required." },
+          { status: 400 }
+        );
+      }
+
+      const recoveryArtifactId = String(
+        body.artifact_id ?? body.artifactId ?? ""
+      ).trim();
+      const { data, error } = await supabase.rpc(
+        "queue_operations_collection_recovery",
+        {
+          p_collection_request_id: recoveryOfRequestId,
+          p_service_date: recoveryServiceDate,
+          p_artifact_id: recoveryArtifactId || null,
+        }
+      );
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({ row: data }, { status: 201 });
+    }
 
     const requestType = String(body.request_type ?? body.requestType ?? "").trim().toUpperCase();
 
