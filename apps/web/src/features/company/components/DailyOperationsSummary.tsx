@@ -101,13 +101,6 @@ type WatchlistItem = {
 
 type WatchlistAssignee = { id: string; name: string; title: string | null };
 
-type ReportMetric = {
-  label: string;
-  current: string;
-  signal?: "up" | "down" | "neutral";
-  average?: string;
-};
-
 function todayNyIso() {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/New_York",
@@ -238,12 +231,6 @@ function safeDiv(a: number, b: number) {
   return b ? a / b : 0;
 }
 
-function signalGlyph(signal?: ReportMetric["signal"]) {
-  if (signal === "up") return <span style={{ color: "#16a34a", fontWeight: 950 }}>▲</span>;
-  if (signal === "down") return <span style={{ color: "#ef4444", fontWeight: 950 }}>▼</span>;
-  return <span style={{ color: "#94a3b8", fontWeight: 950 }}>▬</span>;
-}
-
 function statusStyle(status: CalendarStatus, selected: boolean): CSSProperties {
   const base: CSSProperties = {
     height: 26,
@@ -292,36 +279,38 @@ function ReportSection(props: { title: string; children: React.ReactNode; style?
   );
 }
 
-function SimpleMetricRows({ rows }: { rows: Array<[string, string]> }) {
+function RoutePerformanceGraph({
+  rows,
+  routeCount,
+}: {
+  rows: Array<{ label: string; planned: number; actual: number; tone: "packages" | "stops" | "pickups" }>;
+  routeCount: number;
+}) {
   return (
-    <div style={{ display: "grid", gap: 4 }}>
-      {rows.map(([label, value]) => (
-        <div key={label} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, color: "#334155", fontSize: 13 }}>
-          <span style={{ fontStyle: "italic" }}>{label}</span>
-          <strong>{value}</strong>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function RouteStatsGrid({ metrics }: { metrics: ReportMetric[] }) {
-  return (
-    <div style={{ display: "grid", gap: 4, color: "#334155", fontSize: 13 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 64px 22px 64px", gap: 8, fontSize: 11, fontWeight: 900, color: "#64748b" }}>
-        <span />
-        <span style={{ textAlign: "right" }}>VALUE</span>
-        <span />
-        <span style={{ textAlign: "right" }}>AVG</span>
+    <div className="ops-route-graph">
+      <div className="ops-route-graph__legend">
+        <span><i className="ops-route-graph__dot ops-route-graph__dot--planned" />Planned / tendered</span>
+        <span><i className="ops-route-graph__dot ops-route-graph__dot--actual" />Actual / completed</span>
+        <strong>{fmt(routeCount)} routes</strong>
       </div>
-      {metrics.map((metric) => (
-        <div key={metric.label} style={{ display: "grid", gridTemplateColumns: "1fr 64px 22px 64px", gap: 8 }}>
-          <span style={{ fontStyle: "italic" }}>{metric.label}</span>
-          <strong style={{ textAlign: "right" }}>{metric.current}</strong>
-          <span style={{ textAlign: "center" }}>{metric.average ? signalGlyph(metric.signal) : null}</span>
-          <strong style={{ textAlign: "right" }}>{metric.average ?? ""}</strong>
-        </div>
-      ))}
+      <div className="ops-route-graph__plot">
+        {rows.map((row) => {
+          const ceiling = Math.max(row.planned, row.actual, 1);
+          const variance = row.actual - row.planned;
+          return (
+            <article key={row.label} className={`ops-route-graph__row ops-route-graph__row--${row.tone}`}>
+              <div className="ops-route-graph__label">
+                <strong>{row.label}</strong>
+                <span>{variance >= 0 ? "+" : ""}{fmt(variance)} variance</span>
+              </div>
+              <div className="ops-route-graph__tracks">
+                <div><span className="ops-route-graph__bar ops-route-graph__bar--planned" style={{ width: `${(row.planned / ceiling) * 100}%` }} /><b>{fmt(row.planned)}</b></div>
+                <div><span className="ops-route-graph__bar ops-route-graph__bar--actual" style={{ width: `${(row.actual / ceiling) * 100}%` }} /><b>{fmt(row.actual)}</b></div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -339,29 +328,20 @@ function CodePerformanceGrid({
   } as const;
 
   return (
-    <div style={{ display: "grid", gap: 5, color: "#334155", fontSize: 13 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 58px 72px 78px 58px", gap: 8, fontSize: 11, fontWeight: 900, color: "#64748b" }}>
-        <span>Metric</span>
-        <span style={{ textAlign: "right" }}>Count</span>
-        <span style={{ textAlign: "right" }}>Rate</span>
-        <span style={{ textAlign: "right" }}>Target</span>
-        <span style={{ textAlign: "right" }}>Signal</span>
-      </div>
+    <div className="ops-code-grid">
       {rows.map((row) => (
-        <div key={row.label} style={{ display: "grid", gridTemplateColumns: "1fr 58px 72px 78px 58px", gap: 8 }}>
-          <span style={{ fontStyle: "italic" }}>{row.label}</span>
-          <strong style={{ textAlign: "right" }}>{row.count}</strong>
-          <strong style={{ textAlign: "right" }}>{row.rate}</strong>
-          <span style={{ textAlign: "right" }}>{row.target}</span>
-          <strong
-            style={{
-              textAlign: "right",
-              color: row.status === "meets" ? "#15803d" : row.status === "miss" ? "#b91c1c" : row.status === "watch" ? "#92400e" : "#64748b",
-            }}
-          >
-            {statusLabel[row.status]}
-          </strong>
-        </div>
+        <article key={row.label} className={`ops-code-card ops-code-card--${row.status}`}>
+          <div className="ops-code-card__head">
+            <span className="ops-code-card__signal"><i />{statusLabel[row.status]}</span>
+            <strong>{row.label}</strong>
+          </div>
+          <div className="ops-code-card__reading">{row.rate}</div>
+          <div className="ops-code-card__telemetry">
+            <span><small>Count</small><strong>{row.count}</strong></span>
+            <span><small>Target</small><strong>{row.target}</strong></span>
+          </div>
+          <div className="ops-code-card__rail"><span /></div>
+        </article>
       ))}
     </div>
   );
@@ -898,24 +878,9 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
 
   const avgVscan = safeDiv(vscan, routes);
   const avgDelStops = safeDiv(delStops, routes);
-  const avgPuStops = safeDiv(puStops, routes);
-  const avgDiff = safeDiv(diff, routes);
   const avgActDelStops = safeDiv(actDelStops, routes);
   const avgActDelPkgs = safeDiv(actDelPkgs, routes);
-  const avgActPuStops = safeDiv(actPuStops, routes);
   const avgActPuPkgs = safeDiv(actPuPkgs, routes);
-
-  const routeStats: ReportMetric[] = [
-    { label: "ROUTES", current: fmt(routes) },
-    { label: "VScan PKGS / ROUTE", current: fmt(avgVscan, 1) },
-    { label: "DEL STPS / ROUTE", current: fmt(avgDelStops, 1) },
-    { label: "PU STPS / ROUTE", current: fmt(avgPuStops, 1) },
-    { label: "DIFF / ROUTE", current: fmt(avgDiff, 1) },
-    { label: "ACT DEL STOPS / ROUTE", current: fmt(avgActDelStops, 1) },
-    { label: "ACT DEL PKGS / ROUTE", current: fmt(avgActDelPkgs, 1) },
-    { label: "ACT PU STPS / ROUTE", current: fmt(avgActPuStops, 1) },
-    { label: "ACT PU PKGS / ROUTE", current: fmt(avgActPuPkgs, 1) },
-  ];
 
   const rlsRate = 100 - safeDiv(rls, vscan) * 100;
   const code85Rate = safeDiv(code85, vscan) * 100;
@@ -989,9 +954,9 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
             <div style={{ display: "grid", gap: 14 }}>
               <section className="daily-operations-kpis" style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 9 }}>
                 <KpiCard label="Routes" value={fmt(routes)} detail="Routes represented in FINAL DSW" />
-                <KpiCard label="Delivery stops" value={`${fmt(actDelStops)} / ${fmt(delStops)}`} detail="Actual / planned" tone={actDelStops >= delStops ? "good" : "watch"} />
+                <KpiCard label="Delivery stops" value={`${fmt(actDelStops)} / ${fmt(delStops)}`} detail={`Actual / planned · ${fmt(diff)} stop gap`} tone={actDelStops >= delStops ? "good" : "watch"} />
                 <KpiCard label="Delivery packages" value={`${fmt(actDelPkgs)} / ${fmt(vscan)}`} detail="Completed / tendered" tone={actDelPkgs >= vscan ? "good" : "data"} />
-                <KpiCard label="Pickups" value={`${fmt(actPuStops)} / ${fmt(puStops)}`} detail="Actual / planned" tone={potentialMissedPickups ? "risk" : pickupVariance < 0 ? "watch" : "good"} />
+                <KpiCard label="Pickups" value={`${fmt(actPuStops)} / ${fmt(puStops)}`} detail={`${fmt(actPuPkgs)} packages · ${pickupVariance >= 0 ? "+" : ""}${fmt(pickupVariance)} stops`} tone={potentialMissedPickups ? "risk" : pickupVariance < 0 ? "watch" : "good"} />
                 <KpiCard label="ILS" value={`${fmt(ilsPercent, 1)}%`} detail={`${fmt(ils)} impact packages`} tone={ilsPercent >= 99.5 ? "good" : "risk"} />
                 <KpiCard label="Express" value={`${fmt(express.open_package_count)} open`} detail={`${fmt(express.tracking_gap_package_count)} gaps / ${fmt(express.package_count)} total`} tone={express.open_package_count ? "watch" : express.tracking_gap_package_count ? "risk" : "good"} />
               </section>
@@ -1007,95 +972,23 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
                 </div>
               </ReportSection>
 
-              <section className="daily-operations-pair" style={{ display: "grid", gridTemplateColumns: "1.25fr 1.4fr", gap: 14 }}>
-                <ReportSection title="Volume">
-                  <div style={{ display: "grid", gap: 12 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                      <div>
-                        <div
-                          style={{
-                            color: "#0369a1",
-                            background: "#e0f2fe",
-                            border: "1px solid #bae6fd",
-                            borderRadius: 999,
-                            display: "inline-flex",
-                            padding: "3px 9px",
-                            fontSize: 11,
-                            fontWeight: 950,
-                            textTransform: "uppercase",
-                            letterSpacing: "0.08em",
-                            marginBottom: 7,
-                          }}
-                        >
-                          Tendered
-                        </div>
-                        <SimpleMetricRows
-                          rows={[
-                            ["Packages", fmt(vscan)],
-                            ["Stops", fmt(delStops)],
-                            ["Pickups", fmt(puStops)],
-                          ]}
-                        />
-                      </div>
-
-                      <div>
-                        <div
-                          style={{
-                            color: "#047857",
-                            background: "#d1fae5",
-                            border: "1px solid #a7f3d0",
-                            borderRadius: 999,
-                            display: "inline-flex",
-                            padding: "3px 9px",
-                            fontSize: 11,
-                            fontWeight: 950,
-                            textTransform: "uppercase",
-                            letterSpacing: "0.08em",
-                            marginBottom: 7,
-                          }}
-                        >
-                          Completed
-                        </div>
-                        <SimpleMetricRows
-                          rows={[
-                            ["Packages", fmt(actDelPkgs)],
-                            ["Stops", fmt(actDelStops)],
-                            ["Pickups", fmt(actPuStops)],
-                          ]}
-                        />
-                      </div>
-                    </div>
-
-                    <div
-                      style={{
-                        borderTop: "1px dashed #cbd5e1",
-                        paddingTop: 8,
-                        display: "grid",
-                        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                        gap: 12,
-                      }}
-                    >
-                      <div>
-                        <div style={{ color: "#64748b", fontSize: 10, fontWeight: 950, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>
-                          Variance
-                        </div>
-                        <SimpleMetricRows rows={[["Diff", fmt(diff)]]} />
-                      </div>
-
-                      <div>
-                        <div style={{ color: "#64748b", fontSize: 10, fontWeight: 950, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>
-                          Pickup packages
-                        </div>
-                        <SimpleMetricRows rows={[["Actual PU PKGS", fmt(actPuPkgs)]]} />
-                      </div>
-                    </div>
-                  </div>
-                </ReportSection>
-
-                <ReportSection title="Route Performance">
-                  <RouteStatsGrid metrics={routeStats} />
-                </ReportSection>
-              </section>
+              <ReportSection title="Route Performance">
+                <RoutePerformanceGraph
+                  routeCount={routes}
+                  rows={[
+                    { label: "Delivery packages", planned: vscan, actual: actDelPkgs, tone: "packages" },
+                    { label: "Delivery stops", planned: delStops, actual: actDelStops, tone: "stops" },
+                    { label: "Pickup stops", planned: puStops, actual: actPuStops, tone: "pickups" },
+                  ]}
+                />
+                <div className="ops-route-density">
+                  <span className="ops-route-density--packages"><small>Tendered packages / route</small><strong>{fmt(avgVscan, 1)}</strong></span>
+                  <span className="ops-route-density--packages"><small>Actual packages / route</small><strong>{fmt(avgActDelPkgs, 1)}</strong></span>
+                  <span className="ops-route-density--stops"><small>Planned stops / route</small><strong>{fmt(avgDelStops, 1)}</strong></span>
+                  <span className="ops-route-density--stops"><small>Actual stops / route</small><strong>{fmt(avgActDelStops, 1)}</strong></span>
+                  <span className="ops-route-density--pickups"><small>Pickup packages / route</small><strong>{fmt(avgActPuPkgs, 1)}</strong></span>
+                </div>
+              </ReportSection>
 
               <section className="daily-operations-pair" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                 <ReportSection title="Code Performance">

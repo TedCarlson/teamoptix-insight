@@ -6990,6 +6990,56 @@ body {
 .daily-operations-dispatch-block .daily-operations-dispatch-note { color: #334155; }
 .daily-operations-dispatch-block footer { margin-top: 9px; color: #64748b; font-size: 10px; font-weight: 800; }
 
+.ops-route-graph { overflow: hidden; border: 1px solid #dbeafe; border-radius: 16px; background: linear-gradient(rgba(37,99,235,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(37,99,235,.045) 1px, transparent 1px), linear-gradient(145deg, #f8fbff, #fff 58%); background-size: 24px 24px, 24px 24px, auto; }
+.ops-route-graph__legend { display: flex; align-items: center; gap: 16px; min-height: 40px; padding: 0 13px; border-bottom: 1px solid #dbeafe; color: #64748b; font-size: 10px; font-weight: 850; }
+.ops-route-graph__legend span { display: inline-flex; align-items: center; gap: 6px; }
+.ops-route-graph__legend strong { margin-left: auto; color: #1d4ed8; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+.ops-route-graph__dot { width: 8px; height: 8px; border-radius: 50%; }
+.ops-route-graph__dot--planned { background: #cbd5e1; }
+.ops-route-graph__dot--actual { background: #475569; box-shadow: 0 0 9px rgba(71,85,105,.4); }
+.ops-route-graph__plot { display: grid; gap: 16px; padding: 16px 14px 18px; }
+.ops-route-graph__row { --ops-route-light: #bfdbfe; --ops-route-strong: #2563eb; --ops-route-glow: rgba(37,99,235,.22); display: grid; grid-template-columns: minmax(120px, .34fr) minmax(0, 1fr); gap: 16px; align-items: center; }
+.ops-route-graph__row--packages { --ops-route-light: #ddd6fe; --ops-route-strong: #7c3aed; --ops-route-glow: rgba(124,58,237,.24); }
+.ops-route-graph__row--stops { --ops-route-light: #fde68a; --ops-route-strong: #f59e0b; --ops-route-glow: rgba(245,158,11,.24); }
+.ops-route-graph__row--pickups { --ops-route-light: #bbf7d0; --ops-route-strong: #22c55e; --ops-route-glow: rgba(34,197,94,.24); }
+.ops-route-graph__label { display: grid; gap: 3px; }
+.ops-route-graph__label strong { color: #0f172a; font-size: 12px; }
+.ops-route-graph__label span { color: #64748b; font-size: 10px; font-weight: 750; }
+.ops-route-graph__tracks { display: grid; gap: 5px; }
+.ops-route-graph__tracks > div { position: relative; height: 15px; border-radius: 999px; background: rgba(219,234,254,.56); }
+.ops-route-graph__bar { display: block; min-width: 2px; height: 100%; border-radius: inherit; }
+.ops-route-graph__bar--planned { background: linear-gradient(90deg, color-mix(in srgb, var(--ops-route-light) 54%, white), var(--ops-route-light)); }
+.ops-route-graph__bar--actual { background: linear-gradient(90deg, color-mix(in srgb, var(--ops-route-strong) 70%, white), var(--ops-route-strong)); box-shadow: 0 0 12px var(--ops-route-glow); }
+.ops-route-graph__tracks b { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); color: #0f172a; font-size: 9px; }
+.ops-route-density { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; margin-top: 9px; }
+.ops-route-density span { display: grid; align-content: space-between; gap: 7px; min-height: 66px; padding: 9px; border: 1px solid #dbeafe; border-radius: 11px; background: #f8fbff; }
+.ops-route-density small { color: #64748b; font-size: 8px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+.ops-route-density strong { color: var(--ops-density-accent, #1d4ed8); font-size: 17px; }
+.ops-route-density--packages { --ops-density-accent: #7c3aed; border-color: #ddd6fe !important; background: #faf8ff !important; }
+.ops-route-density--stops { --ops-density-accent: #d97706; border-color: #fde68a !important; background: #fffdf5 !important; }
+.ops-route-density--pickups { --ops-density-accent: #16a34a; border-color: #bbf7d0 !important; background: #f7fff9 !important; }
+
+.ops-code-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ops-code-card { --ops-code-accent: #64748b; --ops-code-glow: rgba(100,116,139,.22); position: relative; overflow: hidden; min-height: 132px; padding: 11px; border: 1px solid #dce6f3; border-radius: 13px; background: linear-gradient(145deg, #fff, #f7faff); }
+.ops-code-card::after { content: ""; position: absolute; top: -34px; right: -34px; width: 82px; height: 82px; border-radius: 50%; background: var(--ops-code-glow); filter: blur(8px); }
+.ops-code-card--meets { --ops-code-accent: #059669; --ops-code-glow: rgba(16,185,129,.2); }
+.ops-code-card--watch { --ops-code-accent: #d97706; --ops-code-glow: rgba(245,158,11,.22); }
+.ops-code-card--miss { --ops-code-accent: #dc2626; --ops-code-glow: rgba(239,68,68,.2); }
+.ops-code-card__head { position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.ops-code-card__head > strong { color: #0f172a; font-size: 11px; letter-spacing: .06em; }
+.ops-code-card__signal { display: inline-flex; align-items: center; gap: 5px; color: var(--ops-code-accent); font-size: 8px; font-weight: 950; letter-spacing: .08em; text-transform: uppercase; }
+.ops-code-card__signal i { width: 6px; height: 6px; border-radius: 50%; background: var(--ops-code-accent); box-shadow: 0 0 9px var(--ops-code-accent); }
+.ops-code-card__reading { margin-top: 12px; color: #0f172a; font-size: 22px; font-weight: 950; letter-spacing: -.04em; }
+.ops-code-card__telemetry { display: grid; grid-template-columns: .7fr 1.3fr; gap: 8px; margin-top: 9px; }
+.ops-code-card__telemetry span { display: grid; gap: 2px; }
+.ops-code-card__telemetry small { color: #94a3b8; font-size: 7px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.ops-code-card__telemetry strong { color: #475569; font-size: 10px; }
+.ops-code-card__rail { height: 3px; margin-top: 10px; overflow: hidden; border-radius: 999px; background: #e2e8f0; }
+.ops-code-card__rail span { display: block; width: 72%; height: 100%; border-radius: inherit; background: var(--ops-code-accent); box-shadow: 0 0 10px var(--ops-code-accent); }
+.ops-code-card--meets .ops-code-card__rail span { width: 100%; }
+.ops-code-card--miss .ops-code-card__rail span { width: 38%; }
+.ops-code-card--watch .ops-code-card__rail span { width: 62%; }
+
 @media (max-width: 980px) {
   .automation-live-execution-portals,
   .automation-live-execution-grid { grid-template-columns: 1fr; }
@@ -7022,4 +7072,7 @@ body {
   }
 
   .daily-operations-dispatch-log { grid-template-columns: minmax(0, 1fr); }
+  .ops-route-graph__row { grid-template-columns: 1fr; gap: 7px; }
+  .ops-route-density { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ops-code-grid { grid-template-columns: minmax(0, 1fr); }
 }
