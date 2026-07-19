@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import TeamOptixShell from "@/features/teamoptix/navigation/TeamOptixShell";
 import AutomationWorkbench from "@/features/teamoptix/automation/components/AutomationWorkbench";
 import LiveExecutionPortals from "@/features/teamoptix/automation/components/LiveExecutionPortals";
-import { runnerGoalForRequestType } from "@/features/automation/contracts/runnerGoal";
+import { OPERATIONS_COLLECTION_PAYLOAD_VERSION, runnerGoalForRequestType } from "@/features/automation/contracts/runnerGoal";
 import { listOperationsTicketTemplates, listTeamOptixCompanyOptions } from "@/features/teamoptix/automation/server/ticketControl.server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -90,8 +90,11 @@ async function launchCollection(formData: FormData) {
 
   const requestPayload = {
     ...templatePayload,
+    payload_contract_version: OPERATIONS_COLLECTION_PAYLOAD_VERSION,
     source: "teamoptix_automation_workbench",
     request_origin: "workbench_live_execution",
+    request_type: requestType,
+    date_mode: requestType === "HISTORICAL_BACKFILL" ? "SELECTED_RANGE" : "SELECTED_DATE",
     runner_goal: runnerGoalForRequestType(requestType),
     runner_goal_label: template.template_name,
     ticket_template_id: template.id,
@@ -103,6 +106,14 @@ async function launchCollection(formData: FormData) {
     date_selection_contract: requestType === "HISTORICAL_BACKFILL"
       ? { authority: "ticket_service_date_range", exact_start: serviceDateStart, exact_end: serviceDateEnd, instruction: "Collect one unchanged source artifact for every service date in this exact inclusive range." }
       : { authority: "ticket_service_date", exact_date: serviceDate, instruction: "Collect the unchanged source artifact for this exact service date." },
+    ingestion_contract: {
+      authority: "DSW_A1",
+      expected_a1_date: requestType === "TARGETED_RECOVERY" ? serviceDate : null,
+      expected_a1_date_start: requestType === "HISTORICAL_BACKFILL" ? serviceDateStart : null,
+      expected_a1_date_end: requestType === "HISTORICAL_BACKFILL" ? serviceDateEnd : null,
+      required_snapshot_kind: "FINAL",
+      instruction: "Pass every downloaded workbook through unchanged. Ingestion reads A1 and is the sole authority for activity date and FINAL classification.",
+    },
   };
   const requestedReport = String(target.report_family_key ?? target.artifact_key ?? "").toUpperCase();
   const { error } = await supabase.rpc("create_operations_collection_request", {

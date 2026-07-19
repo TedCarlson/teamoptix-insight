@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { runnerGoalForRequestType } from "@/features/automation/contracts/runnerGoal";
+import { OPERATIONS_COLLECTION_PAYLOAD_VERSION, runnerGoalForRequestType } from "@/features/automation/contracts/runnerGoal";
 import type { CollectionOrderDraft, CollectionProfile } from "./automation.types";
 import { COLLECTION_TARGETS, defaultCollectionTargetKeys, requestedReportsFromTargets, selectedCollectionTargets, todayIso, yesterdayIso } from "./automationCollectionConfig";
 import { checkRow, drawerBackdrop, drawerPanel, fieldLabel, mutedCopy, orderSummaryBox, policyStrip, sourceBox, sourceTitle, summaryLabel, summaryLine, timeInputBox, twoCol } from "./automationStyles";
@@ -61,6 +61,7 @@ export function CollectionOrderDrawer(props: {
       requested_reports: requestedReports,
       priority: effectivePriority,
       request_payload: {
+        payload_contract_version: OPERATIONS_COLLECTION_PAYLOAD_VERSION,
         source: "collection_center",
         request_origin: "manual_collection_order",
         request_type: profile.type,
@@ -99,6 +100,16 @@ export function CollectionOrderDrawer(props: {
               exact_date: serviceDate,
               instruction: "Collect the unchanged source artifact for this exact service date.",
             },
+        ingestion_contract: requestedReports.includes("DSW")
+          ? {
+              authority: "DSW_A1",
+              expected_a1_date: isDateRange ? null : serviceDate,
+              expected_a1_date_start: isDateRange ? startDate : null,
+              expected_a1_date_end: isDateRange ? endDate : null,
+              required_snapshot_kind: isDateRange || serviceDate < todayIso() ? "FINAL" : "IN_DAY",
+              instruction: "Pass every downloaded workbook through unchanged. Ingestion reads A1 and is the sole authority for activity date and snapshot classification.",
+            }
+          : null,
         priority_mode:
           profile.type === "HISTORICAL_BACKFILL"
             ? timeMachinePriorityMode

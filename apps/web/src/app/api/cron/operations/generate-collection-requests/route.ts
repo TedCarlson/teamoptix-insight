@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
-import { runnerGoalForRequestType } from "@/features/automation/contracts/runnerGoal";
+import { OPERATIONS_COLLECTION_PAYLOAD_VERSION, runnerGoalForRequestType } from "@/features/automation/contracts/runnerGoal";
 
 export const runtime = "nodejs";
 
@@ -108,6 +108,7 @@ function governedTemplatePayload(
   return {
     ...templatePayload,
     ...assignmentPayload,
+    payload_contract_version: OPERATIONS_COLLECTION_PAYLOAD_VERSION,
     request_type: requestType,
     runner_goal: runnerGoalForRequestType(requestType),
     runner_goal_label:
@@ -123,6 +124,28 @@ function assignmentRunsToday(assignment: ScheduledHistoricalAssignment, dayOfWee
     ? payload.schedule_days.map(Number).filter(Number.isInteger)
     : [];
   return scheduleDays.length === 0 || scheduleDays.includes(dayOfWeek);
+}
+
+function assignmentRunsOnOperatingCalendar(
+  assignment: ScheduledManifestAssignment,
+  operationalDate: string,
+  dayOfWeek: number
+) {
+  const payload = assignment.assignment_payload_json ?? {};
+  const rawOverrides = payload.operating_date_overrides;
+  const overrides = rawOverrides && typeof rawOverrides === "object" && !Array.isArray(rawOverrides)
+    ? rawOverrides as Record<string, unknown>
+    : {};
+  const datedOverride = overrides[operationalDate];
+
+  if (datedOverride === true || datedOverride === "OPERATING") return true;
+  if (datedOverride === false || datedOverride === "CLOSED") return false;
+
+  const operatingWeekdays = Array.isArray(payload.operating_weekdays)
+    ? payload.operating_weekdays.map(Number).filter(Number.isInteger)
+    : [];
+
+  return operatingWeekdays.length === 0 || operatingWeekdays.includes(dayOfWeek);
 }
 
 function resolveHistoricalRange(todayIso: string, rule: unknown) {
@@ -157,6 +180,7 @@ function buildRequestPayload(manifestAssignment: ScheduledManifestAssignment) {
   const firstTargets = manifestTargets(manifestAssignment);
 
   return {
+    payload_contract_version: OPERATIONS_COLLECTION_PAYLOAD_VERSION,
     source: "automation_scheduler",
     preset: "operations_pulse",
     intent: "operations_pulse",
@@ -434,6 +458,44 @@ async function companyHasRecentRequest(supabase: any, companySlug: string, caden
   return Date.now() - createdAt < cadenceMinutes * 60_000;
 }
 
+async function loadInDayDswRouteActivity(params: {
+  supabase: any;
+  companyId: string;
+  serviceDate: string;
+}) {
+  const { supabase, companyId, serviceDate } = params;
+  const { data: batch, error: batchError } = await supabase
+    .schema("core")
+    .from("operations_report_batch")
+    .select("id,created_at")
+    .eq("company_id", companyId)
+    .eq("report_family_key", "DSW")
+    .eq("report_shape_key", "DSW_DAILY_SERVICE_WORKSHEET")
+    .eq("service_date", serviceDate)
+    .eq("snapshot_kind", "IN_DAY")
+    .eq("status", "LOADED")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (batchError) throw new Error(batchError.message);
+  if (!batch?.id) return { observed: false, routeCount: null };
+
+  const { count, error: routeError } = await supabase
+    .schema("core")
+    .from("operations_report_raw_row")
+    .select("id", { count: "exact", head: true })
+    .eq("batch_id", batch.id)
+    .eq("row_kind", "ROUTE");
+
+  if (routeError) throw new Error(routeError.message);
+
+  return {
+    observed: true,
+    routeCount: Number(count ?? 0),
+  };
+}
+
 export async function GET() {
   const startedAt = Date.now();
   const supabase = createSupabaseServiceRoleClient();
@@ -510,10 +572,26 @@ export async function GET() {
             ...assignmentPayload,
             source: "teamoptix_assignment_scheduler",
             request_origin: "scheduled_historical_sweep",
+            request_type: "HISTORICAL_BACKFILL",
+            date_mode: "SELECTED_RANGE",
+            runner_goal: runnerGoalForRequestType("HISTORICAL_BACKFILL"),
             ticket_library_assignment_id: assignment.id,
             resolved_date_rule: assignmentPayload.dynamic_date_range,
             resolved_service_date_start: range.start,
             resolved_service_date_end: range.end,
+            date_selection_contract: {
+              authority: "ticket_service_date_range",
+              exact_start: range.start,
+              exact_end: range.end,
+              instruction: "Collect one unchanged source workbook for every service date in this exact inclusive range.",
+            },
+            ingestion_contract: {
+              authority: "DSW_A1",
+              expected_a1_date_start: range.start,
+              expected_a1_date_end: range.end,
+              required_snapshot_kind: "FINAL",
+              instruction: "Pass every downloaded workbook through unchanged. Ingestion reads A1 and is the sole authority for activity date and FINAL classification.",
+            },
           },
         });
         if (requestError) throw new Error(requestError.message);
@@ -589,6 +667,40 @@ export async function GET() {
 
       if (!manifestAssignment) {
         results.push({ company_slug: companySlug, status: "skipped", reason: "no active in-day assignment" });
+        continue;
+      }
+
+      if (!assignmentRunsOnOperatingCalendar(
+        manifestAssignment,
+        terminalState.todayIso,
+        terminalState.dayOfWeek
+      )) {
+        results.push({
+          company_slug: companySlug,
+          status: "paused",
+          request_type: "OPERATIONS_PULSE",
+          reason: "company operating calendar marks this as a non-operational day",
+          service_date: terminalState.todayIso,
+          day_of_week: terminalState.dayOfWeek,
+        });
+        continue;
+      }
+
+      const dswActivity = await loadInDayDswRouteActivity({
+        supabase,
+        companyId,
+        serviceDate: terminalState.todayIso,
+      });
+
+      if (dswActivity.observed && dswActivity.routeCount === 0) {
+        results.push({
+          company_slug: companySlug,
+          status: "paused",
+          request_type: "OPERATIONS_PULSE",
+          reason: "latest in-day DSW contains no active routes",
+          service_date: terminalState.todayIso,
+          dsw_route_count: 0,
+        });
         continue;
       }
 

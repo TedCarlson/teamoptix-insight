@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { runnerGoalForRequestType } from "@/features/automation/contracts/runnerGoal";
+import { OPERATIONS_COLLECTION_PAYLOAD_VERSION, runnerGoalForRequestType } from "@/features/automation/contracts/runnerGoal";
 
 type Template = {
   id: string;
@@ -64,6 +64,7 @@ function keyFromName(value: string) {
 export default function AutomationWorkbench({ templates, saveAction }: { templates: Template[]; saveAction: (data: FormData) => void }) {
   const [draft, setDraft] = useState(emptyDraft());
   const compiled = useMemo(() => ({
+    payload_contract_version: OPERATIONS_COLLECTION_PAYLOAD_VERSION,
     source: "teamoptix_automation_workbench",
     request_type: draft.requestType,
     date_mode: draft.dateMode,

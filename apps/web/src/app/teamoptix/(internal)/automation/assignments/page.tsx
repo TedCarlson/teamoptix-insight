@@ -45,6 +45,11 @@ async function saveWorkOrderRule(formData: FormData) {
   const endTime = text(formData, "endTime") || null;
   const runDay = text(formData, "runDay") || null;
   const dynamicDateRange = text(formData, "dynamicDateRange") || null;
+  const operatingWeekdays = formData.getAll("operatingWeekdays")
+    .map((value) => Number(String(value)))
+    .filter(Number.isInteger);
+  const overrideDate = text(formData, "overrideDate") || null;
+  const overrideMode = text(formData, "overrideMode") || null;
 
   const { error } = await supabase.rpc("upsert_company_operations_work_order_rule", {
     p_company_id: companyId,
@@ -72,6 +77,11 @@ async function saveWorkOrderRule(formData: FormData) {
       date_mode: payload.date_mode ?? null,
       artifact_keys: artifacts,
       schedule_days: generationMode === "scheduled" && runDay ? [Number(runDay)] : [],
+      operating_weekdays: requestType === "OPERATIONS_PULSE" ? operatingWeekdays : [],
+      operating_date_overrides:
+        requestType === "OPERATIONS_PULSE" && overrideDate && overrideMode
+          ? { [overrideDate]: overrideMode }
+          : {},
       dynamic_date_range: requestType === "HISTORICAL_BACKFILL" ? dynamicDateRange : null,
     },
   });
@@ -180,6 +190,18 @@ export default async function Page() {
                     <small>The dates are resolved when each run is generated.</small>
                   </label>
                 </div></div>
+
+                <div className="assignment-control-group"><div><span className="workspace-eyebrow">Operating calendar</span><h3>Which days can in-day collection run?</h3><p>Used only by Operations Pulse. Dated exceptions override the weekly pattern.</p></div>
+                  <div className="assignment-weekday-grid">
+                    {[{ value: "0", label: "Sun", checked: false }, { value: "1", label: "Mon", checked: true }, { value: "2", label: "Tue", checked: true }, { value: "3", label: "Wed", checked: true }, { value: "4", label: "Thu", checked: true }, { value: "5", label: "Fri", checked: true }, { value: "6", label: "Sat", checked: true }].map((day) => (
+                      <label key={day.value} className="assignment-enable"><input name="operatingWeekdays" type="checkbox" value={day.value} defaultChecked={day.checked} /> <span>{day.label}</span></label>
+                    ))}
+                  </div>
+                  <div className="assignment-form-grid">
+                    <label><span>Optional exception date</span><input name="overrideDate" type="date" /><small>Use for a holiday closure or a one-off operating day.</small></label>
+                    <label><span>Exception behavior</span><select name="overrideMode" defaultValue=""><option value="">No exception</option><option value="OPERATING">Run on this date</option><option value="CLOSED">Do not run on this date</option></select></label>
+                  </div>
+                </div>
 
                 <input name="routeScope" type="hidden" value="full_active_route_set" />
                 <input name="releaseOrder" type="hidden" value="100" />

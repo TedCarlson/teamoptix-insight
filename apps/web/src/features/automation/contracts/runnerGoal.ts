@@ -6,6 +6,8 @@ const RUNNER_GOALS: Record<string, string> = {
   OPERATIONS_PULSE: "keep_operations_current",
 };
 
+export const OPERATIONS_COLLECTION_PAYLOAD_VERSION = "operations_collection_v2";
+
 export function runnerGoalForRequestType(requestType: unknown) {
   const key = String(requestType ?? "").trim().toUpperCase();
   return RUNNER_GOALS[key] ?? "collect_governed_artifacts";
