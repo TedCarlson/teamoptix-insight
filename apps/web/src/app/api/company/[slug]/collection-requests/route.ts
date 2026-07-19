@@ -65,6 +65,12 @@ export async function GET(
         .limit(limit);
 
       if (error) {
+        // A newly migrated view can briefly be absent from PostgREST's schema
+        // cache. Keep the collection center operational while the reload
+        // notification propagates; subsequent refreshes will expose the queue.
+        if (error.code === "PGRST205") {
+          return NextResponse.json({ rows: [], schema_cache_pending: true });
+        }
         return NextResponse.json({ error: error.message, rows: [] }, { status: 500 });
       }
 
