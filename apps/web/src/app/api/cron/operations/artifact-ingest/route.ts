@@ -22,7 +22,7 @@ function artifactAuditContext(artifact: any) {
 async function markArtifact(params: {
   supabase: any;
   artifactId: string;
-  status: "INGESTING" | "INGESTED" | "FAILED";
+  status: "INGESTING" | "INGESTED" | "FAILED" | "IGNORED";
   metadata?: Record<string, unknown>;
   reportBatchId?: string | null;
   errorMessage?: string | null;
@@ -197,6 +197,30 @@ export async function GET() {
 
   for (const artifact of artifacts ?? []) {
     try {
+      const artifactKey = String(artifact.runner_artifact_json?.artifact_key ?? "").toUpperCase();
+      if (artifactKey === "FCC_SERVICE_AREA_SUMMARY" || artifactKey === "SERVICE_AREA_SUMMARY") {
+        await markArtifact({
+          supabase,
+          artifactId: artifact.id,
+          status: "IGNORED",
+          metadata: {
+            source: "cron_artifact_ingest",
+            phase: "IGNORED",
+            ignored_at: new Date().toISOString(),
+            reason: "Service Area Summary is not a governed Insight artifact. Runner collection is limited to FCC Work Area Summary.",
+            artifact: artifactAuditContext(artifact),
+          },
+        });
+        await completeRequest(supabase, artifact.collection_request_id);
+        processed.push({
+          artifact_id: artifact.id,
+          collection_request_id: artifact.collection_request_id,
+          status: "IGNORED",
+          reason: "UNSUPPORTED_SERVICE_AREA_SUMMARY",
+        });
+        continue;
+      }
+
       await markArtifact({
         supabase,
         artifactId: artifact.id,

@@ -226,7 +226,7 @@ function inspectFcc(workbook: XLSX.WorkBook): InspectResult {
   if (!headerSheetName || !detailSheetName) {
     return {
       report_family_key: "FCC",
-      report_shape_key: "FCC_SERVICE_AREA_STATUS",
+      report_shape_key: "FCC_WORK_AREA_SUMMARY",
       report_family_label: "FCC Service Area Status",
       confidence: 0,
       detected_header_row: null,
@@ -250,7 +250,7 @@ function inspectFcc(workbook: XLSX.WorkBook): InspectResult {
 
   return {
     report_family_key: "FCC",
-    report_shape_key: "FCC_SERVICE_AREA_STATUS",
+    report_shape_key: "FCC_WORK_AREA_SUMMARY",
     report_family_label: "FCC Service Area Status",
     confidence: headerLooksRight && detailHeaderIndex >= 0 ? 1 : detailHeaderIndex >= 0 ? 0.75 : 0,
     detected_header_row: detailHeaderIndex >= 0 ? detailHeaderIndex + 1 : null,

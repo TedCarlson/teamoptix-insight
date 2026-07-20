@@ -694,7 +694,7 @@ export async function GET() {
 
       const requestReports = [...new Set(
         manifestTargets(manifestAssignment)
-          .map((target: any) => String(target?.artifact_key ?? target?.report_family_key ?? "").toUpperCase())
+          .map((target: any) => String(target?.report_family_key ?? target?.artifact_key ?? "").toUpperCase())
           .filter((value: string) => value === "DSW" || value === "FCC")
       )];
 

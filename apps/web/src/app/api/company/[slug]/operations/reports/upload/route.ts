@@ -414,7 +414,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
         ok: true,
         batch_id: rpcResult?.batch_id ?? null,
         report_family_key: "FCC",
-        report_shape_key: "FCC_SERVICE_AREA_STATUS",
+        report_shape_key: "FCC_WORK_AREA_SUMMARY",
         service_date: serviceDate,
         inserted_row_count: stagedRows.length,
         matched_route_count: matchedCount,

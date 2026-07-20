@@ -69,23 +69,12 @@ export const COLLECTION_TARGETS: CollectionTarget[] = [
     default_targeted: false,
   },
   {
-    key: "SERVICE_AREA_SUMMARY",
-    label: "FCC · SA Summary",
-    description: "FedEx Service Area Summary rollup; useful for aggregate validation and freshness context.",
-    report_family_key: "FCC",
-    artifact_key: "SERVICE_AREA_SUMMARY",
-    runner_section: "SERVICE",
-    vps_target: 6,
-    expected_filename_match: ["ServiceAreaSummary", "SASummary_"],
-    default_last_look: true,
-    default_targeted: true,
-  },
-  {
     key: "FCC_WORK_AREA_SUMMARY",
-    label: "FCC · WA Summary",
+    label: "FCC · Work Area Summary",
     description: "FedEx Work Area Summary from the Service Area Status page; live route heartbeat signal.",
     report_family_key: "FCC",
     artifact_key: "WORK_AREA_SUMMARY",
+    report_shape_key: "FCC_WORK_AREA_SUMMARY",
     runner_section: "SERVICE",
     vps_target: 5,
     expected_filename_match: ["ServiceAreaStatus", "SAStatus_"],
@@ -152,4 +141,3 @@ export function yesterdayIso() {
   date.setDate(date.getDate() - 1);
   return date.toISOString().slice(0, 10);
 }
-

@@ -202,6 +202,9 @@ export async function ingestFccWorkbook(params: {
   if (routeError) throw new Error(routeError.message);
 
   const headerMeta = {
+    artifact_key: "WORK_AREA_SUMMARY",
+    report_family_key: "FCC",
+    report_shape_key: "FCC_WORK_AREA_SUMMARY",
     source_report_name: sourceReportName,
     report_date_text: reportDateText,
     service_area: headerServiceArea,
@@ -258,6 +261,13 @@ export async function ingestFccWorkbook(params: {
     p_skipped_row_count: parsedRows.length - stagedRows.length,
     p_uploaded_by_profile_id: params.uploadedByProfileId ?? null,
     p_metadata_json: {
+      artifact_contract: {
+        artifact_key: "WORK_AREA_SUMMARY",
+        report_family_key: "FCC",
+        report_shape_key: "FCC_WORK_AREA_SUMMARY",
+        source_page: "Service Area Status",
+        selected_tab: "Work Area Summary",
+      },
       file_size: fileSize,
       sheet_count: workbook.SheetNames.length,
       uploaded_by_auth_user_id: params.uploadedByAuthUserId ?? null,
@@ -287,7 +297,8 @@ export async function ingestFccWorkbook(params: {
     ok: true,
     batch_id: rpcResult?.batch_id ?? null,
     report_family_key: "FCC",
-    report_shape_key: "FCC_SERVICE_AREA_STATUS",
+    artifact_key: "WORK_AREA_SUMMARY",
+    report_shape_key: "FCC_WORK_AREA_SUMMARY",
     service_date: warehouseServiceDate,
     inserted_row_count: stagedRows.length,
     matched_route_count: matchedCount,

@@ -679,7 +679,20 @@ export default function AutomationConfigPanel(
                       >
                         {`${request.ready_count ?? 0} ready · ${
                           request.ingesting_count ?? 0
-                        } ingesting · ${request.failed_count ?? 0} failed`}
+                        } ingesting · `}
+                        {(request.failed_count ?? 0) > 0 ? (
+                          <a
+                            href={`/teamoptix/automation/collections/${request.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: "inherit", fontWeight: 900, textDecoration: "underline" }}
+                            aria-label={`Open ${request.failed_count} failed artifact${request.failed_count === 1 ? "" : "s"} in a new tab`}
+                          >
+                            {request.failed_count} failed
+                          </a>
+                        ) : (
+                          "0 failed"
+                        )}
                       </span>
                     ) : null}
                     <span

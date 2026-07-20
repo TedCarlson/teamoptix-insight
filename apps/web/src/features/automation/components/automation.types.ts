@@ -126,6 +126,7 @@ export type CollectionTarget = {
   label: string;
   description: string;
   report_family_key: "DSW" | "FCC";
+  report_shape_key?: string;
   artifact_key: string;
   runner_section: "P_AND_D" | "SERVICE" | "DAILY_SERVICE";
   vps_target: number;
