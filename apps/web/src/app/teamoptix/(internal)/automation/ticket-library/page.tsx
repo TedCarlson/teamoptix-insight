@@ -4,6 +4,7 @@ import TeamOptixShell from "@/features/teamoptix/navigation/TeamOptixShell";
 import AutomationWorkbench from "@/features/teamoptix/automation/components/AutomationWorkbench";
 import LiveExecutionPortals from "@/features/teamoptix/automation/components/LiveExecutionPortals";
 import { OPERATIONS_COLLECTION_PAYLOAD_VERSION, runnerGoalForRequestType } from "@/features/automation/contracts/runnerGoal";
+import { normalizeCollectionTarget } from "@/features/automation/contracts/collectionTarget";
 import { listOperationsTicketTemplates, listTeamOptixCompanyOptions } from "@/features/teamoptix/automation/server/ticketControl.server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -79,7 +80,8 @@ async function launchCollection(formData: FormData) {
   const templatePayload = (template.default_payload_json ?? {}) as Record<string, any>;
   if (!template.is_active || templatePayload.request_type !== requestType) throw new Error("The selected published instruction does not match this execution portal.");
   const targets = Array.isArray(templatePayload.targets) ? templatePayload.targets : [];
-  const target = targets.find((item: any) => String(item?.key ?? "") === targetKey);
+  const selectedTarget = targets.find((item: any) => String(item?.key ?? "") === targetKey);
+  const target = selectedTarget ? normalizeCollectionTarget(selectedTarget) : null;
   if (!target) throw new Error("The selected file is not authorized by this instruction.");
 
   const serviceDate = value(formData, "serviceDate") || null;

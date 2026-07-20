@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import { OPERATIONS_COLLECTION_PAYLOAD_VERSION, runnerGoalForRequestType } from "@/features/automation/contracts/runnerGoal";
+import { normalizeCollectionTarget } from "@/features/automation/contracts/collectionTarget";
 
 export const runtime = "nodejs";
 
@@ -163,7 +164,7 @@ function manifestTargets(assignment: ScheduledManifestAssignment | null) {
   const assignmentPayload = assignment.assignment_payload_json ?? {};
   const configuredTargets = assignmentPayload.targets ?? templatePayload.targets;
 
-  return Array.isArray(configuredTargets) ? configuredTargets : [];
+  return Array.isArray(configuredTargets) ? configuredTargets.map(normalizeCollectionTarget) : [];
 }
 
 function uniqueTargets(targets: any[]) {
