@@ -464,35 +464,22 @@ async function loadInDayDswRouteActivity(params: {
   serviceDate: string;
 }) {
   const { supabase, companyId, serviceDate } = params;
-  const { data: batches, error: batchError } = await supabase
-    .schema("core")
-    .from("operations_report_batch")
-    .select("id,created_at")
-    .eq("company_id", companyId)
-    .eq("report_family_key", "DSW")
-    .eq("report_shape_key", "DSW_DAILY_SERVICE_WORKSHEET")
-    .eq("service_date", serviceDate)
-    .eq("snapshot_kind", "IN_DAY")
-    .eq("status", "LOADED")
-    .order("created_at", { ascending: false })
-    .limit(1);
-
-  if (batchError) throw new Error(batchError.message);
-  const batch = Array.isArray(batches) && batches.length > 0 ? batches[0] : null;
-  if (!batch?.id) return { observed: false, routeCount: null };
-
-  const { count, error: routeError } = await supabase
-    .schema("core")
-    .from("operations_report_raw_row")
-    .select("id", { count: "exact", head: true })
-    .eq("batch_id", batch.id)
-    .eq("row_kind", "ROUTE");
+  const { data: routes, error: routeError } = await supabase.rpc(
+    "get_operations_dsw_current_rows",
+    {
+      p_company_id: companyId,
+      p_service_date: serviceDate,
+    }
+  );
 
   if (routeError) throw new Error(routeError.message);
+  if (!Array.isArray(routes) || routes.length === 0) {
+    return { observed: false, routeCount: null };
+  }
 
   return {
     observed: true,
-    routeCount: Number(count ?? 0),
+    routeCount: routes.length,
   };
 }
 
