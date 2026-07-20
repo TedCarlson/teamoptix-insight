@@ -18,7 +18,7 @@ from datetime import datetime
 
 # from webdriver_manager.chrome import ChromeDriverManager
 
-from rename_files import renameFolder
+from rename_files import renameFolder, renameDownloadedManifest
 from extract_data import extractDataFromFolder
 
 from connections import getConnection, closeConnection, getScrapingConfig, getMainFolder, writeError, isPlatformLinux, getDailyServiceOptions
@@ -101,8 +101,99 @@ def checkDownloadsHelper(index):
 
 def checkDownloads(index):
     logging.info("Downloading " + FOLDERS[index])
+    # Legacy folder routing remains disabled because Chrome downloads directly
+    # into the service-date folder configured in getDriver().
     # thread = threading.Thread(target=checkDownloadsHelper, args=(index, ))
     # thread.start()
+
+
+def downloadSnapshot():
+    return {
+        str(path.resolve())
+        for path in [
+            os.path.join(DOWNLOAD_FOLDER, filename)
+            for filename in os.listdir(DOWNLOAD_FOLDER)
+        ]
+        if os.path.isfile(path)
+        and not path.endswith(".crdownload")
+        and not path.endswith(".runner.json")
+    }
+
+
+def waitForCompletedDownload(before, timeout_seconds=45):
+    deadline = time.time() + timeout_seconds
+    last_sizes = {}
+
+    while time.time() < deadline:
+        active_downloads = [
+            filename
+            for filename in os.listdir(DOWNLOAD_FOLDER)
+            if filename.endswith(".crdownload")
+        ]
+
+        candidates = []
+
+        for filename in os.listdir(DOWNLOAD_FOLDER):
+            path = os.path.join(DOWNLOAD_FOLDER, filename)
+
+            if not os.path.isfile(path):
+                continue
+
+            if filename.endswith(".crdownload") or filename.endswith(".runner.json"):
+                continue
+
+            if str(os.path.realpath(path)) not in before:
+                candidates.append(path)
+
+        candidates.sort(
+            key=lambda candidate: os.path.getmtime(candidate),
+            reverse=True,
+        )
+
+        for candidate in candidates:
+            size = os.path.getsize(candidate)
+
+            if size > 0 and last_sizes.get(candidate) == size:
+                return candidate
+
+            last_sizes[candidate] = size
+
+        if not active_downloads and candidates:
+            time.sleep(0.5)
+        else:
+            time.sleep(0.25)
+
+    raise RuntimeError(
+        f"Timed out waiting for manifest download in {DOWNLOAD_FOLDER}"
+    )
+
+
+def finalizeManifestDownload(before, expected_type):
+    downloaded_path = waitForCompletedDownload(before)
+
+    renamed_path, metadata = renameDownloadedManifest(
+        downloaded_path,
+        expected_type=expected_type,
+    )
+
+    logging.info(
+        "Manifest canonicalized "
+        + json.dumps(
+            {
+                "expected_type": expected_type,
+                "source_download_filename": metadata.get(
+                    "source_download_filename"
+                ),
+                "canonical_filename": os.path.basename(renamed_path),
+                "service_date": metadata.get("service_date_compact"),
+                "service_area": metadata.get("service_area"),
+                "work_area": metadata.get("work_area"),
+            },
+            sort_keys=True,
+        )
+    )
+
+    return renamed_path
 
 def getDriver():
     options = webdriver.ChromeOptions()
@@ -350,9 +441,9 @@ def main(section_='', option_=0, retry=1):
                     time.sleep(1)
                     logging.info("Waiting for loading...")
                     if driver.find_elements(By.XPATH, "//input[@id='manifestForm:buttonCombinedGenerateExcel']"):
+                        before_download = downloadSnapshot()
                         driver.find_element(By.XPATH, "//input[@id='manifestForm:buttonCombinedGenerateExcel']").click()
-                        checkDownloads(3)
-                        time.sleep(3)
+                        finalizeManifestDownload(before_download, "combined")
                 else:
                     logging.info("Skipping Combined Manifest by request payload")
 
@@ -371,9 +462,9 @@ def main(section_='', option_=0, retry=1):
                     logging.info("Waiting for loading...")
 
                     if driver.find_elements(By.XPATH, "//input[@id='manifestForm:buttonDeliveryGenerateExcel']"):
+                        before_download = downloadSnapshot()
                         driver.find_element(By.XPATH, "//input[@id='manifestForm:buttonDeliveryGenerateExcel']").click()
-                        checkDownloads(2)
-                        time.sleep(3)
+                        finalizeManifestDownload(before_download, "delivery")
                 else:
                     logging.info("Skipping Delivery Manifest by request payload")
 
@@ -392,9 +483,9 @@ def main(section_='', option_=0, retry=1):
                     logging.info("Waiting for loading...")
 
                     if driver.find_elements(By.XPATH, "//input[@id='manifestForm:buttonGenerateExcel']"):
+                        before_download = downloadSnapshot()
                         driver.find_element(By.XPATH, "//input[@id='manifestForm:buttonGenerateExcel']").click()
-                        checkDownloads(1)
-                        time.sleep(3)
+                        finalizeManifestDownload(before_download, "pickup")
                 else:
                     logging.info("Skipping Pickup Manifest by request payload")
             ACTIVE_SECTION_OPTION = 0

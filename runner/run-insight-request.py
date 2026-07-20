@@ -234,6 +234,50 @@ def artifact_matches_targets(request: dict, artifact: dict) -> bool:
 
     return False
 
+def load_runner_artifact_metadata(file: Path) -> dict:
+    sidecar = Path(f"{file}.runner.json")
+
+    if not sidecar.exists() or not sidecar.is_file():
+        return {}
+
+    try:
+        metadata = json.loads(sidecar.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(json.dumps({
+            "event": "runner_metadata_read_failed",
+            "filename": file.name,
+            "sidecar": str(sidecar),
+            "error": str(exc),
+        }))
+        return {}
+
+    if not isinstance(metadata, dict):
+        return {}
+
+    return {
+        "header_identity": {
+            "page": metadata.get("page"),
+            "manifest_type": metadata.get("manifest_type"),
+            "service_date_raw": metadata.get("service_date_raw"),
+            "service_date_compact": metadata.get("service_date_compact"),
+            "service_area": metadata.get("service_area"),
+            "work_area": metadata.get("work_area"),
+            "driver": metadata.get("driver"),
+            "isp_ic": metadata.get("isp_ic"),
+            "vehicle": metadata.get("vehicle"),
+        },
+        "header_authoritative": metadata.get(
+            "header_authoritative",
+            False,
+        ),
+        "source_download_filename": metadata.get(
+            "source_download_filename"
+        ),
+        "canonical_filename": metadata.get("canonical_filename"),
+        "download_source_hash": metadata.get("source_hash"),
+    }
+
+
 def collect_artifacts(request: dict, run_started_at: float) -> list[dict]:
     artifacts = []
 
@@ -248,10 +292,15 @@ def collect_artifacts(request: dict, run_started_at: float) -> list[dict]:
             if not file.is_file():
                 continue
 
+            if file.name.endswith(".runner.json"):
+                continue
+
             if file.stat().st_mtime < run_started_at - 2:
                 continue
 
             identity = infer_report_identity(file.name)
+            runner_metadata = load_runner_artifact_metadata(file)
+
             artifact = {
                 "kind": "REPORT_FILE",
                 "service_date": service_date,
@@ -260,6 +309,7 @@ def collect_artifacts(request: dict, run_started_at: float) -> list[dict]:
                 "size_bytes": file.stat().st_size,
                 "content_type": "application/vnd.ms-excel" if file.suffix.lower() == ".xls" else "application/octet-stream",
                 **identity,
+                **runner_metadata,
             }
 
             if not artifact_matches_targets(request, artifact):
