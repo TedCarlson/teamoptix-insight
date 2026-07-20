@@ -109,7 +109,7 @@ def checkDownloads(index):
 
 def downloadSnapshot():
     return {
-        str(path.resolve())
+        str(os.path.realpath(path))
         for path in [
             os.path.join(DOWNLOAD_FOLDER, filename)
             for filename in os.listdir(DOWNLOAD_FOLDER)
