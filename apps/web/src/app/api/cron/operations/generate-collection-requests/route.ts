@@ -464,7 +464,7 @@ async function loadInDayDswRouteActivity(params: {
   serviceDate: string;
 }) {
   const { supabase, companyId, serviceDate } = params;
-  const { data: batch, error: batchError } = await supabase
+  const { data: batches, error: batchError } = await supabase
     .schema("core")
     .from("operations_report_batch")
     .select("id,created_at")
@@ -475,10 +475,10 @@ async function loadInDayDswRouteActivity(params: {
     .eq("snapshot_kind", "IN_DAY")
     .eq("status", "LOADED")
     .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
 
   if (batchError) throw new Error(batchError.message);
+  const batch = Array.isArray(batches) && batches.length > 0 ? batches[0] : null;
   if (!batch?.id) return { observed: false, routeCount: null };
 
   const { count, error: routeError } = await supabase
