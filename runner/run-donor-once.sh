@@ -180,13 +180,22 @@ if [ "$overall_status" -ne 0 ]; then
 
   latest_scraper_log="$(ls -t "$SCRAPER_DIR/Logs"/*.log 2>/dev/null | head -1 || true)"
 
-  if [ -n "$latest_scraper_log" ] && grep -qi "Login successfull\|Login successful" "$latest_scraper_log"; then
+  if [ -n "$latest_scraper_log" ] && grep -Eqi \
+    "Login successfull|Login successful" \
+    "$latest_scraper_log"; then
     rm -f "$COOLDOWN_FILE"
-    echo "[runner] non-login scraper failure; cooldown not set latest_log=$latest_scraper_log"
-  else
+    echo "[runner] authenticated scraper failure; login cooldown not set latest_log=$latest_scraper_log"
+
+  elif [ -n "$latest_scraper_log" ] && grep -Eqi \
+    "login failed|login failure|authentication failed|invalid credentials|incorrect credentials|invalid username|invalid password|unable to log in|unable to login|credentials rejected" \
+    "$latest_scraper_log"; then
     until_epoch="$(($(date +%s) + COOLDOWN_SECONDS))"
     echo "$until_epoch" > "$COOLDOWN_FILE"
-    echo "[runner] login failure cooldown set for $COOLDOWN_SECONDS seconds"
+    echo "[runner] confirmed login failure; cooldown set for $COOLDOWN_SECONDS seconds latest_log=$latest_scraper_log"
+
+  else
+    rm -f "$COOLDOWN_FILE"
+    echo "[runner] non-authentication scraper failure; login cooldown not set latest_log=${latest_scraper_log:-none}"
   fi
   exit "$overall_status"
 fi
