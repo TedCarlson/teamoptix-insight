@@ -12,6 +12,15 @@ export type OperationsHistoryMetadata = {
   through_service_date: string | null;
   source_family: "DSW";
   finalized_operating_day_count: number;
+  snapshot_kind?: string;
+  payload_grain?: string;
+  retrieval_strategy?: string;
+  requested_month_count?: number;
+  month_blocks?: Array<{
+    start_date: string;
+    end_date: string;
+    finalized_operating_day_count: number;
+  }>;
 };
 
 export type OperationsHistoryRow = {

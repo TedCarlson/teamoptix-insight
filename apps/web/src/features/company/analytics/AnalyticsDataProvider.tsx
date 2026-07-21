@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type {
@@ -38,16 +39,22 @@ export function AnalyticsDataProvider({
 }) {
   const [selectedYear, setSelectedYear] =
     useState<number | null>(null);
+
   const [loadedYear, setLoadedYear] =
     useState<number | null>(null);
+
   const [availableYears, setAvailableYears] = useState<
     AvailableOperationsHistoryYear[]
   >([]);
+
   const [payload, setPayload] =
     useState<OperationsHistoryPayload | null>(null);
+
   const [yearsLoading, setYearsLoading] = useState(true);
   const [payloadLoading, setPayloadLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const requestSequence = useRef(0);
 
   const yearOptions = useMemo(
     () =>
@@ -76,14 +83,16 @@ export function AnalyticsDataProvider({
 
         const result = await response.json();
 
-        if (!active) return;
+        if (!active) {
+          return;
+        }
 
         if (!response.ok) {
           setAvailableYears([]);
           setSelectedYear(null);
           setError(
             result?.error ??
-              "Failed to load available analytics years."
+              "Failed to load available FINAL DSW years."
           );
           return;
         }
@@ -102,14 +111,16 @@ export function AnalyticsDataProvider({
 
         setSelectedYear(latestYear ?? null);
       } catch (caught) {
-        if (!active) return;
+        if (!active) {
+          return;
+        }
 
         setAvailableYears([]);
         setSelectedYear(null);
         setError(
           caught instanceof Error
             ? caught.message
-            : "Failed to load available analytics years."
+            : "Failed to load available FINAL DSW years."
         );
       } finally {
         if (active) {
@@ -118,6 +129,7 @@ export function AnalyticsDataProvider({
       }
     }
 
+    requestSequence.current += 1;
     setLoadedYear(null);
     setPayload(null);
 
@@ -139,9 +151,13 @@ export function AnalyticsDataProvider({
       return;
     }
 
+    const requestId = requestSequence.current + 1;
+    requestSequence.current = requestId;
+
     try {
       setPayloadLoading(true);
       setError(null);
+      setPayload(null);
 
       const response = await fetch(
         `/api/company/${slug}/analytics/history?year=${selectedYear}`,
@@ -153,9 +169,14 @@ export function AnalyticsDataProvider({
 
       const result = await response.json();
 
+      if (requestSequence.current !== requestId) {
+        return;
+      }
+
       if (!response.ok) {
         setError(
-          result?.error ?? "Failed to load analytics history."
+          result?.error ??
+            "Failed to load the FINAL DSW payload."
         );
         return;
       }
@@ -163,19 +184,44 @@ export function AnalyticsDataProvider({
       setPayload(result as OperationsHistoryPayload);
       setLoadedYear(selectedYear);
     } catch (caught) {
+      if (requestSequence.current !== requestId) {
+        return;
+      }
+
       setError(
         caught instanceof Error
           ? caught.message
-          : "Failed to load analytics history."
+          : "Failed to load the FINAL DSW payload."
       );
     } finally {
-      setPayloadLoading(false);
+      if (requestSequence.current === requestId) {
+        setPayloadLoading(false);
+      }
     }
   }, [
     loadedYear,
     selectedYear,
     slug,
     yearOptions,
+  ]);
+
+  useEffect(() => {
+    if (
+      yearsLoading ||
+      selectedYear === null ||
+      selectedYear === loadedYear ||
+      !yearOptions.includes(selectedYear)
+    ) {
+      return;
+    }
+
+    void loadSelectedYear();
+  }, [
+    loadedYear,
+    loadSelectedYear,
+    selectedYear,
+    yearOptions,
+    yearsLoading,
   ]);
 
   const value = useMemo<AnalyticsDataState>(
