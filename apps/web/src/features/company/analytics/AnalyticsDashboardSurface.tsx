@@ -171,9 +171,6 @@ export default function AnalyticsDashboardSurface() {
 
           {!payloadLoading && payload && intelligence.weeks.length > 0 ? (
             <>
-              <WeeklyRouteTrend weeks={intelligence.weeks} overlays={intelligence.overlays} />
-              <WeeklyStopVolume weeks={intelligence.weeks} overlays={intelligence.overlays} />
-              <WeeklyPackageVolume weeks={intelligence.weeks} overlays={intelligence.overlays} />
               <OperatingCalendar
                 days={intelligence.days}
                 overlays={intelligence.overlays}
@@ -181,6 +178,9 @@ export default function AnalyticsDashboardSurface() {
                 endDate={metadata?.end_date ?? intelligence.days.at(-1)?.serviceDate ?? ""}
                 throughDate={metadata?.through_service_date}
               />
+              <WeeklyStopVolume weeks={intelligence.weeks} overlays={intelligence.overlays} />
+              <WeeklyPackageVolume weeks={intelligence.weeks} overlays={intelligence.overlays} />
+              <WeeklyRouteTrend weeks={intelligence.weeks} overlays={intelligence.overlays} />
             </>
           ) : null}
 
