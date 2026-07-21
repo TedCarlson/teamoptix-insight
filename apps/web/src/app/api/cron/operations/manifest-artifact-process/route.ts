@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { processCapturedManifestArtifacts } from "@/features/operations/manifests/manifest.processor";
+import { manifestIdentityFromBuffer } from "@/features/operations/manifests/manifest.identity";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 
 export const runtime = "nodejs";
@@ -10,6 +11,106 @@ function parseLimit(req: NextRequest) {
   if (!Number.isFinite(raw)) return 10;
 
   return Math.max(1, Math.min(25, Math.trunc(raw)));
+}
+
+function isManifestCollectionArtifact(row: any) {
+  return ["Delivery Manifest.xlsx", "Pickup Manifest.xlsx"].includes(row.normalized_filename);
+}
+
+function expectedManifestType(row: any) {
+  return row.normalized_filename === "Delivery Manifest.xlsx" ? "delivery" : "pickup";
+}
+
+async function prepareManifestCollectionArtifacts(supabase: any, limit: number) {
+  const { data: artifacts, error } = await supabase
+    .from("operations_collection_artifact_v")
+    .select("*")
+    .eq("artifact_kind", "REPORT_FILE")
+    .in("artifact_status", ["READY_FOR_INGEST", "FAILED"])
+    .in("normalized_filename", ["Delivery Manifest.xlsx", "Pickup Manifest.xlsx"])
+    .order("created_at", { ascending: true })
+    .limit(Math.max(1, Math.min(limit, 250)));
+
+  if (error) throw new Error(error.message);
+
+  const prepared = [];
+  for (const artifact of (artifacts ?? []).filter(isManifestCollectionArtifact)) {
+    const failedByPromotion = artifact.artifact_status === "FAILED" &&
+      artifact.ingest_metadata_json?.source === "promote_operations_collection_manifest_artifacts";
+    if (artifact.artifact_status === "FAILED" && !failedByPromotion) continue;
+
+    try {
+      const { data: blob, error: downloadError } = await supabase.storage
+        .from(artifact.storage_bucket)
+        .download(artifact.storage_path);
+      if (downloadError || !blob) throw new Error(downloadError?.message ?? "Manifest artifact was not readable.");
+
+      const identity = manifestIdentityFromBuffer(Buffer.from(await blob.arrayBuffer()));
+      const expectedType = expectedManifestType(artifact);
+      if (identity.manifest_type !== expectedType) {
+        throw new Error(`Manifest identity mismatch: artifact expects ${expectedType}, Header identifies ${identity.manifest_type}.`);
+      }
+      if (artifact.service_date && artifact.service_date !== identity.service_date) {
+        throw new Error(`Manifest identity mismatch: artifact date ${artifact.service_date}, Header date ${identity.service_date}.`);
+      }
+
+      const runnerArtifact = {
+        ...(artifact.runner_artifact_json ?? {}),
+        artifact_key: identity.manifest_type === "delivery" ? "DELIVERY_MANIFEST" : "PICKUP_MANIFEST",
+        manifest_type: identity.manifest_type,
+        service_date: identity.service_date,
+        service_area: identity.service_area,
+        route_key: identity.route_key,
+        route_label: identity.route_label,
+        header_work_area: identity.raw_work_area,
+        header_page: identity.source_page,
+        source_download_filename: artifact.runner_artifact_json?.source_download_filename ?? artifact.original_filename,
+        canonical_filename: identity.canonical_filename,
+        identity_authority: "WORKBOOK_HEADER",
+      };
+
+      const { error: updateError } = await supabase.schema("core")
+        .from("operations_collection_artifact")
+        .update({
+          service_date: identity.service_date,
+          original_filename: identity.canonical_filename,
+          artifact_status: "READY_FOR_INGEST",
+          runner_artifact_json: runnerArtifact,
+          error_message: null,
+          ingest_metadata_json: {
+            ...(artifact.ingest_metadata_json ?? {}),
+            source: "prepare_manifest_collection_artifacts",
+            prepared_at: new Date().toISOString(),
+            identity_authority: "WORKBOOK_HEADER",
+            manifest_identity: identity,
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", artifact.id);
+      if (updateError) throw new Error(updateError.message);
+
+      prepared.push({ artifact_id: artifact.id, status: "PREPARED", identity });
+    } catch (identityError) {
+      const message = identityError instanceof Error ? identityError.message : "Manifest Header identity could not be resolved.";
+      await supabase.schema("core")
+        .from("operations_collection_artifact")
+        .update({
+          artifact_status: "FAILED",
+          error_message: message,
+          ingest_metadata_json: {
+            ...(artifact.ingest_metadata_json ?? {}),
+            source: "prepare_manifest_collection_artifacts",
+            failed_at: new Date().toISOString(),
+            reason: "MANIFEST_HEADER_IDENTITY_INVALID",
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", artifact.id);
+      prepared.push({ artifact_id: artifact.id, status: "FAILED", error: message });
+    }
+  }
+
+  return prepared;
 }
 
 async function reconcileManifestCollectionRequests(supabase: any) {
@@ -116,6 +217,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const supabase = createSupabaseServiceRoleClient();
+    const prepared = await prepareManifestCollectionArtifacts(supabase, parseLimit(req) * 5);
     const { data: promoted, error: promoteError } = await supabase.rpc(
       "promote_operations_collection_manifest_artifacts",
       {
@@ -136,6 +238,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
+      prepared_count: prepared.length,
+      prepared,
       promoted,
       processed_count: processed.length,
       processed,
