@@ -32,6 +32,26 @@ function normalizeDate(value: unknown) {
   return raw;
 }
 
+function easternDateIso() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function targetedRecoveryDateError(serviceDate: string) {
+  const today = easternDateIso();
+  const earliest = new Date(`${today}T12:00:00Z`);
+  earliest.setUTCFullYear(earliest.getUTCFullYear() - 1);
+  const earliestIso = earliest.toISOString().slice(0, 10);
+
+  if (serviceDate >= today) return "Targeted recovery requires a prior service date; today and future dates are not allowed.";
+  if (serviceDate < earliestIso) return "Targeted recovery is limited to service dates within the last 12 months.";
+  return null;
+}
+
 export async function GET(
   req: NextRequest,
   context: { params: Promise<{ slug: string }> }
@@ -57,10 +77,15 @@ export async function GET(
     const activeStatuses = ["QUEUED", "CLAIMED", "RUNNING", "ARTIFACTS_READY", "INGESTING"];
 
     if (mode === "recovery") {
+      const today = easternDateIso();
+      const earliest = new Date(`${today}T12:00:00Z`);
+      earliest.setUTCFullYear(earliest.getUTCFullYear() - 1);
       const { data, error } = await supabase
         .from("operations_collection_recovery_candidate_v")
         .select("*")
         .eq("company_id", resolved.company.id)
+        .gte("service_date", earliest.toISOString().slice(0, 10))
+        .lt("service_date", today)
         .order("failed_at", { ascending: false })
         .limit(limit);
 
@@ -196,6 +221,10 @@ export async function POST(
           { status: 400 }
         );
       }
+      const recoveryDateError = targetedRecoveryDateError(recoveryServiceDate);
+      if (recoveryDateError) {
+        return NextResponse.json({ error: recoveryDateError }, { status: 400 });
+      }
 
       const recoveryArtifactId = String(
         body.artifact_id ?? body.artifactId ?? ""
@@ -231,6 +260,15 @@ export async function POST(
     const serviceDate = normalizeDate(body.service_date ?? body.serviceDate);
     const serviceDateStart = normalizeDate(body.service_date_start ?? body.serviceDateStart);
     const serviceDateEnd = normalizeDate(body.service_date_end ?? body.serviceDateEnd);
+    if (requestType === "TARGETED_RECOVERY") {
+      if (!serviceDate) {
+        return NextResponse.json({ error: "Targeted recovery requires one service_date." }, { status: 400 });
+      }
+      const recoveryDateError = targetedRecoveryDateError(serviceDate);
+      if (recoveryDateError) {
+        return NextResponse.json({ error: recoveryDateError }, { status: 400 });
+      }
+    }
     const requestedReports = normalizeReports(body.requested_reports ?? body.requestedReports);
     const priority = parsePriority(body.priority);
     const requestPayload =

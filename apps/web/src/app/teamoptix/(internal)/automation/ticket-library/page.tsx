@@ -14,6 +14,22 @@ function value(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
 }
 
+function assertTargetedRecoveryDate(serviceDate: string) {
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const earliest = new Date(`${today}T12:00:00Z`);
+  earliest.setUTCFullYear(earliest.getUTCFullYear() - 1);
+  const earliestIso = earliest.toISOString().slice(0, 10);
+
+  if (!serviceDate) throw new Error("Select the exact service date.");
+  if (serviceDate >= today) throw new Error("Targeted recovery only accepts prior service dates, not today or future dates.");
+  if (serviceDate < earliestIso) throw new Error("Targeted recovery is limited to the last 12 months.");
+}
+
 async function saveTicket(formData: FormData) {
   "use server";
 
@@ -87,7 +103,7 @@ async function launchCollection(formData: FormData) {
   const serviceDate = value(formData, "serviceDate") || null;
   const serviceDateStart = value(formData, "serviceDateStart") || null;
   const serviceDateEnd = value(formData, "serviceDateEnd") || null;
-  if (requestType === "TARGETED_RECOVERY" && !serviceDate) throw new Error("Select the exact service date.");
+  if (requestType === "TARGETED_RECOVERY") assertTargetedRecoveryDate(serviceDate ?? "");
   if (requestType === "HISTORICAL_BACKFILL" && (!serviceDateStart || !serviceDateEnd || serviceDateStart > serviceDateEnd)) throw new Error("Select a valid inclusive historical range.");
 
   const requestPayload = {

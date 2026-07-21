@@ -51,9 +51,10 @@ export function manifestIdentityFromWorkbook(sheets: ManifestWorkbookSheets): Ma
   const dateKey = serviceDate.replaceAll("-", "");
   const serviceArea = header.service_area.trim() || null;
   const rawWorkArea = header.work_area.trim();
+  const canonicalRouteKey = workArea.routeKey.padStart(4, "0");
   const canonicalFilename = manifestType === "pickup"
-    ? `PM${dateKey}_${serviceArea ?? "UNKNOWN"}_${rawWorkArea.padStart(4, "0")}.xls`
-    : `${dateKey}_${workArea.routeKey} ${workArea.routeLabel}.xls`;
+    ? `PM${dateKey}_${serviceArea ?? "UNKNOWN"}_${canonicalRouteKey}.xls`
+    : `${dateKey}_${canonicalRouteKey} ${workArea.routeLabel}.xls`;
 
   return {
     manifest_type: manifestType,

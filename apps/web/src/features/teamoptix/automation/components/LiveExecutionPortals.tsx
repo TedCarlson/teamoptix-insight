@@ -14,6 +14,24 @@ function targetsFor(template: Template | undefined) {
   return Array.isArray(targets) ? targets : [];
 }
 
+function targetedRecoveryDateBounds() {
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const earliest = new Date(`${today}T12:00:00Z`);
+  const latest = new Date(`${today}T12:00:00Z`);
+  earliest.setUTCFullYear(earliest.getUTCFullYear() - 1);
+  latest.setUTCDate(latest.getUTCDate() - 1);
+
+  return {
+    min: earliest.toISOString().slice(0, 10),
+    max: latest.toISOString().slice(0, 10),
+  };
+}
+
 function ExecutionForm({
   mode,
   companies,
@@ -32,6 +50,7 @@ function ExecutionForm({
   );
   const targets = targetsFor(template);
   const historical = mode === "HISTORICAL_BACKFILL";
+  const targetedBounds = targetedRecoveryDateBounds();
 
   return (
     <form action={action} className="automation-live-execution-form">
@@ -56,7 +75,10 @@ function ExecutionForm({
             {historical ? (
               <><label><span>Range begins</span><input name="serviceDateStart" type="date" required /></label><label><span>Range ends</span><input name="serviceDateEnd" type="date" required /></label></>
             ) : (
-              <label><span>Service date</span><input name="serviceDate" type="date" required /></label>
+              <label>
+                <span>Service date · prior 12 months only</span>
+                <input name="serviceDate" type="date" min={targetedBounds.min} max={targetedBounds.max} required />
+              </label>
             )}
           </div>
           <div className="automation-live-execution-actions"><p>The published instruction governs runner behavior. These fields govern this execution only.</p><button type="submit" className="automation-action-button automation-action-button--primary">Launch now</button></div>

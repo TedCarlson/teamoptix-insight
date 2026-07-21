@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { OPERATIONS_COLLECTION_PAYLOAD_VERSION, runnerGoalForRequestType } from "@/features/automation/contracts/runnerGoal";
 import type { CollectionOrderDraft, CollectionProfile } from "./automation.types";
-import { COLLECTION_TARGETS, defaultCollectionTargetKeys, requestedReportsFromTargets, selectedCollectionTargets, todayIso, yesterdayIso } from "./automationCollectionConfig";
+import { COLLECTION_TARGETS, defaultCollectionTargetKeys, requestedReportsFromTargets, selectedCollectionTargets, targetedRecoveryDateBounds, todayIso, yesterdayIso } from "./automationCollectionConfig";
 import { checkRow, drawerBackdrop, drawerPanel, fieldLabel, mutedCopy, orderSummaryBox, policyStrip, sourceBox, sourceTitle, summaryLabel, summaryLine, timeInputBox, twoCol } from "./automationStyles";
 
 export function CollectionOrderDrawer(props: {
@@ -15,7 +15,7 @@ export function CollectionOrderDrawer(props: {
 }) {
   const profile = props.profile;
   const [serviceDate, setServiceDate] = useState(() =>
-    profile?.type === "LAST_LOOK" || profile?.type === "TARGETED_RECOVERY" ? todayIso() : yesterdayIso()
+    profile?.type === "LAST_LOOK" ? todayIso() : yesterdayIso()
   );
   const [startDate, setStartDate] = useState(yesterdayIso);
   const [endDate, setEndDate] = useState(todayIso);
@@ -36,6 +36,10 @@ export function CollectionOrderDrawer(props: {
 
   const isDateRange = profile.type === "HISTORICAL_BACKFILL";
   const isPlatformManaged = profile.type === "PREVIOUS_DAY_CLOSE" || profile.type === "LAST_LOOK";
+  const targetedDateBounds = targetedRecoveryDateBounds();
+  const hasValidTargetedDate =
+    profile.type !== "TARGETED_RECOVERY" ||
+    (serviceDate >= targetedDateBounds.min && serviceDate <= targetedDateBounds.max);
   const effectivePriority =
     profile.type === "HISTORICAL_BACKFILL" && timeMachinePriorityMode === "onboarding"
       ? 10
@@ -48,6 +52,7 @@ export function CollectionOrderDrawer(props: {
     props.canEdit &&
     !isPlatformManaged &&
     (profile.type === "TARGETED_RECOVERY" ? selectedTargets.length > 0 : requestedReports.length > 0) &&
+    hasValidTargetedDate &&
     (isDateRange ? hasValidDateRange : Boolean(serviceDate));
 
   async function prepareOrder() {
@@ -216,7 +221,17 @@ export function CollectionOrderDrawer(props: {
           ) : (
             <label style={fieldLabel}>
               Service Date
-              <input style={timeInputBox} type="date" value={serviceDate} onChange={(event) => setServiceDate(event.target.value)} />
+              <input
+                style={timeInputBox}
+                type="date"
+                value={serviceDate}
+                min={profile.type === "TARGETED_RECOVERY" ? targetedDateBounds.min : undefined}
+                max={profile.type === "TARGETED_RECOVERY" ? targetedDateBounds.max : undefined}
+                onChange={(event) => setServiceDate(event.target.value)}
+              />
+              {profile.type === "TARGETED_RECOVERY" ? (
+                <span style={mutedCopy}>Prior dates only, within the last 12 months.</span>
+              ) : null}
             </label>
           )}
 

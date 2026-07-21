@@ -133,11 +133,27 @@ export function requestedReportsFromTargets(targets: CollectionTarget[]) {
 }
 
 export function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 }
 
 export function yesterdayIso() {
-  const date = new Date();
-  date.setDate(date.getDate() - 1);
+  const date = new Date(`${todayIso()}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - 1);
   return date.toISOString().slice(0, 10);
+}
+
+export function targetedRecoveryDateBounds() {
+  const today = todayIso();
+  const earliest = new Date(`${today}T12:00:00Z`);
+  earliest.setUTCFullYear(earliest.getUTCFullYear() - 1);
+
+  return {
+    min: earliest.toISOString().slice(0, 10),
+    max: yesterdayIso(),
+  };
 }
