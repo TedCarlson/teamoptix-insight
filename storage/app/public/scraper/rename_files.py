@@ -42,6 +42,17 @@ def safe_component(value, fallback="UNKNOWN"):
     return text or fallback
 
 
+def safe_manifest_label(value, fallback="UNKNOWN"):
+    text = clean_text(value)
+    if not text:
+        return fallback
+
+    text = re.sub(r"[^\w .-]+", "-", text, flags=re.UNICODE)
+    text = re.sub(r"\s+", " ", text).strip(" ._-")
+
+    return text or fallback
+
+
 def normalized_header_key(value):
     return re.sub(r"[^a-z0-9]+", "", clean_text(value).lower())
 
@@ -193,7 +204,9 @@ def canonicalManifestFilename(file_path, expected_type=None):
             f"Manifest Header is missing a usable service date: {path.name}"
         )
 
-    if not service_area:
+    # Delivery manifests are route-authoritative and FedEx legitimately leaves
+    # SA# blank. Pickup/combined filenames still require service-area identity.
+    if manifest_type != "delivery" and not service_area:
         raise RuntimeError(
             f"Manifest Header is missing SA#: {path.name}"
         )
@@ -203,16 +216,34 @@ def canonicalManifestFilename(file_path, expected_type=None):
             f"Manifest Header is missing WA#: {path.name}"
         )
 
-    token = MANIFEST_TOKENS[manifest_type]
     extension = path.suffix or ".xls"
 
-    filename = (
-        f"{token}_"
-        f"{safe_component(service_date)}_"
-        f"SA_{safe_component(service_area)}_"
-        f"WA_{safe_component(work_area)}"
-        f"{extension}"
-    )
+    if manifest_type == "delivery":
+        # Established promotion contract: YYYYMMDD_<WA label>.xls.
+        filename = (
+            f"{safe_component(service_date)}_"
+            f"{safe_manifest_label(work_area)}"
+            f"{extension}"
+        )
+    elif manifest_type == "pickup":
+        route_match = re.match(r"^0*(\d{1,4})", clean_text(work_area))
+        if not route_match:
+            raise RuntimeError(
+                f"Manifest Header WA# has no numeric route key: {path.name}"
+            )
+        route_key = route_match.group(1).zfill(4)
+        filename = (
+            f"PM{safe_component(service_date)}_"
+            f"{safe_component(service_area)}_"
+            f"{route_key}{extension}"
+        )
+    else:
+        token = MANIFEST_TOKENS[manifest_type]
+        filename = (
+            f"{token}_{safe_component(service_date)}_"
+            f"SA_{safe_component(service_area)}_"
+            f"WA_{safe_component(work_area)}{extension}"
+        )
 
     identity["manifest_type"] = manifest_type
     identity["canonical_filename"] = filename
@@ -263,9 +294,21 @@ def renameDownloadedManifest(file_path, expected_type=None):
         if target_hash == source_hash:
             source.unlink()
         else:
-            collision_name = (
-                f"{target.stem}_HASH_{source_hash[:8]}{target.suffix}"
+            pickup_match = re.fullmatch(
+                r"(PM\d{8})_([^_]+)_(\d{3,4})",
+                target.stem,
+                flags=re.IGNORECASE,
             )
+            if identity.get("manifest_type") == "pickup" and pickup_match:
+                collision_name = (
+                    f"{pickup_match.group(1)}_"
+                    f"{pickup_match.group(2)}-HASH-{source_hash[:8]}_"
+                    f"{pickup_match.group(3)}{target.suffix}"
+                )
+            else:
+                collision_name = (
+                    f"{target.stem}_HASH_{source_hash[:8]}{target.suffix}"
+                )
             target = target.with_name(collision_name)
             os.replace(source, target)
     elif target.resolve() != source.resolve():

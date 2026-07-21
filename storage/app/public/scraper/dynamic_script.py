@@ -115,8 +115,8 @@ def downloadSnapshot():
             for filename in os.listdir(DOWNLOAD_FOLDER)
         ]
         if os.path.isfile(path)
-        and not path.endswith(".crdownload")
-        and not path.endswith(".runner.json")
+        and not os.path.basename(path).startswith(".")
+        and os.path.splitext(path)[1].lower() in {".xls", ".xlsx"}
     }
 
 
@@ -139,7 +139,10 @@ def waitForCompletedDownload(before, timeout_seconds=45):
             if not os.path.isfile(path):
                 continue
 
-            if filename.endswith(".crdownload") or filename.endswith(".runner.json"):
+            if filename.startswith("."):
+                continue
+
+            if os.path.splitext(filename)[1].lower() not in {".xls", ".xlsx"}:
                 continue
 
             if str(os.path.realpath(path)) not in before:

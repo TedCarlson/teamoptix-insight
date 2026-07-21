@@ -301,6 +301,14 @@ def collect_artifacts(request: dict, run_started_at: float) -> list[dict]:
             identity = infer_report_identity(file.name)
             runner_metadata = load_runner_artifact_metadata(file)
 
+            # Manifests are not valid handoff artifacts until Header identity
+            # extraction and canonicalization have completed. Raw browser
+            # downloads such as DeliveryManifest (3).xls must fail closed.
+            if identity.get("artifact_key") in {
+                "COMBINED_MANIFEST", "DELIVERY_MANIFEST", "PICKUP_MANIFEST"
+            } and not runner_metadata.get("header_authoritative"):
+                continue
+
             artifact = {
                 "kind": "REPORT_FILE",
                 "service_date": service_date,
