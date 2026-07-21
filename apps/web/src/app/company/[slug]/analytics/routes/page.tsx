@@ -1,26 +1,8 @@
-import AnalyticsStubSurface from "@/features/company/analytics/AnalyticsStubSurface";
+import RoutePortfolioSurface from "@/features/company/analytics/RoutePortfolioSurface";
 
-export default function Page() {
-  return (
-    <main className="workspace-shell">
-      <section
-        className="workspace-main"
-        style={{ paddingTop: 0, paddingBottom: 24 }}
-      >
-        <AnalyticsStubSurface
-          eyebrow="Analytics · Routes"
-          title="Route Intelligence"
-          purpose="Compare route behavior, volume, volatility, density, and performance across time and comparable operating conditions."
-          expected={[
-            "Route history and baselines",
-    "Heavy, light, and shifted route signals",
-    "Stop and package density",
-    "Route volatility",
-    "Comparable weekday analysis",
-    "Persistent route opportunities"
-          ]}
-        />
-      </section>
-    </main>
-  );
+export default async function Page(props: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await props.params;
+  return <RoutePortfolioSurface slug={slug} />;
 }
