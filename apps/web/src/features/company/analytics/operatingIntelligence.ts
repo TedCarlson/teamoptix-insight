@@ -6,7 +6,7 @@ export type OperatingMode =
   | "HEAVY"
   | "EXCEPTIONAL";
 
-export type CalendarOverlayKind = "PEAK_SEASON";
+export type CalendarOverlayKind = "PEAK_SEASON" | "PEAK_RAMP";
 
 export type CalendarOverlay = {
   key: string;
@@ -22,6 +22,7 @@ export type OperatingDayPoint = {
   totalStops: number;
   totalPackages: number;
   mode: OperatingMode;
+  signal: "SUPPLEMENTAL_OPERATION" | "CAPACITY_INTERVENTION" | null;
 };
 
 export type OperatingWeekPoint = {
@@ -125,6 +126,26 @@ function buildPeakSeasonOverlays(days: OperatingDayPoint[]): CalendarOverlay[] {
   return overlays;
 }
 
+function buildPeakRampOverlays(weeks: OperatingWeekPoint[]): CalendarOverlay[] {
+  if (weeks.length < 5) return [];
+  const overlays: CalendarOverlay[] = [];
+  for (let index = 3; index < weeks.length; index += 1) {
+    const window = weeks.slice(index - 3, index + 1);
+    const stopsRising = window.every((week, offset) => offset === 0 || week.totalStops >= window[offset - 1].totalStops * 0.97);
+    const packagesRising = window.every((week, offset) => offset === 0 || week.totalPackages >= window[offset - 1].totalPackages * 0.97);
+    const stopGrowth = window[0].totalStops > 0 ? window.at(-1)!.totalStops / window[0].totalStops - 1 : 0;
+    const packageGrowth = window[0].totalPackages > 0 ? window.at(-1)!.totalPackages / window[0].totalPackages - 1 : 0;
+    if ((stopsRising || packagesRising) && stopGrowth >= 0.1 && packageGrowth >= 0.1) {
+      const start = window[0];
+      let endIndex = index;
+      while (endIndex + 1 < weeks.length && weeks[endIndex + 1].totalStops >= weeks[endIndex].totalStops * 0.92) endIndex += 1;
+      overlays.push({ key: `peak-ramp-${start.weekStart}`, kind: "PEAK_RAMP", label: "Demand ramp", startDate: start.weekStart, endDate: weeks[endIndex].weekEnd });
+      index = endIndex;
+    }
+  }
+  return overlays;
+}
+
 function classifyDay(
   routeCount: number,
   totalStops: number,
@@ -169,17 +190,20 @@ export function buildOperatingIntelligenceDataset(
   const medianStops = median(rawDays.map((day) => day.totalStops));
   const medianPackages = median(rawDays.map((day) => day.totalPackages));
 
-  const days: OperatingDayPoint[] = rawDays.map((day) => ({
-    ...day,
-    mode: classifyDay(
+  const days: OperatingDayPoint[] = rawDays.map((day) => {
+    const mode = classifyDay(
       day.routeCount,
       day.totalStops,
       day.totalPackages,
       medianRoutes,
       medianStops,
       medianPackages
-    ),
-  }));
+    );
+    const weekday = parseDate(day.serviceDate).getUTCDay();
+    const supplemental = mode === "SUPPLEMENTAL" && (weekday === 0 || weekday === 6);
+    const capacityIntervention = mode === "HEAVY" && medianRoutes > 0 && day.routeCount >= medianRoutes * 1.2 && medianStops > 0 && day.totalStops / day.routeCount <= (medianStops / medianRoutes) * 0.92;
+    return { ...day, mode, signal: supplemental ? "SUPPLEMENTAL_OPERATION" : capacityIntervention ? "CAPACITY_INTERVENTION" : null };
+  });
 
   const weeks = new Map<string, OperatingWeekPoint>();
 
@@ -231,7 +255,7 @@ export function buildOperatingIntelligenceDataset(
   return {
     days,
     weeks: weekRows,
-    overlays: buildPeakSeasonOverlays(days),
+    overlays: [...buildPeakRampOverlays(weekRows), ...buildPeakSeasonOverlays(days)],
     reference: {
       medianRoutes,
       medianStops,

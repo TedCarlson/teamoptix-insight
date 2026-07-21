@@ -2,12 +2,8 @@
 
 import { useMemo } from "react";
 import { useAnalyticsData } from "./AnalyticsDataProvider";
-import {
-  WeeklyPackageVolume,
-  WeeklyRouteTrend,
-  WeeklyStopVolume,
-} from "./OperatingIntelligenceCharts";
 import { OperatingCalendar } from "./OperatingCalendar";
+import CompositeOperatingChart from "./CompositeOperatingChart";
 import { buildOperatingIntelligenceDataset } from "./operatingIntelligence";
 
 type PayloadMetadata = {
@@ -178,9 +174,7 @@ export default function AnalyticsDashboardSurface() {
                 endDate={metadata?.end_date ?? intelligence.days.at(-1)?.serviceDate ?? ""}
                 throughDate={metadata?.through_service_date}
               />
-              <WeeklyStopVolume weeks={intelligence.weeks} overlays={intelligence.overlays} />
-              <WeeklyPackageVolume weeks={intelligence.weeks} overlays={intelligence.overlays} />
-              <WeeklyRouteTrend weeks={intelligence.weeks} overlays={intelligence.overlays} />
+              <CompositeOperatingChart days={intelligence.days} weeks={intelligence.weeks} overlays={intelligence.overlays} compact />
             </>
           ) : null}
 

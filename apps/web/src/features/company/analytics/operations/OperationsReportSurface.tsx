@@ -2,6 +2,8 @@
 
 import { useMemo } from "react";
 import { useAnalyticsData } from "../AnalyticsDataProvider";
+import CompositeOperatingChart from "../CompositeOperatingChart";
+import { buildOperatingIntelligenceDataset } from "../operatingIntelligence";
 import OperationsReportCalendar from "./OperationsReportCalendar";
 import { buildOperationsReport, type ReportMetric } from "./operationsReport";
 
@@ -13,6 +15,7 @@ const shortDate = (value: string) => new Intl.DateTimeFormat(undefined, { month:
 export default function OperationsReportSurface() {
   const { payload, payloadLoading, yearsLoading, error, loadedYear } = useAnalyticsData();
   const report = useMemo(() => buildOperationsReport(payload?.rows ?? []), [payload]);
+  const intelligence = useMemo(() => buildOperatingIntelligenceDataset(payload?.rows ?? []), [payload]);
 
   return <main className="workspace-shell"><section className="workspace-main" style={{ paddingTop: 0, paddingBottom: 36 }}>
     <article style={{ maxWidth: 1180, margin: "0 auto", background: "#fff", border: "1px solid #dbe3ed", boxShadow: "0 18px 50px rgba(15,23,42,.06)", padding: "clamp(22px, 4vw, 48px)" }}>
@@ -29,6 +32,8 @@ export default function OperationsReportSurface() {
         <section style={{ padding: "30px 0 26px" }}><p className="value-card__eyebrow">Current operating position</p><div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.55fr) minmax(230px, .7fr)", gap: 30, marginTop: 10 }}><div>{report.narrative.map((paragraph) => <p key={paragraph} style={{ margin: "0 0 12px", fontFamily: "Georgia, serif", fontSize: 20, lineHeight: 1.55, color: "#1e293b" }}>{paragraph}</p>)}</div><aside style={{ borderLeft: "1px solid #cbd5e1", paddingLeft: 20 }}><strong style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".08em" }}>How to read this report</strong><p className="app-card__body" style={{ marginTop: 8 }}>Each rolling window is compared with the immediately preceding window of equal length. Contract trend compares its latter half with its first half.</p></aside></div></section>
 
         <section style={{ borderTop: "1px solid #cbd5e1", padding: "26px 0" }}><p className="value-card__eyebrow">30 / 60 / 90 / Contract</p><h2 style={{ margin: "5px 0 14px", fontSize: 28 }}>Demand and operating-plan comparison</h2><div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}><thead><tr><th style={{ textAlign: "left", padding: "10px 8px", borderBottom: "2px solid #0f172a" }}>Measure</th>{report.periods.map((period) => <th key={period.key} style={{ textAlign: "right", padding: "10px 8px", borderBottom: "2px solid #0f172a" }}>{period.label}<small style={{ display: "block", color: "#64748b", fontWeight: 500 }}>{period.days} operating days</small></th>)}</tr></thead><tbody>{metrics.map(([key, label]) => <tr key={key}><th style={{ textAlign: "left", padding: "13px 8px", borderBottom: "1px solid #e2e8f0", fontSize: 13 }}>{label}</th>{report.periods.map((period) => <td key={period.key} style={{ textAlign: "right", padding: "13px 8px", borderBottom: "1px solid #e2e8f0" }}><strong>{number(period.metrics[key], key.includes("Per") ? 1 : 0)}</strong><small style={{ display: "block", color: (period.change[key] ?? 0) > 0 ? "#166534" : (period.change[key] ?? 0) < 0 ? "#b91c1c" : "#64748b" }}>{percent(period.change[key])}</small></td>)}</tr>)}</tbody></table></div></section>
+
+        <CompositeOperatingChart days={intelligence.days} weeks={intelligence.weeks} overlays={intelligence.overlays} />
 
         <OperationsReportCalendar days={report.days} />
 
