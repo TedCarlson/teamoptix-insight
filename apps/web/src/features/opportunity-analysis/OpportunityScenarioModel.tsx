@@ -17,6 +17,7 @@ type RateBasis = "HOUR" | "DAY" | "WEEK" | "MONTH" | "YEAR";
 type StaffRow = { role: string; count: number; rate: number; basis: RateBasis; hoursPerWeek: number };
 type Inputs = { serviceDays: 6 | 7; revenueLow: number; revenueHigh: number; roadFactor: number; peakFactor: number; peakStartDate: string; peakEndDate: string; commercialLeadWeeks: number; residentialLeadWeeks: number; fuelPrice: number; driverDailyRate: number; payrollBurden: number; owner: StaffRow; fleet: FleetRow[]; staff: StaffRow[] };
 type Detail = Record<string, unknown> & { zip_analysis?: { terminal?: Record<string, unknown>; rows?: Array<Record<string, unknown>>; unresolved_zip_codes?: string[] } };
+type ModelVersion = { version_number: number; version_name?: string | null; assumption_snapshot?: Partial<Inputs> | null; created_at?: string | null };
 const defaultOwner: StaffRow = { role:"Owner / Operator",count:1,rate:120000,basis:"YEAR",hoursPerWeek:40 };
 const defaultDeploymentTerms: DeploymentTerms = { purchasePrice:0,residualValue:0,usefulLifeYears:7,downPayment:0,annualInterestRate:8,loanTermYears:5,monthlyLease:0,rentalDailyRate:0,rentalDaysPerYear:0,avpRouteDayRate:0 };
 
@@ -39,13 +40,15 @@ const initialInputs: Inputs = {
 
 export default function OpportunityScenarioModel({ companySlug, opportunities, initialId }: { companySlug: string; opportunities: ScenarioOpportunity[]; initialId?: string }) {
   const [selectedId, setSelectedId] = useState(initialId && opportunities.some((item) => item.id === initialId) ? initialId : opportunities[0]?.id ?? "");
-  const [draft, setDraft] = useState(initialInputs);
-  const [applied, setApplied] = useState(initialInputs);
+  const [draft, setDraft] = useState(() => freshInputs());
+  const [applied, setApplied] = useState(() => freshInputs());
   const [detail, setDetail] = useState<Detail | null>(null);
   const [loading, setLoading] = useState(true);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [savingVersion, setSavingVersion] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
   const [savedVersion, setSavedVersion] = useState<number | null>(null);
+  const [savedVersionName, setSavedVersionName] = useState<string | null>(null);
   const [versionError, setVersionError] = useState<string | null>(null);
   const selected = opportunities.find((item) => item.id === selectedId);
   const hasPendingChanges = JSON.stringify(draft) !== JSON.stringify(applied);
@@ -66,11 +69,12 @@ export default function OpportunityScenarioModel({ companySlug, opportunities, i
       const response = await fetch(`/api/company/${companySlug}/opportunity-analysis/models`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ analysisId: selected.id, assumptions: applied, results: result }),
+        body: JSON.stringify({ analysisId: selected.id, assumptions: applied, results: result, versionName: "Comparison checkpoint" }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to save model version.");
       setSavedVersion(Number(payload.version_number));
+      setSavedVersionName("Comparison checkpoint");
     } catch (error) {
       setVersionError(error instanceof Error ? error.message : "Unable to save model version.");
     } finally {
@@ -78,11 +82,63 @@ export default function OpportunityScenarioModel({ companySlug, opportunities, i
     }
   }
 
+  async function updateProspectus() {
+    if (!selected || !draftResult || !hasPendingChanges || !fleetModelValid) return;
+    setSavingDraft(true);
+    setVersionError(null);
+    try {
+      const response = await fetch(`/api/company/${companySlug}/opportunity-analysis/models`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ analysisId: selected.id, assumptions: draft, results: draftResult, versionName: "Draft" }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to preserve this draft.");
+      setApplied(structuredClone(draft));
+      setUpdatedAt(payload.created_at ? new Date(payload.created_at) : new Date());
+      setSavedVersion(Number(payload.version_number));
+      setSavedVersionName("Draft");
+    } catch (error) {
+      setVersionError(error instanceof Error ? error.message : "Unable to preserve this draft.");
+    } finally {
+      setSavingDraft(false);
+    }
+  }
+
   useEffect(() => {
     if (!selectedId) return;
-    fetch(`/api/company/${companySlug}/opportunity-analysis/opportunities?id=${selectedId}`)
-      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Unable to load opportunity.")))
-      .then(setDetail).catch(() => setDetail(null)).finally(() => setLoading(false));
+    const controller = new AbortController();
+    setLoading(true);
+    setDetail(null);
+    setSavedVersion(null);
+    setSavedVersionName(null);
+    setVersionError(null);
+    Promise.all([
+      fetch(`/api/company/${companySlug}/opportunity-analysis/opportunities?id=${selectedId}`, { signal: controller.signal }),
+      fetch(`/api/company/${companySlug}/opportunity-analysis/models?analysisId=${selectedId}`, { signal: controller.signal }),
+    ]).then(async ([detailResponse, versionsResponse]) => {
+      if (!detailResponse.ok) throw new Error("Unable to load opportunity.");
+      if (!versionsResponse.ok) throw new Error("Unable to load opportunity assumptions.");
+      const [loadedDetail, versions] = await Promise.all([detailResponse.json(), versionsResponse.json()]);
+      const latest = (Array.isArray(versions) ? versions[0] : null) as ModelVersion | null;
+      const inputs = hydrateInputs(latest?.assumption_snapshot);
+      setDetail(loadedDetail);
+      setDraft(inputs);
+      setApplied(structuredClone(inputs));
+      setSavedVersion(latest ? Number(latest.version_number) : null);
+      setSavedVersionName(latest?.version_name ?? null);
+      setUpdatedAt(latest?.created_at ? new Date(latest.created_at) : null);
+    }).catch((error) => {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      const inputs = freshInputs();
+      setDetail(null);
+      setDraft(inputs);
+      setApplied(structuredClone(inputs));
+      setVersionError(error instanceof Error ? error.message : "Unable to load opportunity.");
+    }).finally(() => {
+      if (!controller.signal.aborted) setLoading(false);
+    });
+    return () => controller.abort();
   }, [companySlug, selectedId]);
 
   const result = useMemo(() => calculate(selected, applied), [selected, applied]);
@@ -97,6 +153,7 @@ export default function OpportunityScenarioModel({ companySlug, opportunities, i
   const fleetModelValid = draftRouteCount >= fleetBounds.routeMin && draftRouteCount <= fleetBounds.routeMax && draftVehicleCount >= draftRouteCount;
 
   if (!opportunities.length) return <article className="app-card" style={{ padding: 16 }}>Save an opportunity before creating a prospectus.</article>;
+  if (loading) return <article className="app-card" style={{ padding: 16 }}>Loading opportunity model…</article>;
   return <section className="opportunity-prospectus-layout" style={{ display: "grid", gridTemplateColumns: "minmax(300px, 22%) minmax(0, 78%)", gap: 14, alignItems: "start" }}>
     <aside className="app-card prospectus-controls evidence-print-hide" style={{ padding: 14, display: "grid", gap: 14, position: "sticky", top: 12 }}>
       <div><strong>Prospectus controls</strong><p className="app-card__body" style={{ margin: "4px 0 0" }}>Edits are modeled assumptions.</p></div>
@@ -104,9 +161,9 @@ export default function OpportunityScenarioModel({ companySlug, opportunities, i
       <RailSection title="Operations"><RailInput label="Service days" value={draft.serviceDays} suffix="days" onChange={(v) => setDraft({ ...draft, serviceDays: v === 7 ? 7 : 6 })} /><RailInput label="Centroid-to-road factor" value={draft.roadFactor} step={.05} suffix="×" onChange={(v) => setDraft({ ...draft, roadFactor: v })} /><RailInput label="Peak package factor" value={draft.peakFactor} step={.05} suffix="×" onChange={(v) => setDraft({ ...draft, peakFactor: v })} /><DateInput label="Core Peak begins" value={draft.peakStartDate} onChange={(value)=>setDraft({...draft,peakStartDate:value})} /><DateInput label="Core Peak ends" value={draft.peakEndDate} onChange={(value)=>setDraft({...draft,peakEndDate:value})} /><RailInput label="Commercial ramp lead" value={draft.commercialLeadWeeks} suffix="weeks" onChange={(value)=>setDraft({...draft,commercialLeadWeeks:value})} /><RailInput label="Residential ramp lead" value={draft.residentialLeadWeeks} suffix="weeks" onChange={(value)=>setDraft({...draft,residentialLeadWeeks:value})} /><ControlHelp title="How operations controls work"><p><strong>Service days</strong> determines operating days and annual driver-paid days.</p><p><strong>Centroid-to-road factor</strong> converts straight-line terminal distance into estimated road distance. It does not modify reported listing mileage.</p><p><strong>Commercial ramp</strong> defaults to three weeks before Black Friday; <strong>residential ramp</strong> defaults to one week before Black Friday.</p><p><strong>Core Peak</strong> defaults to Thanksgiving week through Christmas week. The Peak factor applies to capacity planning inside that window.</p></ControlHelp></RailSection>
       <RailSection title="Economics"><RailInput label="Revenue / route low" value={draft.revenueLow} step={5000} prefix="$" suffix="/ yr" onChange={(v) => setDraft({ ...draft, revenueLow: v })} /><RailInput label="Revenue / route high" value={draft.revenueHigh} step={5000} prefix="$" suffix="/ yr" onChange={(v) => setDraft({ ...draft, revenueHigh: v })} /><RailInput label="Fuel price" value={draft.fuelPrice} step={.05} prefix="$" suffix="/ gal" onChange={(v) => setDraft({ ...draft, fuelPrice: v })} /><ControlHelp title="How economics controls work"><p><strong>Revenue per route</strong> sets the low/high annual gross benchmark for each active route.</p><p><strong>Fuel price</strong> multiplies modeled gallons derived from reported miles and vehicle MPG.</p></ControlHelp></RailSection>
       <RailSection title="Labor"><RailInput label="Driver daily rate / route" value={draft.driverDailyRate} step={5} prefix="$" suffix="/ route-day" onChange={(v) => setDraft({ ...draft, driverDailyRate: v })} /><RailInput label="Payroll burden" value={draft.payrollBurden * 100} step={1} suffix="%" onChange={(v) => setDraft({ ...draft, payrollBurden: v / 100 })} /><ControlHelp title="How labor controls work"><p><strong>Driver daily rate</strong> is paid once per active route per service day.</p><p><strong>Payroll burden</strong> is the additional employer cost above wages. Twelve percent means $12 of taxes, workers’ compensation, benefits, and related burden for each $100 of wages.</p></ControlHelp></RailSection>
-      <button className="button button-primary" type="button" disabled={!hasPendingChanges || !fleetModelValid} onClick={() => { setApplied(structuredClone(draft)); setUpdatedAt(new Date()); }}>{!fleetModelValid ? "Resolve fleet bounds" : hasPendingChanges ? "Update prospectus" : "Prospectus current"}</button>
+      <button className="button button-primary" type="button" disabled={savingDraft || !hasPendingChanges || !fleetModelValid} onClick={updateProspectus}>{!fleetModelValid ? "Resolve fleet bounds" : savingDraft ? "Preserving draft…" : hasPendingChanges ? "Update prospectus" : "Prospectus current"}</button>
       {updatedAt && !hasPendingChanges ? <div role="status" style={{ padding: "9px 10px", borderRadius: 10, background: "#ecfdf5", color: "#047857", fontSize: 12, fontWeight: 800 }}>Updated {updatedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</div> : null}
-      <small className="app-card__body">Source facts remain unchanged. Update applies the authored scenario to the report.</small>
+      <small className="app-card__body">Source facts remain unchanged. Each update preserves a versioned draft for this opportunity.</small>
     </aside>
 
     <article className="app-card opportunity-prospectus" style={{ padding: 18, display: "grid", gap: 18, overflow: "hidden" }}>
@@ -143,7 +200,7 @@ export default function OpportunityScenarioModel({ companySlug, opportunities, i
           <small className="app-card__body">Hourly roles use hours per week. Daily roles use service days. Weekly and monthly roles use their selected pay frequency.</small>
         </ReportSection>
         <ReportSection title="ZIP evidence appendix"><div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1050 }}><thead><tr>{["ZIP","City","Type","RUCA","Population","People / sq mi","Establishments","Employees / sq mi","Terminal miles","Centroid"].map((label) => <Th key={label}>{label}</Th>)}</tr></thead><tbody>{zipRows.map((row) => <tr key={String(row.zip_code)}><Td><strong>{String(row.zip_code)}</strong></Td><Td>{String(row.preferred_city ?? "—")}, {String(row.state_code ?? "")}</Td><Td>{String(row.classification).replaceAll("_"," ")}</Td><Td>{row.ruca_category ? String(row.ruca_category).replaceAll("_"," ") : "—"}</Td><Td>{format(row.population)}</Td><Td>{format(row.population_density_per_sqmi)}</Td><Td>{format(row.business_establishments)}</Td><Td>{format(row.employees_per_sqmi)}</Td><Td>{Number(row.terminal_distance_miles ?? 0).toFixed(1)}</Td><Td>{String(row.coordinate_source ?? "—")}</Td></tr>)}</tbody></table></div><MethodologyNotes /></ReportSection>
-        <footer className="evidence-print-hide" style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems:"center", flexWrap:"wrap" }}><span><small className="app-card__body">Suggested filename: {reportFilename}.pdf</small>{savedVersion ? <small role="status" style={{display:"block",color:"#047857",fontWeight:800}}>Model version {savedVersion} saved for comparison.</small> : null}{versionError ? <small role="alert" style={{display:"block",color:"#b91c1c",fontWeight:800}}>{versionError}</small> : null}</span><span style={{display:"flex",gap:8}}><button className="button" type="button" disabled={savingVersion || hasPendingChanges} onClick={saveModelVersion}>{savingVersion ? "Saving version…" : hasPendingChanges ? "Update before saving" : "Save model version"}</button><button className="button button-primary" onClick={printProspectus}>Print / Save PDF</button></span></footer>
+        <footer className="evidence-print-hide" style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems:"center", flexWrap:"wrap" }}><span><small className="app-card__body">Suggested filename: {reportFilename}.pdf</small>{savedVersion ? <small role="status" style={{display:"block",color:"#047857",fontWeight:800}}>{savedVersionName === "Draft" ? "Draft" : "Model"} version {savedVersion} preserved in the warehouse.</small> : null}{versionError ? <small role="alert" style={{display:"block",color:"#b91c1c",fontWeight:800}}>{versionError}</small> : null}</span><span style={{display:"flex",gap:8}}><button className="button" type="button" disabled={savingVersion || hasPendingChanges} onClick={saveModelVersion}>{savingVersion ? "Saving checkpoint…" : hasPendingChanges ? "Update before saving" : "Save comparison checkpoint"}</button><button className="button button-primary" onClick={printProspectus}>Print / Save PDF</button></span></footer>
         <div className="prospectus-print-footer">Insight by Team Optix · {selected?.opportunity_number} · Confidential</div>
       </> : null}
     </article>
@@ -218,6 +275,20 @@ function DeploymentTermsEditor({row,index,inputs,setInputs}:{row:FleetRow;index:
     {row.deployment==="RENTAL"?<><RailInput label="Rental rate / vehicle" value={row.rentalDailyRate} step={5} prefix="$" suffix="/day" onChange={(rentalDailyRate)=>update({rentalDailyRate})}/><RailInput label="Deployed days / year" value={row.rentalDaysPerYear} step={5} suffix="days" onChange={(rentalDaysPerYear)=>update({rentalDaysPerYear})}/></>:null}
     {row.deployment==="AVP"?<RailInput label="AVP reimbursement" value={row.avpRouteDayRate} step={5} prefix="$" suffix="/route-day" onChange={(avpRouteDayRate)=>update({avpRouteDayRate})}/>:null}
   </div></details>;
+}
+function freshInputs(): Inputs { return structuredClone(initialInputs); }
+function hydrateInputs(snapshot?: Partial<Inputs> | null): Inputs {
+  const defaults = freshInputs();
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return defaults;
+  return {
+    ...defaults,
+    ...snapshot,
+    owner: snapshot.owner ? { ...defaults.owner, ...snapshot.owner } : defaults.owner,
+    fleet: Array.isArray(snapshot.fleet)
+      ? snapshot.fleet.map((row) => ({ ...defaultDeploymentTerms, ...row }))
+      : defaults.fleet,
+    staff: Array.isArray(snapshot.staff) ? snapshot.staff : defaults.staff,
+  };
 }
 function supportStaff(inputs:Inputs) { return (inputs.staff??[]).filter((row)=>row.role.trim().toLowerCase()!=="owner / operator"); }
 function updateSupport(setter:(value:Inputs)=>void,inputs:Inputs,index:number,patch:Partial<StaffRow>) { const staff=supportStaff(inputs).map((row,i)=>i===index?{...row,...patch}:row); setter({...inputs,staff}); }
