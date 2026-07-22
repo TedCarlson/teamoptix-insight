@@ -36,5 +36,6 @@ export type AssetStatusOption = {
   asset_status_id: string;
   status_key: string;
   status_label: string;
+  is_assignable: boolean;
   sort_order: number;
 };

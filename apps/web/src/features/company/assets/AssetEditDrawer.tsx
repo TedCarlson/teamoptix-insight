@@ -22,6 +22,15 @@ const inputStyle: React.CSSProperties = {
   background: "#fff",
 };
 
+function statusBehaviorLabel(status: { status_key: string; status_label: string; is_assignable: boolean }) {
+  if (status.status_key === "ASSIGNED") return "Assigned — controlled by driver assignment";
+  if (status.status_key === "AVAILABLE") return "Available — unassigned and ready to assign";
+  if (status.status_key === "RETIRED") return "Retired — releases assignment and removes from use";
+  return status.is_assignable
+    ? `${status.status_label} — eligible for assignment`
+    : `${status.status_label} — releases assignment and blocks assignment`;
+}
+
 export default function AssetEditDrawer(props: Props) {
   const router = useRouter();
   const isEdit = Boolean(props.row);
@@ -138,10 +147,11 @@ export default function AssetEditDrawer(props: Props) {
               <select value={statusKey} onChange={(e) => setStatusKey(e.target.value)} style={inputStyle}>
                 {statuses.map((status) => (
                   <option key={status.status_key} value={status.status_key}>
-                    {status.status_label}
+                    {statusBehaviorLabel(status)}
                   </option>
                 ))}
               </select>
+              <small style={{ color: "#64748b" }}>Assigned is set by assigning a driver. Choosing any other status releases the current assignment.</small>
             </label>
 
             <label style={{ display: "grid", gap: 5 }}>

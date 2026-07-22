@@ -31,17 +31,6 @@ export async function GET(req: NextRequest, context: RouteContext) {
   const { data: notes } = itemIds.length
     ? await supabase.from("operations_watchlist_note_v").select("*").in("watchlist_item_id", itemIds).order("created_at", { ascending: true })
     : { data: [] };
-  const { data: memberships } = await supabase
-    .from("company_memberships")
-    .select("profile_id, title")
-    .eq("company_id", company.id)
-    .eq("membership_status", "active");
-  const profileIds = (memberships ?? []).map((membership) => membership.profile_id);
-  const { data: profiles } = profileIds.length
-    ? await supabase.from("profiles").select("id, display_name, first_name, last_name").in("id", profileIds)
-    : { data: [] };
-  const titleByProfile = new Map((memberships ?? []).map((membership) => [membership.profile_id, membership.title]));
-
   const expressItems = (items ?? []).filter((item) =>
     item.signal_type === "EXPRESS_OPEN" || item.signal_type === "EXPRESS_TRACKING_GAP"
   );
@@ -69,11 +58,6 @@ export async function GET(req: NextRequest, context: RouteContext) {
           }
         : { packages: [] },
     })),
-    assignees: (profiles ?? []).map((profile) => ({
-      id: profile.id,
-      name: profile.display_name || `${profile.first_name} ${profile.last_name}`.trim(),
-      title: titleByProfile.get(profile.id) ?? null,
-    })),
   });
 }
 
@@ -86,7 +70,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     p_company_slug: slug,
     p_item_id: body.item_id,
     p_status: body.status,
-    p_assigned_profile_id: body.assigned_profile_id || null,
+    p_assigned_profile_id: null,
     p_due_at: body.due_at || null,
     p_resolution_class: body.resolution_class || null,
     p_client_visible: body.client_visible !== false,

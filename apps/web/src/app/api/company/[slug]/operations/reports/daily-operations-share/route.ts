@@ -91,7 +91,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
       total: total.total + number(item.package_count), completed: total.completed + number(item.completed_package_count),
       open: total.open + number(item.open_package_count), gaps: total.gaps + number(item.tracking_gap_package_count),
     }), { total: 0, completed: 0, open: 0, gaps: 0 });
-    const { data: watchlist } = await supabase.from("operations_watchlist_item_v").select("title, detail, status, severity, assigned_to_name").eq("company_id", company.id).eq("service_date", serviceDate).eq("client_visible", true).not("status", "in", "(RESOLVED,DISMISSED)");
+    const { data: watchlist } = await supabase.from("operations_watchlist_item_v").select("title, detail, status, severity").eq("company_id", company.id).eq("service_date", serviceDate).eq("client_visible", true).not("status", "in", "(RESOLVED,DISMISSED)");
     const { data: dispatchRows, error: dispatchError } = await supabase.rpc("get_daily_operations_dispatch_actions", { p_company_id: company.id, p_service_date: serviceDate });
     if (dispatchError) return NextResponse.json({ error: `Unable to load Dispatch actions: ${dispatchError.message}` }, { status: 500 });
     const dispatchActions = currentDispatchActions(dispatchRows);
@@ -106,7 +106,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     const subject = String(body.subject ?? "").trim() || `${company.company_name} · Daily Operations · ${serviceDate}`;
     const message = String(body.message ?? "").trim();
     const watchlistHtml = (watchlist ?? []).length
-      ? `<h2 style="font-size:18px;margin:24px 0 8px">Actionable watchlist</h2>${(watchlist ?? []).map((item) => `<div style="border:1px solid #e2e8f0;border-left:4px solid #f59e0b;border-radius:10px;padding:10px;margin:8px 0"><strong>${escapeHtml(item.title)}</strong><div style="color:#475569">${escapeHtml(item.detail)}</div><small>${escapeHtml(item.status)} · ${escapeHtml(item.assigned_to_name || "Unassigned")}</small></div>`).join("")}`
+      ? `<h2 style="font-size:18px;margin:24px 0 8px">Actionable watchlist</h2>${(watchlist ?? []).map((item) => `<div style="border:1px solid #e2e8f0;border-left:4px solid #f59e0b;border-radius:10px;padding:10px;margin:8px 0"><strong>${escapeHtml(item.title)}</strong><div style="color:#475569">${escapeHtml(item.detail)}</div><small>${escapeHtml(item.status)}</small></div>`).join("")}`
       : `<p style="color:#166534;font-weight:700">No open client-visible watchlist items.</p>`;
     const dispatchHtml = dispatchActions.length
       ? `<h2 style="font-size:18px;margin:24px 0 8px">Dispatch actions</h2>${rollupDispatchActions(dispatchActions).map((group) => {

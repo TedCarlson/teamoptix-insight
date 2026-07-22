@@ -99,8 +99,6 @@ type WatchlistItem = {
   };
 };
 
-type WatchlistAssignee = { id: string; name: string; title: string | null };
-
 function todayNyIso() {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/New_York",
@@ -418,6 +416,15 @@ function prettyStatus(value: string) {
   return value.toLowerCase().replaceAll("_", " ").replace(/(^|\s)\S/g, (letter) => letter.toUpperCase());
 }
 
+const REVIEW_STATUS_LABELS: Record<WatchlistItem["status"], string> = {
+  NEW: "Needs review",
+  ACKNOWLEDGED: "Reviewed",
+  IN_PROGRESS: "Investigating",
+  MONITORING: "Monitoring",
+  RESOLVED: "Closed — resolved",
+  DISMISSED: "Closed — no action needed",
+};
+
 type WatchlistWorkflow = {
   title: string;
   objective: string;
@@ -508,7 +515,6 @@ function workflowForSignal(signalType: string): WatchlistWorkflow {
 
 function WatchlistDrawer(props: {
   item: WatchlistItem;
-  assignees: WatchlistAssignee[];
   busy: boolean;
   onClose: () => void;
   onUpdate: (values: Partial<WatchlistItem>) => Promise<void>;
@@ -516,7 +522,6 @@ function WatchlistDrawer(props: {
 }) {
   const workflow = workflowForSignal(props.item.signal_type);
   const [status, setStatus] = useState(props.item.status);
-  const [assignee, setAssignee] = useState(props.item.assigned_profile_id ?? "");
   const [dueAt, setDueAt] = useState(props.item.due_at?.slice(0, 10) ?? "");
   const [resolutionClass, setResolutionClass] = useState(props.item.resolution_class ?? "");
   const [clientVisible, setClientVisible] = useState(props.item.client_visible);
@@ -563,13 +568,13 @@ function WatchlistDrawer(props: {
             <div><span>Route</span><strong>{props.item.route_key ?? "All routes"}</strong></div>
             <div><span>Service date</span><strong>{dateLabel(props.item.service_date)}</strong></div>
             <div><span>Source</span><strong>{props.item.source_family}</strong></div>
-            <div><span>Current state</span><strong>{prettyStatus(props.item.status)}</strong></div>
+            <div><span>Current state</span><strong>{REVIEW_STATUS_LABELS[props.item.status]}</strong></div>
           </section>
 
           <section className="ops-watch-panel ops-watch-workflow">
             <div className="ops-watch-panel__header">
               <div><span className="ops-watch-panel__eyebrow">Workflow expectation</span><h3>{workflow.title}</h3></div>
-              <span className="ops-watch-state ops-watch-state--open">Next · {prettyStatus(workflow.recommendedState)}</span>
+              <span className="ops-watch-state ops-watch-state--open">Next · {REVIEW_STATUS_LABELS[workflow.recommendedState]}</span>
             </div>
             <p className="ops-watch-workflow__objective">{workflow.objective}</p>
             <ol className="ops-watch-workflow__steps">{workflow.steps.map((step) => <li key={step}>{step}</li>)}</ol>
@@ -592,7 +597,7 @@ function WatchlistDrawer(props: {
                           <span aria-live="polite">{copiedTrackingId === entry.tracking_id ? "Copied" : "Copy"}</span>
                         </button>
                       ) : <strong>Tracking number unavailable</strong>}
-                      <small>{[entry.route_label || entry.route_key, entry.st_number ? `Stop ${entry.st_number}` : null, entry.sid ? `SID ${entry.sid}` : null].filter(Boolean).join(" · ")}</small>
+                      <small>{[`Work area ${entry.route_key}`, entry.st_number ? `Stop ${entry.st_number}` : null, entry.sid ? `SID ${entry.sid}` : null].filter(Boolean).join(" · ")}</small>
                     </article>
                   ))}
                 </div>
@@ -602,34 +607,28 @@ function WatchlistDrawer(props: {
 
           <section className="ops-watch-panel">
             <div className="ops-watch-panel__header">
-              <div><span className="ops-watch-panel__eyebrow">Decision controls</span><h3>Ownership and disposition</h3></div>
+              <div><span className="ops-watch-panel__eyebrow">Decision controls</span><h3>Review and disposition</h3></div>
               <span className={`ops-watch-state ops-watch-state--${isClosed ? "closed" : "open"}`}>{isClosed ? "Closed" : "Action required"}</span>
             </div>
             <div className="ops-watch-form-grid">
               <label className="ops-watch-field">Status
                 <select value={status} onChange={(event) => setStatus(event.target.value as WatchlistItem["status"])}>
-              {(["NEW", "ACKNOWLEDGED", "IN_PROGRESS", "MONITORING", "RESOLVED", "DISMISSED"] as const).map((value) => <option key={value} value={value}>{prettyStatus(value)}</option>)}
-                </select>
-              </label>
-              <label className="ops-watch-field">Owner
-                <select value={assignee} onChange={(event) => setAssignee(event.target.value)}>
-              <option value="">Unassigned</option>
-              {props.assignees.map((person) => <option key={person.id} value={person.id}>{person.name}{person.title ? ` · ${person.title}` : ""}</option>)}
+              {(["NEW", "ACKNOWLEDGED", "IN_PROGRESS", "MONITORING", "RESOLVED", "DISMISSED"] as const).map((value) => <option key={value} value={value}>{REVIEW_STATUS_LABELS[value]}</option>)}
                 </select>
               </label>
               <label className="ops-watch-field">Due date
                 <input type="date" value={dueAt} onChange={(event) => setDueAt(event.target.value)} />
               </label>
-              <label className="ops-watch-field">Resolution
+              {isClosed ? <label className="ops-watch-field">Outcome
                 <select value={resolutionClass} onChange={(event) => setResolutionClass(event.target.value)}>
-              <option value="">Not resolved</option>
+              <option value="">Choose the verified outcome</option>
               {["SERVICE_FAILURE_CONFIRMED", "CORRECTED_OPERATIONALLY", "TRACKING_GAP", "SOURCE_DATA_ERROR", "NO_ACTION_REQUIRED", "ESCALATED_EXTERNALLY"].map((value) => <option key={value} value={value}>{prettyStatus(value)}</option>)}
                 </select>
-              </label>
+              </label> : null}
             </div>
             <div className="ops-watch-panel__footer">
               <label className="ops-watch-visibility"><input type="checkbox" checked={clientVisible} onChange={(event) => setClientVisible(event.target.checked)} /><span><strong>Client report visibility</strong><small>Include this item in shared operating briefs.</small></span></label>
-              <button className="button buttonPrimary" type="button" disabled={props.busy} onClick={() => props.onUpdate({ status, assigned_profile_id: assignee || null, due_at: dueAt || null, resolution_class: resolutionClass || null, client_visible: clientVisible })}>{props.busy ? "Saving…" : "Save changes"}</button>
+              <button className="button buttonPrimary" type="button" disabled={props.busy} onClick={() => props.onUpdate({ status, assigned_profile_id: null, due_at: dueAt || null, resolution_class: status === "DISMISSED" ? "NO_ACTION_REQUIRED" : status === "RESOLVED" ? resolutionClass || null : null, client_visible: clientVisible })}>{props.busy ? "Saving…" : "Save changes"}</button>
             </div>
           </section>
 
@@ -676,7 +675,6 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
   const [payload, setPayload] = useState<SummaryPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
-  const [assignees, setAssignees] = useState<WatchlistAssignee[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [watchlistBusy, setWatchlistBusy] = useState(false);
   const [watchlistError, setWatchlistError] = useState<string | null>(null);
@@ -756,7 +754,6 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
       return;
     }
     setWatchlist(Array.isArray(data.items) ? data.items : []);
-    setAssignees(Array.isArray(data.assignees) ? data.assignees : []);
     setWatchlistError(null);
   }
 
@@ -1147,7 +1144,6 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
         <WatchlistDrawer
           key={selectedWatchlistItem.id}
           item={selectedWatchlistItem}
-          assignees={assignees}
           busy={watchlistBusy}
           onClose={() => setSelectedItemId(null)}
           onUpdate={(values) => updateWatchlistItem(selectedWatchlistItem, values)}
