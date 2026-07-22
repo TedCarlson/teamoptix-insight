@@ -1,1 +1,5 @@
-export { default } from "@/features/foyer/drivers/FutureDriverPage";
+import { redirect } from "next/navigation";
+
+export default function FutureDriverRedirectPage() {
+  redirect("/teams/future");
+}

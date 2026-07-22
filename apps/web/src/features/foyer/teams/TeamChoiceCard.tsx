@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-type FoyerDoorCardProps = {
+type TeamChoiceCardProps = {
   eyebrow: string;
   title: string;
   body: string;
@@ -8,13 +8,9 @@ type FoyerDoorCardProps = {
   cta: string;
 };
 
-export default function FoyerDoorCard(props: FoyerDoorCardProps) {
+export default function TeamChoiceCard(props: TeamChoiceCardProps) {
   return (
-    <Link
-      className="foyer-door foyer-door--interactive"
-      href={props.href}
-      aria-label={`${props.cta}: ${props.title}`}
-    >
+    <Link className="foyer-door foyer-door--interactive" href={props.href}>
       <span className="foyer-door__eyebrow">{props.eyebrow}</span>
       <h3>{props.title}</h3>
       <p>{props.body}</p>

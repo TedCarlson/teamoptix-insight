@@ -1,1 +1,5 @@
-export { default } from "@/features/foyer/drivers/DriverChoicePage";
+import { redirect } from "next/navigation";
+
+export default function DriversRedirectPage() {
+  redirect("/teams");
+}

@@ -5,14 +5,14 @@ export default function FoyerHeader() {
     <header className="foyer-header">
       <Link className="foyer-brand" href="/">
         <span>Team Optix</span>
-        <small>Built for Operators</small>
+        <small>Built for Operators. By Operators.</small>
       </Link>
 
       <nav className="foyer-nav" aria-label="Public navigation">
+        <Link href="/explore">Insight</Link>
         <Link href="/company-owner">Operators</Link>
-        <Link href="/drivers">Drivers</Link>
-        <Link href="/explore">Explore</Link>
-        <Link href="/teamoptix">About</Link>
+        <Link href="/teams">Teams</Link>
+        <Link href="/teamoptix">Company</Link>
       </nav>
 
       <Link className="foyer-signin" href="/sign-in">
