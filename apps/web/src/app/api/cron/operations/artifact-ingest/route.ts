@@ -4,6 +4,11 @@ import { ingestArtifactWorkbook } from "@/features/operations/reports/automation
 
 export const runtime = "nodejs";
 
+const DECOMMISSIONED_FCC_ARTIFACT_KEYS = new Set([
+  "FCC_SERVICE_AREA_SUMMARY",
+  "SERVICE_AREA_SUMMARY",
+]);
+
 function artifactAuditContext(artifact: any) {
   return {
     artifact_id: artifact.id,
@@ -198,16 +203,17 @@ export async function GET() {
   for (const artifact of artifacts ?? []) {
     try {
       const artifactKey = String(artifact.runner_artifact_json?.artifact_key ?? "").toUpperCase();
-      if (artifactKey === "FCC_SERVICE_AREA_SUMMARY" || artifactKey === "SERVICE_AREA_SUMMARY") {
+      if (DECOMMISSIONED_FCC_ARTIFACT_KEYS.has(artifactKey)) {
         await markArtifact({
           supabase,
           artifactId: artifact.id,
           status: "IGNORED",
           metadata: {
             source: "cron_artifact_ingest",
-            phase: "IGNORED",
+            phase: "VERIFIED_IGNORED",
+            verified_at: new Date().toISOString(),
             ignored_at: new Date().toISOString(),
-            reason: "Service Area Summary is not a governed Insight artifact. Runner collection is limited to FCC Work Area Summary.",
+            reason: "Decommissioned FCC service-area artifact was verified and ignored.",
             artifact: artifactAuditContext(artifact),
           },
         });
@@ -216,7 +222,7 @@ export async function GET() {
           artifact_id: artifact.id,
           collection_request_id: artifact.collection_request_id,
           status: "IGNORED",
-          reason: "UNSUPPORTED_SERVICE_AREA_SUMMARY",
+          reason: "DECOMMISSIONED_FCC_ARTIFACT_VERIFIED_IGNORED",
         });
         continue;
       }
