@@ -12,6 +12,7 @@ import type {
   FoyerConversationState,
 } from "@/features/foyer/models/conversation";
 import GovernedWorkspaceRequestForm from "./GovernedWorkspaceRequestForm";
+import InsightSignal from "@/features/brand/components/InsightSignal";
 
 function answerText(entry: FoyerConversationEntry | undefined) {
   if (!entry) return "";
@@ -202,9 +203,7 @@ export default function FoyerConversationPreview() {
                 <p className="foyer-kicker">Workspace request</p>
                 <h2>Let&apos;s build your workspace.</h2>
               </div>
-              <button type="button" className="button" onClick={() => setRequestOpen(false)}>
-                Close
-              </button>
+              <div className="foyer-request-overlay__brand"><InsightSignal phase="prospect" size="md" showWordmark /><button type="button" className="button" onClick={() => setRequestOpen(false)}>Close</button></div>
             </div>
 
             {turnstileSiteKey ? <div ref={turnstileRef} className="signin-bridge__captcha" aria-label="Security verification" /> : null}

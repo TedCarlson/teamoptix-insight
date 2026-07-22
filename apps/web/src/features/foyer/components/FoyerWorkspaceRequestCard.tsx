@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import GovernedWorkspaceRequestForm from "./GovernedWorkspaceRequestForm";
+import InsightSignal from "@/features/brand/components/InsightSignal";
 
 export default function FoyerWorkspaceRequestCard({
   buttonLabel = "Start with Insight",
@@ -94,9 +95,7 @@ export default function FoyerWorkspaceRequestCard({
                 <p className="foyer-kicker">Workspace request</p>
                 <h2>Start with Insight.</h2>
               </div>
-              <button type="button" className="button" onClick={() => setRequestOpen(false)}>
-                Close
-              </button>
+              <div className="foyer-request-overlay__brand"><InsightSignal phase="prospect" size="md" showWordmark /><button type="button" className="button" onClick={() => setRequestOpen(false)}>Close</button></div>
             </div>
 
             <>
