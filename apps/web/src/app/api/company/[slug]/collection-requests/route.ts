@@ -79,7 +79,7 @@ export async function GET(
     if (mode === "recovery") {
       const today = easternDateIso();
       const earliest = new Date(`${today}T12:00:00Z`);
-      earliest.setUTCFullYear(earliest.getUTCFullYear() - 1);
+      earliest.setUTCDate(earliest.getUTCDate() - 5);
       const { data, error } = await supabase
         .from("operations_collection_recovery_candidate_v")
         .select("*")
