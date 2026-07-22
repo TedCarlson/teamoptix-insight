@@ -28,6 +28,13 @@ export default function FoyerWorkspaceRequestCard({
       window.turnstile.execute(turnstileWidgetId.current);
     });
   }
+  function closeRequest() {
+    if (turnstileWidgetId.current) window.turnstile?.remove(turnstileWidgetId.current);
+    turnstileWidgetId.current = null;
+    captchaResolver.current = null;
+    captchaRejecter.current = null;
+    setRequestOpen(false);
+  }
 
   useEffect(() => {
     if (!requestOpen || !turnstileSiteKey || !turnstileRef.current) return;
@@ -99,7 +106,7 @@ export default function FoyerWorkspaceRequestCard({
             type="button"
             className="foyer-request-overlay__backdrop"
             aria-label="Close workspace request"
-            onClick={() => setRequestOpen(false)}
+            onClick={closeRequest}
           />
 
           <section className="foyer-request-overlay__panel">
@@ -108,7 +115,7 @@ export default function FoyerWorkspaceRequestCard({
                 <p className="foyer-kicker">Workspace request</p>
                 <h2>Start with Insight.</h2>
               </div>
-              <div className="foyer-request-overlay__brand"><InsightSignal phase="prospect" size="md" showWordmark /><button type="button" className="button" onClick={() => setRequestOpen(false)}>Close</button></div>
+              <div className="foyer-request-overlay__brand"><InsightSignal phase="prospect" size="md" showWordmark /><button type="button" className="button" onClick={closeRequest}>Close</button></div>
             </div>
 
             <>
@@ -119,7 +126,7 @@ export default function FoyerWorkspaceRequestCard({
                   aria-label="Security verification"
                 />
               ) : null}
-              <GovernedWorkspaceRequestForm requestCaptchaToken={turnstileSiteKey ? requestCaptchaToken : undefined} />
+              <GovernedWorkspaceRequestForm requestCaptchaToken={turnstileSiteKey ? requestCaptchaToken : undefined} onSent={closeRequest} />
             </>
           </section>
         </div>

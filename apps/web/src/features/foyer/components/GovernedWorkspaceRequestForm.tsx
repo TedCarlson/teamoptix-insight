@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { IntakeContract, IntakeQuestion } from "@/features/intake/intake.types";
 
-export default function GovernedWorkspaceRequestForm({ requestCaptchaToken, defaults = {} }: { requestCaptchaToken?: () => Promise<string>; defaults?: Record<string, string> }) {
+export default function GovernedWorkspaceRequestForm({ requestCaptchaToken, onSent, defaults = {} }: { requestCaptchaToken?: () => Promise<string>; onSent?: () => void; defaults?: Record<string, string> }) {
   const [contract, setContract] = useState<IntakeContract | null>(null);
   const [loadError, setLoadError] = useState("");
   const [lobIds, setLobIds] = useState<string[]>([]);
@@ -41,6 +41,7 @@ export default function GovernedWorkspaceRequestForm({ requestCaptchaToken, defa
     const result = await response.json().catch(() => null);
     if (!response.ok) { const message=result?.error ?? "Unable to send workspace request."; setStatus("error"); setError(message); return; }
     setStatus("sent");
+    onSent?.();
   }
 
   if (loadError) return <p role="alert">{loadError}</p>;

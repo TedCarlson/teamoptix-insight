@@ -47,6 +47,13 @@ export default function FoyerConversationPreview() {
       window.turnstile.execute(turnstileWidgetId.current);
     });
   }
+  function closeRequest() {
+    if (turnstileWidgetId.current) window.turnstile?.remove(turnstileWidgetId.current);
+    turnstileWidgetId.current = null;
+    captchaResolver.current = null;
+    captchaRejecter.current = null;
+    setRequestOpen(false);
+  }
 
   useEffect(() => {
     if (!requestOpen || !turnstileSiteKey || !turnstileRef.current) return;
@@ -207,7 +214,7 @@ export default function FoyerConversationPreview() {
             type="button"
             className="foyer-request-overlay__backdrop"
             aria-label="Close workspace request"
-            onClick={() => setRequestOpen(false)}
+            onClick={closeRequest}
           />
 
           <section className="foyer-request-overlay__panel">
@@ -216,12 +223,13 @@ export default function FoyerConversationPreview() {
                 <p className="foyer-kicker">Workspace request</p>
                 <h2>Let&apos;s build your workspace.</h2>
               </div>
-              <div className="foyer-request-overlay__brand"><InsightSignal phase="prospect" size="md" showWordmark /><button type="button" className="button" onClick={() => setRequestOpen(false)}>Close</button></div>
+              <div className="foyer-request-overlay__brand"><InsightSignal phase="prospect" size="md" showWordmark /><button type="button" className="button" onClick={closeRequest}>Close</button></div>
             </div>
 
             {turnstileSiteKey ? <div ref={turnstileRef} className="signin-bridge__captcha" aria-label="Security verification" /> : null}
             <GovernedWorkspaceRequestForm
               requestCaptchaToken={turnstileSiteKey ? requestCaptchaToken : undefined}
+              onSent={closeRequest}
               defaults={{
                 "daily-ticket-volume": workspaceDefaults.routeCount,
                 "current-dispatch-process": workspaceDefaults.operation,

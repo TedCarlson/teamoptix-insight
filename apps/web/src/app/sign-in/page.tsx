@@ -335,6 +335,7 @@ declare global {
       ) => string;
       reset: (widgetId?: string) => void;
       execute: (widgetId?: string) => void;
+      remove: (widgetId?: string) => void;
     };
   }
 }
