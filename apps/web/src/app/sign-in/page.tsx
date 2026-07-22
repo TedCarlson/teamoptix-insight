@@ -326,12 +326,15 @@ declare global {
         container: HTMLElement,
         options: {
           sitekey: string;
+          execution?: "render" | "execute";
+          appearance?: "always" | "execute" | "interaction-only";
           callback: (token: string) => void;
           "expired-callback": () => void;
           "error-callback": () => void;
         }
       ) => string;
       reset: (widgetId?: string) => void;
+      execute: (widgetId?: string) => void;
     };
   }
 }

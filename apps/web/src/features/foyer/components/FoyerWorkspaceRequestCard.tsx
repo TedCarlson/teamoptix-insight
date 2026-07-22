@@ -12,14 +12,21 @@ export default function FoyerWorkspaceRequestCard({
   const [requestOpen, setRequestOpen] = useState(false);
   const turnstileRef = useRef<HTMLDivElement | null>(null);
   const turnstileWidgetId = useRef<string | null>(null);
-  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const captchaResolver = useRef<((token: string) => void) | null>(null);
+  const captchaRejecter = useRef<((reason?: unknown) => void) | null>(null);
   const turnstileEnabled = process.env.NEXT_PUBLIC_TURNSTILE_ENABLED === "true";
   const turnstileSiteKey = turnstileEnabled
     ? process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? ""
     : "";
-  function resetCaptcha() {
-    setCaptchaToken(null);
-    window.turnstile?.reset(turnstileWidgetId.current ?? undefined);
+  function requestCaptchaToken() {
+    if (!turnstileSiteKey) return Promise.resolve("");
+    return new Promise<string>((resolve, reject) => {
+      if (!window.turnstile || !turnstileWidgetId.current) { reject(new Error("Security verification is not ready.")); return; }
+      captchaResolver.current = resolve;
+      captchaRejecter.current = reject;
+      window.turnstile.reset(turnstileWidgetId.current);
+      window.turnstile.execute(turnstileWidgetId.current);
+    });
   }
 
   useEffect(() => {
@@ -31,9 +38,11 @@ export default function FoyerWorkspaceRequestCard({
 
       turnstileWidgetId.current = turnstile.render(turnstileRef.current, {
         sitekey: turnstileSiteKey,
-        callback: (token: string) => setCaptchaToken(token),
-        "expired-callback": () => setCaptchaToken(null),
-        "error-callback": () => setCaptchaToken(null),
+        execution: "execute",
+        appearance: "interaction-only",
+        callback: (token: string) => { captchaResolver.current?.(token); captchaResolver.current = null; captchaRejecter.current = null; },
+        "expired-callback": () => { captchaRejecter.current?.(new Error("Security verification expired.")); captchaResolver.current = null; captchaRejecter.current = null; },
+        "error-callback": () => { captchaRejecter.current?.(new Error("Security verification failed.")); captchaResolver.current = null; captchaRejecter.current = null; },
       });
     }
 
@@ -110,7 +119,7 @@ export default function FoyerWorkspaceRequestCard({
                   aria-label="Security verification"
                 />
               ) : null}
-              <GovernedWorkspaceRequestForm captchaToken={captchaToken} captchaRequired={!!turnstileSiteKey} onCaptchaRejected={resetCaptcha} />
+              <GovernedWorkspaceRequestForm requestCaptchaToken={turnstileSiteKey ? requestCaptchaToken : undefined} />
             </>
           </section>
         </div>
