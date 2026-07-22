@@ -207,6 +207,18 @@ export default function AutomationConfigPanel(
     (request) => request.request_status === "COMPLETE"
   ).length;
 
+  function requestStatusLabel(status: string) {
+    if (status === "QUEUED") return "Waiting for runner";
+    if (status === "CLAIMED") return "Runner starting";
+    if (status === "RUNNING") return "Collecting files";
+    if (status === "ARTIFACTS_READY") return "Files delivered · processing";
+    if (status === "INGESTING") return "Processing files";
+    if (status === "COMPLETE") return "Complete";
+    if (status === "FAILED") return "Failed";
+    if (status === "CANCELLED") return "Cancelled";
+    return status;
+  }
+
   async function refreshRequests() {
     try {
       setRefreshing(true);
@@ -638,7 +650,7 @@ export default function AutomationConfigPanel(
                   </td>
                   <td style={td}>{request.request_type}</td>
                   <td style={td}>
-                    <strong>{request.request_status}</strong>
+                    <strong>{requestStatusLabel(request.request_status)}</strong>
                     {request.error_message ? (
                       <span style={{ display: "block", maxWidth: 280, marginTop: 3, color: "#b91c1c", lineHeight: 1.35 }}>
                         {request.error_message}
@@ -662,7 +674,7 @@ export default function AutomationConfigPanel(
                     <span style={{ display: "block", fontWeight: 850 }}>
                       {`${request.ingested_count ?? 0}/${
                         request.registered_count ?? 0
-                      } files ingested`}
+                      } files processed`}
                     </span>
                     {(request.ready_count ?? 0) > 0 ||
                     (request.ingesting_count ?? 0) > 0 ||
@@ -677,9 +689,9 @@ export default function AutomationConfigPanel(
                               : "#64748b",
                         }}
                       >
-                        {`${request.ready_count ?? 0} ready · ${
+                        {`${request.ready_count ?? 0} waiting · ${
                           request.ingesting_count ?? 0
-                        } ingesting · `}
+                        } processing · `}
                         {(request.failed_count ?? 0) > 0 ? (
                           <a
                             href={`/teamoptix/automation/collections/${request.id}`}
@@ -723,10 +735,10 @@ export default function AutomationConfigPanel(
       </SectionCard>
 
       {recoveryCandidates.length > 0 ? (
-        <SectionCard eyebrow="Recovery Queue" title="Corrected recovery attempts">
+        <SectionCard eyebrow="Previous-day close" title="Dates requiring recovery">
           <p style={mutedCopy}>
-            Failed files and missing service dates remain here until a governed
-            Targeted Recovery is queued.
+            Only failed previous-day closes appear here. A date leaves after its
+            replacement close is processed successfully.
           </p>
           <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
             {recoveryCandidates.map((candidate) => (
@@ -748,7 +760,7 @@ export default function AutomationConfigPanel(
                   <span style={{ display: "block", color: "#64748b", marginTop: 2 }}>
                     {candidate.report_family_key ?? candidate.failed_request_type}
                     {candidate.original_filename ? ` · ${candidate.original_filename}` : ""}
-                    {` · ${candidate.attempt_count} prior ingest attempts`}
+                    {` · ${candidate.attempt_count} failed close ${candidate.attempt_count === 1 ? "attempt" : "attempts"}`}
                   </span>
                 </div>
                 <button
@@ -758,8 +770,8 @@ export default function AutomationConfigPanel(
                   onClick={() => queueRecovery(candidate)}
                 >
                   {queuingRecovery === candidate.candidate_key
-                    ? "Queuing..."
-                    : "Queue Recovery"}
+                    ? "Queuing retry..."
+                    : "Retry collection"}
                 </button>
               </div>
             ))}
