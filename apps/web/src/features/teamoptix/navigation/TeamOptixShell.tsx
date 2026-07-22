@@ -12,6 +12,7 @@ type NavItem = {
 
 const primaryLinks: NavItem[] = [
   { href: "/teamoptix/command-center", label: "Home" },
+  { href: "/teamoptix/platform", label: "Platform" },
   { href: "/teamoptix/business", label: "Business" },
   { href: "/teamoptix/products", label: "Products" },
   { href: "/teamoptix/customers", label: "Customers" },
@@ -22,6 +23,9 @@ const primaryLinks: NavItem[] = [
 ];
 
 const secondaryLinksByDomain: Record<string, NavItem[]> = {
+  platform: [
+    { href: "/teamoptix/platform", label: "Platform Configuration" },
+  ],
   business: [
     { href: "/teamoptix/business", label: "Overview" },
     { href: "/teamoptix/business/sales", label: "Sales" },

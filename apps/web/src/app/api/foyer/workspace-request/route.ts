@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyTurnstile } from "@/lib/security/turnstile";
+import { persistWorkspaceRequest, readIntakeContract } from "@/features/intake/server/intake.repository";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 
 export const runtime = "nodejs";
 
@@ -52,17 +54,14 @@ export async function POST(req: Request) {
       }
     }
 
+    const contract = await readIntakeContract();
+    const answerByKey = new Map(contract.questions.map((question) => [question.key, body.answers?.[question.id]]));
     const payload = {
-      companyName: clean(body.companyName),
-      ownerName: clean(body.ownerName),
-      email: clean(body.email).toLowerCase(),
-      phone: clean(body.phone),
-      terminal: clean(body.terminal),
-      routeCount: clean(body.routeCount),
-      employeeCount: clean(body.employeeCount),
-      currentSystems: clean(body.currentSystems),
-      operation: clean(body.operation),
-      priorities: clean(body.priorities),
+      companyName: clean(answerByKey.get("company-name")), ownerName: clean(answerByKey.get("owner-name")),
+      email: clean(answerByKey.get("email")).toLowerCase(), phone: clean(answerByKey.get("phone")),
+      lobIds: Array.isArray(body.lobIds) ? body.lobIds.filter((id: unknown): id is string => typeof id === "string") : [],
+      capabilityIds: Array.isArray(body.capabilityIds) ? body.capabilityIds.filter((id: unknown): id is string => typeof id === "string") : [],
+      answers: typeof body.answers === "object" && body.answers ? body.answers : {},
     };
 
     if (!payload.companyName || !payload.ownerName || !payload.email) {
@@ -72,6 +71,7 @@ export async function POST(req: Request) {
       );
     }
 
+    const requestId = await persistWorkspaceRequest(payload, contract);
     const resendApiKey = requireEnv("RESEND_API_KEY");
     const emailFrom = requireEnv("RESEND_FROM_EMAIL");
     const emailFromName = process.env.RESEND_FROM_NAME?.trim() || "Insight";
@@ -82,12 +82,9 @@ export async function POST(req: Request) {
       ["Owner", payload.ownerName],
       ["Email", payload.email],
       ["Phone", payload.phone],
-      ["Terminal / Location", payload.terminal],
-      ["Routes", payload.routeCount],
-      ["Employees", payload.employeeCount],
-      ["Current systems", payload.currentSystems],
-      ["Operation notes", payload.operation],
-      ["First priorities", payload.priorities],
+      ["Lines of Business", contract.linesOfBusiness.filter((item) => payload.lobIds.includes(item.id)).map((item) => item.label).join(", ")],
+      ["Capabilities", contract.capabilities.filter((item) => payload.capabilityIds.includes(item.id)).map((item) => item.label).join(", ")],
+      ...contract.questions.filter((question) => !["company-name","owner-name","email","phone"].includes(question.key) && payload.answers[question.id] !== undefined).map((question) => [question.label, String(payload.answers[question.id] ?? "")]),
     ];
 
     const htmlRows = rows
@@ -126,14 +123,9 @@ export async function POST(req: Request) {
 
     const resendJson = await resendResponse.json().catch(() => null);
 
-    if (!resendResponse.ok) {
-      return NextResponse.json(
-        { error: resendJson?.message ?? "Failed to send workspace request." },
-        { status: 500 }
-      );
-    }
+    if (resendResponse.ok && resendJson?.id) await createSupabaseServiceRoleClient().rpc("mark_workspace_request_notified", { p_request_id: requestId, p_notification_id: resendJson.id });
 
-    return NextResponse.json({ ok: true, resend_id: resendJson?.id ?? null });
+    return NextResponse.json({ ok: true, request_id: requestId, notification_sent: resendResponse.ok });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to send workspace request." },

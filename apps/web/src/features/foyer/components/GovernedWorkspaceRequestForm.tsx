@@ -1,0 +1,58 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import type { IntakeContract, IntakeQuestion } from "@/features/intake/intake.types";
+
+export default function GovernedWorkspaceRequestForm({ captchaToken, defaults = {} }: { captchaToken: string | null; defaults?: Record<string, string> }) {
+  const [contract, setContract] = useState<IntakeContract | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [lobIds, setLobIds] = useState<string[]>([]);
+  const [capabilityIds, setCapabilityIds] = useState<string[]>([]);
+  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [error, setError] = useState("");
+
+  useEffect(() => { fetch("/api/foyer/intake-contract", { cache: "no-store" }).then(async (response) => {
+    const result = await response.json();
+    if (!response.ok) throw new Error(result?.error ?? "Unable to load the request form.");
+    setContract(result);
+  }).catch((reason) => setLoadError(reason instanceof Error ? reason.message : "Unable to load the request form.")); }, []);
+
+  const capabilities = useMemo(() => contract?.capabilities.filter((item) => lobIds.length === 0 || item.lobIds.length === 0 || item.lobIds.some((id) => lobIds.includes(id))) ?? [], [contract, lobIds]);
+  const questions = useMemo(() => contract?.questions.filter((question) => question.scope === "shared" || question.lobIds.some((id) => lobIds.includes(id)) || question.capabilityIds.some((id) => capabilityIds.includes(id))) ?? [], [contract, lobIds, capabilityIds]);
+
+  function toggle(id: string, current: string[], set: (ids: string[]) => void) { set(current.includes(id) ? current.filter((item) => item !== id) : [...current, id]); }
+  function toggleLob(id: string) {
+    const next = lobIds.includes(id) ? lobIds.filter((item) => item !== id) : [...lobIds, id];
+    setLobIds(next);
+    if (contract) setCapabilityIds((current) => current.filter((capabilityId) => contract.capabilities.some((item) => item.id === capabilityId && (next.length === 0 || item.lobIds.length === 0 || item.lobIds.some((lobId) => next.includes(lobId))))));
+  }
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setStatus("sending"); setError("");
+    const data = new FormData(event.currentTarget); const answers: Record<string, unknown> = {};
+    for (const question of questions) answers[question.id] = question.fieldType === "checkbox" ? data.get(question.id) === "on" : String(data.get(question.id) ?? "");
+    const response = await fetch("/api/foyer/workspace-request", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lobIds, capabilityIds, answers, captchaToken }) });
+    const result = await response.json().catch(() => null);
+    if (!response.ok) { setStatus("error"); setError(result?.error ?? "Unable to send workspace request."); return; }
+    setStatus("sent");
+  }
+
+  if (loadError) return <p role="alert">{loadError}</p>;
+  if (!contract) return <p>Loading current workspace configuration…</p>;
+  return <form className="foyer-request-form" onSubmit={submit}>
+    <fieldset className="foyer-request-form__wide"><legend>Lines of Business</legend><div className="intake-choice-grid">{contract.linesOfBusiness.map((item) => <label key={item.id}><input type="checkbox" checked={lobIds.includes(item.id)} onChange={() => toggleLob(item.id)} /> {item.label}</label>)}</div></fieldset>
+    <fieldset className="foyer-request-form__wide"><legend>Insight Capabilities</legend><div className="intake-choice-grid">{capabilities.map((item) => <label key={item.id}><input type="checkbox" checked={capabilityIds.includes(item.id)} onChange={() => toggle(item.id, capabilityIds, setCapabilityIds)} /> {item.label}</label>)}</div></fieldset>
+    {questions.map((question) => <QuestionField key={question.id} question={question} defaultValue={defaults[question.key]} />)}
+    <div className="foyer-request-overlay__footer">
+      <p>We&apos;ll use this to prepare a focused introduction around your operation. No obligation.</p>
+      {status === "sent" ? <strong>Workspace request sent. We&apos;ll review it and reach out.</strong> : <button type="submit" className="button button-primary" disabled={status === "sending"}>{status === "sending" ? "Sending..." : "Send Workspace Request"}</button>}
+      {status === "error" ? <p role="alert" style={{ color: "#b91c1c", fontWeight: 800 }}>{error}</p> : null}
+    </div>
+  </form>;
+}
+
+function QuestionField({ question, defaultValue }: { question: IntakeQuestion; defaultValue?: string }) {
+  const shared = { name: question.id, required: question.required, defaultValue, placeholder: question.placeholder ?? undefined };
+  return <label className={question.fieldType === "textarea" ? "foyer-request-form__wide" : undefined}>{question.label}{question.helperText ? <small>{question.helperText}</small> : null}
+    {question.fieldType === "textarea" ? <textarea {...shared} rows={3} /> : question.fieldType === "select" ? <select {...shared}><option value="">Select…</option>{question.options.map((option) => <option key={option}>{option}</option>)}</select> : question.fieldType === "checkbox" ? <input name={question.id} type="checkbox" required={question.required} /> : <input {...shared} type={question.fieldType} />}
+  </label>;
+}
