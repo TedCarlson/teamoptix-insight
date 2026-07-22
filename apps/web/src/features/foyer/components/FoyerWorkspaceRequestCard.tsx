@@ -17,6 +17,10 @@ export default function FoyerWorkspaceRequestCard({
   const turnstileSiteKey = turnstileEnabled
     ? process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? ""
     : "";
+  function resetCaptcha() {
+    setCaptchaToken(null);
+    window.turnstile?.reset(turnstileWidgetId.current ?? undefined);
+  }
 
   useEffect(() => {
     if (!requestOpen || !turnstileSiteKey || !turnstileRef.current) return;
@@ -106,7 +110,7 @@ export default function FoyerWorkspaceRequestCard({
                   aria-label="Security verification"
                 />
               ) : null}
-              <GovernedWorkspaceRequestForm captchaToken={captchaToken} />
+              <GovernedWorkspaceRequestForm captchaToken={captchaToken} captchaRequired={!!turnstileSiteKey} onCaptchaRejected={resetCaptcha} />
             </>
           </section>
         </div>

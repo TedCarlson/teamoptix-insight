@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { IntakeContract, IntakeQuestion } from "@/features/intake/intake.types";
 
-export default function GovernedWorkspaceRequestForm({ captchaToken, defaults = {} }: { captchaToken: string | null; defaults?: Record<string, string> }) {
+export default function GovernedWorkspaceRequestForm({ captchaToken, captchaRequired = false, onCaptchaRejected, defaults = {} }: { captchaToken: string | null; captchaRequired?: boolean; onCaptchaRejected?: () => void; defaults?: Record<string, string> }) {
   const [contract, setContract] = useState<IntakeContract | null>(null);
   const [loadError, setLoadError] = useState("");
   const [lobIds, setLobIds] = useState<string[]>([]);
@@ -32,7 +32,7 @@ export default function GovernedWorkspaceRequestForm({ captchaToken, defaults = 
     for (const question of questions) answers[question.id] = question.fieldType === "checkbox" ? data.get(question.id) === "on" : String(data.get(question.id) ?? "");
     const response = await fetch("/api/foyer/workspace-request", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lobIds, capabilityIds, answers, captchaToken }) });
     const result = await response.json().catch(() => null);
-    if (!response.ok) { setStatus("error"); setError(result?.error ?? "Unable to send workspace request."); return; }
+    if (!response.ok) { const message=result?.error ?? "Unable to send workspace request."; setStatus("error"); setError(message); if (response.status === 403 || String(message).startsWith("Security verification")) onCaptchaRejected?.(); return; }
     setStatus("sent");
   }
 
@@ -45,7 +45,7 @@ export default function GovernedWorkspaceRequestForm({ captchaToken, defaults = 
     {questions.map((question) => <QuestionField key={question.id} question={question} defaultValue={defaults[question.key]} />)}
     <div className="foyer-request-overlay__footer">
       <p>We&apos;ll use this to prepare a focused introduction around your operation. No obligation.</p>
-      {status === "sent" ? <strong>Workspace request sent. We&apos;ll review it and reach out.</strong> : <button type="submit" className="button button-primary" disabled={status === "sending"}>{status === "sending" ? "Sending..." : "Send Workspace Request"}</button>}
+      {status === "sent" ? <strong>Workspace request sent. We&apos;ll review it and reach out.</strong> : <button type="submit" className="button button-primary" disabled={status === "sending" || (captchaRequired && !captchaToken)}>{status === "sending" ? "Sending..." : captchaRequired && !captchaToken ? "Complete security check" : "Send Workspace Request"}</button>}
       {status === "error" ? <p role="alert" style={{ color: "#b91c1c", fontWeight: 800 }}>{error}</p> : null}
     </div>
   </form>;

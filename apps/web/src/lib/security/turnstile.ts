@@ -1,7 +1,9 @@
-export async function verifyTurnstile(
+export type TurnstileVerification = { success: boolean; errorCodes: string[]; hostname?: string };
+
+export async function verifyTurnstileDetailed(
   token: string,
   remoteIp?: string
-): Promise<boolean> {
+): Promise<TurnstileVerification> {
   const secret = process.env.TURNSTILE_SECRET_KEY?.trim();
 
   if (!secret) {
@@ -28,12 +30,18 @@ export async function verifyTurnstile(
   );
 
   if (!response.ok) {
-    return false;
+    return { success: false, errorCodes: [`siteverify-http-${response.status}`] };
   }
 
   const result = (await response.json()) as {
     success?: boolean;
+    hostname?: string;
+    "error-codes"?: string[];
   };
 
-  return result.success === true;
+  return { success: result.success === true, errorCodes: result["error-codes"] ?? [], hostname: result.hostname };
+}
+
+export async function verifyTurnstile(token: string, remoteIp?: string): Promise<boolean> {
+  return (await verifyTurnstileDetailed(token, remoteIp)).success;
 }

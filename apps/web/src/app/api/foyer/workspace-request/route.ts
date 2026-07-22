@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyTurnstile } from "@/lib/security/turnstile";
+import { verifyTurnstileDetailed } from "@/lib/security/turnstile";
 import { persistWorkspaceRequest, readIntakeContract } from "@/features/intake/server/intake.repository";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 
@@ -44,9 +44,10 @@ export async function POST(req: Request) {
         req.headers.get("cf-connecting-ip") ??
         req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
 
-      const verified = await verifyTurnstile(captchaToken, remoteIp);
+      const verification = await verifyTurnstileDetailed(captchaToken, remoteIp);
 
-      if (!verified) {
+      if (!verification.success) {
+        console.warn("Workspace request Turnstile rejection", { errorCodes: verification.errorCodes, hostname: verification.hostname });
         return NextResponse.json(
           { error: "Security verification failed. Please try again." },
           { status: 403 }

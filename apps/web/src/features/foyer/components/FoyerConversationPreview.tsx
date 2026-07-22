@@ -36,6 +36,10 @@ export default function FoyerConversationPreview() {
   const turnstileSiteKey = turnstileEnabled
     ? process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? ""
     : "";
+  function resetCaptcha() {
+    setCaptchaToken(null);
+    window.turnstile?.reset(turnstileWidgetId.current ?? undefined);
+  }
 
   useEffect(() => {
     if (!requestOpen || !turnstileSiteKey || !turnstileRef.current) return;
@@ -209,6 +213,8 @@ export default function FoyerConversationPreview() {
             {turnstileSiteKey ? <div ref={turnstileRef} className="signin-bridge__captcha" aria-label="Security verification" /> : null}
             <GovernedWorkspaceRequestForm
               captchaToken={captchaToken}
+              captchaRequired={!!turnstileSiteKey}
+              onCaptchaRejected={resetCaptcha}
               defaults={{
                 "daily-ticket-volume": workspaceDefaults.routeCount,
                 "current-dispatch-process": workspaceDefaults.operation,
