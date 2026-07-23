@@ -1,6 +1,19 @@
 begin;
 
 do $$
+begin
+  if not has_table_privilege(
+    'authenticated',
+    'core.company_payroll_work_event',
+    'select'
+  ) then
+    raise exception
+      'Authenticated users cannot read payroll work events through the security-invoker view.';
+  end if;
+end;
+$$;
+
+do $$
 declare
   v_company_id uuid := gen_random_uuid();
   v_trainee_id uuid := gen_random_uuid();
