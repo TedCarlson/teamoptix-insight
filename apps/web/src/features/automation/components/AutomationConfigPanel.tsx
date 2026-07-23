@@ -28,6 +28,7 @@ import type {
   AutomationStatusResponse,
   CollectionRecoveryCandidate,
   CollectionRequest,
+  CollectionRuntimeBaseline,
   CredentialResponse,
 } from "./automation.types";
 
@@ -41,6 +42,34 @@ function formatRequestDate(request: CollectionRequest) {
     return `${request.service_date_start} – ${request.service_date_end}`;
   }
   return request.service_date_start;
+}
+
+function compactDuration(value: number | null | undefined) {
+  if (value === null || value === undefined) return null;
+  if (value < 1000) return `${value}ms`;
+  const seconds = Math.round(value / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}m ${seconds % 60}s`;
+}
+
+function runtimeStory(request: CollectionRequest) {
+  const runtime = request.runtime;
+  if (!runtime || runtime.event_count === 0) return [];
+  return [
+    ["Claim", runtime.claim_wait_ms],
+    ["Auth", runtime.authentication_ms],
+    ["Collect", runtime.collection_ms],
+    ["Source avg", runtime.average_source_generation_ms],
+    ["Download avg", runtime.average_download_ms],
+    ["Upload avg", runtime.average_upload_ms],
+    ["Worker wait avg", runtime.average_processing_queue_ms],
+    ["Process avg", runtime.average_processing_ms],
+    ["Reconcile", runtime.reconciliation_ms],
+  ].flatMap(([label, value]) => {
+    const formatted = compactDuration(value as number | null);
+    return formatted ? [`${label} ${formatted}`] : [];
+  });
 }
 
 export default function AutomationConfigPanel(
@@ -58,6 +87,9 @@ export default function AutomationConfigPanel(
   >([]);
   const [recoveryCandidates, setRecoveryCandidates] = useState<
     CollectionRecoveryCandidate[]
+  >([]);
+  const [runtimeBaselines, setRuntimeBaselines] = useState<
+    CollectionRuntimeBaseline[]
   >([]);
 
   const [username, setUsername] = useState("");
@@ -137,6 +169,9 @@ export default function AutomationConfigPanel(
     setCollectionRequests(
       Array.isArray(data?.rows) ? data.rows : []
     );
+    setRuntimeBaselines(
+      Array.isArray(data?.baselines) ? data.baselines : []
+    );
   }, [props.slug]);
 
   const loadRecoveryCandidates = useCallback(async () => {
@@ -183,6 +218,36 @@ export default function AutomationConfigPanel(
       active = false;
     };
   }, [props.slug, loadAll]);
+
+  const hasActiveCollection = collectionRequests.some((request) =>
+    ["QUEUED", "CLAIMED", "RUNNING", "ARTIFACTS_READY", "INGESTING"].includes(
+      request.request_status
+    )
+  );
+
+  useEffect(() => {
+    if (!props.slug) return;
+    const interval = window.setInterval(() => {
+      void Promise.all([
+        loadStatus(),
+        loadCollectionRequests(),
+        loadRecoveryCandidates(),
+      ]).catch((error) => {
+        setStatusError(
+          error instanceof Error
+            ? error.message
+            : "Failed to poll collection progress."
+        );
+      });
+    }, hasActiveCollection ? 5_000 : 30_000);
+    return () => window.clearInterval(interval);
+  }, [
+    hasActiveCollection,
+    loadCollectionRequests,
+    loadRecoveryCandidates,
+    loadStatus,
+    props.slug,
+  ]);
 
   const latestSuccessfulCollection = useMemo(
     () =>
@@ -617,6 +682,37 @@ export default function AutomationConfigPanel(
           <MiniStat label="Complete" value={completeCount} />
         </div>
 
+        {runtimeBaselines.length ? (
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              marginTop: 12,
+            }}
+          >
+            {runtimeBaselines.map((baseline) => (
+              <span
+                key={`${baseline.request_type}:${baseline.execution_mode}`}
+                style={{
+                  border: "1px solid #dbe4ef",
+                  borderRadius: 999,
+                  padding: "7px 10px",
+                  color: "#526681",
+                  fontSize: 10,
+                  fontWeight: 800,
+                }}
+              >
+                {baseline.request_type.replaceAll("_", " ")} ·{" "}
+                {baseline.execution_mode.toLowerCase()} ·{" "}
+                {baseline.measured_run_count} runs · median{" "}
+                {compactDuration(baseline.median_end_to_end_ms)} · p95{" "}
+                {compactDuration(baseline.p95_end_to_end_ms)}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
         <div style={{ overflowX: "auto", marginTop: 12 }}>
           <table
             style={{
@@ -670,13 +766,39 @@ export default function AutomationConfigPanel(
                   </td>
                   <td style={td}>
                     {formatDuration(request.duration_ms)}
+                    {runtimeStory(request).length ? (
+                      <span
+                        style={{
+                          display: "block",
+                          minWidth: 210,
+                          marginTop: 4,
+                          color: "#64748b",
+                          fontSize: 10,
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        {runtimeStory(request).join(" · ")}
+                      </span>
+                    ) : null}
                   </td>
                   <td style={td}>
-                    <span style={{ display: "block", fontWeight: 850 }}>
+                    <a
+                      href={`/teamoptix/automation/collections/${request.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: "block",
+                        color: "inherit",
+                        fontWeight: 850,
+                        textDecoration: "underline",
+                        textUnderlineOffset: 2,
+                      }}
+                      aria-label={`Open the full collection record for ${request.request_type}`}
+                    >
                       {`${request.ingested_count ?? 0}/${
                         request.registered_count ?? 0
                       } files processed`}
-                    </span>
+                    </a>
                     {(request.ready_count ?? 0) > 0 ||
                     (request.ingesting_count ?? 0) > 0 ||
                     (request.failed_count ?? 0) > 0 ? (

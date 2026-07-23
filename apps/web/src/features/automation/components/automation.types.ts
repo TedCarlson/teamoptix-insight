@@ -88,6 +88,41 @@ export type CollectionRequest = {
   error_message: string | null;
   created_at: string;
   updated_at: string;
+  runtime?: CollectionRequestRuntime | null;
+};
+
+export type CollectionRequestRuntime = {
+  collection_request_id: string;
+  event_count: number;
+  measured_artifact_count: number;
+  last_activity_at: string | null;
+  claim_wait_ms: number | null;
+  authentication_ms: number | null;
+  collection_ms: number | null;
+  average_source_generation_ms: number | null;
+  average_download_ms: number | null;
+  average_upload_ms: number | null;
+  average_processing_queue_ms: number | null;
+  average_processing_ms: number | null;
+  reconciliation_ms: number | null;
+  end_to_end_ms: number | null;
+};
+
+export type CollectionRuntimeBaseline = {
+  request_type: string;
+  execution_mode: string;
+  measured_run_count: number;
+  median_end_to_end_ms: number | null;
+  p95_end_to_end_ms: number | null;
+  average_claim_wait_ms: number | null;
+  average_authentication_ms: number | null;
+  average_collection_ms: number | null;
+  average_source_generation_ms: number | null;
+  average_download_ms: number | null;
+  average_upload_ms: number | null;
+  average_processing_queue_ms: number | null;
+  average_processing_ms: number | null;
+  average_reconciliation_ms: number | null;
 };
 
 export type CollectionRecoveryCandidate = {

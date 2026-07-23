@@ -1,6 +1,9 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import { getGovernedCompanies } from "@/features/teamoptix/command-center/commandCenter.server";
+import TeamOptixShell from "@/features/teamoptix/navigation/TeamOptixShell";
+import CollectionAutoRefresh from "./CollectionAutoRefresh";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +11,18 @@ function dateTime(value: unknown) {
   if (!value) return "—";
   const parsed = new Date(String(value));
   return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString();
+}
+
+function timeOnly(value: unknown) {
+  if (!value) return "—";
+  const parsed = new Date(String(value));
+  return Number.isNaN(parsed.getTime())
+    ? String(value)
+    : parsed.toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+        second: "2-digit",
+      });
 }
 
 function artifactName(artifact: any) {
@@ -20,6 +35,46 @@ function artifactType(artifact: any) {
 
 function artifactError(artifact: any) {
   return artifact.error_message || artifact.ingest_metadata_json?.error || artifact.runner_artifact_json?.error || null;
+}
+
+function duration(value: unknown) {
+  if (value === null || value === undefined || value === "") return "—";
+  const milliseconds = Number(value);
+  if (!Number.isFinite(milliseconds)) return "—";
+  if (milliseconds < 1000) return `${milliseconds}ms`;
+  const seconds = Math.round(milliseconds / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+function elapsedBetween(start: unknown, end: unknown) {
+  if (!start || !end) return null;
+  const startMs = new Date(String(start)).getTime();
+  const endMs = new Date(String(end)).getTime();
+  return Number.isFinite(startMs) && Number.isFinite(endMs)
+    ? Math.max(0, endMs - startMs)
+    : null;
+}
+
+function reportLabel(value: unknown) {
+  const key = String(value ?? "").toUpperCase();
+  if (key.includes("WORK_AREA") || key.includes("WORK AREA") || key.includes("SERVICE_AREA_STATUS")) {
+    return "FCC Work Area Summary";
+  }
+  if (key.includes("DELIVERY_MANIFEST") || key.includes("DELIVERY MANIFEST")) return "Delivery manifests";
+  if (key.includes("PICKUP_MANIFEST") || key.includes("PICKUP MANIFEST")) return "Pickup manifests";
+  if (key.includes("DSW") || key.includes("DAILY_SERVICE")) {
+    return "Daily Service Worksheet";
+  }
+  return String(value ?? "Report").replaceAll("_", " ");
+}
+
+function friendlyOutcome(value: unknown) {
+  const status = String(value ?? "ACTIVE").toUpperCase();
+  if (["INGESTED", "NORMALIZED", "COMPLETE"].includes(status)) return "Ready to use";
+  if (status === "IGNORED") return "Accepted";
+  if (status === "FAILED") return "Needs attention";
+  return "In progress";
 }
 
 const card = {
@@ -45,6 +100,22 @@ const td = {
   fontSize: 13,
 } as const;
 
+const tableViewport = {
+  border: "1px solid #dbe4ef",
+  borderRadius: 14,
+  maxHeight: 520,
+  overflow: "auto",
+  overscrollBehavior: "contain",
+} as const;
+
+const stickyTh = {
+  ...th,
+  position: "sticky",
+  top: 0,
+  zIndex: 2,
+  background: "#f8fafc",
+} as const;
+
 export default async function Page({ params }: { params: Promise<{ requestId: string }> }) {
   const { requestId } = await params;
   const db = createSupabaseServiceRoleClient();
@@ -59,11 +130,33 @@ export default async function Page({ params }: { params: Promise<{ requestId: st
 
   if (!request || !governedIds.includes(String(request.company_id))) notFound();
 
-  const { data: artifacts, error } = await db
-    .from("operations_collection_artifact_v")
-    .select("*")
-    .eq("collection_request_id", requestId)
-    .order("created_at", { ascending: true });
+  const [
+    { data: artifacts, error },
+    { data: runtime },
+    { data: artifactRuntime },
+    { data: runtimeEvents },
+  ] = await Promise.all([
+    db
+      .from("operations_collection_artifact_v")
+      .select("*")
+      .eq("collection_request_id", requestId)
+      .order("created_at", { ascending: true }),
+    db
+      .from("operations_collection_request_runtime_v")
+      .select("*")
+      .eq("collection_request_id", requestId)
+      .maybeSingle(),
+    db
+      .from("operations_collection_artifact_runtime_v")
+      .select("*")
+      .eq("collection_request_id", requestId)
+      .order("source_requested_at", { ascending: true }),
+    db
+      .from("operations_collection_runtime_event_v")
+      .select("*")
+      .eq("collection_request_id", requestId)
+      .order("occurred_at", { ascending: true }),
+  ]);
 
   if (error) throw new Error(error.message);
 
@@ -73,14 +166,122 @@ export default async function Page({ params }: { params: Promise<{ requestId: st
     return leftFailed - rightFailed;
   });
   const failedCount = rows.filter((row: any) => String(row.artifact_status).toUpperCase() === "FAILED").length;
+  const active = ["QUEUED", "CLAIMED", "RUNNING", "ARTIFACTS_READY", "INGESTING"].includes(
+    String(request.request_status).toUpperCase()
+  );
+  const measuredRows = (artifactRuntime ?? []).length
+    ? (artifactRuntime ?? []).map((artifact: any) => ({
+        key: artifact.artifact_execution_key,
+        report: reportLabel(artifact.lane_key || artifact.artifact_key),
+        collectionMs:
+          Number(artifact.source_generation_ms || 0) +
+          Number(artifact.download_ms || 0) || null,
+        uploadMs: artifact.upload_ms,
+        queueMs: artifact.processing_queue_ms,
+        processingMs: artifact.processing_ms,
+        registeredAt: artifact.registered_at,
+        fullyIngestedAt: artifact.processing_completed_at,
+        outcome: friendlyOutcome(artifact.outcome),
+      }))
+    : rows.map((artifact: any) => ({
+        key: artifact.id,
+        report: reportLabel(
+          artifact.normalized_filename ||
+            artifact.runner_artifact_json?.artifact_key ||
+            artifact.report_family_key
+        ),
+        collectionMs:
+          artifact.runner_elapsed_ms ??
+          artifact.runner_artifact_json?.runner_elapsed_ms ??
+          null,
+        uploadMs: null,
+        queueMs: elapsedBetween(artifact.created_at, artifact.ingest_started_at),
+        processingMs:
+          artifact.ingest_duration_ms ??
+          elapsedBetween(artifact.ingest_started_at, artifact.ingest_completed_at),
+        registeredAt: artifact.created_at,
+        fullyIngestedAt: artifact.ingest_completed_at,
+        outcome: friendlyOutcome(artifact.artifact_status),
+      }));
+  const hasDetailedRuntime = (artifactRuntime ?? []).length > 0;
+  let summaryRows = Array.from(
+    measuredRows.reduce((groups: Map<string, any>, row: any) => {
+      const current = groups.get(row.report);
+      if (!current) {
+        groups.set(row.report, { ...row, count: 1 });
+        return groups;
+      }
+      current.count += 1;
+      for (const field of ["collectionMs", "uploadMs", "queueMs", "processingMs"]) {
+        const next = Number(row[field]);
+        if (Number.isFinite(next)) {
+          current[field] = Math.max(Number(current[field]) || 0, next);
+        }
+      }
+      if (row.outcome === "Needs attention") current.outcome = row.outcome;
+      return groups;
+    }, new Map<string, any>()).values()
+  );
+  if (!hasDetailedRuntime) {
+    const manifestRows = summaryRows.filter((row: any) =>
+      String(row.report).toLowerCase().includes("manifest")
+    );
+    if (manifestRows.length > 0) {
+      summaryRows = [
+        ...summaryRows.filter((row: any) =>
+          !String(row.report).toLowerCase().includes("manifest")
+        ),
+        {
+          ...manifestRows[0],
+          key: "legacy-shared-manifest-section",
+          report: "Manifest collection",
+          count: manifestRows.reduce(
+            (total: number, row: any) => total + Number(row.count || 0),
+            0
+          ),
+          collectionMs: Math.max(
+            ...manifestRows.map((row: any) => Number(row.collectionMs) || 0)
+          ),
+          registeredAt: manifestRows
+            .map((row: any) => row.registeredAt)
+            .filter(Boolean)
+            .sort()
+            .at(-1),
+          fullyIngestedAt: null,
+        },
+      ];
+    }
+  }
+  const slowest = summaryRows
+    .flatMap((row: any) => [
+      {
+        report: row.report,
+        label: hasDetailedRuntime
+          ? "getting the file from FedEx"
+          : "inside its runner section",
+        value: Number(row.collectionMs),
+      },
+      { report: row.report, label: "waiting for processing", value: Number(row.queueMs) },
+      { report: row.report, label: "processing the file", value: Number(row.processingMs) },
+    ])
+    .filter((item: any) => Number.isFinite(item.value) && item.value > 0)
+    .sort((left: any, right: any) => right.value - left.value)[0];
 
   return (
-    <main style={{ display: "grid", gap: 18 }}>
-      <header>
+    <TeamOptixShell>
+    <main className="workspace-shell teamoptix-domain-overview">
+      <section className="workspace-main" style={{ display: "grid", gap: 18 }}>
+      <CollectionAutoRefresh active={active} />
+      <header className="domain-heading">
+        <p style={{ margin: "0 0 12px" }}>
+          <Link href="/teamoptix/automation/collections" style={{ color: "#2563eb", fontWeight: 850, textDecoration: "none" }}>
+            Automation / Collections
+          </Link>
+        </p>
         <span style={{ color: "#009b77", fontSize: 12, fontWeight: 900, letterSpacing: ".12em", textTransform: "uppercase" }}>
           TeamOptix · Collection evidence
         </span>
-        <h1 style={{ margin: "8px 0 4px", color: "#17233d" }}>Artifact outcomes</h1>
+        <h1 style={{ margin: "8px 0 4px", color: "#17233d" }}>Collection journey</h1>
         <p style={{ margin: 0, color: "#60708a" }}>
           {request.company_slug} · {String(request.request_type).replaceAll("_", " ")} · created {dateTime(request.created_at)}
         </p>
@@ -100,19 +301,151 @@ export default async function Page({ params }: { params: Promise<{ requestId: st
         </section>
       ) : null}
 
-      <section style={{ ...card, overflowX: "auto", padding: 0 }}>
+      {measuredRows.length ? (
+        <section style={{ ...card }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+            <div>
+              <span style={{ color: "#009b77", fontSize: 11, fontWeight: 900, letterSpacing: ".1em", textTransform: "uppercase" }}>
+                Where the time went
+              </span>
+              <h2 style={{ margin: "5px 0 4px", color: "#17233d" }}>
+                {slowest
+                  ? `${slowest.report} spent the most time ${slowest.label}.`
+                  : "Timing evidence is arriving."}
+              </h2>
+              <p style={{ margin: 0, color: "#60708a" }}>
+                {slowest
+                  ? `${duration(slowest.value)} was spent in that step.`
+                  : "This page updates every five seconds while the collection is active."}
+              </p>
+            </div>
+            {runtime?.end_to_end_ms ? (
+              <div style={{ minWidth: 150 }}>
+                <small>Total elapsed time</small>
+                <strong style={{ display: "block", color: "#17233d", fontSize: 26 }}>
+                  {duration(runtime.end_to_end_ms)}
+                </strong>
+              </div>
+            ) : null}
+          </div>
+          <div style={{ ...tableViewport, marginTop: 18, maxHeight: 360 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}>
+              <thead>
+                <tr>
+                  <th style={{ ...stickyTh, left: 0, zIndex: 3 }}>Report</th>
+                  <th style={stickyTh}>Files</th>
+                  <th style={stickyTh}>{hasDetailedRuntime ? "Getting it from FedEx" : "Runner section elapsed"}</th>
+                  <th style={stickyTh}>Upload</th>
+                  <th style={stickyTh}>Waiting to process</th>
+                  <th style={stickyTh}>Processing</th>
+                  <th style={stickyTh}>Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summaryRows.map((row: any) => (
+                  <tr key={row.key}>
+                    <td style={{ ...td, position: "sticky", left: 0, zIndex: 1, background: "#fff" }}><strong>{row.report}</strong></td>
+                    <td style={td}>{row.count}</td>
+                    <td style={td}>{duration(row.collectionMs)}</td>
+                    <td style={td}>{duration(row.uploadMs)}</td>
+                    <td style={td}>{duration(row.queueMs)}</td>
+                    <td style={td}>{duration(row.processingMs)}</td>
+                    <td style={{ ...td, fontWeight: 850 }}>{row.outcome}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <details style={{ marginTop: 16 }}>
+            <summary style={{ cursor: "pointer", fontWeight: 900, color: "#17233d" }}>
+              Full record
+            </summary>
+            <p style={{ color: "#60708a", margin: "10px 0" }}>
+              A side-by-side timeline of every report measured in this collection.
+            </p>
+            <div style={{ ...tableViewport, maxHeight: 420 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 680 }}>
+                <thead>
+                  <tr>
+                    <th style={{ ...stickyTh, left: 0, zIndex: 3 }}>Stage</th>
+                    {summaryRows.map((row: any) => (
+                      <th style={stickyTh} key={row.key}>{row.report}{row.count > 1 ? ` (${row.count} files)` : ""}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    {
+                      label: "Request created",
+                      value: () => timeOnly(request.created_at),
+                      emphasis: false,
+                    },
+                    {
+                      label: "Registered",
+                      value: (row: any) => timeOnly(row.registeredAt),
+                      emphasis: false,
+                    },
+                    {
+                      label: "Runner segment",
+                      value: (row: any) => duration(row.collectionMs),
+                      emphasis: true,
+                    },
+                    {
+                      label: "Worker queue wait",
+                      value: (row: any) => duration(row.queueMs),
+                      emphasis: true,
+                    },
+                    {
+                      label: "Ingestion",
+                      value: (row: any) => duration(row.processingMs),
+                      emphasis: true,
+                    },
+                    {
+                      label: "Fully ingested",
+                      value: (row: any) => timeOnly(row.fullyIngestedAt),
+                      emphasis: false,
+                    },
+                  ].map((stage) => (
+                    <tr key={stage.label}>
+                      <td style={{ ...td, position: "sticky", left: 0, zIndex: 1, background: "#fff" }}>{stage.label}</td>
+                      {summaryRows.map((row: any) => (
+                        <td
+                          style={{
+                            ...td,
+                            fontWeight: stage.emphasis ? 900 : 500,
+                          }}
+                          key={`${stage.label}:${row.key}`}
+                        >
+                          {stage.value(row)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </section>
+      ) : null}
+
+      <section style={{ ...card, padding: 0, overflow: "hidden" }}>
+        <div style={{ padding: "18px 20px 10px" }}>
+          <h2 style={{ margin: 0, color: "#17233d" }}>Files in this collection</h2>
+          <p style={{ margin: "5px 0 0", color: "#60708a" }}>Scroll inside this table to inspect all {rows.length} files.</p>
+        </div>
+        <div style={{ ...tableViewport, borderLeft: 0, borderRight: 0, borderBottom: 0, borderRadius: 0 }}>
         <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 980 }}>
           <thead>
             <tr>
-              <th style={th}>File</th>
-              <th style={th}>Type</th>
-              <th style={th}>Route</th>
-              <th style={th}>Service date</th>
-              <th style={th}>Status</th>
-              <th style={th}>Rows</th>
-              <th style={th}>Attempts</th>
-              <th style={th}>Updated</th>
-              <th style={th}>Outcome detail</th>
+              <th style={{ ...stickyTh, left: 0, zIndex: 3 }}>File</th>
+              <th style={stickyTh}>Type</th>
+              <th style={stickyTh}>Route</th>
+              <th style={stickyTh}>Service date</th>
+              <th style={stickyTh}>Status</th>
+              <th style={stickyTh}>Rows</th>
+              <th style={stickyTh}>Attempts</th>
+              <th style={stickyTh}>Updated</th>
+              <th style={stickyTh}>Outcome detail</th>
             </tr>
           </thead>
           <tbody>
@@ -122,7 +455,7 @@ export default async function Page({ params }: { params: Promise<{ requestId: st
               const ingest = artifact.ingest_metadata_json?.ingest ?? artifact.ingest_metadata_json ?? {};
               return (
                 <tr key={artifact.id} style={{ background: failed ? "#fff7f7" : undefined }}>
-                  <td style={td}><strong>{artifactName(artifact)}</strong><small style={{ display: "block", color: "#718096", marginTop: 4 }}>{artifact.id}</small></td>
+                  <td style={{ ...td, position: "sticky", left: 0, zIndex: 1, background: failed ? "#fff7f7" : "#fff" }}><strong>{artifactName(artifact)}</strong><small style={{ display: "block", color: "#718096", marginTop: 4 }}>{artifact.id}</small></td>
                   <td style={td}>{artifactType(artifact)}</td>
                   <td style={td}>{artifact.route_label || artifact.route_key || artifact.runner_artifact_json?.route_key || "—"}</td>
                   <td style={td}>{artifact.service_date || "—"}</td>
@@ -133,7 +466,7 @@ export default async function Page({ params }: { params: Promise<{ requestId: st
                   <td style={{ ...td, maxWidth: 420 }}>
                     {errorMessage ? <strong style={{ color: "#b91c1c" }}>{String(errorMessage)}</strong> : "No error recorded."}
                     <details style={{ marginTop: 8 }}>
-                      <summary style={{ cursor: "pointer", fontWeight: 800 }}>Full record</summary>
+                      <summary style={{ cursor: "pointer", fontWeight: 800 }}>Raw technical record</summary>
                       <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 11, color: "#334155" }}>
                         {JSON.stringify(artifact, null, 2)}
                       </pre>
@@ -145,7 +478,26 @@ export default async function Page({ params }: { params: Promise<{ requestId: st
             {rows.length === 0 ? <tr><td style={td} colSpan={9}>No artifact records were registered for this request.</td></tr> : null}
           </tbody>
         </table>
+        </div>
+      </section>
+
+      {(runtimeEvents ?? []).length ? (
+        <section style={{ ...card }}>
+          <details>
+            <summary style={{ cursor: "pointer", fontWeight: 900 }}>
+              Technical runtime event trail ({runtimeEvents?.length ?? 0})
+            </summary>
+            <div style={{ ...tableViewport, marginTop: 12 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
+                <thead><tr><th style={th}>Occurred</th><th style={th}>Owner</th><th style={th}>Stage</th><th style={th}>Event</th><th style={th}>Lane / artifact</th><th style={th}>Duration</th><th style={th}>Outcome</th></tr></thead>
+                <tbody>{(runtimeEvents ?? []).map((event: any) => <tr key={event.id}><td style={td}>{dateTime(event.occurred_at)}</td><td style={td}>{event.source_system}</td><td style={td}>{event.stage}</td><td style={td}>{event.event_type}</td><td style={td}>{event.lane_key || event.artifact_key || "—"}</td><td style={td}>{duration(event.duration_ms)}</td><td style={td}>{event.outcome || "—"}</td></tr>)}</tbody>
+              </table>
+            </div>
+          </details>
+        </section>
+      ) : null}
       </section>
     </main>
+    </TeamOptixShell>
   );
 }
