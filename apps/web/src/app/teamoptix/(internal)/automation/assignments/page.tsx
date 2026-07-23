@@ -61,8 +61,8 @@ async function saveWorkOrderRule(formData: FormData) {
     p_inactive_end_date: text(formData, "inactiveEndDate") || null,
     p_release_order: Number(releaseOrderRaw || 100),
     p_operator_notes: text(formData, "operatorNotes") || null,
-    p_assignment_status: text(formData, "assignmentStatus") || "draft",
-    p_is_enabled: formData.get("isEnabled") === "on",
+    p_assignment_status: "active",
+    p_is_enabled: true,
     p_generation_mode: generationMode,
     p_cadence_minutes: requestType === "HISTORICAL_BACKFILL" ? null : cadenceRaw ? Number(cadenceRaw) : null,
     p_window_preset: generationMode === "scheduled" ? "CUSTOM" : "OFF",
@@ -102,6 +102,47 @@ async function removeWorkOrderRule(formData: FormData) {
     p_assignment_id: assignmentId,
   });
   if (error) throw new Error(error.message);
+  revalidatePath("/teamoptix/automation/assignments");
+  revalidatePath("/teamoptix/automation");
+  redirect("/teamoptix/automation/assignments");
+}
+
+async function setWorkOrderState(formData: FormData) {
+  "use server";
+
+  const assignmentId = text(formData, "assignmentId");
+  const desiredState = text(formData, "desiredState");
+  if (!assignmentId || !["active", "paused"].includes(desiredState)) {
+    throw new Error("A valid assignment and state are required.");
+  }
+
+  const supabase = await getSupabaseServerClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Unauthorized.");
+  const { data: access, error: accessError } = await supabase.rpc("access_context");
+  if (accessError) throw new Error(accessError.message);
+  if (!access?.is_platform_owner) {
+    throw new Error("Only Team Optix platform owners can control assignments.");
+  }
+
+  const { data: assignment, error: assignmentError } = await supabase
+    .from("company_operations_ticket_assignment_v")
+    .select("inactive_end_date")
+    .eq("id", assignmentId)
+    .single();
+  if (assignmentError || !assignment) {
+    throw new Error(assignmentError?.message || "Assignment not found.");
+  }
+
+  const { error } = await supabase.rpc("update_company_operations_work_order_rule", {
+    p_assignment_id: assignmentId,
+    p_assignment_status: desiredState,
+    p_is_enabled: desiredState === "active",
+    p_inactive_end_date: assignment.inactive_end_date,
+    p_release_order: null,
+  });
+  if (error) throw new Error(error.message);
+
   revalidatePath("/teamoptix/automation/assignments");
   revalidatePath("/teamoptix/automation");
   redirect("/teamoptix/automation/assignments");
@@ -208,12 +249,10 @@ export default async function Page() {
                 <div className="assignment-control-group"><div><span className="workspace-eyebrow">Lifecycle</span><h3>When is this assignment valid?</h3></div><div className="assignment-form-grid">
                   <label><span>Effective date</span><input name="activeStartDate" type="date" defaultValue={today} required /></label>
                   <label><span>Optional end date</span><input name="inactiveEndDate" type="date" /><small>Leave open to continue indefinitely.</small></label>
-                  <label><span>Assignment status</span>
-                    <select name="assignmentStatus" defaultValue="draft">
-                      <option value="draft">Draft</option><option value="ready">Ready</option><option value="active">Active</option><option value="paused">Paused</option><option value="retired">Retired</option>
-                    </select>
-                  </label>
-                  <label className="assignment-enable"><input name="isEnabled" type="checkbox" /> <span>Enable automatic ticket generation</span></label>
+                  <div className="assignment-preview">
+                    <span className="workspace-eyebrow">Activation</span>
+                    <p>Saving activates this published instruction. Pause it later from the standing assignment when collection should stop.</p>
+                  </div>
                 </div></div>
 
                 <label className="assignment-notes"><span>Assignment notes</span><textarea name="operatorNotes" rows={2} placeholder="Why this company receives the instruction or what changed." /></label>
@@ -223,7 +262,46 @@ export default async function Page() {
             </section>
 
             <section className="assignment-library"><div className="automation-workbench-heading"><div><span className="workspace-eyebrow">Standing assignments</span><h2>{rows.length} company binding{rows.length === 1 ? "" : "s"}</h2><p>Published instructions currently associated with customer operating environments.</p></div></div>
-              <div className="assignment-record-list">{rows.length === 0 ? <div className="automation-library-empty">No company assignments yet.</div> : rows.map((row: any) => { const companyName = row.company_name || row.company_slug; return <article className="assignment-record" key={row.id}><div><span className={`automation-ticket-state ${row.is_enabled ? "is-published" : ""}`}>{row.is_enabled ? "Enabled" : label(row.assignment_status)}</span><h3>{companyName}</h3><p>{row.template_name}</p></div><dl><div><dt>Timing</dt><dd>{scheduleText(row)}</dd></div><div><dt>Effective</dt><dd>{row.active_start_date || "—"} → {row.inactive_end_date || "Open"}</dd></div><div><dt>Collection</dt><dd>{Array.isArray(row.artifact_keys) && row.artifact_keys.length ? row.artifact_keys.map(label).join(" · ") : "Ticket defaults"}</dd></div><div><dt>Status</dt><dd>{label(row.assignment_status)}{row.is_enabled ? " · Automatic" : ""}</dd></div></dl><RemoveAssignmentButton assignmentId={row.id} companyName={companyName} ticketName={row.template_name} action={removeWorkOrderRule} /></article>; })}</div>
+              <div className="assignment-record-list">
+                {rows.length === 0
+                  ? <div className="automation-library-empty">No company assignments yet.</div>
+                  : rows.map((row: any) => {
+                    const companyName = row.company_name || row.company_slug;
+                    const isActive = row.assignment_status === "active" && row.is_enabled;
+                    return (
+                      <article className="assignment-record" key={row.id}>
+                        <div>
+                          <span className={`automation-ticket-state ${isActive ? "is-published" : ""}`}>
+                            {isActive ? "Enabled" : "Paused"}
+                          </span>
+                          <h3>{companyName}</h3>
+                          <p>{row.template_name}</p>
+                        </div>
+                        <dl>
+                          <div><dt>Timing</dt><dd>{scheduleText(row)}</dd></div>
+                          <div><dt>Effective</dt><dd>{row.active_start_date || "—"} → {row.inactive_end_date || "Open"}</dd></div>
+                          <div><dt>Collection</dt><dd>{Array.isArray(row.artifact_keys) && row.artifact_keys.length ? row.artifact_keys.map(label).join(" · ") : "Ticket defaults"}</dd></div>
+                          <div><dt>Status</dt><dd>{isActive ? "Active · Automatic" : "Paused · No new requests"}</dd></div>
+                        </dl>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                          <form action={setWorkOrderState}>
+                            <input name="assignmentId" type="hidden" value={row.id} />
+                            <input name="desiredState" type="hidden" value={isActive ? "paused" : "active"} />
+                            <button className={isActive ? "assignment-remove-action" : "primary-action"} type="submit">
+                              {isActive ? "Pause assignment" : "Activate assignment"}
+                            </button>
+                          </form>
+                          <RemoveAssignmentButton
+                            assignmentId={row.id}
+                            companyName={companyName}
+                            ticketName={row.template_name}
+                            action={removeWorkOrderRule}
+                          />
+                        </div>
+                      </article>
+                    );
+                  })}
+              </div>
             </section>
           </div>
         </section>
