@@ -15,6 +15,10 @@ export type OperationsTicketTemplateRow = {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  deletion_requested_at: string | null;
+  deletion_requested_by: string | null;
+  assignment_count: number;
+  active_dependency_count: number;
 };
 
 export type CompanyOperationsTicketAssignmentRow = {

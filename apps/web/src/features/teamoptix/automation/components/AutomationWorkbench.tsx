@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { OPERATIONS_COLLECTION_PAYLOAD_VERSION, runnerGoalForRequestType } from "@/features/automation/contracts/runnerGoal";
 
 type Template = {
@@ -14,7 +15,12 @@ type Template = {
   default_payload_json: Record<string, any> | null;
   is_active: boolean;
   updated_at: string;
+  deletion_requested_at?: string | null;
+  assignment_count?: number;
+  active_dependency_count?: number;
 };
+
+type WorkbenchActionState = { status: "idle" | "success" | "error"; message: string; templateId?: string };
 
 const REPORTS = [
   ["DSW", "Daily Service Worksheet"],
@@ -41,7 +47,11 @@ function emptyDraft() {
 function fromTemplate(template: Template) {
   const payload = template.default_payload_json ?? {};
   const targets = Array.isArray(payload.targets) ? payload.targets : [];
-  const reports = targets.map((target: any) => target?.artifact_key).filter(Boolean);
+  const reports = targets.map((target: any) => {
+    const key = String(target?.key ?? "");
+    return Object.entries(TARGETS).find(([, candidate]) => candidate.key === key)?.[0]
+      ?? (String(target?.artifact_key ?? "") === "WORK_AREA_SUMMARY" ? "FCC" : String(target?.artifact_key ?? ""));
+  }).filter((report: string) => report in TARGETS);
   return {
     id: template.id,
     name: template.template_name,
@@ -61,8 +71,45 @@ function keyFromName(value: string) {
   return value.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 64);
 }
 
-export default function AutomationWorkbench({ templates, saveAction }: { templates: Template[]; saveAction: (data: FormData) => void }) {
+function dateModeForRequestType(requestType: string) {
+  if (requestType === "PREVIOUS_DAY_CLOSE") return "YESTERDAY";
+  if (requestType === "LAST_LOOK" || requestType === "OPERATIONS_PULSE") return "TODAY";
+  if (requestType === "TARGETED_RECOVERY") return "SELECTED_DATE";
+  if (requestType === "HISTORICAL_BACKFILL") return "SELECTED_RANGE";
+  return "TODAY";
+}
+
+const initialActionState: WorkbenchActionState = { status: "idle", message: "" };
+
+export default function AutomationWorkbench({
+  templates,
+  saveAction,
+  deleteAction,
+}: {
+  templates: Template[];
+  saveAction: (previousState: WorkbenchActionState, data: FormData) => Promise<WorkbenchActionState>;
+  deleteAction: (previousState: WorkbenchActionState, data: FormData) => Promise<WorkbenchActionState>;
+}) {
+  const router = useRouter();
   const [draft, setDraft] = useState(emptyDraft());
+  const [saveState, saveFormAction, savePending] = useActionState(saveAction, initialActionState);
+  const [deleteState, deleteFormAction, deletePending] = useActionState(deleteAction, initialActionState);
+  useEffect(() => {
+    if (saveState.status === "success") {
+      router.refresh();
+      if (saveState.templateId) {
+        const timer = window.setTimeout(() => setDraft((current) => current.id ? current : { ...current, id: saveState.templateId ?? "" }), 0);
+        return () => window.clearTimeout(timer);
+      }
+    }
+  }, [router, saveState.status, saveState.templateId]);
+  useEffect(() => {
+    if (deleteState.status === "success") {
+      router.refresh();
+      const timer = window.setTimeout(() => setDraft(emptyDraft()), 0);
+      return () => window.clearTimeout(timer);
+    }
+  }, [deleteState.status, router]);
   const compiled = useMemo(() => ({
     payload_contract_version: OPERATIONS_COLLECTION_PAYLOAD_VERSION,
     source: "teamoptix_automation_workbench",
@@ -86,14 +133,16 @@ export default function AutomationWorkbench({ templates, saveAction }: { templat
         <div><span className="workspace-eyebrow">Authoring terminal</span><h2>{draft.id ? `Edit ${draft.name}` : "Create a work instruction"}</h2><p>Describe the operational outcome. Insight compiles the runner contract behind the scenes.</p></div>
         {draft.id && <button className="secondary-action" type="button" onClick={() => setDraft(emptyDraft())}>New ticket</button>}
       </div>
-      <form action={saveAction} className="automation-workbench-form">
+      {saveState.message && <div className={`automation-workbench-feedback is-${saveState.status}`} role={saveState.status === "error" ? "alert" : "status"}>{saveState.message}</div>}
+      {deleteState.message && <div className={`automation-workbench-feedback is-${deleteState.status}`} role={deleteState.status === "error" ? "alert" : "status"}>{deleteState.message}</div>}
+      <form action={saveFormAction} className="automation-workbench-form">
         <input type="hidden" name="templateId" value={draft.id} />
         <input type="hidden" name="templateKey" value={draft.key || keyFromName(draft.name)} />
         <input type="hidden" name="payload" value={JSON.stringify(compiled)} />
         <input type="hidden" name="reports" value={draft.reports.join(",")} />
         <div className="automation-workbench-grid">
           <label><span>What should this ticket be called?</span><input name="templateName" required value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Previous Day Close" /></label>
-          <label><span>What job does it perform?</span><select name="requestType" value={draft.requestType} onChange={(e) => setDraft({ ...draft, requestType: e.target.value })}><option value="PREVIOUS_DAY_CLOSE">Close the previous day</option><option value="OPERATIONS_PULSE">Refresh current operations</option><option value="LAST_LOOK">Run the final same-day look</option><option value="HISTORICAL_BACKFILL">Recover historical records</option><option value="TARGETED_RECOVERY">Recover a specific missing item</option></select></label>
+          <label><span>What job does it perform?</span><select name="requestType" value={draft.requestType} onChange={(e) => setDraft({ ...draft, requestType: e.target.value, dateMode: dateModeForRequestType(e.target.value) })}><option value="PREVIOUS_DAY_CLOSE">Close the previous day</option><option value="OPERATIONS_PULSE">Refresh current operations</option><option value="LAST_LOOK">Run the final same-day look</option><option value="HISTORICAL_BACKFILL">Recover historical records</option><option value="TARGETED_RECOVERY">Recover a specific missing item</option></select></label>
           <label className="automation-workbench-wide"><span>Why does this instruction exist?</span><textarea name="description" required rows={2} value={draft.purpose} onChange={(e) => setDraft({ ...draft, purpose: e.target.value })} placeholder="Protect the previous day's finalized operating record." /></label>
           <label><span>Which business period?</span><select name="dateMode" value={draft.dateMode} onChange={(e) => setDraft({ ...draft, dateMode: e.target.value })}><option value="YESTERDAY">Yesterday only</option><option value="TODAY">Today</option><option value="SELECTED_DATE">One selected date</option><option value="SELECTED_RANGE">Selected historical range</option></select></label>
           <label><span>Priority</span><select name="priority" value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: Number(e.target.value) })}><option value="40">Urgent recovery</option><option value="60">Protected daily close</option><option value="100">Normal</option><option value="150">Background</option></select></label>
@@ -104,16 +153,19 @@ export default function AutomationWorkbench({ templates, saveAction }: { templat
           <label className="automation-workbench-wide"><span>What proves success?</span><textarea name="successStatement" rows={2} value={draft.success} onChange={(e) => setDraft({ ...draft, success: e.target.value })} /></label>
         </div>
         <div className="automation-compiled-preview"><span className="workspace-eyebrow">Compiled instruction</span><p><strong>{draft.name || "This ticket"}</strong> collects {reportLanguage || "no selected reports"} for {dateLanguage}. {draft.success} {draft.retry === "MANUAL_AFTER_FAILURE" ? "A terminal failure stops automatic retries and requires review." : "The configured recovery policy may issue another attempt."}</p><details><summary>View runner payload</summary><pre>{JSON.stringify(compiled, null, 2)}</pre></details></div>
-        <div className="automation-workbench-actions"><label className="automation-publish-toggle"><input type="checkbox" name="isActive" checked={draft.published} onChange={(e) => setDraft({ ...draft, published: e.target.checked })} /> Published and available for assignment</label><button className="primary-action" type="submit">{draft.id ? "Save new revision" : "Save ticket"}</button></div>
+        <div className="automation-workbench-actions"><label className="automation-publish-toggle"><input type="checkbox" name="isActive" checked={draft.published} onChange={(e) => setDraft({ ...draft, published: e.target.checked })} /> Published and available for assignment</label><button className="primary-action" type="submit" disabled={savePending || Boolean(draft.id && templates.find((template) => template.id === draft.id)?.deletion_requested_at)}>{savePending ? "Saving…" : draft.id ? "Save changes" : "Create ticket"}</button></div>
       </form>
     </section>
 
     <section className="automation-ticket-library">
       <div className="automation-workbench-heading"><div><span className="workspace-eyebrow">Ticket library</span><h2>{templates.length} saved instruction{templates.length === 1 ? "" : "s"}</h2><p>Select a record to load it into the authoring terminal.</p></div></div>
-      <div className="automation-library-list">{templates.length === 0 ? <div className="automation-library-empty">No saved tickets.</div> : templates.map((template) => { const payload = template.default_payload_json ?? {}; const targets = Array.isArray(payload.targets) ? payload.targets : []; return <article className="automation-library-record" key={template.id}>
-        <div className="automation-library-record__identity"><span className={`automation-ticket-state ${template.is_active ? "is-published" : ""}`}>{template.is_active ? "Published" : "Draft"}</span><h3>{template.template_name}</h3><code>{template.template_key}</code><p>{template.description || "No purpose statement recorded."}</p></div>
-        <dl className="automation-library-record__facts"><div><dt>Business period</dt><dd>{String(payload.date_mode ?? template.default_collection_mode ?? "Not defined").replaceAll("_", " ")}</dd></div><div><dt>Collection</dt><dd>{targets.map((target: any) => target.label).filter(Boolean).join(" · ") || "No targets defined"}</dd></div><div><dt>Failure behavior</dt><dd>{String(payload.retry_policy ?? "Not defined").replaceAll("_", " ")}</dd></div><div><dt>Priority</dt><dd>{template.default_priority}</dd></div></dl>
-        <button type="button" className="automation-action-button automation-action-button--secondary automation-library-open" onClick={() => { setDraft(fromTemplate(template)); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Open in workbench</button>
+      <div className="automation-library-list">{templates.length === 0 ? <div className="automation-library-empty">No saved tickets.</div> : templates.map((template) => { const payload = template.default_payload_json ?? {}; const targets = Array.isArray(payload.targets) ? payload.targets : []; const deletionPending = Boolean(template.deletion_requested_at); return <article className="automation-library-record" key={template.id}>
+        <div className="automation-library-record__identity"><span className={`automation-ticket-state ${template.is_active ? "is-published" : ""}`}>{deletionPending ? "Deletion pending" : template.is_active ? "Published" : "Draft"}</span><h3>{template.template_name}</h3><code>{template.template_key}</code><p>{template.description || "No purpose statement recorded."}</p>{deletionPending && <p>This ticket is disabled and will be removed after {template.active_dependency_count ?? 0} active run{template.active_dependency_count === 1 ? "" : "s"} finish.</p>}</div>
+        <dl className="automation-library-record__facts"><div><dt>Business period</dt><dd>{String(payload.date_mode ?? template.default_collection_mode ?? "Not defined").replaceAll("_", " ")}</dd></div><div><dt>Collection</dt><dd>{targets.map((target: any) => target.label).filter(Boolean).join(" · ") || "No targets defined"}</dd></div><div><dt>Assignments</dt><dd>{template.assignment_count ?? 0}</dd></div><div><dt>Failure behavior</dt><dd>{String(payload.retry_policy ?? "Not defined").replaceAll("_", " ")}</dd></div><div><dt>Priority</dt><dd>{template.default_priority}</dd></div></dl>
+        <div className="automation-library-record__actions">
+          <button type="button" className="automation-action-button automation-action-button--secondary automation-library-open" disabled={deletionPending} onClick={() => { setDraft(fromTemplate(template)); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Open in workbench</button>
+          {!deletionPending && <form action={deleteFormAction} onSubmit={(event) => { if (!window.confirm(`Delete “${template.template_name}”? All assignments will stop immediately. Active runs will be allowed to finish before final removal.`)) event.preventDefault(); }}><input type="hidden" name="templateId" value={template.id} /><button type="submit" className="automation-action-button automation-action-button--danger" disabled={deletePending}>{deletePending ? "Deleting…" : "Delete ticket"}</button></form>}
+        </div>
       </article>; })}</div>
     </section>
   </div>;
