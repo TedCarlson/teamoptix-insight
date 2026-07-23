@@ -30,46 +30,88 @@ function assertTargetedRecoveryDate(serviceDate: string) {
   if (serviceDate < earliestIso) throw new Error("Targeted recovery is limited to the last 12 months.");
 }
 
-async function saveTicket(formData: FormData) {
+type WorkbenchActionState = { status: "idle" | "success" | "error"; message: string; templateId?: string };
+
+async function saveTicket(_previousState: WorkbenchActionState, formData: FormData): Promise<WorkbenchActionState> {
   "use server";
+  try {
+    const supabase = await getSupabaseServerClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error("Unauthorized.");
 
-  const supabase = await getSupabaseServerClient();
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error("Unauthorized.");
+    const payloadText = value(formData, "payload");
+    let payload: Record<string, unknown>;
+    try { payload = JSON.parse(payloadText); } catch { throw new Error("The compiled runner instruction is invalid."); }
 
-  const payloadText = value(formData, "payload");
-  let payload: Record<string, unknown>;
-  try { payload = JSON.parse(payloadText); } catch { throw new Error("The compiled runner instruction is invalid."); }
+    const reports = value(formData, "reports").split(",").filter(Boolean);
+    if (reports.length === 0) throw new Error("Select at least one report or manifest.");
 
-  const reports = value(formData, "reports").split(",").filter(Boolean);
-  if (reports.length === 0) throw new Error("Select at least one report or manifest.");
+    const requestType = value(formData, "requestType");
+    const dateMode = value(formData, "dateMode");
+    if (requestType === "PREVIOUS_DAY_CLOSE" && dateMode !== "YESTERDAY") {
+      throw new Error("Previous Day Close must use Yesterday only. Use Historical Recovery for a date range.");
+    }
+    if (requestType === "LAST_LOOK" && dateMode !== "TODAY") {
+      throw new Error("Last Look must use Today.");
+    }
+    if (requestType === "TARGETED_RECOVERY" && dateMode !== "SELECTED_DATE") {
+      throw new Error("Targeted Recovery must use one selected prior date.");
+    }
+    if (requestType === "HISTORICAL_BACKFILL" && dateMode !== "SELECTED_RANGE") {
+      throw new Error("Historical Backfill must use a selected date range.");
+    }
 
-  const requestType = value(formData, "requestType");
-  const dateMode = value(formData, "dateMode");
-  if (requestType === "PREVIOUS_DAY_CLOSE" && dateMode !== "YESTERDAY") {
-    throw new Error("Previous Day Close must use Yesterday only. Use Historical Recovery for a date range.");
+    const family = requestType === "HISTORICAL_BACKFILL" || requestType === "TARGETED_RECOVERY" ? "sweep" : "report";
+    const templateId = value(formData, "templateId") || null;
+    const { data: savedTemplateId, error } = await supabase.rpc("upsert_operations_ticket_template", {
+      p_template_id: templateId,
+      p_template_key: value(formData, "templateKey"),
+      p_template_name: value(formData, "templateName"),
+      p_ticket_family: family,
+      p_execution_lane: "operations_collection_request",
+      p_description: value(formData, "description"),
+      p_default_priority: Number(value(formData, "priority") || 100),
+      p_default_collection_mode: dateMode,
+      p_default_manifest_types: reports.filter((item) => item.includes("MANIFEST")).map((item) => item.replace("_MANIFEST", "").toLowerCase()),
+      p_default_skip_combined: true,
+      p_default_payload_json: payload,
+      p_is_active: formData.get("isActive") === "on",
+    });
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/teamoptix/automation/ticket-library");
+    revalidatePath("/teamoptix/automation/assignments");
+    revalidatePath("/teamoptix/automation");
+    return { status: "success", message: templateId ? "Ticket changes saved." : "Ticket created.", templateId: String(savedTemplateId) };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "The ticket could not be saved." };
   }
+}
 
-  const family = requestType === "HISTORICAL_BACKFILL" || requestType === "TARGETED_RECOVERY" ? "sweep" : "report";
-  const { error } = await supabase.rpc("upsert_operations_ticket_template", {
-    p_template_id: value(formData, "templateId") || null,
-    p_template_key: value(formData, "templateKey"),
-    p_template_name: value(formData, "templateName"),
-    p_ticket_family: family,
-    p_execution_lane: "operations_collection_request",
-    p_description: value(formData, "description"),
-    p_default_priority: Number(value(formData, "priority") || 100),
-    p_default_collection_mode: dateMode,
-    p_default_manifest_types: reports.filter((item) => item.includes("MANIFEST")).map((item) => item.replace("_MANIFEST", "").toLowerCase()),
-    p_default_skip_combined: true,
-    p_default_payload_json: payload,
-    p_is_active: formData.get("isActive") === "on",
-  });
-  if (error) throw new Error(error.message);
-
-  revalidatePath("/teamoptix/automation/ticket-library");
-  revalidatePath("/teamoptix/automation");
-  redirect("/teamoptix/automation/ticket-library");
+async function deleteTicket(_previousState: WorkbenchActionState, formData: FormData): Promise<WorkbenchActionState> {
+  "use server";
+  try {
+    const supabase = await getSupabaseServerClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error("Unauthorized.");
+    const templateId = value(formData, "templateId");
+    if (!templateId) throw new Error("Ticket is required.");
+    const { data, error } = await supabase.rpc("request_operations_ticket_template_deletion", {
+      p_template_id: templateId,
+    });
+    if (error) throw new Error(error.message);
+    const result = (data ?? {}) as Record<string, unknown>;
+    const active = Number(result.active_dependencies ?? 0);
+    const assignments = Number(result.assignments_overridden ?? 0);
+    revalidatePath("/teamoptix/automation/ticket-library");
+    revalidatePath("/teamoptix/automation/assignments");
+    revalidatePath("/teamoptix/automation");
+    return active > 0
+      ? { status: "success", message: `Ticket retired. ${assignments} assignment${assignments === 1 ? "" : "s"} stopped; deletion will finish after ${active} active run${active === 1 ? "" : "s"}.` }
+      : { status: "success", message: `Ticket deleted. ${assignments} assignment${assignments === 1 ? "" : "s"} removed.` };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "The ticket could not be deleted." };
+  }
 }
 
 async function launchCollection(formData: FormData) {
@@ -153,6 +195,6 @@ export default async function Page() {
   return <TeamOptixShell><main className="workspace-shell"><section className="workspace-main">
     <header className="automation-domain-header"><span className="workspace-eyebrow">TeamOptix · Automation</span><h1>Automation Workbench</h1><p>Author operational instructions in plain language. Insight translates them into governed runner contracts.</p></header>
     <LiveExecutionPortals companies={companies} templates={templates} launchAction={launchCollection} />
-    <AutomationWorkbench templates={templates} saveAction={saveTicket} />
+    <AutomationWorkbench templates={templates} saveAction={saveTicket} deleteAction={deleteTicket} />
   </section></main></TeamOptixShell>;
 }
