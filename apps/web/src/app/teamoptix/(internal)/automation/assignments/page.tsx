@@ -209,10 +209,19 @@ export default async function Page() {
                   <label><span>Frequency within the window</span>
                     <select name="cadenceMinutes" defaultValue="15">
                       <option value="">Run once at the start time</option>
+                      <option value="5">Every 5 minutes</option>
+                      <option value="10">Every 10 minutes</option>
                       <option value="15">Every 15 minutes</option>
+                      <option value="20">Every 20 minutes</option>
                       <option value="30">Every 30 minutes</option>
+                      <option value="45">Every 45 minutes</option>
                       <option value="60">Every 60 minutes</option>
+                      <option value="90">Every 90 minutes</option>
+                      <option value="120">Every 2 hours</option>
+                      <option value="180">Every 3 hours</option>
+                      <option value="240">Every 4 hours</option>
                     </select>
+                    <small>The scheduler checks every minute. If a prior company run is still active, the next request waits for the governed restart opportunity.</small>
                   </label>
                   <label><span>Window begins</span><input name="startTime" type="time" /><small>Company terminal time.</small></label>
                   <label><span>Window ends</span><input name="endTime" type="time" /><small>Leave empty for a one-time scheduled run.</small></label>
