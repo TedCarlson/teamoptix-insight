@@ -1,6 +1,10 @@
 import { getReversedDispatchEventIds, type DispatchEventRow } from "@/features/dispatch/lib/dispatchSupport";
 import type { RosterRow } from "@/features/people/types/roster.types";
 import type { AttendanceCell, AttendanceRow, PayrollActivityRow } from "@/features/payroll/lib/payroll.types";
+import {
+  isDswPayrollSource,
+  isFallbackWorkEventSource,
+} from "@/features/payroll/lib/payroll.sources";
 
 export function emptyCell(): AttendanceCell {
   return { present: false, callout: false, noShow: false, sources: [], details: [], adjustmentAmount: 0, adjustmentLabels: [] };
@@ -28,10 +32,6 @@ export function presentEventCode(code: string) {
   ].includes(code);
 }
 
-function isDswPayrollSource(sourceKind: string | null | undefined) {
-  return sourceKind === "DSW_ACTUAL" || sourceKind === "DSW_OWNERSHIP";
-}
-
 export function cellDisplay(cell: AttendanceCell) {
   if (cell.callout) return { label: "C", title: "Call-out", tone: "#92400e", bg: "#fffbeb", border: "#fde68a" };
   if (cell.noShow) return { label: "N", title: "No show", tone: "#991b1b", bg: "#fef2f2", border: "#fecaca" };
@@ -54,7 +54,11 @@ export function buildAttendanceRows({
   payrollActivity: PayrollActivityRow[];
 }): AttendanceRow[] {
   const activeRoster = roster
-    .filter((person) => person.employment_status === "Active")
+    .filter(
+      (person) =>
+        person.employment_status === "Active" ||
+        person.employment_status === "Trainee"
+    )
     .sort((a, b) => a.full_name.localeCompare(b.full_name));
 
   const rows = new Map<string, AttendanceRow>();
@@ -118,10 +122,26 @@ export function buildAttendanceRows({
     cell.present = true;
     cell.callout = false;
     cell.noShow = false;
-    addSource(cell, isDswPayrollSource(activity.source_kind) ? "DSW" : "PAYROLL");
+    addSource(
+      cell,
+      isDswPayrollSource(activity.source_kind)
+        ? "DSW"
+        : isFallbackWorkEventSource(activity.source_kind)
+          ? activity.source_kind?.includes("TRAINING")
+            ? "TRAINING"
+            : "HELPER"
+          : "PAYROLL"
+    );
 
     if (isDswPayrollSource(activity.source_kind)) {
       addDetail(cell, activity.wa_number ? `WA ${activity.wa_number}` : null);
+    } else if (isFallbackWorkEventSource(activity.source_kind)) {
+      addDetail(
+        cell,
+        activity.metadata_json?.event_source === "MANUAL"
+          ? "Manual fallback"
+          : "Dispatch fallback"
+      );
     }
 
     row.days[activity.service_date] = cell;

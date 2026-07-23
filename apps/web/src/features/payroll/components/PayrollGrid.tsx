@@ -31,6 +31,8 @@ import PayrollDswAliasTool from "@/features/payroll/components/PayrollDswAliasTo
 import PayrollRecordRepairTool from "@/features/payroll/components/PayrollRecordRepairTool";
 import PayrollReportEmailDialog from "@/features/payroll/components/PayrollReportEmailDialog";
 import PayrollAdjustmentsPanel from "@/features/payroll/components/PayrollAdjustmentsPanel";
+import PayrollWorkEventsPanel from "@/features/payroll/components/PayrollWorkEventsPanel";
+import { isFallbackWorkEventSource } from "@/features/payroll/lib/payroll.sources";
 
 import {
   addDays,
@@ -292,7 +294,7 @@ export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; 
     return () => {
       active = false;
     };
-  }, [slug, days, weekEnd]);
+  }, [slug, days, weekEnd, repairRefreshKey]);
 
   
   useEffect(() => {
@@ -425,6 +427,20 @@ export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; 
     return new Map(roster.map((person) => [person.roster_member_id, person]));
   }, [roster]);
 
+  const fallbackWorkEventRosterIds = useMemo(
+    () =>
+      new Set(
+        (payrollMetrics?.activity ?? [])
+          .filter(
+            (row) =>
+              Boolean(row.roster_member_id) &&
+              isFallbackWorkEventSource(row.source_kind)
+          )
+          .map((row) => row.roster_member_id as string)
+      ),
+    [payrollMetrics?.activity]
+  );
+
   const detailRows = useMemo(
     () => buildPayrollRowDetails(payrollMetrics?.activity ?? []),
     [payrollMetrics?.activity]
@@ -450,11 +466,17 @@ export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; 
       reconciledSummaryRows.filter((row) => {
         if (!row.roster_member_id) return false;
         if (includeNonDriverWorkers) return true;
+        if (fallbackWorkEventRosterIds.has(row.roster_member_id)) return true;
 
         const rosterMember = rosterById.get(row.roster_member_id);
         return isDriverType(rosterMember?.worker_type);
       }),
-    [includeNonDriverWorkers, reconciledSummaryRows, rosterById]
+    [
+      fallbackWorkEventRosterIds,
+      includeNonDriverWorkers,
+      reconciledSummaryRows,
+      rosterById,
+    ]
   );
 
   const groupedSummaryRows = useMemo(
@@ -699,17 +721,33 @@ export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; 
         ) : payrollView === "row-detail" ? (
           <PayrollRowDetailTable detailRows={detailRows} />
         ) : payrollView === "adjustments" ? (
-          <PayrollAdjustmentsPanel
-            slug={slug}
-            weekEnd={weekEnd}
-            roster={roster}
-            onChanged={() => setRepairRefreshKey((value) => value + 1)}
-          />
+          <div style={{ display: "grid", gap: 16 }}>
+            <PayrollWorkEventsPanel
+              slug={slug}
+              days={days}
+              roster={roster}
+              onChanged={() => setRepairRefreshKey((value) => value + 1)}
+            />
+            <PayrollAdjustmentsPanel
+              slug={slug}
+              weekEnd={weekEnd}
+              roster={roster}
+              onChanged={() => setRepairRefreshKey((value) => value + 1)}
+            />
+          </div>
         ) : (
-          <PayrollAttendanceTable
-            attendanceRows={attendanceRows}
-            days={days}
-          />
+          <div style={{ display: "grid", gap: 16 }}>
+            <PayrollWorkEventsPanel
+              slug={slug}
+              days={days}
+              roster={roster}
+              onChanged={() => setRepairRefreshKey((value) => value + 1)}
+            />
+            <PayrollAttendanceTable
+              attendanceRows={attendanceRows}
+              days={days}
+            />
+          </div>
         )}
       <PayrollReportEmailDialog
         open={reportEmailOpen}
