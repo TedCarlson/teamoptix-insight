@@ -8,6 +8,7 @@ import {
   isDswPayrollSource,
   isFallbackWorkEventSource,
   isPayrollSource,
+  payrollWorkDayKind,
 } from "@/features/payroll/lib/payroll.sources";
 
 export function buildPayrollRowDetails(activityRows: PayrollActivityRow[]) {
@@ -45,6 +46,10 @@ export function buildPayrollSummaryFromDriverDayDetails(
       roster_member_id: string | null;
       person_name: string;
       worked_days: Set<string>;
+      worked_day_kinds: Map<
+        string,
+        "TRAINING" | "HELPER"
+      >;
       daily_pay_total: number;
       threshold_pay_total: number;
       adjustment_total: number;
@@ -57,12 +62,24 @@ export function buildPayrollSummaryFromDriverDayDetails(
       roster_member_id: row.roster_member_id,
       person_name: row.person_name,
       worked_days: new Set<string>(),
+      worked_day_kinds: new Map<
+        string,
+        "TRAINING" | "HELPER"
+      >(),
       daily_pay_total: 0,
       threshold_pay_total: 0,
       adjustment_total: 0,
     };
 
     person.worked_days.add(row.service_date);
+
+    if (row.work_day_kind) {
+      person.worked_day_kinds.set(
+        row.service_date,
+        row.work_day_kind
+      );
+    }
+
     person.daily_pay_total += row.daily_pay_applied;
     person.threshold_pay_total += row.threshold_pay_amount;
     person.adjustment_total += row.adjustment_pay_amount;
@@ -83,6 +100,9 @@ export function buildPayrollSummaryFromDriverDayDetails(
         person_name: person.person_name,
         days_worked: workedDays.length,
         worked_days: workedDays,
+        worked_day_kinds: Object.fromEntries(
+          person.worked_day_kinds
+        ),
         daily_pay_total: person.daily_pay_total,
         threshold_pay_total: person.threshold_pay_total,
         adjustment_total: person.adjustment_total,
@@ -120,6 +140,13 @@ export function buildPayrollDriverDayDetails(
       const hasFallbackEvidence = rows.some((row) =>
         isFallbackWorkEventSource(row.source_kind)
       );
+      const workDayKind =
+        rows
+          .map((row) => payrollWorkDayKind(row.source_kind))
+          .find(
+            (kind): kind is "TRAINING" | "HELPER" =>
+              kind != null
+          ) ?? null;
 
       for (const row of rows) {
         const wa = row.wa_number ?? "—";
@@ -222,6 +249,7 @@ export function buildPayrollDriverDayDetails(
         threshold_pay_amount: thresholdPayAmount,
         daily_pay_rate: dailyPayRate > 0 ? dailyPayRate : null,
         daily_pay_applied: dailyPayRate > 0 ? dailyPayRate : 0,
+        work_day_kind: workDayKind,
         adjustment_pay_amount: adjustmentPayAmount,
         estimated_total:
           thresholdPayAmount +

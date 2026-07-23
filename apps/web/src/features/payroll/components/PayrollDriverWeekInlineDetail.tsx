@@ -1,6 +1,9 @@
 "use client";
 
-import type { PayrollDriverDayDetailRow } from "@/features/payroll/lib/payroll.types";
+import type {
+  PayrollDriverDayDetailRow,
+  PayrollWorkDayKind,
+} from "@/features/payroll/lib/payroll.types";
 import { money } from "@/features/payroll/lib/payroll.format";
 
 export default function PayrollDriverWeekInlineDetail({
@@ -57,7 +60,17 @@ export default function PayrollDriverWeekInlineDetail({
               }
               render={(row) => money(row.threshold_pay_amount)}
             />
-            <AuditRow label="Daily Pay" rows={sortedRows} total={money(totalDailyPay)} render={(row) => money(row.daily_pay_applied)} />
+            <AuditRow
+              label="Daily Pay"
+              rows={sortedRows}
+              total={money(totalDailyPay)}
+              render={(row) => (
+                <DailyPayValue
+                  amount={row.daily_pay_applied}
+                  kind={row.work_day_kind}
+                />
+              )}
+            />
             <AuditRow label="Adjustments" rows={sortedRows} total={money(totalAdjustmentPay)} render={(row) => money(row.adjustment_pay_amount)} />
             <AuditRow label="Total Pay" rows={sortedRows} total={money(totalPay)} strong render={(row) => money(row.estimated_total)} />
           </tbody>
@@ -66,6 +79,61 @@ export default function PayrollDriverWeekInlineDetail({
     </div>
   );
 }
+
+function DailyPayValue({
+  amount,
+  kind,
+}: {
+  amount: number;
+  kind: PayrollWorkDayKind | null;
+}) {
+  if (!kind) {
+    return <>{money(amount)}</>;
+  }
+
+  const label = kind === "TRAINING" ? "T" : "H";
+  const title =
+    kind === "TRAINING"
+      ? "Training day"
+      : "Helper day";
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 5,
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span>{money(amount)}</span>
+      <span
+        title={title}
+        aria-label={title}
+        style={{
+          display: "inline-flex",
+          minWidth: 18,
+          height: 18,
+          padding: "0 5px",
+          alignItems: "center",
+          justifyContent: "center",
+          border: "1px solid #86efac",
+          borderRadius: 999,
+          background: "#f0fdf4",
+          color: "#166534",
+          fontSize: 10,
+          fontWeight: 950,
+          lineHeight: 1,
+          cursor: "help",
+        }}
+      >
+        {label}
+      </span>
+    </span>
+  );
+}
+
 
 function SectionRow({ label, colSpan }: { label: string; colSpan: number }) {
   return (

@@ -15,11 +15,14 @@ export type AttendanceRow = {
   days: Record<string, AttendanceCell>;
 };
 
+export type PayrollWorkDayKind = "TRAINING" | "HELPER";
+
 export type PayrollSummaryRow = {
   roster_member_id: string | null;
   person_name: string;
   days_worked: number;
   worked_days?: string[];
+  worked_day_kinds?: Record<string, PayrollWorkDayKind>;
   daily_pay_total: number;
   threshold_pay_total: number;
   adjustment_total?: number;
@@ -88,6 +91,7 @@ export type PayrollDriverDayDetailRow = {
   threshold_pay_amount: number;
   daily_pay_rate: number | null;
   daily_pay_applied: number;
+  work_day_kind: PayrollWorkDayKind | null;
   adjustment_pay_amount: number;
   estimated_total: number;
   source_row_count: number;

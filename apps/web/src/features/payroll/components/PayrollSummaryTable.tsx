@@ -1,8 +1,89 @@
 "use client";
 
-import type { PayrollSummaryRow } from "@/features/payroll/lib/payroll.types";
+import type {
+  PayrollSummaryRow,
+  PayrollWorkDayKind,
+} from "@/features/payroll/lib/payroll.types";
 import { money } from "@/features/payroll/lib/payroll.format";
-import { workedDaysLabel } from "@/features/payroll/lib/payroll.date";
+import {
+  compactDayCode,
+} from "@/features/payroll/lib/payroll.date";
+
+function WorkedDaysCell({ row }: { row: PayrollSummaryRow }) {
+  const workedDays = row.worked_days ?? [];
+
+  if (workedDays.length === 0) {
+    return <>{row.days_worked}</>;
+  }
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        gap: 3,
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span>{row.days_worked} ·</span>
+      {workedDays.map((serviceDate) => {
+        const kind = row.worked_day_kinds?.[serviceDate] ?? null;
+
+        return (
+          <DayToken
+            key={serviceDate}
+            code={compactDayCode(serviceDate)}
+            kind={kind}
+          />
+        );
+      })}
+    </span>
+  );
+}
+
+function DayToken({
+  code,
+  kind,
+}: {
+  code: string;
+  kind: PayrollWorkDayKind | null;
+}) {
+  if (!kind) {
+    return <span>{code}</span>;
+  }
+
+  const title =
+    kind === "TRAINING"
+      ? "Training day"
+      : "Helper day";
+
+  return (
+    <span
+      title={title}
+      aria-label={`${code}: ${title}`}
+      style={{
+        display: "inline-flex",
+        minWidth: 18,
+        height: 18,
+        padding: "0 5px",
+        alignItems: "center",
+        justifyContent: "center",
+        border: "1px solid #86efac",
+        borderRadius: 999,
+        background: "#f0fdf4",
+        color: "#166534",
+        fontSize: 11,
+        fontWeight: 950,
+        lineHeight: 1,
+        cursor: "help",
+      }}
+    >
+      {code}
+    </span>
+  );
+}
+
 
 const thStyle = {
   position: "sticky" as const,
@@ -75,7 +156,7 @@ export default function PayrollSummaryTable({
                 <tr key={`${group}-${row.roster_member_id ?? row.person_name}-${rowIndex}`}>
                   <td style={tdStyle}><strong>{row.person_name}</strong></td>
                   <td style={{ ...tdStyle, textAlign: "right" }}>
-                    {workedDaysLabel(row.days_worked, row.worked_days)}
+                    <WorkedDaysCell row={row} />
                   </td>
                   <td style={{ ...tdStyle, textAlign: "right" }}>
                     {money(row.daily_pay_total)}

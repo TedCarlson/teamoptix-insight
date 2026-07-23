@@ -29,3 +29,25 @@ export function isPayrollSource(sourceKind: string | null | undefined) {
     isFallbackWorkEventSource(sourceKind)
   );
 }
+
+export function payrollWorkDayKind(
+  sourceKind: string | null | undefined
+): "TRAINING" | "HELPER" | null {
+  const normalized = String(sourceKind ?? "");
+
+  if (
+    normalized === "MANUAL_TRAINING" ||
+    normalized === "DISPATCH_TRAINING"
+  ) {
+    return "TRAINING";
+  }
+
+  if (
+    normalized === "MANUAL_HELPER" ||
+    normalized === "DISPATCH_HELPER"
+  ) {
+    return "HELPER";
+  }
+
+  return null;
+}
