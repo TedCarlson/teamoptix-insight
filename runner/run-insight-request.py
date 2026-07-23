@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 import time
+import uuid
 import urllib.error
 import urllib.request
 import urllib.parse
@@ -21,12 +22,42 @@ RUNNER_KEY = os.environ.get("RUNNER_KEY", "vps-laravel-runner-001")
 PROVIDER_KEY = "FEDEX"
 DONOR_RUNNER = APP_DIR / "runner" / "run-donor-once.sh"
 SCRAPER_HOME = APP_DIR / "storage" / "app" / "public" / "scraper"
+RUNTIME_LEDGER_DIR = Path(os.environ.get(
+    "INSIGHT_RUNTIME_LEDGER_DIR",
+    str(APP_DIR / "runtime" / "ledger"),
+))
 
 RUNNER_GOALS = {
     "PREVIOUS_DAY_CLOSE": "collect_previous_day_dsw",
     "HISTORICAL_BACKFILL": "collect_historical_dsw_range",
     "TARGETED_RECOVERY": "collect_targeted_artifacts",
 }
+
+def utc_now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def artifact_execution_key(request: dict, artifact: dict) -> str:
+    identity = "|".join([
+        str(request.get("id") or ""),
+        str(artifact.get("service_date") or ""),
+        str(artifact.get("artifact_key") or ""),
+        str(artifact.get("filename") or artifact.get("path") or ""),
+    ])
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, identity))
+
+
+def lane_key_for_artifact(artifact: dict) -> str:
+    key = str(artifact.get("artifact_key") or "").upper()
+    if key == "DSW_DAILY_SERVICE":
+        return "DSW"
+    if key.startswith("FCC_SERVICE_AREA"):
+        return "FCC_WORK_AREA_SUMMARY"
+    if key == "PICKUP_MANIFEST":
+        return "FCC_PICKUP_MANIFESTS"
+    if key == "DELIVERY_MANIFEST":
+        return "FCC_DELIVERY_MANIFESTS"
+    return key or "UNKNOWN"
 
 
 def governed_runner_goal(request: dict) -> str:
@@ -325,11 +356,19 @@ def collect_artifacts(request: dict, run_started_at: float) -> list[dict]:
 
             artifact["storage_bucket"] = "automation-artifacts"
             artifact["storage_path"] = local_storage_path(request, artifact)
+            artifact["artifact_execution_key"] = artifact_execution_key(
+                request, artifact
+            )
+            artifact["lane_key"] = lane_key_for_artifact(artifact)
+            artifact["download_completed_at"] = time.strftime(
+                "%Y-%m-%dT%H:%M:%SZ",
+                time.gmtime(file.stat().st_mtime),
+            )
             artifacts.append(artifact)
 
     return sorted(artifacts, key=lambda artifact: (artifact_priority(artifact), artifact["filename"]))
 
-def upload_artifact_to_storage(artifact: dict) -> dict:
+def package_artifact_payload(artifact: dict) -> bytes:
     local_path = Path(artifact["path"])
     if not local_path.exists():
         raise RuntimeError(f"Artifact file missing before upload: {local_path}")
@@ -337,6 +376,10 @@ def upload_artifact_to_storage(artifact: dict) -> dict:
     data = local_path.read_bytes()
     artifact["size_bytes"] = len(data)
     artifact["source_hash"] = hashlib.sha256(data).hexdigest()
+    return data
+
+
+def upload_artifact_to_storage(artifact: dict, data: bytes) -> dict:
 
     bucket = artifact["storage_bucket"]
     storage_path = artifact["storage_path"]
@@ -386,11 +429,94 @@ def register_artifact(request: dict, artifact: dict) -> dict:
         "p_runner_artifact_json": artifact,
     })
 
+def handoff_artifact(request: dict, artifact: dict) -> dict:
+    record_runtime_event(
+        request,
+        "DOWNLOAD_COMPLETED",
+        "DOWNLOAD",
+        occurred_at=artifact.get("download_completed_at"),
+        artifact=artifact,
+        metadata={
+            "filename": artifact.get("filename"),
+            "size_bytes": artifact.get("size_bytes"),
+        },
+    )
+
+    packaging_started = time.time()
+    record_runtime_event(
+        request,
+        "PAYLOAD_PACKAGING_STARTED",
+        "PAYLOAD_PACKAGING",
+        artifact=artifact,
+    )
+    payload = package_artifact_payload(artifact)
+    record_runtime_event(
+        request,
+        "PAYLOAD_PACKAGING_COMPLETED",
+        "PAYLOAD_PACKAGING",
+        artifact=artifact,
+        duration_ms=int((time.time() - packaging_started) * 1000),
+        outcome="COMPLETE",
+        metadata={
+            "filename": artifact.get("filename"),
+            "canonical_filename": artifact.get("canonical_filename"),
+            "size_bytes": artifact.get("size_bytes"),
+            "source_hash": artifact.get("source_hash"),
+            "storage_path": artifact.get("storage_path"),
+        },
+    )
+
+    upload_started_at = utc_now()
+    upload_started = time.time()
+    record_runtime_event(
+        request,
+        "UPLOAD_STARTED",
+        "UPLOAD",
+        occurred_at=upload_started_at,
+        artifact=artifact,
+    )
+    upload_artifact_to_storage(artifact, payload)
+    upload_ms = int((time.time() - upload_started) * 1000)
+    record_runtime_event(
+        request,
+        "UPLOAD_COMPLETED",
+        "UPLOAD",
+        artifact=artifact,
+        duration_ms=upload_ms,
+        outcome="COMPLETE",
+        metadata={
+            "storage_bucket": artifact.get("storage_bucket"),
+            "storage_path": artifact.get("storage_path"),
+            "size_bytes": artifact.get("size_bytes"),
+        },
+    )
+
+    registration_started = time.time()
+    record_runtime_event(
+        request,
+        "REGISTRATION_STARTED",
+        "REGISTRATION",
+        artifact=artifact,
+    )
+    registered = register_artifact(request, artifact)
+    artifact_id = (
+        registered.get("id") if isinstance(registered, dict) else None
+    )
+    record_runtime_event(
+        request,
+        "REGISTRATION_COMPLETED",
+        "REGISTRATION",
+        artifact=artifact,
+        artifact_id=artifact_id,
+        duration_ms=int((time.time() - registration_started) * 1000),
+        outcome="COMPLETE",
+    )
+    return registered
+
 def register_artifacts(request: dict, artifacts: list[dict]) -> list[dict]:
     registered = []
     for artifact in artifacts:
-        upload_artifact_to_storage(artifact)
-        registered.append(register_artifact(request, artifact))
+        registered.append(handoff_artifact(request, artifact))
     return registered
 
 def register_new_artifacts(
@@ -407,8 +533,7 @@ def register_new_artifacts(
             continue
         artifact["runner_elapsed_ms"] = segment_elapsed_ms
         artifact["handoff_registered_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        upload_artifact_to_storage(artifact)
-        registered.append(register_artifact(request, artifact))
+        registered.append(handoff_artifact(request, artifact))
         registered_paths.add(local_path)
         print(json.dumps({
             "event": "artifact_registered",
@@ -437,7 +562,7 @@ SUPABASE_SERVICE_ROLE_KEY = INSIGHT_ENV.get("SUPABASE_SERVICE_ROLE_KEY")
 if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
     raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.")
 
-def rpc(name: str, payload: dict):
+def rpc(name: str, payload: dict, timeout_seconds: int = 45):
     req = urllib.request.Request(
         f"{SUPABASE_URL.rstrip('/')}/rest/v1/rpc/{name}",
         data=json.dumps(payload).encode("utf-8"),
@@ -449,12 +574,94 @@ def rpc(name: str, payload: dict):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=45) as res:
+        with urllib.request.urlopen(req, timeout=timeout_seconds) as res:
             raw = res.read().decode("utf-8")
             return json.loads(raw) if raw else None
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="ignore")
         raise RuntimeError(f"RPC {name} failed: HTTP {exc.code} {detail}") from exc
+
+
+def record_runtime_event(
+    request: dict,
+    event_type: str,
+    stage: str,
+    *,
+    occurred_at: str | None = None,
+    artifact: dict | None = None,
+    artifact_id: str | None = None,
+    lane_key: str | None = None,
+    attempt_number: int = 1,
+    outcome: str | None = None,
+    duration_ms: int | None = None,
+    metadata: dict | None = None,
+    idempotency_suffix: str | None = None,
+):
+    artifact = artifact or {}
+    execution_key = artifact.get("artifact_execution_key")
+    lane = lane_key or artifact.get("lane_key")
+    route_identity = (
+        (artifact.get("header_identity") or {}).get("work_area")
+        or artifact.get("route_identity")
+    )
+    suffix = idempotency_suffix or execution_key or lane or "request"
+    idempotency_key = (
+        f"runner:{RUNNER_KEY}:{request['id']}:{event_type}:"
+        f"{suffix}:attempt-{attempt_number}"
+    )
+    event_payload = {
+        "p_collection_request_id": request["id"],
+        "p_idempotency_key": idempotency_key,
+        "p_source_system": "RUNNER",
+        "p_event_type": event_type,
+        "p_stage": stage,
+        "p_occurred_at": occurred_at or utc_now(),
+        "p_artifact_id": artifact_id,
+        "p_lane_key": lane,
+        "p_artifact_execution_key": execution_key,
+        "p_artifact_key": artifact.get("artifact_key"),
+        "p_route_identity": route_identity,
+        "p_attempt_number": attempt_number,
+        "p_outcome": outcome,
+        "p_duration_ms": duration_ms,
+        "p_metadata_json": metadata or {},
+    }
+
+    # Preserve the exact event submitted to Insight as a request-scoped JSONL
+    # journal. This gives the runner a replayable forensic record if the API is
+    # briefly unavailable without making telemetry a collection dependency.
+    try:
+        RUNTIME_LEDGER_DIR.mkdir(parents=True, exist_ok=True)
+        journal_path = RUNTIME_LEDGER_DIR / f"{request['id']}.jsonl"
+        journal_entry = {
+            "journal_version": "operations_runtime_v1",
+            "journaled_at": utc_now(),
+            "runner_key": RUNNER_KEY,
+            "rpc": "record_operations_collection_runtime_event",
+            "payload": event_payload,
+        }
+        with journal_path.open("a", encoding="utf-8") as journal:
+            journal.write(json.dumps(journal_entry, separators=(",", ":")) + "\n")
+    except Exception as exc:
+        print(
+            "[insight-runner] runtime journal write failed "
+            f"event={event_type} stage={stage}: {exc}",
+            file=sys.stderr,
+        )
+
+    try:
+        return rpc(
+            "record_operations_collection_runtime_event",
+            event_payload,
+            timeout_seconds=5,
+        )
+    except Exception as exc:
+        print(
+            "[insight-runner] runtime event write failed "
+            f"event={event_type} stage={stage}: {exc}",
+            file=sys.stderr,
+        )
+        return None
 
 def one(row_or_rows):
     if isinstance(row_or_rows, list):
@@ -492,6 +699,12 @@ def main() -> int:
         return 0
 
     request_id = request["id"]
+    record_runtime_event(
+        request,
+        "RUNNER_ACCEPTED",
+        "CLAIM",
+        metadata={"runner_key": RUNNER_KEY},
+    )
     print(json.dumps({
         "event": "claimed",
         "id": request_id,
@@ -506,6 +719,7 @@ def main() -> int:
     }, indent=2))
 
     try:
+        credential_started = time.time()
         profile = get_profile(request["company_id"])
         if not profile:
             raise RuntimeError("No FEDEX automation profile returned.")
@@ -517,6 +731,13 @@ def main() -> int:
         if not credential or not credential.get("username") or not credential.get("encrypted_secret"):
             raise RuntimeError("No usable FedEx credential returned.")
 
+        record_runtime_event(
+            request,
+            "CREDENTIALS_RESOLVED",
+            "CREDENTIALS",
+            duration_ms=int((time.time() - credential_started) * 1000),
+            metadata={"profile_id": profile.get("id")},
+        )
         update_status(request_id, "RUNNING")
 
         run_started_at = time.time()
@@ -556,6 +777,12 @@ def main() -> int:
             return 0
 
         started = time.time()
+        record_runtime_event(
+            request,
+            "COLLECTION_STARTED",
+            "COLLECTION",
+            metadata={"execution_mode": "SERIAL"},
+        )
         proc = subprocess.Popen(
             [str(DONOR_RUNNER)],
             cwd=str(APP_DIR),
@@ -568,9 +795,117 @@ def main() -> int:
         registered = []
         registered_paths: set[str] = set()
         segment_started_at = started
+        active_lane = None
+        last_heartbeat_at = 0.0
+        authentication_completed = False
+        auth_attempt_number = 0
+        active_auth_started_at = None
         assert proc.stdout is not None
         for line in proc.stdout:
             print(line, end="")
+            now = time.time()
+            runtime_marker = line.find("RUNTIME_EVENT ")
+            if runtime_marker >= 0:
+                try:
+                    runtime_payload = json.loads(
+                        line[runtime_marker + len("RUNTIME_EVENT "):].strip()
+                    )
+                    runtime_artifact = None
+                    if runtime_payload.get("artifact_key") or runtime_payload.get("filename"):
+                        runtime_artifact = {
+                            "service_date": (
+                                request.get("service_date")
+                                or time.strftime("%Y-%m-%d")
+                            ),
+                            "artifact_key": runtime_payload.get("artifact_key"),
+                            "filename": runtime_payload.get("filename"),
+                            "lane_key": runtime_payload.get("lane_key"),
+                            "route_identity": runtime_payload.get("route_identity"),
+                        }
+                        runtime_artifact["artifact_execution_key"] = (
+                            artifact_execution_key(request, runtime_artifact)
+                        )
+                    marker_event_type = str(
+                        runtime_payload.get("event_type") or "PROGRESS"
+                    )
+                    marker_duration_ms = runtime_payload.get("duration_ms")
+                    marker_attempt_number = 1
+                    marker_suffix = (
+                        runtime_artifact["artifact_execution_key"]
+                        if runtime_artifact else "request"
+                    )
+                    if marker_event_type == "AUTH_COMPLETED":
+                        marker_attempt_number = max(auth_attempt_number, 1)
+                        marker_suffix = f"auth-{marker_attempt_number}"
+                        if active_auth_started_at is not None:
+                            marker_duration_ms = int(
+                                (time.time() - active_auth_started_at) * 1000
+                            )
+                    record_runtime_event(
+                        request,
+                        marker_event_type,
+                        str(runtime_payload.get("stage") or "COLLECTION"),
+                        occurred_at=runtime_payload.get("occurred_at"),
+                        artifact=runtime_artifact,
+                        lane_key=runtime_payload.get("lane_key"),
+                        attempt_number=marker_attempt_number,
+                        duration_ms=marker_duration_ms,
+                        metadata=runtime_payload.get("metadata") or {},
+                        idempotency_suffix=marker_suffix,
+                    )
+                    if marker_event_type == "AUTH_COMPLETED":
+                        authentication_completed = True
+                except Exception as marker_exc:
+                    print(
+                        "[insight-runner] runtime marker rejected: "
+                        f"{marker_exc}",
+                        file=sys.stderr,
+                    )
+            if (
+                not authentication_completed
+                and re.search(r"Login successfull|Login successful", line, re.I)
+            ):
+                record_runtime_event(
+                    request, "AUTH_COMPLETED", "AUTHENTICATION"
+                )
+                authentication_completed = True
+            section_match = re.search(
+                r"\[runner\] section start:\s*(.+)$", line.strip()
+            )
+            governed_match = re.search(
+                r"\[runner\] governed date start:\s*(.+)$", line.strip()
+            )
+            if section_match or governed_match:
+                active_lane = (
+                    section_match.group(1).strip()
+                    if section_match else "DSW"
+                )
+                auth_attempt_number += 1
+                active_auth_started_at = time.time()
+                record_runtime_event(
+                    request,
+                    "AUTH_STARTED",
+                    "AUTHENTICATION",
+                    lane_key=active_lane,
+                    attempt_number=auth_attempt_number,
+                    idempotency_suffix=f"auth-{auth_attempt_number}",
+                )
+                record_runtime_event(
+                    request,
+                    "LANE_STARTED",
+                    "SOURCE",
+                    lane_key=active_lane,
+                    idempotency_suffix=(
+                        f"{active_lane}:{governed_match.group(1).strip()}"
+                        if governed_match else active_lane
+                    ),
+                    metadata={
+                        "service_date": (
+                            governed_match.group(1).strip()
+                            if governed_match else None
+                        )
+                    },
+                )
             if "[runner] section exit" in line or "[runner] governed date exit" in line:
                 registered.extend(register_new_artifacts(
                     request,
@@ -578,9 +913,38 @@ def main() -> int:
                     registered_paths,
                     segment_started_at,
                 ))
+                record_runtime_event(
+                    request,
+                    "LANE_COMPLETED",
+                    "SOURCE",
+                    lane_key=active_lane,
+                    duration_ms=int((time.time() - segment_started_at) * 1000),
+                    outcome="COMPLETE",
+                    idempotency_suffix=(
+                        f"{active_lane}:{int(segment_started_at)}"
+                    ),
+                )
                 segment_started_at = time.time()
+            if now - last_heartbeat_at >= 30:
+                record_runtime_event(
+                    request,
+                    "HEARTBEAT",
+                    "COLLECTION",
+                    lane_key=active_lane,
+                    idempotency_suffix=str(int(now // 30)),
+                    metadata={"message": line.strip()[-500:]},
+                )
+                last_heartbeat_at = now
         return_code = proc.wait()
         elapsed_ms = int((time.time() - started) * 1000)
+        record_runtime_event(
+            request,
+            "COLLECTION_COMPLETED",
+            "COLLECTION",
+            duration_ms=elapsed_ms,
+            outcome="COMPLETE" if return_code == 0 else "FAILED",
+            metadata={"donor_exit_code": return_code},
+        )
         print(f"[insight-runner] donor exit={return_code} elapsed_ms={elapsed_ms}")
 
         registered.extend(register_new_artifacts(

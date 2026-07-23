@@ -14,11 +14,12 @@ from selenium.common.exceptions import StaleElementReferenceException
 from sys import platform
 import shutil
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 
 from webdriver_manager.chrome import ChromeDriverManager
 
 from rename_files import renameFolder
+from runtime_events import emit_runtime_event
 from extract_data import extractDataFromFolder
 
 from connections import getConnection, closeConnection, getScrapingConfig, getMainFolder, writeError, isPlatformLinux, getDailyServiceOptions
@@ -131,6 +132,41 @@ def checkDownloads(index):
     logging.info("Downloading " + FOLDERS[index] + ' to ' + DOWNLOAD_FOLDER)
     # thread = threading.Thread(target=checkDownloadsHelper, args=(index, ))
     # thread.start()
+
+
+def recordObservedDownload(artifact_key, lane_key, requested_at):
+    candidates = [
+        os.path.join(DOWNLOAD_FOLDER, filename)
+        for filename in os.listdir(DOWNLOAD_FOLDER)
+        if os.path.isfile(os.path.join(DOWNLOAD_FOLDER, filename))
+        and os.path.getmtime(os.path.join(DOWNLOAD_FOLDER, filename))
+        >= requested_at - 1
+        and os.path.splitext(filename)[1].lower() in {".xls", ".xlsx"}
+    ]
+    if not candidates:
+        return
+    downloaded_path = max(candidates, key=os.path.getmtime)
+    event_common = {
+        "artifact_key": artifact_key,
+        "lane_key": lane_key,
+        "filename": os.path.basename(downloaded_path),
+    }
+    emit_runtime_event(
+        "SOURCE_REQUESTED",
+        "SOURCE",
+        occurred_at=datetime.fromtimestamp(
+            requested_at, timezone.utc
+        ).isoformat().replace("+00:00", "Z"),
+        **event_common,
+    )
+    emit_runtime_event(
+        "DOWNLOAD_COMPLETED",
+        "DOWNLOAD",
+        occurred_at=datetime.fromtimestamp(
+            os.path.getmtime(downloaded_path), timezone.utc
+        ).isoformat().replace("+00:00", "Z"),
+        **event_common,
+    )
 
 def getDriver():
     options = webdriver.ChromeOptions()
@@ -273,6 +309,7 @@ def main(section_='', option_=0, retry=1):
         # //div[@class='gf_header-UserDtl']
 
         logging.info("Login successfull!")
+        emit_runtime_event("AUTH_COMPLETED", "AUTHENTICATION")
 
         # headers = driver.execute_script("var req = new XMLHttpRequest();req.open('GET', document.location, false);req.send(null);return req.getAllResponseHeaders()")
         # headers = headers.splitlines()
@@ -572,9 +609,15 @@ def main(section_='', option_=0, retry=1):
                         WebDriverWait(driver, 30).until(EC.invisibility_of_element_located((By.XPATH, "//loading-table-animation/div[@class='cssload-piano']")))
 
                         if driver.find_elements(By.XPATH, '//img[@class="downloadIcon"]'):
+                            requested_at = time.time()
                             driver.find_elements(By.XPATH, '//img[@class="downloadIcon"]')[-1].click()
                             checkDownloads(11)
                             time.sleep(3)
+                            recordObservedDownload(
+                                "DSW_DAILY_SERVICE",
+                                "DSW",
+                                requested_at,
+                            )
                     except:
                         pass
                 except Exception as ee:

@@ -14,11 +14,12 @@ from selenium.common.exceptions import StaleElementReferenceException
 from sys import platform
 import shutil
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 
 # from webdriver_manager.chrome import ChromeDriverManager
 
 from rename_files import renameFolder, renameDownloadedManifest
+from runtime_events import emit_runtime_event
 from extract_data import extractDataFromFolder
 
 from connections import getConnection, closeConnection, getScrapingConfig, getMainFolder, writeError, isPlatformLinux, getDailyServiceOptions
@@ -123,6 +124,7 @@ def downloadSnapshot():
 def waitForCompletedDownload(before, timeout_seconds=45):
     deadline = time.time() + timeout_seconds
     last_sizes = {}
+    first_seen_at = None
 
     while time.time() < deadline:
         active_downloads = [
@@ -148,6 +150,9 @@ def waitForCompletedDownload(before, timeout_seconds=45):
             if str(os.path.realpath(path)) not in before:
                 candidates.append(path)
 
+        if candidates and first_seen_at is None:
+            first_seen_at = time.time()
+
         candidates.sort(
             key=lambda candidate: os.path.getmtime(candidate),
             reverse=True,
@@ -157,7 +162,7 @@ def waitForCompletedDownload(before, timeout_seconds=45):
             size = os.path.getsize(candidate)
 
             if size > 0 and last_sizes.get(candidate) == size:
-                return candidate
+                return candidate, first_seen_at or time.time()
 
             last_sizes[candidate] = size
 
@@ -171,9 +176,10 @@ def waitForCompletedDownload(before, timeout_seconds=45):
     )
 
 
-def finalizeManifestDownload(before, expected_type):
-    downloaded_path = waitForCompletedDownload(before)
+def finalizeManifestDownload(before, expected_type, requested_at):
+    downloaded_path, source_ready_at = waitForCompletedDownload(before)
 
+    identification_started_at = time.time()
     renamed_path, metadata = renameDownloadedManifest(
         downloaded_path,
         expected_type=expected_type,
@@ -196,7 +202,152 @@ def finalizeManifestDownload(before, expected_type):
         )
     )
 
+    artifact_key = {
+        "combined": "COMBINED_MANIFEST",
+        "delivery": "DELIVERY_MANIFEST",
+        "pickup": "PICKUP_MANIFEST",
+    }[expected_type]
+    lane_key = {
+        "combined": "FCC_COMBINED_MANIFESTS",
+        "delivery": "FCC_DELIVERY_MANIFESTS",
+        "pickup": "FCC_PICKUP_MANIFESTS",
+    }[expected_type]
+    event_common = {
+        "artifact_key": artifact_key,
+        "lane_key": lane_key,
+        "route_identity": metadata.get("work_area"),
+        "filename": os.path.basename(renamed_path),
+    }
+    emit_runtime_event(
+        "ARTIFACT_IDENTIFICATION_STARTED",
+        "ARTIFACT_IDENTIFICATION",
+        occurred_at=datetime.fromtimestamp(
+            identification_started_at, timezone.utc
+        ).isoformat().replace("+00:00", "Z"),
+        **event_common,
+    )
+    emit_runtime_event(
+        "ARTIFACT_IDENTIFICATION_COMPLETED",
+        "ARTIFACT_IDENTIFICATION",
+        duration_ms=int((time.time() - identification_started_at) * 1000),
+        metadata={
+            "source_download_filename": metadata.get(
+                "source_download_filename"
+            ),
+            "canonical_filename": os.path.basename(renamed_path),
+            "header_authoritative": metadata.get(
+                "header_authoritative",
+                False,
+            ),
+        },
+        **event_common,
+    )
+    emit_runtime_event(
+        "SOURCE_REQUESTED",
+        "SOURCE",
+        occurred_at=datetime.fromtimestamp(
+            requested_at, timezone.utc
+        ).isoformat().replace("+00:00", "Z"),
+        **event_common,
+    )
+    emit_runtime_event(
+        "SOURCE_READY",
+        "SOURCE",
+        occurred_at=datetime.fromtimestamp(
+            source_ready_at, timezone.utc
+        ).isoformat().replace("+00:00", "Z"),
+        **event_common,
+    )
+    emit_runtime_event(
+        "DOWNLOAD_STARTED",
+        "DOWNLOAD",
+        occurred_at=datetime.fromtimestamp(
+            source_ready_at, timezone.utc
+        ).isoformat().replace("+00:00", "Z"),
+        **event_common,
+    )
+    emit_runtime_event("DOWNLOAD_COMPLETED", "DOWNLOAD", **event_common)
+
     return renamed_path
+
+
+def finalizeSimpleDownload(
+    before,
+    artifact_key,
+    lane_key,
+    requested_at,
+):
+    downloaded_path, source_ready_at = waitForCompletedDownload(before)
+    event_common = {
+        "artifact_key": artifact_key,
+        "lane_key": lane_key,
+        "filename": os.path.basename(downloaded_path),
+    }
+    emit_runtime_event(
+        "SOURCE_REQUESTED",
+        "SOURCE",
+        occurred_at=datetime.fromtimestamp(
+            requested_at, timezone.utc
+        ).isoformat().replace("+00:00", "Z"),
+        **event_common,
+    )
+    emit_runtime_event(
+        "SOURCE_READY",
+        "SOURCE",
+        occurred_at=datetime.fromtimestamp(
+            source_ready_at, timezone.utc
+        ).isoformat().replace("+00:00", "Z"),
+        **event_common,
+    )
+    emit_runtime_event(
+        "DOWNLOAD_STARTED",
+        "DOWNLOAD",
+        occurred_at=datetime.fromtimestamp(
+            source_ready_at, timezone.utc
+        ).isoformat().replace("+00:00", "Z"),
+        **event_common,
+    )
+    emit_runtime_event("DOWNLOAD_COMPLETED", "DOWNLOAD", **event_common)
+    return downloaded_path
+
+
+def recordObservedDownload(
+    artifact_key,
+    lane_key,
+    requested_at,
+):
+    candidates = [
+        os.path.join(DOWNLOAD_FOLDER, filename)
+        for filename in os.listdir(DOWNLOAD_FOLDER)
+        if os.path.isfile(os.path.join(DOWNLOAD_FOLDER, filename))
+        and os.path.getmtime(os.path.join(DOWNLOAD_FOLDER, filename))
+        >= requested_at - 1
+        and os.path.splitext(filename)[1].lower() in {".xls", ".xlsx"}
+    ]
+    if not candidates:
+        return
+    downloaded_path = max(candidates, key=os.path.getmtime)
+    event_common = {
+        "artifact_key": artifact_key,
+        "lane_key": lane_key,
+        "filename": os.path.basename(downloaded_path),
+    }
+    emit_runtime_event(
+        "SOURCE_REQUESTED",
+        "SOURCE",
+        occurred_at=datetime.fromtimestamp(
+            requested_at, timezone.utc
+        ).isoformat().replace("+00:00", "Z"),
+        **event_common,
+    )
+    emit_runtime_event(
+        "DOWNLOAD_COMPLETED",
+        "DOWNLOAD",
+        occurred_at=datetime.fromtimestamp(
+            os.path.getmtime(downloaded_path), timezone.utc
+        ).isoformat().replace("+00:00", "Z"),
+        **event_common,
+    )
 
 def getDriver():
     options = webdriver.ChromeOptions()
@@ -347,6 +498,7 @@ def main(section_='', option_=0, retry=1):
         # //div[@class='gf_header-UserDtl']
 
         logging.info("Login successfull!")
+        emit_runtime_event("AUTH_COMPLETED", "AUTHENTICATION")
 
         # headers = driver.execute_script("var req = new XMLHttpRequest();req.open('GET', document.location, false);req.send(null);return req.getAllResponseHeaders()")
         # headers = headers.splitlines()
@@ -445,8 +597,9 @@ def main(section_='', option_=0, retry=1):
                     logging.info("Waiting for loading...")
                     if driver.find_elements(By.XPATH, "//input[@id='manifestForm:buttonCombinedGenerateExcel']"):
                         before_download = downloadSnapshot()
+                        requested_at = time.time()
                         driver.find_element(By.XPATH, "//input[@id='manifestForm:buttonCombinedGenerateExcel']").click()
-                        finalizeManifestDownload(before_download, "combined")
+                        finalizeManifestDownload(before_download, "combined", requested_at)
                 else:
                     logging.info("Skipping Combined Manifest by request payload")
 
@@ -466,8 +619,9 @@ def main(section_='', option_=0, retry=1):
 
                     if driver.find_elements(By.XPATH, "//input[@id='manifestForm:buttonDeliveryGenerateExcel']"):
                         before_download = downloadSnapshot()
+                        requested_at = time.time()
                         driver.find_element(By.XPATH, "//input[@id='manifestForm:buttonDeliveryGenerateExcel']").click()
-                        finalizeManifestDownload(before_download, "delivery")
+                        finalizeManifestDownload(before_download, "delivery", requested_at)
                 else:
                     logging.info("Skipping Delivery Manifest by request payload")
 
@@ -487,8 +641,9 @@ def main(section_='', option_=0, retry=1):
 
                     if driver.find_elements(By.XPATH, "//input[@id='manifestForm:buttonGenerateExcel']"):
                         before_download = downloadSnapshot()
+                        requested_at = time.time()
                         driver.find_element(By.XPATH, "//input[@id='manifestForm:buttonGenerateExcel']").click()
-                        finalizeManifestDownload(before_download, "pickup")
+                        finalizeManifestDownload(before_download, "pickup", requested_at)
                 else:
                     logging.info("Skipping Pickup Manifest by request payload")
             ACTIVE_SECTION_OPTION = 0
@@ -532,9 +687,15 @@ def main(section_='', option_=0, retry=1):
                 download_file = os.path.join(DOWNLOAD_FOLDER, "ServiceAreaStatus.xls")
                 if os.path.exists(download_file):
                     os.remove(download_file)
+                before_download = downloadSnapshot()
+                requested_at = time.time()
                 driver.find_element(By.XPATH, "//input[@id='saStatusForm:buttonGenerateExcel']").click()
-                checkDownloads(5)
-                time.sleep(3)
+                finalizeSimpleDownload(
+                    before_download,
+                    "FCC_SERVICE_AREA_STATUS",
+                    "FCC_WORK_AREA_SUMMARY",
+                    requested_at,
+                )
 
             ACTIVE_SECTION_OPTION = 0
         if secion_index <= 2 and should_run_section('Pickup'):
@@ -648,9 +809,15 @@ def main(section_='', option_=0, retry=1):
                         WebDriverWait(driver, 30).until(EC.invisibility_of_element_located((By.XPATH, "//loading-table-animation/div[@class='cssload-piano']")))
 
                         if driver.find_elements(By.XPATH, '//img[@class="downloadIcon"]'):
+                            requested_at = time.time()
                             driver.find_elements(By.XPATH, '//img[@class="downloadIcon"]')[-1].click()
                             checkDownloads(11)
                             time.sleep(3)
+                            recordObservedDownload(
+                                "DSW_DAILY_SERVICE",
+                                "DSW",
+                                requested_at,
+                            )
                     except:
                         pass
                 except Exception as ee:
