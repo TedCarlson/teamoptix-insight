@@ -187,7 +187,7 @@ export default function AutomationConfigPanel(
   const latestSuccessfulCollection = useMemo(
     () =>
       collectionRequests.find(
-        (request) => request.request_status === "COMPLETE"
+        (request) => request.request_status === "COMPLETE" && !request.error_message
       ) ?? null,
     [collectionRequests]
   );
@@ -200,11 +200,12 @@ export default function AutomationConfigPanel(
     (request) =>
       request.request_status === "RUNNING" ||
       request.request_status === "CLAIMED" ||
+      request.request_status === "ARTIFACTS_READY" ||
       request.request_status === "INGESTING"
   ).length;
 
   const completeCount = collectionRequests.filter(
-    (request) => request.request_status === "COMPLETE"
+    (request) => request.request_status === "COMPLETE" && !request.error_message
   ).length;
 
   function requestStatusLabel(status: string) {

@@ -1,6 +1,7 @@
 import "server-only";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import { getGovernedCompanies } from "@/features/teamoptix/command-center/commandCenter.server";
+import { isActiveCollectionRequest, isCleanCompleteCollectionRequest, isCollectionRequestException } from "@/features/automation/lib/collectionRequestOutcome";
 
 export async function getBusinessOverview() {
   const db = createSupabaseServiceRoleClient();
@@ -40,9 +41,9 @@ export async function getAutomationOverview() {
     templates: (templates ?? []).filter((row) => row.is_active).length,
     assignments: (assignments ?? []).filter((row) => row.is_enabled && ids.includes(String(row.company_id))).length,
     requests: requestRows,
-    failedRequests: requestRows.filter((row) => String(row.request_status).toUpperCase() === "FAILED"),
-    successfulRequests: requestRows.filter((row) => String(row.request_status).toUpperCase() === "COMPLETE"),
-    activeRequests: requestRows.filter((row) => ["QUEUED", "CLAIMED", "RUNNING", "ARTIFACTS_READY", "INGESTING"].includes(String(row.request_status).toUpperCase())),
+    failedRequests: requestRows.filter(isCollectionRequestException),
+    successfulRequests: requestRows.filter(isCleanCompleteCollectionRequest),
+    activeRequests: requestRows.filter(isActiveCollectionRequest),
     runs: runRows,
     artifacts: artifacts ?? [],
     failedRuns: runRows.filter((row) => String(row.status).toUpperCase() === "FAILED"),
