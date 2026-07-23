@@ -17,6 +17,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/operations/expire-collection-leases",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/engineering/platform-telemetry",
       "schedule": "*/5 * * * *"
     }

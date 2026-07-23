@@ -5,6 +5,10 @@ import {
   pickupManifestSheetsFromWorkbook,
   readManifestWorkbook,
 } from "@/features/operations/manifests";
+import {
+  dedupeDeliveryManifestPackages,
+  dedupeDeliveryManifestStops,
+} from "@/features/operations/manifests/deliveryManifest.dedupe";
 
 type SupabaseClientLike = any;
 
@@ -233,13 +237,15 @@ async function processDeliveryArtifact(params: {
   const { supabase, artifact, buffer } = params;
   const workbook = readManifestWorkbook(buffer);
   const parsed = parseDeliveryManifest(deliveryManifestSheetsFromWorkbook(workbook));
+  const stopRows = dedupeDeliveryManifestStops(parsed.stopDetail.rows);
+  const packageRows = dedupeDeliveryManifestPackages(parsed.packageDetail.rows);
 
   const { data: replaceResult, error: replaceError } = await supabase.rpc(
     "replace_operations_delivery_manifest_rows",
     {
       p_artifact_id: artifact.id,
-      p_stop_rows: parsed.stopDetail.rows,
-      p_package_rows: parsed.packageDetail.rows,
+      p_stop_rows: stopRows.rows,
+      p_package_rows: packageRows.rows,
     }
   );
 
@@ -257,6 +263,12 @@ async function processDeliveryArtifact(params: {
       parsed_row_count: parsed.packageDetail.parsedRowCount,
       skipped_row_count: parsed.packageDetail.skippedRowCount,
       express_package_count: parsed.packageDetail.rows.filter((row) => row.is_express).length,
+    },
+    deduplication: {
+      duplicate_stop_count: stopRows.duplicateCount,
+      unidentified_stop_count: stopRows.unidentifiedCount,
+      duplicate_package_count: packageRows.duplicateCount,
+      unidentified_package_count: packageRows.unidentifiedCount,
     },
   };
 }
