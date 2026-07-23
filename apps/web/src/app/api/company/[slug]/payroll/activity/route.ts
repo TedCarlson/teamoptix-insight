@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import type { PayrollActivityRow } from "@/features/payroll/lib/payroll.types";
+import { isPayrollSource } from "@/features/payroll/lib/payroll.sources";
 
 export const runtime = "nodejs";
 
@@ -37,14 +38,6 @@ function dswBridgeKey(value: unknown) {
   return last && first ? `${last}|${first}` : "";
 }
 
-
-function isDswPayrollSource(sourceKind: string | null | undefined) {
-  return (
-    sourceKind === "DSW_ACTUAL" ||
-    sourceKind === "DSW_OWNERSHIP" ||
-    sourceKind === "DSW_CANDIDATE"
-  );
-}
 
 export async function GET(
   req: NextRequest,
@@ -375,7 +368,7 @@ export async function GET(
       // population. Non-DSW and non-present activity remains available for
       // attendance/audit views but must not enter payroll totals.
       if (
-        !isDswPayrollSource(row.source_kind) ||
+        !isPayrollSource(row.source_kind) ||
         row.attendance_status !== "present" ||
         !row.service_date
       ) {
@@ -448,7 +441,7 @@ export async function GET(
       const personKey = row.roster_member_id ?? row.person_name ?? `unknown-${row.service_date}`;
       const adjustment = adjustmentByPersonDay.get(`${personKey}|${row.service_date}`);
 
-      if (!adjustment || !isDswPayrollSource(row.source_kind)) {
+      if (!adjustment || !isPayrollSource(row.source_kind)) {
         return {
           ...row,
           adjustment_amount: 0,

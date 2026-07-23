@@ -4,10 +4,15 @@ import type {
   PayrollRouteCollectionItem,
   PayrollSummaryRow,
 } from "@/features/payroll/lib/payroll.types";
+import {
+  isDswPayrollSource,
+  isFallbackWorkEventSource,
+  isPayrollSource,
+} from "@/features/payroll/lib/payroll.sources";
 
 export function buildPayrollRowDetails(activityRows: PayrollActivityRow[]) {
   return [...activityRows]
-    .filter((row) => isDswPayrollSource(row.source_kind))
+    .filter((row) => isPayrollSource(row.source_kind))
     .sort((a, b) => {
       const personCompare = String(a.person_name ?? "").localeCompare(String(b.person_name ?? ""));
       if (personCompare !== 0) return personCompare;
@@ -29,14 +34,6 @@ function sourceRowCount(row: PayrollActivityRow) {
   const raw = row.metadata_json?.source_row_count;
   const n = Number(raw ?? 1);
   return Number.isFinite(n) && n > 0 ? n : 1;
-}
-
-function isDswPayrollSource(sourceKind: string | null | undefined) {
-  return (
-    sourceKind === "DSW_ACTUAL" ||
-    sourceKind === "DSW_OWNERSHIP" ||
-    sourceKind === "DSW_CANDIDATE"
-  );
 }
 
 export function buildPayrollSummaryFromDriverDayDetails(
@@ -101,7 +98,7 @@ export function buildPayrollDriverDayDetails(
   const groups = new Map<string, PayrollActivityRow[]>();
 
   for (const row of activityRows) {
-    if (!isDswPayrollSource(row.source_kind)) continue;
+    if (!isPayrollSource(row.source_kind)) continue;
     if (row.attendance_status !== "present") continue;
     if (!row.service_date) continue;
 
@@ -117,6 +114,12 @@ export function buildPayrollDriverDayDetails(
       const first = rows[0];
       const routeMap = new Map<string, PayrollRouteCollectionItem>();
       const flags = new Set<string>();
+      const hasDswEvidence = rows.some((row) =>
+        isDswPayrollSource(row.source_kind)
+      );
+      const hasFallbackEvidence = rows.some((row) =>
+        isFallbackWorkEventSource(row.source_kind)
+      );
 
       for (const row of rows) {
         const wa = row.wa_number ?? "—";
@@ -189,8 +192,14 @@ export function buildPayrollDriverDayDetails(
 
       if (routeCollection.length > 1) flags.add("MULTI_ROUTE_DAY");
       if (nonZeroRoutes.length > 1) flags.add("SECONDARY_ROUTE_EVIDENCE");
-      if (!dominantRoute) flags.add("NO_DOMINANT_ROUTE");
-      if (thresholdStops == null || thresholdRate == null) flags.add("MISSING_THRESHOLD");
+      if (hasDswEvidence && !dominantRoute) flags.add("NO_DOMINANT_ROUTE");
+      if (
+        hasDswEvidence &&
+        (thresholdStops == null || thresholdRate == null)
+      ) {
+        flags.add("MISSING_THRESHOLD");
+      }
+      if (hasFallbackEvidence) flags.add("FALLBACK_WORK_EVENT");
 
       return {
         key,
@@ -199,9 +208,13 @@ export function buildPayrollDriverDayDetails(
         service_date: first.service_date,
         route_collection: routeCollection,
         dominant_route: dominantRoute,
-        route_collection_label: routeCollection
-          .map((route) => `WA ${route.wa_number}: ${route.total_stops} stops`)
-          .join(" · "),
+        route_collection_label: hasFallbackEvidence
+          ? rows.some((row) => row.source_kind?.includes("TRAINING"))
+            ? "Training day · fallback work evidence"
+            : "Helper day · fallback work evidence"
+          : routeCollection
+              .map((route) => `WA ${route.wa_number}: ${route.total_stops} stops`)
+              .join(" · "),
         total_stops: totalStops,
         threshold_stops: thresholdStops,
         threshold_rate: thresholdRate,
