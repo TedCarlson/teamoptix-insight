@@ -31,9 +31,9 @@ export async function getAutomationOverview() {
   const [{ data: templates }, { data: assignments }, { data: requests }, { data: runs }, { data: artifacts }] = await Promise.all([
     db.from("operations_ticket_template_v").select("id, is_active"),
     db.from("company_operations_ticket_assignment_v").select("id, is_enabled, company_id"),
-    ids.length ? db.from("operations_collection_request_v").select("id, request_status, company_slug, request_type, error_message, created_at").in("company_id", ids).gte("created_at", since).order("created_at", { ascending: false }) : Promise.resolve({ data: [] }),
+    ids.length ? db.from("operations_collection_request_v").select("id, request_status, company_slug, request_type, error_message, created_at, duration_ms, registered_count, ingested_count").in("company_id", ids).gte("created_at", since).order("created_at", { ascending: false }) : Promise.resolve({ data: [] }),
     ids.length ? db.from("operations_automation_run_v").select("id, status, company_slug, automation_type, error_message, started_at").in("company_id", ids).gte("started_at", since).order("started_at", { ascending: false }) : Promise.resolve({ data: [] }),
-    ids.length ? db.from("operations_collection_artifact_v").select("id, artifact_status, company_slug, updated_at").in("company_id", ids) : Promise.resolve({ data: [] }),
+    ids.length ? db.from("operations_collection_artifact_v").select("id, collection_request_id, artifact_status, company_slug, normalized_filename, runner_elapsed_ms, ingest_completed_at, updated_at").in("company_id", ids) : Promise.resolve({ data: [] }),
   ]);
   const runRows = runs ?? [];
   const requestRows = requests ?? [];

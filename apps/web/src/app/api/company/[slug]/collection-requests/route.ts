@@ -53,6 +53,32 @@ function targetedRecoveryDateError(serviceDate: string) {
   return null;
 }
 
+async function enrichRowsWithRuntime(supabase: any, rows: any[]) {
+  const ids = rows.map((row) => String(row.id ?? "")).filter(Boolean);
+  if (ids.length === 0) return rows;
+
+  const { data, error } = await supabase
+    .from("operations_collection_request_runtime_v")
+    .select("*")
+    .in("collection_request_id", ids);
+
+  if (error) {
+    if (error.code === "PGRST205" || error.code === "PGRST204") return rows;
+    throw new Error(error.message);
+  }
+
+  const runtimeByRequest = new Map(
+    (data ?? []).map((runtime: any) => [
+      String(runtime.collection_request_id),
+      runtime,
+    ])
+  );
+  return rows.map((row) => ({
+    ...row,
+    runtime: runtimeByRequest.get(String(row.id)) ?? null,
+  }));
+}
+
 export async function GET(
   req: NextRequest,
   context: { params: Promise<{ slug: string }> }
@@ -106,22 +132,45 @@ export async function GET(
     if (mode === "today") {
       const { operationalDate, start, end } = easternOperationalDayBounds();
 
-      const { data, error } = await supabase
-        .from("operations_collection_request_v")
-        .select("*")
-        .eq("company_id", resolved.company.id)
-        .gte("created_at", start.toISOString())
-        .lt("created_at", end.toISOString())
-        .order("created_at", { ascending: false })
-        .limit(limit);
+      const [
+        { data, error },
+        { data: baselines, error: baselineError },
+      ] = await Promise.all([
+        supabase
+          .from("operations_collection_request_v")
+          .select("*")
+          .eq("company_id", resolved.company.id)
+          .gte("created_at", start.toISOString())
+          .lt("created_at", end.toISOString())
+          .order("created_at", { ascending: false })
+          .limit(limit),
+        supabase
+          .from("operations_collection_runtime_baseline_v")
+          .select("*")
+          .eq("company_id", resolved.company.id),
+      ]);
 
       if (error) {
         return NextResponse.json({ error: error.message, rows: [] }, { status: 500 });
       }
+      if (
+        baselineError &&
+        baselineError.code !== "PGRST205" &&
+        baselineError.code !== "PGRST204"
+      ) {
+        return NextResponse.json(
+          { error: baselineError.message, rows: [] },
+          { status: 500 }
+        );
+      }
 
       return NextResponse.json({
         operational_date: operationalDate,
-        rows: data ?? [],
+        rows: await enrichRowsWithRuntime(supabase, data ?? []),
+        baselines:
+          baselineError?.code === "PGRST205" || baselineError?.code === "PGRST204"
+            ? []
+            : baselines ?? [],
       });
     }
 
@@ -137,7 +186,9 @@ export async function GET(
         return NextResponse.json({ error: error.message, rows: [] }, { status: 500 });
       }
 
-      return NextResponse.json({ rows: data ?? [] });
+      return NextResponse.json({
+        rows: await enrichRowsWithRuntime(supabase, data ?? []),
+      });
     }
 
     const { data: activeRows, error: activeError } = await supabase
@@ -172,7 +223,9 @@ export async function GET(
       String(b.created_at ?? "").localeCompare(String(a.created_at ?? ""))
     );
 
-    return NextResponse.json({ rows: data });
+    return NextResponse.json({
+      rows: await enrichRowsWithRuntime(supabase, data),
+    });
   } catch (error) {
     return NextResponse.json(
       {
