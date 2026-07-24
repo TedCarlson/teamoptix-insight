@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { FleetVehicleRow } from "../fleet.types";
 import { validateVin } from "../lib/vin";
+import VinCameraScanner from "./VinCameraScanner";
 
 type FieldProps = {
   label: string;
@@ -43,6 +44,8 @@ export default function FleetVehicleCreateForm({ companySlug, vehicle }: { compa
   const [error, setError] = useState("");
   const [decodeId, setDecodeId] = useState("");
   const [decoded, setDecoded] = useState<Record<string, string | number | null> | null>(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [capturedVin, setCapturedVin] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -82,7 +85,7 @@ export default function FleetVehicleCreateForm({ companySlug, vehicle }: { compa
     }
   }
 
-  async function decodeVin(vinInput?: string) {
+  const decodeVin = useCallback(async (vinInput?: string) => {
     const vinField = formRef.current?.elements.namedItem("vin");
     const candidate = vinInput ?? (vinField instanceof HTMLInputElement ? vinField.value : "");
     const validation = validateVin(candidate);
@@ -112,36 +115,13 @@ export default function FleetVehicleCreateForm({ companySlug, vehicle }: { compa
       setField("gvwr_verified_status", "PENDING");
       setField("gvwr_evidence_reference", `NHTSA vPIC decode ${result.decode_id}`);
     }
-  }
+  }, [companySlug]);
 
-  async function scanVinImage(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-
-    type BarcodeResult = { rawValue?: string };
-    type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => {
-      detect(source: ImageBitmap): Promise<BarcodeResult[]>;
-    };
-    const Detector = (globalThis as typeof globalThis & { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
-    if (!Detector) return setError("Barcode scanning is not supported in this browser. Enter the VIN manually.");
-
-    setDecodeBusy(true);
-    setError("");
-    try {
-      const bitmap = await createImageBitmap(file);
-      const detector = new Detector({ formats: ["code_39", "code_128"] });
-      const results = await detector.detect(bitmap);
-      bitmap.close();
-      const candidate = results.map((result) => result.rawValue ?? "").find((value) => validateVin(value).valid);
-      if (!candidate) throw new Error("No valid 17-character VIN barcode was found in the image.");
-      setDecodeBusy(false);
-      await decodeVin(candidate);
-    } catch (caught) {
-      setDecodeBusy(false);
-      setError(caught instanceof Error ? caught.message : "Unable to scan VIN barcode.");
-    }
-  }
+  const acceptScannedVin = useCallback((vin: string) => {
+    setCapturedVin(vin);
+    setScannerOpen(false);
+    void decodeVin(vin);
+  }, [decodeVin]);
 
   return (
     <>
@@ -174,22 +154,18 @@ export default function FleetVehicleCreateForm({ companySlug, vehicle }: { compa
                   <Field label="VIN" name="vin" placeholder="17-character VIN" defaultValue={vehicle?.vin ?? undefined} />
                 </div>
                 {!vehicle ? (
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-                    <button className="button" disabled={decodeBusy || busy} onClick={() => void decodeVin()} type="button">
-                      {decodeBusy ? "Decoding…" : "Decode VIN"}
-                    </button>
-                    <label className="button" style={{ cursor: decodeBusy || busy ? "not-allowed" : "pointer" }}>
-                      Scan VIN barcode
-                      <input
-                        accept="image/*"
-                        capture="environment"
-                        disabled={decodeBusy || busy}
-                        onChange={(event) => void scanVinImage(event)}
-                        style={{ display: "none" }}
-                        type="file"
-                      />
-                    </label>
-                  </div>
+                  <>
+                    <div className="fleet-vehicle-form__vin-actions">
+                      <button className="button button-primary" disabled={decodeBusy || busy} onClick={() => setScannerOpen(true)} type="button">
+                        Scan VIN
+                      </button>
+                      <button className="button" disabled={decodeBusy || busy} onClick={() => void decodeVin()} type="button">
+                        {decodeBusy ? "Looking up VIN…" : "Look up entered VIN"}
+                      </button>
+                    </div>
+                    {scannerOpen ? <VinCameraScanner onCancel={() => setScannerOpen(false)} onDetected={acceptScannedVin} /> : null}
+                    {capturedVin && decodeBusy ? <p className="fleet-vehicle-form__vin-progress" role="status">VIN {capturedVin} captured. Discovering vehicle details…</p> : null}
+                  </>
                 ) : null}
                 {decoded ? (
                   <article className="app-card" style={{ padding: 12, marginTop: 12 }}>
@@ -210,7 +186,7 @@ export default function FleetVehicleCreateForm({ companySlug, vehicle }: { compa
                 <div className="fleet-vehicle-form__grid fleet-vehicle-form__grid--three">
                   <Field label="Unit number" name="unit_number" placeholder="e.g. 430" required defaultValue={vehicle?.unit_number} />
                   <SelectField label="FedEx class" name="vehicle_class_key" defaultValue={vehicle?.vehicle_class_key ?? "L10"}><option>L10</option><option>L15</option><option>L20</option></SelectField>
-                  <SelectField label="Vehicle type" name="vehicle_type" defaultValue={vehicle?.vehicle_type ?? "STEP_VAN"}><option value="STEP_VAN">Step van</option><option value="CUTAWAY">Cutaway</option><option value="BOX_TRUCK">Box truck</option><option value="CARGO_VAN">Cargo van</option><option value="RENTAL">Rental</option></SelectField>
+                  <SelectField label="Vehicle type" name="vehicle_type" defaultValue={vehicle?.vehicle_type ?? "STEP_VAN"}><option value="STEP_VAN">Step van</option><option value="CUTAWAY">Cutaway</option><option value="BOX_TRUCK">Box truck</option><option value="CARGO_VAN">Cargo van</option><option value="RENTAL">Rental</option><option value="OTHER">Other / review needed</option></SelectField>
                 </div>
               </fieldset>
 
