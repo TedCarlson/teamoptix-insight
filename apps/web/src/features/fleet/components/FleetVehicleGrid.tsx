@@ -23,10 +23,10 @@ export default function FleetVehicleGrid({ rows, companySlug }: { rows: FleetVeh
       {rows.length === 0 ? (
         <p className="app-card__body" style={{ marginTop: 18 }}>No vehicles have been loaded yet.</p>
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 16, minWidth: 980 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 16, minWidth: 1180 }}>
           <thead>
             <tr style={{ textAlign: "left", color: "#475569", borderBottom: "1px solid #e2e8f0" }}>
-              {['Unit #','Status','Class','Vehicle','Route','Driver','Odometer','Inspection','Defects','Work'].map((heading) => (
+              {['Unit #','Status','Ops Class','GVWR','DOT Class','Federal Band','Verification','Vehicle','Route','Driver','Odometer','Inspection','Defects','Work','Details'].map((heading) => (
                 <th key={heading} style={{ padding: "10px 8px", fontSize: 12 }}>{heading}</th>
               ))}
             </tr>
@@ -37,6 +37,16 @@ export default function FleetVehicleGrid({ rows, companySlug }: { rows: FleetVeh
                 <td style={{ padding: "12px 8px" }}><strong>{row.unit_number}</strong></td>
                 <td style={{ padding: "12px 8px" }}>{label(row.status)}</td>
                 <td style={{ padding: "12px 8px" }}>{row.vehicle_class_key ?? "—"}</td>
+                <td style={{ padding: "12px 8px" }}>{row.gvwr_lbs?.toLocaleString() ?? "—"}</td>
+                <td style={{ padding: "12px 8px" }}>{row.dot_weight_class ? `Class ${row.dot_weight_class}` : "—"}</td>
+                <td style={{ padding: "12px 8px" }}>
+                  {row.federal_overtime_weight_band === "SMALL_VEHICLE_10K_OR_LESS"
+                    ? "≤10,000 lb"
+                    : row.federal_overtime_weight_band === "OVER_10K"
+                      ? ">10,000 lb"
+                      : "Review"}
+                </td>
+                <td style={{ padding: "12px 8px" }}>{label(row.gvwr_verified_status)}</td>
                 <td style={{ padding: "12px 8px" }}>{vehicleDescription(row)}</td>
                 <td style={{ padding: "12px 8px" }}>{row.primary_route ?? "—"}</td>
                 <td style={{ padding: "12px 8px" }}>{row.primary_driver_name ?? "—"}</td>
@@ -44,6 +54,7 @@ export default function FleetVehicleGrid({ rows, companySlug }: { rows: FleetVeh
                 <td style={{ padding: "12px 8px" }}>{row.last_inspected_at ? new Date(row.last_inspected_at).toLocaleDateString() : "—"}</td>
                 <td style={{ padding: "12px 8px" }}>{row.open_defect_count}</td>
                 <td style={{ padding: "12px 8px" }}>{row.open_work_order_count}</td>
+                <td style={{ padding: "12px 8px" }}><FleetVehicleCreateForm companySlug={companySlug} vehicle={row} /></td>
               </tr>
             ))}
           </tbody>

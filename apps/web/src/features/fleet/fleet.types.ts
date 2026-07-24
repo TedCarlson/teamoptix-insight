@@ -24,10 +24,18 @@ export type FleetVehicleRow = {
   primary_route: string | null;
   primary_driver_name: string | null;
   odometer_miles: number | null;
+  gvwr_lbs: number | null;
+  dot_weight_class: number | null;
+  federal_overtime_weight_band: "SMALL_VEHICLE_10K_OR_LESS" | "OVER_10K" | "UNVERIFIED";
+  gvwr_source: string | null;
+  gvwr_verified_at: string | null;
+  gvwr_evidence_reference: string | null;
+  gvwr_verified_status: "UNVERIFIED" | "PENDING" | "VERIFIED" | "DISPUTED" | "EXPIRED";
   wheel_size: string | null;
   front_tire_size: string | null;
   rear_tire_size: string | null;
   rear_tire_configuration: string | null;
+  tire_type: string | null;
   open_defect_count: number;
   open_work_order_count: number;
   last_inspected_at: string | null;

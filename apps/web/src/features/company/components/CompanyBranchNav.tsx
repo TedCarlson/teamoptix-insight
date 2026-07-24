@@ -203,6 +203,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
 
   const payrollSubItems: NavItem[] = [
     { label: "Summary", href: `${payrollBase}/summary`, match: (path) => path === payrollBase || path === `${payrollBase}/summary` },
+    { label: "Compliance", href: `${payrollBase}/compliance`, match: (path) => path === `${payrollBase}/compliance` },
     { label: "Adjustments", href: `${payrollBase}/adjustments`, match: (path) => path === `${payrollBase}/adjustments` },
     { label: "Productivity", href: `${payrollBase}/productivity`, match: (path) => path === `${payrollBase}/productivity` || path.startsWith(`${payrollBase}/productivity/`) },
     { label: "Time Tracking", href: `${payrollBase}/time-tracking`, match: (path) => path === `${payrollBase}/time-tracking` || path.startsWith(`${payrollBase}/time-tracking/`) },

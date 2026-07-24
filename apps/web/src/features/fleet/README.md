@@ -23,3 +23,9 @@ Inspection labels and results are stored as submitted snapshots so later templat
 - `fleet.types.ts`: public read-model types shared by Fleet surfaces.
 
 The database source of truth is `supabase/migrations/20260716230000_fleet_system_foundation.sql`.
+
+## Compliance reference
+
+The canonical, source-linked explanation of the federal overtime facts supported by Fleet is
+`docs/compliance/Federal-Overtime-Reference.md`. Review it before changing weight evidence,
+derived federal bands, or Compliance rule inputs.

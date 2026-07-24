@@ -12,6 +12,7 @@ export function buildAdministrationMenu(base: string): AppMenuSection {
         href: `${base}/payroll`,
         children: [
           { key: "payroll-summary", label: "Summary", href: `${base}/payroll/summary` },
+          { key: "payroll-compliance", label: "Compliance", href: `${base}/payroll/compliance` },
           { key: "payroll-adjustments", label: "Adjustments", href: `${base}/payroll/adjustments` },
           { key: "payroll-productivity", label: "Productivity", href: `${base}/payroll/productivity` },
           { key: "payroll-time-tracking", label: "Time Tracking", href: `${base}/payroll/time-tracking` },
