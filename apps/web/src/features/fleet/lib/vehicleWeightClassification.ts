@@ -1,5 +1,6 @@
 export type GvwrVerificationStatus = "UNVERIFIED" | "PENDING" | "VERIFIED" | "DISPUTED" | "EXPIRED";
 export type FederalOvertimeWeightBand = "SMALL_VEHICLE_10K_OR_LESS" | "OVER_10K" | "UNVERIFIED";
+export type FedExOperationalClass = "L10" | "L15" | "L20";
 
 export function dotWeightClass(gvwrLbs: number | null): number | null {
   if (gvwrLbs == null) return null;
@@ -19,6 +20,12 @@ export function federalOvertimeWeightBand(
 ): FederalOvertimeWeightBand {
   if (gvwrLbs == null || status !== "VERIFIED") return "UNVERIFIED";
   return gvwrLbs <= 10000 ? "SMALL_VEHICLE_10K_OR_LESS" : "OVER_10K";
+}
+export function fedExOperationalClass(gvwrLbs: number | null,status: GvwrVerificationStatus): FedExOperationalClass | null {
+  if (gvwrLbs == null || status !== "VERIFIED") return null;
+  if (gvwrLbs <= 10_000) return "L10";
+  if (gvwrLbs <= 15_000) return "L15";
+  return "L20";
 }
 
 export function classificationChanged<T extends Record<string, unknown>>(current: T, next: T): boolean {

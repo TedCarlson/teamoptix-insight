@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classificationChanged, dotWeightClass, federalOvertimeWeightBand } from "./vehicleWeightClassification";
+import { classificationChanged, dotWeightClass, federalOvertimeWeightBand, fedExOperationalClass } from "./vehicleWeightClassification";
 
 describe("vehicle weight classification", () => {
   it("keeps the 10,000-pound boundary in DOT class 2 and the small-vehicle band", () => {
@@ -16,6 +16,13 @@ describe("vehicle weight classification", () => {
     expect(federalOvertimeWeightBand(null, "VERIFIED")).toBe("UNVERIFIED");
     expect(federalOvertimeWeightBand(9_900, "UNVERIFIED")).toBe("UNVERIFIED");
     expect(federalOvertimeWeightBand(9_900, "DISPUTED")).toBe("UNVERIFIED");
+  });
+  it("derives the FedEx operational class only from verified GVWR", () => {
+    expect(fedExOperationalClass(10_000,"VERIFIED")).toBe("L10");
+    expect(fedExOperationalClass(10_001,"VERIFIED")).toBe("L15");
+    expect(fedExOperationalClass(15_000,"VERIFIED")).toBe("L15");
+    expect(fedExOperationalClass(15_001,"VERIFIED")).toBe("L20");
+    expect(fedExOperationalClass(9_500,"PENDING")).toBeNull();
   });
 
   it("preserves history by recognizing a changed effective classification", () => {

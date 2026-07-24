@@ -17,6 +17,14 @@ type FieldProps = {
   defaultValue?: string | number;
 };
 
+const intakePhotoKinds = [
+  ["DASH_ODOMETER", "Dashboard & starting mileage"], ["VEHICLE_FRONT", "Vehicle front"],
+  ["VEHICLE_REAR", "Vehicle rear"], ["DRIVER_SIDE", "Driver side"],
+  ["PASSENGER_SIDE", "Passenger side"], ["TIRES", "Tires, condition & size"],
+  ["CERTIFICATION_LABEL", "Certification label"],
+] as const;
+type IntakePhoto = { kind: typeof intakePhotoKinds[number][0]; file: File; previewUrl: string };
+
 function Field({ label, name, placeholder, required, type = "text", min, defaultValue }: FieldProps) {
   return (
     <label className="fleet-vehicle-form__field">
@@ -38,6 +46,9 @@ function SelectField({ label, name, defaultValue, children }: { label: string; n
 export default function FleetVehicleCreateForm({ companySlug, vehicle }: { companySlug: string; vehicle?: FleetVehicleRow }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
+  const evidencePreviewRef = useRef("");
+  const intakePhotoUrlsRef = useRef(new Set<string>());
+  const submitModeRef = useRef<"close" | "next">("close");
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [decodeBusy, setDecodeBusy] = useState(false);
@@ -46,6 +57,9 @@ export default function FleetVehicleCreateForm({ companySlug, vehicle }: { compa
   const [decoded, setDecoded] = useState<Record<string, string | number | null> | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [capturedVin, setCapturedVin] = useState("");
+  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+  const [evidencePreviewUrl, setEvidencePreviewUrl] = useState("");
+  const [intakePhotos, setIntakePhotos] = useState<IntakePhoto[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -61,21 +75,31 @@ export default function FleetVehicleCreateForm({ companySlug, vehicle }: { compa
     };
   }, [open, busy]);
 
+  useEffect(() => () => {
+    if (evidencePreviewRef.current) URL.revokeObjectURL(evidencePreviewRef.current);
+    intakePhotoUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+  }, []);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     setError("");
-    const body = Object.fromEntries(new FormData(event.currentTarget));
+    const body = new FormData(event.currentTarget);
+    if (evidenceFile) body.set("vin_evidence_file", evidenceFile);
+    intakePhotos.forEach((photo) => body.append(`intake_photo_${photo.kind}`, photo.file));
     const response = await fetch(`/api/company/${companySlug}/fleet/vehicles`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      body,
     });
     const result = await response.json().catch(() => ({}));
     setBusy(false);
     if (!response.ok) return setError(result.error ?? "Unable to save vehicle.");
-    setOpen(false);
     router.refresh();
+    if (submitModeRef.current === "next" && !vehicle) {
+      removeEvidence(); clearIntakePhotos(); setDecodeId(""); setDecoded(null);
+      setCapturedVin(""); setError(""); formRef.current?.reset(); setScannerOpen(true); return;
+    }
+    setOpen(false);
   }
 
   function setField(name: string, value: string | number | null | undefined) {
@@ -119,9 +143,39 @@ export default function FleetVehicleCreateForm({ companySlug, vehicle }: { compa
 
   const acceptScannedVin = useCallback((vin: string) => {
     setCapturedVin(vin);
-    setScannerOpen(false);
     void decodeVin(vin);
   }, [decodeVin]);
+
+  const acceptEvidenceImage = useCallback((file: File) => {
+    if (evidencePreviewRef.current) URL.revokeObjectURL(evidencePreviewRef.current);
+    const previewUrl = URL.createObjectURL(file);
+    evidencePreviewRef.current = previewUrl; setEvidenceFile(file);
+    setEvidencePreviewUrl(previewUrl); setScannerOpen(false);
+  }, []);
+
+  function removeEvidence() {
+    if (evidencePreviewRef.current) URL.revokeObjectURL(evidencePreviewRef.current);
+    evidencePreviewRef.current = ""; setEvidenceFile(null); setEvidencePreviewUrl("");
+  }
+  function retakeEvidence() { removeEvidence(); setScannerOpen(true); }
+  function setIntakePhoto(kind: IntakePhoto["kind"], file: File) {
+    setIntakePhotos((current) => {
+      const previous = current.find((photo) => photo.kind === kind);
+      if (previous) { URL.revokeObjectURL(previous.previewUrl); intakePhotoUrlsRef.current.delete(previous.previewUrl); }
+      const previewUrl = URL.createObjectURL(file); intakePhotoUrlsRef.current.add(previewUrl);
+      return [...current.filter((photo) => photo.kind !== kind), { kind, file, previewUrl }];
+    });
+  }
+  function removeIntakePhoto(kind: IntakePhoto["kind"]) {
+    setIntakePhotos((current) => {
+      const removed = current.find((photo) => photo.kind === kind);
+      if (removed) { URL.revokeObjectURL(removed.previewUrl); intakePhotoUrlsRef.current.delete(removed.previewUrl); }
+      return current.filter((photo) => photo.kind !== kind);
+    });
+  }
+  function clearIntakePhotos() {
+    setIntakePhotos((current) => { current.forEach((photo) => URL.revokeObjectURL(photo.previewUrl)); intakePhotoUrlsRef.current.clear(); return []; });
+  }
 
   return (
     <>
@@ -146,7 +200,7 @@ export default function FleetVehicleCreateForm({ companySlug, vehicle }: { compa
 
             <form className="fleet-vehicle-form" onSubmit={submit} ref={formRef}>
               {vehicle ? <input type="hidden" name="vehicle_id" value={vehicle.vehicle_id} /> : null}
-              {vehicle ? <input type="hidden" name="status" value={vehicle.status} /> : null}
+              {!vehicle ? <input type="hidden" name="status" value="INTAKE" /> : null}
               {decodeId ? <input type="hidden" name="vin_decode_id" value={decodeId} /> : null}
               <fieldset>
                 <legend>VIN intake</legend>
@@ -163,8 +217,21 @@ export default function FleetVehicleCreateForm({ companySlug, vehicle }: { compa
                         {decodeBusy ? "Looking up VIN…" : "Look up entered VIN"}
                       </button>
                     </div>
-                    {scannerOpen ? <VinCameraScanner onCancel={() => setScannerOpen(false)} onDetected={acceptScannedVin} /> : null}
+                    {scannerOpen ? <VinCameraScanner onCancel={() => setScannerOpen(false)} onCaptured={acceptEvidenceImage} onDetected={acceptScannedVin} /> : null}
                     {capturedVin && decodeBusy ? <p className="fleet-vehicle-form__vin-progress" role="status">VIN {capturedVin} captured. Discovering vehicle details…</p> : null}
+                    {evidenceFile && evidencePreviewUrl ? (
+                      <article className="fleet-vehicle-form__vin-evidence">
+                        {/* eslint-disable-next-line @next/next/no-img-element -- local blob preview */}
+                        <img alt="Captured VIN label evidence" src={evidencePreviewUrl} />
+                        <div><p className="value-card__eyebrow">VIN intake evidence</p><strong>Original image attached to this draft</strong>
+                          <span>It will be saved with the vehicle. Printed-VIN OCR is not currently performed.</span>
+                          <div className="fleet-vehicle-form__vin-evidence-actions">
+                            <button className="button" disabled={busy} onClick={retakeEvidence} type="button">Retake</button>
+                            <button className="button" disabled={busy} onClick={removeEvidence} type="button">Remove</button>
+                          </div>
+                        </div>
+                      </article>
+                    ) : null}
                   </>
                 ) : null}
                 {decoded ? (
@@ -184,9 +251,22 @@ export default function FleetVehicleCreateForm({ companySlug, vehicle }: { compa
               <fieldset>
                 <legend>Fleet identity</legend>
                 <div className="fleet-vehicle-form__grid fleet-vehicle-form__grid--three">
-                  <Field label="Unit number" name="unit_number" placeholder="e.g. 430" required defaultValue={vehicle?.unit_number} />
-                  <SelectField label="FedEx class" name="vehicle_class_key" defaultValue={vehicle?.vehicle_class_key ?? "L10"}><option>L10</option><option>L15</option><option>L20</option></SelectField>
+                  <Field label="Unit number" name="unit_number" placeholder={vehicle ? "e.g. 430" : "Optional during field intake"} required={Boolean(vehicle)} defaultValue={vehicle?.unit_number} />
+                  {vehicle ? (
+                    <SelectField label="FedEx class" name="vehicle_class_key" defaultValue={vehicle.vehicle_class_key ?? ""}>
+                      <option value="">Not classified</option><option value="L10">L10</option><option value="L15">L15</option><option value="L20">L20</option>
+                    </SelectField>
+                  ) : (
+                    <div className="fleet-vehicle-form__derived-field"><span>FedEx class</span><strong>Calculated after GVWR verification</strong><small>Initial L10, L15, or L20 classification is generated from verified GVWR.</small></div>
+                  )}
                   <SelectField label="Vehicle type" name="vehicle_type" defaultValue={vehicle?.vehicle_type ?? "STEP_VAN"}><option value="STEP_VAN">Step van</option><option value="CUTAWAY">Cutaway</option><option value="BOX_TRUCK">Box truck</option><option value="CARGO_VAN">Cargo van</option><option value="RENTAL">Rental</option><option value="OTHER">Other / review needed</option></SelectField>
+                  {vehicle ? (
+                    <SelectField label="Fleet record status" name="status" defaultValue={vehicle.status}>
+                      <option value="INTAKE">Intake — information incomplete</option><option value="READY">Ready</option>
+                      <option value="ASSIGNED">Assigned</option><option value="SPARE">Spare</option>
+                      <option value="MAINTENANCE">Maintenance</option><option value="OUT_OF_SERVICE">Out of service</option><option value="RETIRED">Retired</option>
+                    </SelectField>
+                  ) : null}
                 </div>
               </fieldset>
 
@@ -245,10 +325,30 @@ export default function FleetVehicleCreateForm({ companySlug, vehicle }: { compa
                 </div>
               </fieldset>
 
+              <fieldset>
+                <legend>Optional intake photographs</legend>
+                <p className="fleet-vehicle-form__section-help">Capture what is available during the walkaround. Photos support later record completion and are never required to save the vehicle.</p>
+                <div className="fleet-intake-photo-grid">
+                  {intakePhotoKinds.map(([kind, label]) => {
+                    const photo = intakePhotos.find((item) => item.kind === kind);
+                    return <article className={photo ? "fleet-intake-photo is-captured" : "fleet-intake-photo"} key={kind}>
+                      {photo ? <>{/* eslint-disable-next-line @next/next/no-img-element -- local capture preview */}
+                        <img alt={`${label} intake evidence`} src={photo.previewUrl} /><strong>{label}</strong><div>
+                        <label className="button">Retake<input accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { const file = event.target.files?.[0]; if (file) setIntakePhoto(kind, file); }} type="file" /></label>
+                        <button className="button" onClick={() => removeIntakePhoto(kind)} type="button">Remove</button>
+                      </div></> : <label><span aria-hidden="true">＋</span><strong>{label}</strong><small>Take photograph</small>
+                        <input accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { const file = event.target.files?.[0]; if (file) setIntakePhoto(kind, file); }} type="file" />
+                      </label>}
+                    </article>;
+                  })}
+                </div>
+              </fieldset>
+
               {error ? <p className="fleet-vehicle-form__error" role="alert">{error}</p> : null}
               <footer className="fleet-vehicle-form__actions">
                 <button type="button" className="button" disabled={busy} onClick={() => setOpen(false)}>Cancel</button>
-                <button className="button button-primary" disabled={busy}>{busy ? "Saving…" : "Save Vehicle"}</button>
+                {!vehicle ? <button className="button" disabled={busy} onClick={() => { submitModeRef.current = "next"; }} type="submit">{busy ? "Saving…" : "Save & scan next"}</button> : null}
+                <button className="button button-primary" disabled={busy} onClick={() => { submitModeRef.current = "close"; }}>{busy ? "Saving…" : "Save Vehicle"}</button>
               </footer>
             </form>
           </section>

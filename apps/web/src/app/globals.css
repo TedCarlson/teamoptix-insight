@@ -1586,6 +1586,9 @@ h1 {
   border-color: #2563eb;
   outline: 3px solid rgba(37, 99, 235, 0.12);
 }
+.fleet-vehicle-form__derived-field { align-content: start; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; display: grid; gap: 4px; padding: 10px 12px; }
+.fleet-vehicle-form__derived-field > span { color: var(--color-text-secondary); font-size: 0.78rem; font-weight: 750; }
+.fleet-vehicle-form__derived-field > small { color: var(--color-text-secondary); line-height: 1.35; }
 
 .fleet-vehicle-form__error {
   margin: 0 0 14px;
@@ -1635,28 +1638,24 @@ h1 {
   position: absolute;
 }
 
-.vin-camera__target {
-  border: 1px solid rgba(255, 255, 255, 0.55);
-  border-radius: 8px;
-  height: 34%;
-  left: 7%;
-  position: absolute;
-  top: 33%;
-  width: 86%;
-}
-
-.vin-camera__target span {
+.vin-camera__evidence-guide { border: 2px solid rgba(255,255,255,.7); border-radius: 12px; height: 72%; left: 5%; position: absolute; top: 14%; transition: border-color 160ms ease,box-shadow 160ms ease; width: 90%; }
+.vin-camera__evidence-guide > span,.vin-camera__scan-guide > small { background: rgba(2,6,10,.72); border-radius: 999px; color: rgba(255,255,255,.86); font-size: .68rem; font-weight: 750; left: 10px; letter-spacing: .04em; padding: 3px 7px; position: absolute; text-transform: uppercase; top: 8px; }
+.vin-camera__scan-guide { border: 1px dashed rgba(255,255,255,.72); border-radius: 8px; height: 22%; left: 18%; position: absolute; top: 39%; width: 64%; }
+.vin-camera__scan-guide > small { left: 50%; top: 50%; transform: translate(-50%,-50%); white-space: nowrap; }
+.vin-camera__scan-guide > span {
   border-color: #59e391;
   border-style: solid;
   height: 24px;
   position: absolute;
   width: 24px;
 }
-
-.vin-camera__target span:nth-child(1) { border-width: 3px 0 0 3px; left: -2px; top: -2px; }
-.vin-camera__target span:nth-child(2) { border-width: 3px 3px 0 0; right: -2px; top: -2px; }
-.vin-camera__target span:nth-child(3) { border-width: 0 0 3px 3px; bottom: -2px; left: -2px; }
-.vin-camera__target span:nth-child(4) { border-width: 0 3px 3px 0; bottom: -2px; right: -2px; }
+.vin-camera__scan-guide > span:nth-of-type(1) { border-width: 3px 0 0 3px; left: -2px; top: -2px; }
+.vin-camera__scan-guide > span:nth-of-type(2) { border-width: 3px 3px 0 0; right: -2px; top: -2px; }
+.vin-camera__scan-guide > span:nth-of-type(3) { border-width: 0 0 3px 3px; bottom: -2px; left: -2px; }
+.vin-camera__scan-guide > span:nth-of-type(4) { border-width: 0 3px 3px 0; bottom: -2px; right: -2px; }
+.vin-camera.is-vin-found .vin-camera__evidence-guide { border-color: #facc15; box-shadow: 0 0 0 3px rgba(250,204,21,.16); }
+.vin-camera.is-captured .vin-camera__evidence-guide { border-color: #59e391; box-shadow: 0 0 0 3px rgba(89,227,145,.18); }
+.vin-camera__capture-canvas { display: none; }
 
 .vin-camera__status {
   display: grid;
@@ -1672,6 +1671,21 @@ h1 {
 .vin-camera > .button {
   margin: 0 14px;
 }
+.fleet-vehicle-form__vin-evidence { align-items: stretch; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px; display: grid; gap: 14px; grid-template-columns: minmax(150px,34%) 1fr; margin-top: 14px; overflow: hidden; padding: 10px; }
+.fleet-vehicle-form__vin-evidence img { aspect-ratio: 16/10; border-radius: 8px; height: 100%; object-fit: cover; width: 100%; }
+.fleet-vehicle-form__vin-evidence > div { align-content: center; display: grid; gap: 5px; }
+.fleet-vehicle-form__vin-evidence span,.fleet-vehicle-form__section-help { color: var(--color-text-secondary); font-size: .83rem; }
+.fleet-vehicle-form__vin-evidence-actions,.fleet-intake-photo.is-captured > div { display: flex; gap: 8px; margin-top: 6px; }
+.fleet-vehicle-form__section-help { margin: 0 0 12px; }
+.fleet-intake-photo-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); }
+.fleet-intake-photo { background: #f8fafc; border: 1px dashed #94a3b8; border-radius: 10px; min-height: 130px; overflow: hidden; }
+.fleet-intake-photo > label { align-content: center; cursor: pointer; display: grid; gap: 4px; height: 100%; justify-items: center; min-height: 130px; padding: 12px; text-align: center; }
+.fleet-intake-photo input[type="file"] { height: 1px; opacity: 0; overflow: hidden; position: absolute; width: 1px; }
+.fleet-intake-photo > label > span { color: #2563eb; font-size: 1.6rem; }
+.fleet-intake-photo small { color: var(--color-text-secondary); }
+.fleet-intake-photo.is-captured { border-style: solid; display: grid; gap: 7px; padding: 8px; }
+.fleet-intake-photo.is-captured img { aspect-ratio: 4/3; border-radius: 7px; object-fit: cover; width: 100%; }
+.fleet-intake-photo.is-captured .button { cursor: pointer; font-size: .76rem; padding: 6px 9px; }
 
 .fleet-vehicle-form__actions {
   position: sticky;
@@ -1691,6 +1705,7 @@ h1 {
   .fleet-vehicle-dialog { width: 100%; max-height: 100vh; min-height: 100vh; border: 0; border-radius: 0; }
   .fleet-vehicle-dialog__header { padding: 18px 16px 14px; }
   .fleet-vehicle-form { padding: 18px 16px 24px; }
+  .fleet-vehicle-form__vin-evidence { grid-template-columns: 1fr; }
   .fleet-vehicle-form__grid--three,
   .fleet-vehicle-form__grid--four,
   .fleet-vehicle-form__grid--registration { grid-template-columns: 1fr; }

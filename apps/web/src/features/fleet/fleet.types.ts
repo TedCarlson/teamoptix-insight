@@ -1,4 +1,5 @@
 export type FleetVehicleStatus =
+  | "INTAKE"
   | "READY"
   | "ASSIGNED"
   | "SPARE"
