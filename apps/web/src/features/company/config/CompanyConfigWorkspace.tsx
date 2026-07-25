@@ -3,6 +3,7 @@ import CompanyRouteSortConfig from "@/features/company/components/CompanyRouteSo
 import CompanyTimekeepingOversightConfig from "@/features/company/components/CompanyTimekeepingOversightConfig";
 import CompanyConfigAccessPanel from "./CompanyConfigAccessPanel";
 import AutomationConfigPanel from "@/features/automation/components/AutomationConfigPanel";
+import CompanyLeadershipManager from "./CompanyLeadershipManager";
 
 export type CompanyConfigSection = "company" | "leadership" | "access" | "operations" | "automation";
 
@@ -46,15 +47,6 @@ function SectionCard(props: { eyebrow: string; title: string; children: React.Re
       <h3 className="app-card__title" style={{ fontSize: 18 }}>{props.title}</h3>
       <div style={{ marginTop: 10 }}>{props.children}</div>
     </article>
-  );
-}
-
-function MiniStat(props: { label: string; value: string }) {
-  return (
-    <div className="context-stat" style={{ padding: "9px 10px" }}>
-      <span className="context-stat__label">{props.label}</span>
-      <strong>{props.value}</strong>
-    </div>
   );
 }
 
@@ -139,23 +131,14 @@ function CompanySection(props: CompanyConfigWorkspaceProps) {
   );
 }
 
-function LeadershipSection() {
+function LeadershipSection(props: CompanyConfigWorkspaceProps) {
   return (
-    <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 10 }}>
-      <SectionCard eyebrow="Leadership" title="Company leadership">
-        <div style={{ display: "grid", gap: 8 }}>
-          <MiniStat label="Authorized Operator" value="Pending roster link" />
-          <MiniStat label="Business Contact" value="Pending roster link" />
-          <MiniStat label="Grant management" value="AO controlled" />
-        </div>
-      </SectionCard>
-
-      <SectionCard eyebrow="Leadership" title="Operations leadership">
-        <div style={{ display: "grid", gap: 8 }}>
-          <MiniStat label="Fleet manager" value="Pending roster link" />
-          <MiniStat label="Dispatch coordinator" value="Pending roster link" />
-          <MiniStat label="Operations support" value="Pending setup" />
-        </div>
+    <section style={{ display: "grid", gap: 10 }}>
+      <SectionCard eyebrow="Leadership responsibility" title="Company leadership">
+        <p className="app-card__body" style={{ margin: "0 0 12px" }}>
+          Establish accountable company and workforce leaders.
+        </p>
+        <CompanyLeadershipManager slug={props.slug} />
       </SectionCard>
     </section>
   );
@@ -186,7 +169,7 @@ function OperationsSection(props: CompanyConfigWorkspaceProps) {
 }
 
 export default function CompanyConfigWorkspace(props: CompanyConfigWorkspaceProps) {
-  if (props.section === "leadership") return <LeadershipSection />;
+  if (props.section === "leadership") return <LeadershipSection {...props} />;
   if (props.section === "access") return <AccessSection {...props} />;
   if (props.section === "operations") return <OperationsSection {...props} />;
   if (props.section === "automation") {
