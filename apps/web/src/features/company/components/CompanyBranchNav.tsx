@@ -225,7 +225,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   ];
 
   const operationsSubItems: NavItem[] = [
-    { label: "Dispatch", href: `${operationsBase}/dispatch`, match: (path) => path === operationsBase || path.startsWith(`${operationsBase}/dispatch`) || path.startsWith(`${base}/dispatch`) },
+    { label: "Dispatch", href: `${operationsBase}/dispatch`, match: (path) => path.startsWith(`${operationsBase}/dispatch`) || path.startsWith(`${base}/dispatch`) },
     { label: "Service", href: `${operationsBase}/service`, match: (path) => path.startsWith(`${operationsBase}/service`) || path.startsWith(`${operationsBase}/delivery-window`) },
     { label: "Planning", href: `${operationsBase}/planning`, match: (path) => path.startsWith(`${operationsBase}/planning`) || path.startsWith(`${operationsBase}/intelligence`) },
     { label: "Mileage Audit", href: `${operationsBase}/mileage-audit`, match: (path) => path.startsWith(`${operationsBase}/mileage-audit`) },

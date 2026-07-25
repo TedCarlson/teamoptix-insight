@@ -62,17 +62,26 @@ type RouteHealthRow = {
   };
 };
 
-const horizonCopy: Record<
-  Horizon,
-  { label: string; question: string }
-> = {
+type CollectionRequestSummary = {
+  request_status: string;
+  error_message: string | null;
+  updated_at: string;
+};
+
+const activeCollectionStatuses = new Set([
+  "QUEUED",
+  "CLAIMED",
+  "RUNNING",
+  "ARTIFACTS_READY",
+  "INGESTING",
+]);
+
+const horizonCopy: Record<Horizon, { label: string }> = {
   operations: {
     label: "Today’s Operation",
-    question: "How is each route responsibility progressing?",
   },
   planning: {
     label: "Tomorrow’s Planning",
-    question: "What is likely to happen tomorrow?",
   },
 };
 
@@ -104,6 +113,15 @@ function eventTime(value: string) {
   return new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function updateTime(value: string | null) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/New_York",
   }).format(new Date(value));
 }
 
@@ -479,6 +497,9 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
   const [attendanceOpen, setAttendanceOpen] = useState(false);
   const [routeFilter, setRouteFilter] = useState<RouteFilter>("all");
   const [handoffSaving, setHandoffSaving] = useState(false);
+  const [collectionRequests, setCollectionRequests] = useState<
+    CollectionRequestSummary[]
+  >([]);
 
   const {
     dispatchDay,
@@ -496,6 +517,47 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
     setDispatchEvents,
     setError,
   } = useDispatchWorkspaceData(slug, serviceDate);
+
+  const hasActiveCollection = collectionRequests.some((request) =>
+    activeCollectionStatuses.has(request.request_status)
+  );
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadCollectionRequests() {
+      try {
+        const response = await fetch(
+          `/api/company/${slug}/collection-requests?mode=today&limit=50`,
+          { credentials: "include", cache: "no-store" }
+        );
+        const data = await response.json().catch(() => ({}));
+        if (!active || !response.ok) return;
+        setCollectionRequests(
+          Array.isArray(data?.rows)
+            ? (data.rows as CollectionRequestSummary[])
+            : []
+        );
+      } catch {
+        if (active) setCollectionRequests([]);
+      }
+    }
+
+    void loadCollectionRequests();
+    const interval = window.setInterval(
+      () => void loadCollectionRequests(),
+      hasActiveCollection ? 5_000 : 30_000
+    );
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [hasActiveCollection, slug]);
+
+  const latestSuccessfulCollection = collectionRequests.find(
+    (request) =>
+      request.request_status === "COMPLETE" && !request.error_message
+  );
 
   const routeSort = useMemo(
     () => createRouteSorter(routeSortKey),
@@ -929,9 +991,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
     <main className="ou-shell">
       <header className="ou-header">
         <span>
-          <small>Experimental operational workspace</small>
           <h1>Operations</h1>
-          <p>{horizonCopy[horizon].question}</p>
         </span>
 
         <div className="ou-header-actions">
@@ -977,8 +1037,11 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         <section className="ou-collection" aria-label="Route operational units">
           <header>
             <span>
-              <strong>Today’s route responsibilities</strong>
-              <small>{routeUnits.length} operational units · {serviceDate}</small>
+              <small>
+                {routeUnits.length} routes · {serviceDate} - updated{" "}
+                {updateTime(latestSuccessfulCollection?.updated_at ?? null)}
+                {hasActiveCollection ? " · collection in progress" : ""}
+              </small>
             </span>
           </header>
 
