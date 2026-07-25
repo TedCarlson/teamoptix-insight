@@ -95,3 +95,17 @@ export async function lockDispatchDay(params: {
     }),
   });
 }
+
+export async function reopenDispatchDay(params: {
+  slug: string;
+  dispatchDate: string;
+}) {
+  const { slug, dispatchDate } = params;
+
+  return fetchJson(`/api/company/${slug}/dispatch/reopen`, {
+    method: "POST",
+    body: JSON.stringify({
+      dispatch_date: dispatchDate,
+    }),
+  });
+}

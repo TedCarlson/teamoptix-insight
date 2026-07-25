@@ -30,6 +30,7 @@ type DispatchEventOverlayProps = {
   phase?: "dispatch" | "delivery";
   handoffSaving?: boolean;
   onHandoffToDelivery?: () => Promise<void> | void;
+  onReturnToDispatch?: () => Promise<void> | void;
   onClose: () => void;
   onSubmit: (payload: {
     event_code: string;
@@ -115,6 +116,7 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
     phase = "dispatch",
     handoffSaving = false,
     onHandoffToDelivery,
+    onReturnToDispatch,
     onClose,
     onSubmit,
   } = props;
@@ -489,6 +491,37 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
         </form>
         ) : (
           <section style={{ marginTop: 18, display: "grid", gap: 14 }}>
+            {onReturnToDispatch ? (
+              <div
+                style={{
+                  border: "1px solid #d6dfeb",
+                  borderRadius: 14,
+                  background: "#f8fafc",
+                  padding: "10px 12px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div>
+                  <strong>Return to Dispatch</strong>
+                  <p className="app-card__body" style={{ marginBottom: 0 }}>
+                    Reopen assignment controls. The acting user is recorded automatically.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="button"
+                  disabled={handoffSaving || saving}
+                  onClick={() => void onReturnToDispatch()}
+                >
+                  {handoffSaving ? "Returning…" : "Return to dispatch"}
+                </button>
+              </div>
+            ) : null}
+
             <div
               style={{
                 border: "1px solid #d6dfeb",

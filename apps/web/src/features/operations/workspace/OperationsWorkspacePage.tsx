@@ -17,11 +17,16 @@ import { buildDswDispatchSignals } from "@/features/dispatch/lib/dswDispatchSign
 import {
   lockDispatchDay,
   recordDispatchEvent,
+  reopenDispatchDay,
 } from "@/features/dispatch/lib/dispatchApi";
 import { DispatchEventOverlay } from "@/features/dispatch/components/DispatchEventOverlay";
+import RouteHealthOverlay, {
+  type ManifestRouteHealthCard,
+} from "@/features/operations/manifests/components/RouteHealthOverlay";
 import {
   routeLabel,
   todayIso,
+  type DispatchDayRow,
   type DispatchEventRow,
   type DispatchPerson,
   type DispatchRoute,
@@ -52,15 +57,7 @@ type ExpressSignal = {
   gaps: number;
 };
 
-type RouteHealthRow = {
-  route_key: string;
-  route_label: string | null;
-  express: {
-    package_count: number;
-    incomplete_package_count: number;
-    tracking_gap_package_count: number;
-  };
-};
+type RouteHealthRow = ManifestRouteHealthCard;
 
 type CollectionRequestSummary = {
   request_status: string;
@@ -92,11 +89,11 @@ const phaseCopy: Record<
   { label: string; posture: "attention" | "ready" | "active" | "complete" }
 > = {
   needs_driver: { label: "Unassigned", posture: "attention" },
-  awaiting_arrival: { label: "Awaiting arrival", posture: "attention" },
-  ready: { label: "In seat", posture: "ready" },
-  dispatched: { label: "In seat", posture: "active" },
+  awaiting_arrival: { label: "Waiting", posture: "attention" },
+  ready: { label: "Arrived", posture: "ready" },
+  dispatched: { label: "On job", posture: "active" },
   on_route: { label: "On job", posture: "active" },
-  complete: { label: "Complete", posture: "complete" },
+  complete: { label: "End of day", posture: "complete" },
 };
 
 function normalize(value: string | null | undefined) {
@@ -151,8 +148,10 @@ function routePhase(
     | ReturnType<typeof buildDswDispatchSignals>["dswSignalsByRouteKey"][string]
     | undefined
 ): OperationalPhase {
-  if (!route.driver) return "needs_driver";
-
+  const hasScannerDriver =
+    Boolean(delivery?.driverName) && delivery?.scannerRole === "driver";
+  const hasScannerActivity = Boolean(delivery?.driverName);
+  if (!route.driver && !hasScannerDriver) return "needs_driver";
   const delivered = Number(delivery?.actualDeliveryPackages ?? 0);
   const tendered = Number(delivery?.packages ?? 0);
   const pickupsComplete = Number(delivery?.actualPickupStops ?? 0);
@@ -173,6 +172,10 @@ function routePhase(
   ) {
     return "on_route";
   }
+
+  // A named DSW driver is scanner evidence that the person is present,
+  // working, and logged in even before the first delivery posts.
+  if (hasScannerActivity) return "on_route";
 
   const eventCodes = events.map((event) =>
     `${event.event_code} ${event.event_label}`.toUpperCase()
@@ -233,7 +236,11 @@ function RouteUnit(props: {
     onSelect,
     onOpenSeat,
   } = props;
-  const needsDriver = !route.driver;
+  const effectiveDriverName =
+    route.driver?.full_name ||
+    (delivery?.scannerRole === "driver" ? delivery.driverName : null) ||
+    null;
+  const needsDriver = !effectiveDriverName;
   const hasException = Boolean(express?.gaps || express?.open);
   const passenger = route.helpers[0] ?? route.trainees[0] ?? null;
   const passengerRole = route.helpers[0]
@@ -243,8 +250,27 @@ function RouteUnit(props: {
       : "Passenger";
   const delivered = Number(delivery?.actualDeliveryPackages ?? 0);
   const tendered = Number(delivery?.packages ?? 0);
-  const remaining = Math.max(0, tendered - delivered);
-  const servicePct = tendered > 0 ? Math.min(100, Math.round((delivered / tendered) * 100)) : 0;
+  const deliveredStops = Number(delivery?.actualDeliveryStops ?? 0);
+  const tenderedStops = Number(delivery?.deliveryStops ?? 0);
+  const pickupStops = Number(delivery?.pickupStops ?? 0);
+  const completedPickupStops = Number(delivery?.actualPickupStops ?? 0);
+  const visibleStops = tenderedStops || Number(plan?.stops ?? 0);
+  const visiblePackages = tendered || Number(plan?.packages ?? 0);
+  const expressCompleted = Math.max(
+    0,
+    Number(express?.packages ?? 0) - Number(express?.open ?? 0)
+  );
+  const servicePct =
+    tenderedStops > 0
+      ? Math.min(100, Math.round((deliveredStops / tenderedStops) * 100))
+      : tendered > 0
+        ? Math.min(100, Math.round((delivered / tendered) * 100))
+        : 0;
+  const hasDeliverySignal =
+    Boolean(delivery?.driverName) ||
+    deliveredStops > 0 ||
+    delivered > 0 ||
+    Number(delivery?.actualPickupStops ?? 0) > 0;
   const phasePresentation = phaseCopy[phase];
   const expressClass = express?.packages
     ? express?.open || express?.gaps
@@ -256,7 +282,9 @@ function RouteUnit(props: {
     <article
       className={`ou-unit phase-${phase} ${express?.packages ? "has-express" : ""} ${
         hasException ? "has-express-risk" : ""
-      } ${selected ? "is-selected" : ""} ${
+      } ${hasDeliverySignal ? "has-delivery-signal" : ""} ${
+        selected ? "is-selected" : ""
+      } ${
         hasException || phasePresentation.posture === "attention"
           ? "needs-attention"
           : `is-${phasePresentation.posture}`
@@ -300,7 +328,7 @@ function RouteUnit(props: {
           }}
           aria-label={`Manage driver for ${routeLabel(route)}`}
         >
-        <strong>{personName(route.driver)}</strong>
+        <strong>{effectiveDriverName || personName(route.driver)}</strong>
         </button>
         {passenger ? (
           <>
@@ -328,30 +356,35 @@ function RouteUnit(props: {
 
       <button
         type="button"
-        className="ou-activity"
+        className={`ou-activity ${
+          horizon === "operations" && express?.packages ? "has-four" : ""
+        }`}
         onClick={(event) => {
           event.stopPropagation();
           onSelect();
         }}
       >
-        {horizon === "operations" &&
-        (phase === "needs_driver" ||
-          phase === "awaiting_arrival" ||
-          phase === "ready") ? (
+        {horizon === "operations" ? (
           <>
             <Metric
               label="Stops"
-              value={delivery?.deliveryStops ?? plan?.stops ?? "—"}
+              value={`${deliveredStops}/${visibleStops || "—"}`}
             />
             <Metric
               label="Packages"
-              value={delivery?.packages ?? plan?.packages ?? "—"}
+              value={`${delivered}/${visiblePackages || "—"}`}
             />
             <Metric
-              label="Express"
-              value={express?.packages ?? 0}
-              className={expressClass}
+              label="PU"
+              value={`${completedPickupStops}/${pickupStops}`}
             />
+            {express?.packages ? (
+              <Metric
+                label="Express"
+                value={`${expressCompleted}/${express.packages}`}
+                className={expressClass}
+              />
+            ) : null}
           </>
         ) : null}
 
@@ -363,27 +396,32 @@ function RouteUnit(props: {
           </>
         ) : null}
 
-        {horizon === "operations" &&
-        (phase === "on_route" || phase === "dispatched") ? (
-          <>
-            <Metric label="Tendered" value={tendered || "—"} />
-            <Metric label="Delivered" value={delivered} />
-            <Metric label="Remaining" value={remaining} />
-          </>
-        ) : null}
-
-        {horizon === "operations" && phase === "complete" ? (
-          <>
-            <Metric label="Delivered" value={delivered} />
-            <Metric label="Service" value={`${servicePct}%`} />
-            <Metric
-              label="Express"
-              value={express?.packages ?? 0}
-              className={expressClass}
-            />
-          </>
-        ) : null}
       </button>
+
+      {horizon === "operations" && hasDeliverySignal ? (
+        <div
+          className="ou-progress-road"
+          role="img"
+          aria-label={`${servicePct}% of route delivery stops complete`}
+        >
+          <span
+            className="ou-progress-trail"
+            style={{ width: `${servicePct}%` }}
+          />
+          <span
+            className="ou-progress-truck"
+            style={{ left: `${servicePct}%` }}
+            aria-hidden="true"
+          >
+            <svg viewBox="0 0 28 16" focusable="false">
+              <path d="M1 2h16v9H1zM17 5h5l5 5v1H17z" />
+              <circle cx="7" cy="13" r="2.5" />
+              <circle cx="22" cy="13" r="2.5" />
+            </svg>
+          </span>
+          <span className="ou-progress-flag" aria-hidden="true">🏁</span>
+        </div>
+      ) : null}
 
     </article>
   );
@@ -495,6 +533,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
   const [eventOverlayOpen, setEventOverlayOpen] = useState(false);
   const [savingEvent, setSavingEvent] = useState(false);
   const [attendanceOpen, setAttendanceOpen] = useState(false);
+  const [routeEvidenceOpen, setRouteEvidenceOpen] = useState(false);
   const [routeFilter, setRouteFilter] = useState<RouteFilter>("all");
   const [handoffSaving, setHandoffSaving] = useState(false);
   const [collectionRequests, setCollectionRequests] = useState<
@@ -509,6 +548,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
     error,
     eventTypes,
     loading,
+    refreshWorkspace,
     routeSortKey,
     rosterRows,
     routes,
@@ -538,6 +578,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
             ? (data.rows as CollectionRequestSummary[])
             : []
         );
+        refreshWorkspace();
       } catch {
         if (active) setCollectionRequests([]);
       }
@@ -552,7 +593,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
       active = false;
       window.clearInterval(interval);
     };
-  }, [hasActiveCollection, slug]);
+  }, [hasActiveCollection, refreshWorkspace, slug]);
 
   const latestSuccessfulCollection = collectionRequests.find(
     (request) =>
@@ -694,19 +735,72 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
   const selectedDelivery = selectedRoute
     ? dswSignalsByRouteKey[selectedRoute.route_key]
     : undefined;
+  const selectedManifestHealth = selectedRoute
+    ? expressRows.find((health) => {
+        const routeCandidates = [
+          selectedRoute.route_key,
+          selectedRoute.route_name,
+          selectedRoute.current_wa_num,
+        ]
+          .map(normalize)
+          .filter(Boolean);
+        const healthCandidates = [
+          health.route_key,
+          health.route_label,
+        ]
+          .map(normalize)
+          .filter(Boolean);
+        return routeCandidates.some((routeCandidate) =>
+          healthCandidates.some(
+            (healthCandidate) =>
+              routeCandidate === healthCandidate ||
+              routeCandidate.startsWith(healthCandidate) ||
+              routeCandidate.endsWith(healthCandidate) ||
+              healthCandidate.startsWith(routeCandidate) ||
+              healthCandidate.endsWith(routeCandidate)
+          )
+        );
+      }) ?? null
+    : null;
   const selectedExpress = selectedRoute
     ? expressByRouteKey[selectedRoute.route_key]
     : undefined;
-
-  const arrivedPersonIds = useMemo(
-    () => buildArrivedPersonIds(dispatchEvents),
-    [dispatchEvents]
+  const selectedEffectiveDriverName =
+    selectedRoute?.driver?.full_name ||
+    (selectedDelivery?.scannerRole === "driver"
+      ? selectedDelivery.driverName
+      : null) ||
+    null;
+  const selectedHasDeliveryEvidence = Boolean(
+    selectedDelivery?.driverName ||
+      Number(selectedDelivery?.actualDeliveryStops ?? 0) > 0 ||
+      Number(selectedDelivery?.actualDeliveryPackages ?? 0) > 0
   );
+
+  const arrivedPersonIds = useMemo(() => {
+    const ids = buildArrivedPersonIds(dispatchEvents);
+    Object.values(dswSignalsByRouteKey).forEach((signal) => {
+      if (signal.matchedRosterMemberId) {
+        ids.add(signal.matchedRosterMemberId);
+      }
+    });
+    return ids;
+  }, [dispatchEvents, dswSignalsByRouteKey]);
+  const selectedDswPerson =
+    selectedDelivery?.matchedRosterMemberId
+      ? allPeople.find(
+          (person) =>
+            person.roster_member_id ===
+            selectedDelivery.matchedRosterMemberId
+        ) ?? null
+      : null;
   const selectedSeatPeople = selectedRoute
     ? selectedSeat === "driver"
       ? selectedRoute.driver
         ? [selectedRoute.driver]
-        : []
+        : selectedDelivery?.scannerRole === "driver" && selectedDswPerson
+          ? [selectedDswPerson]
+          : []
       : selectedSeat === "helper"
         ? selectedRoute.helpers
         : selectedRoute.trainees
@@ -734,6 +828,16 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
           seat: "driver",
         });
       }
+      const scannerDriverId =
+        dswSignalsByRouteKey[route.route_key]?.matchedRosterMemberId;
+      if (scannerDriverId) {
+        const scannerRole =
+          dswSignalsByRouteKey[route.route_key]?.scannerRole ?? "driver";
+        assignments.set(scannerDriverId, {
+          route,
+          seat: scannerRole,
+        });
+      }
       route.helpers.forEach((person) =>
         assignments.set(person.roster_member_id, { route, seat: "helper" })
       );
@@ -742,7 +846,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
       );
     });
     return assignments;
-  }, [routeUnits]);
+  }, [dswSignalsByRouteKey, routeUnits]);
 
   async function togglePersonPresence(
     person: DispatchPerson,
@@ -932,6 +1036,37 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
     }
   }
 
+  async function returnToDispatch() {
+    if (handoffSaving || dispatchDay?.status !== "LOCKED") return;
+
+    try {
+      setHandoffSaving(true);
+      setError(null);
+      const { ok, data } = await reopenDispatchDay({
+        slug,
+        dispatchDate: serviceDate,
+      });
+      if (!ok) {
+        setError(data?.error ?? "Failed to return the operation to Dispatch.");
+        return;
+      }
+      if (data?.dispatch_day) {
+        setDispatchDay(data.dispatch_day as DispatchDayRow);
+      }
+      if (data?.event) {
+        setDispatchEvents((current) => [
+          ...current,
+          data.event as DispatchEventRow,
+        ]);
+      }
+      setEventOverlayOpen(false);
+    } catch {
+      setError("Failed to return the operation to Dispatch.");
+    } finally {
+      setHandoffSaving(false);
+    }
+  }
+
   const unitsWithPhase = useMemo(
     () =>
       routeUnits.map((route) => ({
@@ -967,8 +1102,8 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         ]
       : [
           { key: "all", label: "All" },
-          { key: "ready", label: "Ready" },
-          { key: "awaiting", label: "Awaiting arrival" },
+          { key: "ready", label: "Arrived" },
+          { key: "awaiting", label: "Waiting" },
           { key: "unassigned", label: "Unassigned" },
         ];
 
@@ -1090,7 +1225,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
               <span>
                 <small>Operational workspace</small>
                 <h2>{routeLabel(selectedRoute)}</h2>
-                <p>{personName(selectedRoute.driver)}</p>
+                <p>{selectedEffectiveDriverName || personName(selectedRoute.driver)}</p>
               </span>
               <button
                 type="button"
@@ -1102,9 +1237,35 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
             </header>
 
             <div className="ou-workspace-body">
+              {selectedHasDeliveryEvidence ? (
+                <Section title="Delivery evidence">
+                  <div className="ou-delivery-evidence">
+                    <div>
+                      <span><small>Stops</small><strong>{selectedDelivery?.actualDeliveryStops ?? 0} / {selectedDelivery?.deliveryStops ?? 0}</strong></span>
+                      <span><small>Packages</small><strong>{selectedDelivery?.actualDeliveryPackages ?? 0} / {selectedDelivery?.packages ?? 0}</strong></span>
+                      <span><small>Pickups</small><strong>{selectedDelivery?.actualPickupStops ?? 0} / {selectedDelivery?.pickupStops ?? 0}</strong></span>
+                    </div>
+                    <p>
+                      <strong>{selectedManifestHealth ? "Manifest evidence linked" : "Waiting for matched manifest evidence"}</strong>
+                      <small>
+                        {selectedManifestHealth
+                          ? `${selectedManifestHealth.status} · ${selectedManifestHealth.artifacts.total} artifacts`
+                          : "DSW progress remains authoritative while manifest capture catches up."}
+                      </small>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setRouteEvidenceOpen(true)}
+                    >
+                      Open delivery evidence
+                    </button>
+                  </div>
+                </Section>
+              ) : null}
+
               <Section title="Current responsibility">
                 <dl className="ou-facts">
-                  <div><dt>State</dt><dd>{selectedRoute.driver ? "Assigned" : "Needs driver"}</dd></div>
+                  <div><dt>State</dt><dd>{selectedEffectiveDriverName ? "In service" : "Unassigned"}</dd></div>
                   <div><dt>Horizon</dt><dd>{horizonCopy[horizon].label}</dd></div>
                   <div><dt>Service date</dt><dd>{serviceDate}</dd></div>
                 </dl>
@@ -1118,12 +1279,16 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
                     onClick={() => {
                       setSelectedSeat("driver");
                       setSelectedPersonId(
-                        selectedRoute.driver?.roster_member_id ?? null
+                        (selectedDelivery?.scannerRole === "driver"
+                          ? selectedDelivery.matchedRosterMemberId
+                          : null) ??
+                          selectedRoute.driver?.roster_member_id ??
+                          null
                       );
                     }}
                   >
-                    <span><small>Driver</small><strong>{personName(selectedRoute.driver)}</strong></span>
-                    <span>{selectedRoute.driver ? "Change" : "Assign"}</span>
+                    <span><small>Driver</small><strong>{selectedEffectiveDriverName || personName(selectedRoute.driver)}</strong></span>
+                    <span>{selectedEffectiveDriverName ? "Manage" : "Assign"}</span>
                   </button>
                   {selectedPerson ? (
                     <button
@@ -1194,13 +1359,39 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
                 <div className="ou-workspace-signals">
                   <span>Plan · {selectedPlan?.stops ?? "—"} stops · {selectedPlan?.packages ?? "—"} packages</span>
                   <span>Delivery · {selectedDelivery?.deliveryStops ?? "—"} stops · {selectedDelivery?.pickupStops ?? "—"} pickups</span>
+                  <span>
+                    FedEx scanner ·{" "}
+                    {selectedDelivery?.driverName
+                      ? `${selectedDelivery.scannerRole === "helper" ? "Helper" : selectedDelivery.scannerRole === "trainee" ? "Trainee" : "Driver"} logged in · ${selectedDelivery.driverName}`
+                      : "No login reported"}
+                  </span>
                   <span>Express · {selectedExpress?.packages ?? "—"} packages · {selectedExpress?.open ?? "—"} open</span>
                 </div>
               </Section>
 
               <Section title="Timeline">
-                {selectedEvents.length ? (
+                {selectedDelivery?.driverName || selectedEvents.length ? (
                   <ol className="ou-timeline">
+                    {selectedDelivery?.driverName ? (
+                      <li>
+                        <time>DSW</time>
+                        <span>
+                          <strong>FedEx scanner login</strong>
+                          <small>
+                            {selectedDelivery.driverName} ·{" "}
+                            {selectedDelivery.scannerRole === "helper"
+                              ? "helper"
+                              : selectedDelivery.scannerRole === "trainee"
+                                ? "trainee"
+                                : "driver"}{" "}
+                            · live service evidence
+                            {selectedDelivery.generatedAtText
+                              ? ` · ${selectedDelivery.generatedAtText}`
+                              : ""}
+                          </small>
+                        </span>
+                      </li>
+                    ) : null}
                     {selectedEvents.slice(0, 8).map((event) => (
                       <li key={event.id}>
                         <time>{eventTime(event.created_at)}</time>
@@ -1237,6 +1428,9 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         phase={dispatchDay?.status === "LOCKED" ? "delivery" : "dispatch"}
         handoffSaving={handoffSaving}
         onHandoffToDelivery={handoffToDelivery}
+        onReturnToDispatch={
+          dispatchDay?.status === "LOCKED" ? returnToDispatch : undefined
+        }
         onClose={() => setEventOverlayOpen(false)}
         onSubmit={addManualDispatchEvent}
       />
@@ -1251,6 +1445,33 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         onToggle={(person, assignment) => {
           void togglePersonPresence(person, assignment);
         }}
+      />
+
+      <RouteHealthOverlay
+        open={routeEvidenceOpen && Boolean(selectedRoute)}
+        slug={slug}
+        serviceDate={serviceDate}
+        routeLabel={selectedRoute ? routeLabel(selectedRoute) : "Route"}
+        health={selectedManifestHealth}
+        dsw={
+          selectedDelivery
+            ? {
+                planned_delivery_stops: selectedDelivery.deliveryStops,
+                actual_delivery_stops: selectedDelivery.actualDeliveryStops,
+                vscan_packages: selectedDelivery.packages,
+                actual_delivery_packages:
+                  selectedDelivery.actualDeliveryPackages,
+                planned_pickup_stops: selectedDelivery.pickupStops,
+                actual_pickup_stops: selectedDelivery.actualPickupStops,
+                actual_pickup_packages:
+                  selectedDelivery.actualPickupPackages,
+                generated_at_text: selectedDelivery.generatedAtText,
+                ils_percent: selectedDelivery.ilsPercent,
+                miles: selectedDelivery.miles,
+              }
+            : null
+        }
+        onClose={() => setRouteEvidenceOpen(false)}
       />
 
       <style jsx global>{`
@@ -1415,10 +1636,21 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         }
         .ou-unit.phase-awaiting_arrival { --ou-signal: 194, 132, 36; --ou-posture: 194, 132, 36; }
         .ou-unit.phase-ready { --ou-signal: 48, 138, 84; --ou-posture: 48, 138, 84; }
-        .ou-unit.phase-dispatched { --ou-signal: 63, 91, 158; --ou-posture: 48, 138, 84; }
-        .ou-unit.phase-on_route { --ou-signal: 63, 91, 158; --ou-posture: 63, 91, 158; }
+        .ou-unit.phase-dispatched { --ou-signal: 103, 58, 183; --ou-posture: 103, 58, 183; }
+        .ou-unit.phase-on_route { --ou-signal: 103, 58, 183; --ou-posture: 103, 58, 183; }
         .ou-unit.phase-complete { --ou-signal: 42, 122, 92; --ou-posture: 42, 122, 92; }
         .ou-unit.has-express-risk { --ou-signal: 217, 119, 34; }
+        .ou-unit.has-delivery-signal {
+          --ou-signal: 103, 58, 183;
+          --ou-posture: 103, 58, 183;
+          background:
+            radial-gradient(circle at 100% 100%, rgba(103, 58, 183, .16), transparent 60%),
+            linear-gradient(145deg, #fff 44%, rgba(245, 240, 255, .78));
+        }
+        .ou-unit.phase-complete.has-delivery-signal {
+          --ou-signal: 42, 122, 92;
+          --ou-posture: 42, 122, 92;
+        }
         .ou-unit.phase-needs_driver { --ou-signal: 190, 54, 54; --ou-posture: 190, 54, 54; }
         .ou-unit.is-selected {
           border-color: rgba(var(--ou-signal), .62);
@@ -1460,6 +1692,64 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         .ou-signal.caution { color: #8a5311; }
         .ou-unit.phase-needs_driver .ou-posture { color: #a32929; }
         .ou-signal.critical { background: #fce8e8; color: #9a3030; }
+        .ou-progress-road {
+          position: relative;
+          height: 25px;
+          margin: 0 -13px -13px;
+          overflow: hidden;
+          border-top: 1px solid rgba(103, 58, 183, .18);
+          background:
+            linear-gradient(180deg, rgba(255,255,255,.18), transparent),
+            #dfe3e9;
+        }
+        .ou-progress-road::after {
+          content: "";
+          position: absolute;
+          left: 0;
+          right: 0;
+          top: 12px;
+          border-top: 1px dashed rgba(255,255,255,.82);
+        }
+        .ou-progress-trail {
+          position: absolute;
+          inset: 0 auto 0 0;
+          min-width: 3px;
+          background: repeating-linear-gradient(
+            115deg,
+            #5f259f 0 11px,
+            #5f259f 11px 15px,
+            #159f6e 15px 23px,
+            #ff6a13 23px 31px
+          );
+          transition: width 500ms cubic-bezier(.2,.8,.2,1);
+        }
+        .ou-progress-truck {
+          position: absolute;
+          z-index: 2;
+          top: 4px;
+          width: 28px;
+          height: 16px;
+          transform: translateX(-50%);
+          filter: drop-shadow(0 2px 2px rgba(15,23,42,.34));
+          transition: left 500ms cubic-bezier(.2,.8,.2,1);
+        }
+        .ou-progress-truck svg {
+          display: block;
+          width: 100%;
+          height: 100%;
+          fill: #fff;
+          stroke: rgba(41, 28, 72, .58);
+          stroke-width: .7;
+        }
+        .ou-progress-flag {
+          position: absolute;
+          z-index: 3;
+          right: 4px;
+          top: 2px;
+          font-size: 15px;
+          line-height: 1;
+          filter: drop-shadow(0 1px 1px rgba(255,255,255,.7));
+        }
         .ou-assignment-line {
           min-width: 0;
           display: flex;
@@ -1514,6 +1804,12 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
           text-align: left;
           cursor: pointer;
         }
+        .ou-activity.has-four {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 5px;
+        }
+        .ou-activity.has-four .ou-metric { padding: 8px 6px; }
+        .ou-activity.has-four .ou-metric strong { font-size: 12px; }
         .ou-metric { display: grid; gap: 1px; padding: 8px; border-radius: 9px; background: #f5f7fa; }
         .ou-metric strong { font-size: 14px; }
         .ou-metric small { color: #7a8495; font-size: 9px; line-height: 1.2; }
@@ -1634,6 +1930,51 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         .ou-seats strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .ou-seats > button > span:last-child { color: #5369a8; font-size: 11px; font-weight: 850; }
         .ou-seat-note { margin: 9px 0 0; color: #7a8495; font-size: 12px; line-height: 1.4; }
+        .ou-delivery-evidence { display: grid; gap: 9px; }
+        .ou-delivery-evidence > div {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 6px;
+        }
+        .ou-delivery-evidence > div span {
+          display: grid;
+          gap: 2px;
+          padding: 9px;
+          border: 1px solid rgba(103, 58, 183, .16);
+          border-radius: 9px;
+          background: #f7f3ff;
+        }
+        .ou-delivery-evidence small {
+          color: #7a8495;
+          font-size: 9px;
+          letter-spacing: .05em;
+          text-transform: uppercase;
+        }
+        .ou-delivery-evidence p {
+          display: grid;
+          gap: 3px;
+          margin: 0;
+          color: #3f4b5e;
+          font-size: 12px;
+        }
+        .ou-delivery-evidence p small {
+          line-height: 1.4;
+          letter-spacing: 0;
+          text-transform: none;
+        }
+        .ou-delivery-evidence > button {
+          min-height: 38px;
+          border: 1px solid #6d3db8;
+          border-radius: 9px;
+          background: #f7f3ff;
+          color: #5f259f;
+          font-weight: 850;
+          cursor: pointer;
+        }
+        .ou-delivery-evidence > button:hover {
+          background: #efe7ff;
+          box-shadow: 0 6px 16px rgba(95, 37, 159, .12);
+        }
         .ou-workspace-signals { display: grid; gap: 7px; }
         .ou-workspace-signals span { padding: 9px; border-radius: 9px; background: #f5f7fa; }
         .ou-timeline { display: grid; gap: 11px; margin: 0; padding: 0; list-style: none; }

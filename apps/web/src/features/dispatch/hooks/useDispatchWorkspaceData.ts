@@ -1,4 +1,10 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { loadDispatchInputs } from "../lib/dispatchApi";
 import { isoDateOffset } from "../lib/dispatchDates";
 import type { RouteSortKey } from "../lib/dispatchSelectors";
@@ -54,13 +60,17 @@ export function useDispatchWorkspaceData(
     useState<"AM" | "PM" | null>(null);
   const [routeSortKey, setRouteSortKey] =
     useState<RouteSortKey>("route_name");
+  const refreshWorkspace = useCallback(
+    () => setRefreshKey((current) => current + 1),
+    []
+  );
 
   useEffect(() => {
     let active = true;
 
     async function hydrateDispatchWorkspace() {
       try {
-        setLoading(true);
+        if (refreshKey === 0) setLoading(true);
         setError(null);
 
         const inputs = await loadDispatchInputs({
@@ -166,7 +176,7 @@ export function useDispatchWorkspaceData(
     lastUpdatedAt,
     loading,
     refreshKey,
-    refreshWorkspace: () => setRefreshKey((current) => current + 1),
+    refreshWorkspace,
     rosterRows,
     routeSortKey,
     routes,
