@@ -27,6 +27,9 @@ type DispatchEventOverlayProps = {
   unscheduledDrivers: DispatchPerson[];
   availableRoutes: DispatchRoute[];
   activeRoutes: DispatchRoute[];
+  phase?: "dispatch" | "delivery";
+  handoffSaving?: boolean;
+  onHandoffToDelivery?: () => Promise<void> | void;
   onClose: () => void;
   onSubmit: (payload: {
     event_code: string;
@@ -109,6 +112,9 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
     unscheduledDrivers,
     availableRoutes,
     activeRoutes,
+    phase = "dispatch",
+    handoffSaving = false,
+    onHandoffToDelivery,
     onClose,
     onSubmit,
   } = props;
@@ -122,26 +128,43 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
   );
 
   const workforceActions = useMemo(
-    () => [
-      addDriverAction,
-      addWalkOnAction,
-      ...manualEventActions.filter((action) => action.event_category === "WORKFORCE"),
-    ],
-    [manualEventActions]
+    () =>
+      phase === "dispatch"
+        ? [
+            addDriverAction,
+            addWalkOnAction,
+            ...manualEventActions.filter(
+              (action) => action.event_category === "WORKFORCE"
+            ),
+          ]
+        : manualEventActions.filter(
+            (action) =>
+              action.event_category === "PERFORMANCE" ||
+              action.event_category === "EXCEPTION"
+          ),
+    [manualEventActions, phase]
   );
 
   const operationsActions = useMemo(
-    () => [
-      addRouteAction,
-      removeRouteAction,
-      ...manualEventActions.filter(
-        (action) =>
-          action.event_category === "OPERATIONS" ||
-          action.event_category === "COVERAGE" ||
-          action.event_category === "PERFORMANCE"
-      ),
-    ],
-    [manualEventActions]
+    () =>
+      phase === "dispatch"
+        ? [
+            addRouteAction,
+            removeRouteAction,
+            ...manualEventActions.filter(
+              (action) =>
+                action.event_category === "OPERATIONS" ||
+                action.event_category === "COVERAGE" ||
+                action.event_category === "PERFORMANCE"
+            ),
+          ]
+        : manualEventActions.filter(
+            (action) =>
+              action.event_category === "OPERATIONS" ||
+              action.event_category === "COVERAGE" ||
+              action.event_category === "PERFORMANCE"
+          ),
+    [manualEventActions, phase]
   );
 
   const generalActions = useMemo(
@@ -311,10 +334,14 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
       >
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
           <div>
-            <p className="eyebrow">Dispatch action</p>
-            <h2 className="app-card__title">Add dispatch context</h2>
+            <p className="eyebrow">{phase === "dispatch" ? "Dispatch action" : "Delivery action"}</p>
+            <h2 className="app-card__title">
+              {phase === "dispatch" ? "Manage the sort and handoff" : "Manage delivery context"}
+            </h2>
             <p className="app-card__body">
-              Choose an action, link the right person or route when needed, then add context.
+              {phase === "dispatch"
+                ? "Choose an action, link the right person or route when needed, or hand the operation to Delivery."
+                : "Choose a delivery-relevant action, link the right person or route, then add context."}
             </p>
           </div>
 
@@ -323,6 +350,7 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
           </button>
         </div>
 
+        {phase === "dispatch" ? (
         <form onSubmit={handleSubmit} style={{ marginTop: 16, display: "grid", gap: 16 }}>
           <section style={{ display: "grid", gap: 10 }}>
             <p className="eyebrow">Step 1 · Choose action type</p>
@@ -459,6 +487,93 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
             </button>
           </div>
         </form>
+        ) : (
+          <section style={{ marginTop: 18, display: "grid", gap: 14 }}>
+            <div
+              style={{
+                border: "1px solid #d6dfeb",
+                borderRadius: 14,
+                background: "#f8fafc",
+                padding: 14,
+              }}
+            >
+              <p className="eyebrow" style={{ marginBottom: 4 }}>Delivery catalog stub</p>
+              <strong>Delivery actions are not yet governed</strong>
+              <p className="app-card__body" style={{ marginBottom: 0 }}>
+                This overlay remains available after handoff without reusing or mutating the Dispatch action catalog.
+              </p>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: 10,
+              }}
+            >
+              {[
+                ["Route exception", "Record a delivery issue against a Route Unit."],
+                ["Driver support", "Record assistance, recovery, or a field escalation."],
+                ["Service note", "Attach governed delivery context and evidence."],
+                ["End-of-day review", "Resolve completion and recovery exceptions."],
+              ].map(([label, description]) => (
+                <button
+                  key={label}
+                  type="button"
+                  disabled
+                  style={{
+                    border: "1px solid #d6dfeb",
+                    borderRadius: 12,
+                    background: "#fff",
+                    padding: 12,
+                    color: "#334155",
+                    textAlign: "left",
+                    opacity: 0.72,
+                  }}
+                >
+                  <strong>{label}</strong>
+                  <span style={{ display: "block", marginTop: 5, color: "#64748b", fontSize: 12, lineHeight: 1.4 }}>
+                    {description}
+                  </span>
+                  <span style={{ display: "block", marginTop: 8, color: "#7c8aa0", fontSize: 10, fontWeight: 900, textTransform: "uppercase" }}>
+                    In design
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {phase === "dispatch" && onHandoffToDelivery ? (
+          <section
+            style={{
+              marginTop: 18,
+              paddingTop: 16,
+              borderTop: "1px solid #e6edf5",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 14,
+              flexWrap: "wrap",
+            }}
+          >
+            <div>
+              <p className="eyebrow" style={{ marginBottom: 4 }}>Operational handoff</p>
+              <strong>Move today’s operation into Delivery</strong>
+              <p className="app-card__body" style={{ marginBottom: 0 }}>
+                Locks sort and assignment actions while preserving the event history.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="button"
+              onClick={() => void onHandoffToDelivery()}
+              disabled={handoffSaving || saving}
+            >
+              {handoffSaving ? "Handing off…" : "Handoff to delivery"}
+            </button>
+          </section>
+        ) : null}
       </section>
     </div>
   );

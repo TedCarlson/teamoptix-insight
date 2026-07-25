@@ -7,6 +7,10 @@ export type DswCurrentRow = {
   vscan_packages: number;
   planned_delivery_stops: number;
   planned_pickup_stops: number;
+  actual_delivery_stops?: number;
+  actual_delivery_packages?: number;
+  actual_pickup_stops?: number;
+  actual_pickup_packages?: number;
 };
 
 export type DswDispatchSignal = {
@@ -14,6 +18,10 @@ export type DswDispatchSignal = {
   packages: number;
   timeCritical: number;
   pickupStops: number;
+  actualDeliveryStops: number;
+  actualDeliveryPackages: number;
+  actualPickupStops: number;
+  actualPickupPackages: number;
   title: string;
 };
 
@@ -60,6 +68,10 @@ export function buildDswDispatchSignals(routes: DispatchRoute[], rows: DswCurren
     const deliveryStops = Number(row.planned_delivery_stops ?? 0);
     const packages = Number(row.vscan_packages ?? 0);
     const pickupStops = Number(row.planned_pickup_stops ?? 0);
+    const actualDeliveryStops = Number(row.actual_delivery_stops ?? 0);
+    const actualDeliveryPackages = Number(row.actual_delivery_packages ?? 0);
+    const actualPickupStops = Number(row.actual_pickup_stops ?? 0);
+    const actualPickupPackages = Number(row.actual_pickup_packages ?? 0);
     const timeCritical = 0;
 
     dswSignalsByRouteKey[route.route_key] = {
@@ -67,7 +79,11 @@ export function buildDswDispatchSignals(routes: DispatchRoute[], rows: DswCurren
       packages,
       timeCritical,
       pickupStops,
-      title: `${deliveryStops} delivery stops · ${packages} scanned packages · ${pickupStops} pickup stops`,
+      actualDeliveryStops,
+      actualDeliveryPackages,
+      actualPickupStops,
+      actualPickupPackages,
+      title: `${actualDeliveryStops}/${deliveryStops} delivery stops · ${actualDeliveryPackages}/${packages} delivered packages · ${actualPickupStops}/${pickupStops} pickups`,
     };
 
     dswTotals.matchedRoutes += 1;

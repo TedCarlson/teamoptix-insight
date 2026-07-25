@@ -13,7 +13,7 @@
   --radius-pill: 999px;
   --shadow-sm: 0 8px 24px rgba(15, 23, 42, 0.06);
   --shadow-md: 0 16px 44px rgba(15, 23, 42, 0.07);
-  --app-page: min(1440px, calc(100vw - 32px));
+  --app-page: min(1600px, calc(100vw - 36px));
   --app-page-narrow: min(960px, calc(100vw - 24px));
   --max-page: var(--app-page);
 }
@@ -643,7 +643,7 @@ h1 {
 /* Unified navigation chrome */
 .app-nav-shell {
   width: 100%;
-  padding: 12px 20px 0;
+  padding: 12px 18px 0;
 }
 
 .app-nav-inner {
@@ -2361,7 +2361,7 @@ body {
   align-items:center;
   justify-content:space-between;
   gap:14px;
-  width:min(1400px,calc(100% - 32px));
+  width: var(--app-page);
   margin:16px auto 10px;
 }
 
@@ -2400,7 +2400,7 @@ body {
   margin: -2px auto 12px;
   overflow-x: auto;
   padding: 10px 0 0;
-  width: min(1400px, calc(100% - 32px));
+  width: var(--app-page);
 }
 
 .teamoptix-subrail__link {
@@ -3997,7 +3997,7 @@ body {
 .app-nav-shell {
   display: grid;
   gap: 0 !important;
-  padding: 12px 20px 0;
+  padding: 12px 18px 0;
 }
 
 .app-workspace-rail {

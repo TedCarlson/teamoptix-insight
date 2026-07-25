@@ -1,8 +1,9 @@
-import { redirect } from "next/navigation";
+import OperationsWorkspacePage from "@/features/operations/workspace/OperationsWorkspacePage";
 
 export default async function OperationsPage(props: {
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await props.params;
-  redirect(`/company/${slug}/operations/dispatch`);
+
+  return <OperationsWorkspacePage slug={slug} />;
 }
