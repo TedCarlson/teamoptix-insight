@@ -111,7 +111,7 @@ type Props = {
   open: boolean;
   slug: string;
   serviceDate: string;
-  surfaceLabel: "Dispatch" | "Service";
+  surfaceLabel: "Dispatch" | "Service" | "Operations";
   onClose: () => void;
 };
 

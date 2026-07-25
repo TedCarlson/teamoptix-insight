@@ -23,6 +23,8 @@ import { DispatchEventOverlay } from "@/features/dispatch/components/DispatchEve
 import RouteHealthOverlay, {
   type ManifestRouteHealthCard,
 } from "@/features/operations/manifests/components/RouteHealthOverlay";
+import ExpressReportOverlay from "@/features/operations/manifests/components/ExpressReportOverlay";
+import ComplianceReportOverlay from "@/features/operations/components/ComplianceReportOverlay";
 import {
   routeLabel,
   todayIso,
@@ -32,8 +34,6 @@ import {
   type DispatchRoute,
   type Seat,
 } from "@/features/dispatch/lib/dispatchSupport";
-
-type Horizon = "operations" | "planning";
 
 type OperationalPhase =
   | "needs_driver"
@@ -72,17 +72,6 @@ const activeCollectionStatuses = new Set([
   "ARTIFACTS_READY",
   "INGESTING",
 ]);
-
-const horizonCopy: Record<Horizon, { label: string }> = {
-  operations: {
-    label: "Today’s Operation",
-  },
-  planning: {
-    label: "Tomorrow’s Planning",
-  },
-};
-
-const horizonOrder: Horizon[] = ["operations", "planning"];
 
 const phaseCopy: Record<
   OperationalPhase,
@@ -217,7 +206,6 @@ function Metric(props: {
 function RouteUnit(props: {
   route: DispatchRoute;
   selected: boolean;
-  horizon: Horizon;
   phase: OperationalPhase;
   plan?: ReturnType<typeof buildDroPlanSignals>["planSignalsByRouteKey"][string];
   delivery?: ReturnType<typeof buildDswDispatchSignals>["dswSignalsByRouteKey"][string];
@@ -228,7 +216,6 @@ function RouteUnit(props: {
   const {
     route,
     selected,
-    horizon,
     phase,
     plan,
     delivery,
@@ -356,49 +343,34 @@ function RouteUnit(props: {
 
       <button
         type="button"
-        className={`ou-activity ${
-          horizon === "operations" && express?.packages ? "has-four" : ""
-        }`}
+        className={`ou-activity ${express?.packages ? "has-four" : ""}`}
         onClick={(event) => {
           event.stopPropagation();
           onSelect();
         }}
       >
-        {horizon === "operations" ? (
-          <>
-            <Metric
-              label="Stops"
-              value={`${deliveredStops}/${visibleStops || "—"}`}
-            />
-            <Metric
-              label="Packages"
-              value={`${delivered}/${visiblePackages || "—"}`}
-            />
-            <Metric
-              label="PU"
-              value={`${completedPickupStops}/${pickupStops}`}
-            />
-            {express?.packages ? (
-              <Metric
-                label="Express"
-                value={`${expressCompleted}/${express.packages}`}
-                className={expressClass}
-              />
-            ) : null}
-          </>
+        <Metric
+          label="Stops"
+          value={`${deliveredStops}/${visibleStops || "—"}`}
+        />
+        <Metric
+          label="Packages"
+          value={`${delivered}/${visiblePackages || "—"}`}
+        />
+        <Metric
+          label="PU"
+          value={`${completedPickupStops}/${pickupStops}`}
+        />
+        {express?.packages ? (
+          <Metric
+            label="Express"
+            value={`${expressCompleted}/${express.packages}`}
+            className={expressClass}
+          />
         ) : null}
-
-        {horizon === "planning" ? (
-          <>
-            <Metric label="Stops" value={plan?.stops ?? "—"} />
-            <Metric label="Packages" value={plan?.packages ?? "—"} />
-            <Metric label="Miles" value={plan?.milesLabel ?? "—"} />
-          </>
-        ) : null}
-
       </button>
 
-      {horizon === "operations" && hasDeliverySignal ? (
+      {hasDeliverySignal ? (
         <div
           className="ou-progress-road"
           role="img"
@@ -522,10 +494,11 @@ function AttendanceOverlay(props: {
 
 export default function OperationsWorkspacePage({ slug }: { slug: string }) {
   const serviceDate = todayIso();
-  const [horizon, setHorizon] = useState<Horizon>("operations");
   const [selectedRouteKey, setSelectedRouteKey] = useState<string | null>(null);
   const [selectedSeat, setSelectedSeat] = useState<Seat>("driver");
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
+  const [seatCandidateId, setSeatCandidateId] = useState("");
+  const [savingSeat, setSavingSeat] = useState(false);
   const [expressRows, setExpressRows] = useState<RouteHealthRow[]>([]);
   const [savingPresencePersonId, setSavingPresencePersonId] = useState<
     string | null
@@ -533,6 +506,8 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
   const [eventOverlayOpen, setEventOverlayOpen] = useState(false);
   const [savingEvent, setSavingEvent] = useState(false);
   const [attendanceOpen, setAttendanceOpen] = useState(false);
+  const [complianceReportOpen, setComplianceReportOpen] = useState(false);
+  const [expressReportOpen, setExpressReportOpen] = useState(false);
   const [routeEvidenceOpen, setRouteEvidenceOpen] = useState(false);
   const [routeFilter, setRouteFilter] = useState<RouteFilter>("all");
   const [handoffSaving, setHandoffSaving] = useState(false);
@@ -548,6 +523,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
     error,
     eventTypes,
     loading,
+    refreshKey,
     refreshWorkspace,
     routeSortKey,
     rosterRows,
@@ -683,7 +659,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
     return () => {
       active = false;
     };
-  }, [serviceDate, slug]);
+  }, [refreshKey, serviceDate, slug]);
 
   const expressByRouteKey = useMemo(() => {
     const index = new Map<string, RouteHealthRow>();
@@ -815,6 +791,28 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
     selectedPerson?.roster_member_id &&
       arrivedPersonIds.has(selectedPerson.roster_member_id)
   );
+  const assignedSeatPeople = selectedRoute
+    ? selectedSeat === "driver"
+      ? selectedRoute.driver
+        ? [selectedRoute.driver]
+        : []
+      : selectedSeat === "helper"
+        ? selectedRoute.helpers
+        : selectedRoute.trainees
+    : [];
+  const seatCandidates = useMemo(() => {
+    const candidates = new Map<string, DispatchPerson>();
+    [...allPeople, ...unscheduledDrivers].forEach((person) => {
+      candidates.set(person.roster_member_id, person);
+    });
+    return [...candidates.values()].sort((a, b) =>
+      a.full_name.localeCompare(b.full_name)
+    );
+  }, [allPeople, unscheduledDrivers]);
+
+  useEffect(() => {
+    setSeatCandidateId("");
+  }, [selectedRouteKey, selectedSeat]);
 
   const assignmentByPersonId = useMemo(() => {
     const assignments = new Map<
@@ -909,6 +907,104 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
       selectedPerson.roster_member_id
     );
     void togglePersonPresence(selectedPerson, assignment);
+  }
+
+  async function saveSeatAssignment(
+    eventCode: string,
+    eventLabel: string,
+    person: DispatchPerson | null
+  ) {
+    if (
+      !selectedRoute ||
+      savingSeat ||
+      dispatchDay?.status === "LOCKED"
+    ) {
+      return;
+    }
+
+    try {
+      setSavingSeat(true);
+      setError(null);
+      const { ok, data } = await recordDispatchEvent({
+        slug,
+        dispatchDate: serviceDate,
+        payload: {
+          event_category: "ASSIGNMENT",
+          event_code: eventCode,
+          event_label: eventLabel,
+          route_key: selectedRoute.route_key,
+          route_label: routeLabel(selectedRoute),
+          to_route_key: selectedRoute.route_key,
+          to_route_label: routeLabel(selectedRoute),
+          seat: selectedSeat,
+          person_roster_member_id: person?.roster_member_id ?? null,
+          person_name: person?.full_name ?? null,
+          event_payload: {
+            source: "operational_unit_seat_edit",
+          },
+        },
+      });
+
+      if (!ok) {
+        setError(data?.error ?? "Failed to update the route seat.");
+        return;
+      }
+      if (data?.event) {
+        setDispatchEvents((current) => [
+          ...current,
+          data.event as DispatchEventRow,
+        ]);
+      }
+      if (data?.dispatch_day) setDispatchDay(data.dispatch_day);
+      setSeatCandidateId("");
+    } catch {
+      setError("Failed to update the route seat.");
+    } finally {
+      setSavingSeat(false);
+    }
+  }
+
+  function assignSelectedSeat() {
+    const person =
+      seatCandidates.find(
+        (candidate) => candidate.roster_member_id === seatCandidateId
+      ) ?? null;
+    if (!person) return;
+
+    const suffix =
+      selectedSeat === "driver"
+        ? "DRIVER"
+        : selectedSeat === "helper"
+          ? "HELPER"
+          : "TRAINEE";
+    const label =
+      selectedSeat === "driver"
+        ? "Driver assigned"
+        : selectedSeat === "helper"
+          ? "Helper assigned"
+          : "Trainee assigned";
+    void saveSeatAssignment(`ASSIGN_${suffix}`, label, person);
+  }
+
+  function unassignSelectedSeat() {
+    const person = assignedSeatPeople.find(
+      (candidate) => candidate.roster_member_id === selectedPersonId
+    ) ?? assignedSeatPeople[0] ?? null;
+    if (!person) return;
+
+    const suffix =
+      selectedSeat === "driver"
+        ? "DRIVER"
+        : selectedSeat === "helper"
+          ? "HELPER"
+          : "TRAINEE";
+    const label =
+      selectedSeat === "driver"
+        ? "Driver unassigned"
+        : selectedSeat === "helper"
+          ? "Helper unassigned"
+          : "Trainee unassigned";
+    void saveSeatAssignment(`UNASSIGN_${suffix}`, label, person);
   }
 
   async function addManualDispatchEvent(payload: {
@@ -1109,7 +1205,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
 
   useEffect(() => {
     setRouteFilter("all");
-  }, [dispatchDay?.status, horizon]);
+  }, [dispatchDay?.status]);
 
   const visibleUnits = unitsWithPhase.filter(({ phase }) => {
     if (routeFilter === "all") return true;
@@ -1130,39 +1226,45 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         </span>
 
         <div className="ou-header-actions">
-          {horizon === "operations" ? (
-            <>
-              <button
-                type="button"
-                className="ou-attendance-action"
-                onClick={() => setAttendanceOpen(true)}
-                disabled={dispatchDay?.status === "LOCKED"}
-              >
-                Attendance
-              </button>
-              <button
-                type="button"
-                className="ou-dispatch-action"
-                onClick={() => setEventOverlayOpen(true)}
-              >
-                {dispatchDay?.status === "LOCKED"
-                  ? "Delivery action"
-                  : "Dispatch action"}
-              </button>
-            </>
-          ) : null}
-          <nav className="ou-lenses" aria-label="Operational horizon">
-            {horizonOrder.map((key) => (
-              <button
-                type="button"
-                key={key}
-                className={horizon === key ? "is-active" : ""}
-                onClick={() => setHorizon(key)}
-              >
-                {horizonCopy[key].label}
-              </button>
-            ))}
-          </nav>
+          <button
+            type="button"
+            className="ou-report-action"
+            onClick={() => setComplianceReportOpen(true)}
+          >
+            Compliance Report
+          </button>
+          <button
+            type="button"
+            className="ou-report-action"
+            onClick={() => setExpressReportOpen(true)}
+          >
+            Express Report
+          </button>
+          <button
+            type="button"
+            className="ou-report-action"
+            onClick={refreshWorkspace}
+            disabled={loading}
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
+          <button
+            type="button"
+            className="ou-attendance-action"
+            onClick={() => setAttendanceOpen(true)}
+            disabled={dispatchDay?.status === "LOCKED"}
+          >
+            Attendance
+          </button>
+          <button
+            type="button"
+            className="ou-dispatch-action"
+            onClick={() => setEventOverlayOpen(true)}
+          >
+            {dispatchDay?.status === "LOCKED"
+              ? "Delivery action"
+              : "Dispatch action"}
+          </button>
         </div>
       </header>
 
@@ -1182,20 +1284,18 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
 
           {loading ? <p className="ou-empty">Loading operational units…</p> : null}
 
-          {horizon === "operations" ? (
-            <nav className="ou-route-filters" aria-label="Filter route responsibilities">
-              {routeFilters.map((filter) => (
-                <button
-                  type="button"
-                  key={filter.key}
-                  className={routeFilter === filter.key ? "is-active" : ""}
-                  onClick={() => setRouteFilter(filter.key)}
-                >
-                  {filter.label}
-                </button>
-              ))}
-            </nav>
-          ) : null}
+          <nav className="ou-route-filters" aria-label="Filter route responsibilities">
+            {routeFilters.map((filter) => (
+              <button
+                type="button"
+                key={filter.key}
+                className={routeFilter === filter.key ? "is-active" : ""}
+                onClick={() => setRouteFilter(filter.key)}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </nav>
 
           <div className="ou-grid">
             {visibleUnits.map(({ route, phase }) => (
@@ -1203,7 +1303,6 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
                 key={route.route_key}
                 route={route}
                 selected={route.route_key === selectedRouteKey}
-                horizon={horizon}
                 phase={phase}
                 plan={planSignalsByRouteKey[route.route_key]}
                 delivery={dswSignalsByRouteKey[route.route_key]}
@@ -1266,7 +1365,6 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
               <Section title="Current responsibility">
                 <dl className="ou-facts">
                   <div><dt>State</dt><dd>{selectedEffectiveDriverName ? "In service" : "Unassigned"}</dd></div>
-                  <div><dt>Horizon</dt><dd>{horizonCopy[horizon].label}</dd></div>
                   <div><dt>Service date</dt><dd>{serviceDate}</dd></div>
                 </dl>
               </Section>
@@ -1345,6 +1443,57 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
                     <span><small>Trainee</small><strong>{selectedRoute.trainees.map((person) => person.full_name).join(", ") || "Open seat"}</strong></span>
                     <span>{selectedRoute.trainees.length ? "Manage" : "Add"}</span>
                   </button>
+                  <div className="ou-seat-editor">
+                    <select
+                      value={seatCandidateId}
+                      onChange={(event) => setSeatCandidateId(event.target.value)}
+                      disabled={savingSeat || dispatchDay?.status === "LOCKED"}
+                      aria-label={`Choose ${selectedSeat}`}
+                    >
+                      <option value="">
+                        Choose {selectedSeat}
+                      </option>
+                      {seatCandidates.map((person) => {
+                        const assignment = assignmentByPersonId.get(
+                          person.roster_member_id
+                        );
+                        return (
+                          <option
+                            key={person.roster_member_id}
+                            value={person.roster_member_id}
+                          >
+                            {person.full_name}
+                            {assignment
+                              ? ` · ${routeLabel(assignment.route)}`
+                              : " · Available"}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={assignSelectedSeat}
+                      disabled={
+                        !seatCandidateId ||
+                        savingSeat ||
+                        dispatchDay?.status === "LOCKED"
+                      }
+                    >
+                      {savingSeat ? "Saving…" : `Assign ${selectedSeat}`}
+                    </button>
+                    {assignedSeatPeople.length ? (
+                      <button
+                        type="button"
+                        className="is-destructive"
+                        onClick={unassignSelectedSeat}
+                        disabled={
+                          savingSeat || dispatchDay?.status === "LOCKED"
+                        }
+                      >
+                        Unassign {selectedSeat}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
                 <p className="ou-seat-note">
                   {selectedSeat === "driver"
@@ -1473,6 +1622,18 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         }
         onClose={() => setRouteEvidenceOpen(false)}
       />
+      <ExpressReportOverlay
+        open={expressReportOpen}
+        slug={slug}
+        serviceDate={serviceDate}
+        surfaceLabel="Operations"
+        onClose={() => setExpressReportOpen(false)}
+      />
+      <ComplianceReportOverlay
+        open={complianceReportOpen}
+        slug={slug}
+        onClose={() => setComplianceReportOpen(false)}
+      />
 
       <style jsx global>{`
         .ou-shell {
@@ -1500,7 +1661,8 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         .ou-header p, .ou-workspace-header p { margin: 0; color: #697386; }
         .ou-header-actions { display: flex; align-items: center; gap: 9px; }
         .ou-dispatch-action,
-        .ou-attendance-action {
+        .ou-attendance-action,
+        .ou-report-action {
           min-height: 40px;
           border: 1px solid #9aa8c3;
           border-radius: 10px;
@@ -1511,30 +1673,11 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
           cursor: pointer;
         }
         .ou-dispatch-action:hover,
-        .ou-attendance-action:hover { border-color: #5369a8; background: #f6f8fd; }
+        .ou-attendance-action:hover,
+        .ou-report-action:hover { border-color: #5369a8; background: #f6f8fd; }
         .ou-dispatch-action:disabled,
-        .ou-attendance-action:disabled { cursor: not-allowed; opacity: .58; }
-        .ou-lenses {
-          display: inline-flex;
-          padding: 4px;
-          border: 1px solid #d8dee8;
-          border-radius: 12px;
-          background: #fff;
-        }
-        .ou-lenses button {
-          border: 0;
-          border-radius: 8px;
-          background: transparent;
-          padding: 9px 14px;
-          color: #5d677a;
-          font-weight: 800;
-          cursor: pointer;
-        }
-        .ou-lenses button.is-active {
-          background: #eff6ff;
-          color: #1d4ed8;
-          box-shadow: inset 0 0 0 1px #1d4ed8;
-        }
+        .ou-attendance-action:disabled,
+        .ou-report-action:disabled { cursor: not-allowed; opacity: .58; }
         .ou-layout {
           max-width: 1600px;
           margin: 0 auto;
@@ -1592,8 +1735,8 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
           position: relative;
           isolation: isolate;
           display: grid;
-          gap: 11px;
-          padding: 13px;
+          gap: 7px;
+          padding: 9px 13px;
           border: 1px solid #dfe4ec;
           border-radius: 13px;
           background:
@@ -1662,7 +1805,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
           min-width: 0;
           border: 0;
           background: transparent;
-          padding: 2px 0;
+          padding: 0;
           color: inherit;
           text-align: left;
           cursor: pointer;
@@ -1694,21 +1837,11 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         .ou-signal.critical { background: #fce8e8; color: #9a3030; }
         .ou-progress-road {
           position: relative;
-          height: 25px;
-          margin: 0 -13px -13px;
+          height: 18px;
+          margin: 0 -13px -9px;
           overflow: hidden;
           border-top: 1px solid rgba(103, 58, 183, .18);
-          background:
-            linear-gradient(180deg, rgba(255,255,255,.18), transparent),
-            #dfe3e9;
-        }
-        .ou-progress-road::after {
-          content: "";
-          position: absolute;
-          left: 0;
-          right: 0;
-          top: 12px;
-          border-top: 1px dashed rgba(255,255,255,.82);
+          background: #dfe3e9;
         }
         .ou-progress-trail {
           position: absolute;
@@ -1716,19 +1849,18 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
           min-width: 3px;
           background: repeating-linear-gradient(
             115deg,
-            #5f259f 0 11px,
-            #5f259f 11px 15px,
-            #159f6e 15px 23px,
-            #ff6a13 23px 31px
+            #5f259f 0 9px,
+            #159f6e 9px 18px,
+            #ff6a13 18px 27px
           );
           transition: width 500ms cubic-bezier(.2,.8,.2,1);
         }
         .ou-progress-truck {
           position: absolute;
           z-index: 2;
-          top: 4px;
-          width: 28px;
-          height: 16px;
+          top: 1px;
+          width: 26px;
+          height: 15px;
           transform: translateX(-50%);
           filter: drop-shadow(0 2px 2px rgba(15,23,42,.34));
           transition: left 500ms cubic-bezier(.2,.8,.2,1);
@@ -1745,8 +1877,8 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
           position: absolute;
           z-index: 3;
           right: 4px;
-          top: 2px;
-          font-size: 15px;
+          top: 1px;
+          font-size: 13px;
           line-height: 1;
           filter: drop-shadow(0 1px 1px rgba(255,255,255,.7));
         }
@@ -1757,7 +1889,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
           gap: 6px;
           border: 0;
           background: transparent;
-          padding: 1px 0;
+          padding: 0;
           color: #3f4b5e;
           text-align: left;
           overflow: hidden;
@@ -1808,9 +1940,17 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
           grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 5px;
         }
-        .ou-activity.has-four .ou-metric { padding: 8px 6px; }
+        .ou-activity.has-four .ou-metric { padding: 6px; }
         .ou-activity.has-four .ou-metric strong { font-size: 12px; }
-        .ou-metric { display: grid; gap: 1px; padding: 8px; border-radius: 9px; background: #f5f7fa; }
+        .ou-metric {
+          display: grid;
+          place-items: center;
+          gap: 1px;
+          padding: 6px 8px;
+          border-radius: 9px;
+          background: #f5f7fa;
+          text-align: center;
+        }
         .ou-metric strong { font-size: 14px; }
         .ou-metric small { color: #7a8495; font-size: 9px; line-height: 1.2; }
         .ou-express-metric {
@@ -1929,6 +2069,41 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         .ou-seats small { color: #7a8495; font-size: 9px; letter-spacing: .07em; text-transform: uppercase; }
         .ou-seats strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .ou-seats > button > span:last-child { color: #5369a8; font-size: 11px; font-weight: 850; }
+        .ou-seat-editor {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 7px;
+          padding-top: 3px;
+        }
+        .ou-seat-editor select,
+        .ou-seat-editor button {
+          min-height: 36px;
+          border: 1px solid #d8dee8;
+          border-radius: 9px;
+          background: #fff;
+          padding: 0 10px;
+          color: #344056;
+          font: inherit;
+          font-size: 11px;
+          font-weight: 800;
+        }
+        .ou-seat-editor select { min-width: 0; }
+        .ou-seat-editor button { cursor: pointer; }
+        .ou-seat-editor button:hover:not(:disabled) {
+          border-color: #5369a8;
+          background: #f6f8fd;
+        }
+        .ou-seat-editor button.is-destructive {
+          grid-column: 1 / -1;
+          color: #a32929;
+          border-color: #efc7c7;
+          background: #fffafa;
+        }
+        .ou-seat-editor select:disabled,
+        .ou-seat-editor button:disabled {
+          cursor: not-allowed;
+          opacity: .58;
+        }
         .ou-seat-note { margin: 9px 0 0; color: #7a8495; font-size: 12px; line-height: 1.4; }
         .ou-delivery-evidence { display: grid; gap: 9px; }
         .ou-delivery-evidence > div {
@@ -2094,7 +2269,6 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
           .ou-shell { padding: 10px; }
           .ou-header { align-items: stretch; flex-direction: column; }
           .ou-header-actions { align-items: stretch; flex-direction: column; }
-          .ou-lenses { display: grid; grid-template-columns: repeat(2, 1fr); }
           .ou-grid { grid-template-columns: 1fr; }
           .ou-workspace { inset: 0; border: 0; border-radius: 0; }
           .ou-workspace-body { max-height: calc(100vh - 100px); }
