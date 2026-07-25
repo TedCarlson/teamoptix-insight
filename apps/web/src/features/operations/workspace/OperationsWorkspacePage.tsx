@@ -157,6 +157,11 @@ function routePhase(
   const pickupsComplete = Number(delivery?.actualPickupStops ?? 0);
   const pickupsPlanned = Number(delivery?.pickupStops ?? 0);
 
+  // Match Service's authoritative DSW end-of-day rule. A returned route may
+  // still contain open service work, so return evidence takes precedence over
+  // completion inferred from delivered totals.
+  if (delivery?.returned) return "complete";
+
   if (
     tendered > 0 &&
     delivered >= tendered &&
@@ -310,15 +315,24 @@ function RouteUnit(props: {
             hasException || phasePresentation.posture === "attention"
               ? "needs-attention"
               : phasePresentation.posture
-          }`}
+          } ${phase === "complete" ? "is-complete" : ""}`}
           onClick={(event) => {
             event.stopPropagation();
             onOpenSeat("driver", route.driver?.roster_member_id);
           }}
           aria-label={`${needsDriver ? "Manage open seats" : "Manage route assignment"} for ${orderedRouteLabel(route, routeSortKey)}`}
         >
-          {phasePresentation.label}
-          {completedIls ? ` · ILS ${completedIls}` : ""}
+          {phase === "complete" ? (
+            <span className="ou-complete-copy">
+              <strong>{phasePresentation.label}</strong>
+              <small>
+                {servicePct}% stops
+                {completedIls ? ` · ${completedIls} ILS` : ""}
+              </small>
+            </span>
+          ) : (
+            phasePresentation.label
+          )}
         </button>
       </div>
 
@@ -1532,7 +1546,9 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
                   <span>Delivery · {selectedDelivery?.deliveryStops ?? "—"} stops · {selectedDelivery?.pickupStops ?? "—"} pickups</span>
                   <span>
                     FedEx scanner ·{" "}
-                    {selectedDelivery?.driverName
+                    {selectedDelivery?.returned
+                      ? `Returned · ${selectedDelivery.driverName ?? "Driver"}`
+                      : selectedDelivery?.driverName
                       ? `${selectedDelivery.scannerRole === "helper" ? "Helper" : selectedDelivery.scannerRole === "trainee" ? "Trainee" : "Driver"} logged in · ${selectedDelivery.driverName}`
                       : "No login reported"}
                   </span>
@@ -1547,7 +1563,11 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
                       <li>
                         <time>DSW</time>
                         <span>
-                          <strong>FedEx scanner login</strong>
+                          <strong>
+                            {selectedDelivery.returned
+                              ? "FedEx route returned"
+                              : "FedEx scanner login"}
+                          </strong>
                           <small>
                             {selectedDelivery.driverName} ·{" "}
                             {selectedDelivery.scannerRole === "helper"
@@ -1555,7 +1575,10 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
                               : selectedDelivery.scannerRole === "trainee"
                                 ? "trainee"
                                 : "driver"}{" "}
-                            · live service evidence
+                            ·{" "}
+                            {selectedDelivery.returned
+                              ? "end-of-day DSW evidence"
+                              : "live service evidence"}
                             {selectedDelivery.generatedAtText
                               ? ` · ${selectedDelivery.generatedAtText}`
                               : ""}
@@ -1856,6 +1879,31 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
           margin-right: 5px;
           border-radius: 999px;
           background: rgb(var(--ou-posture));
+        }
+        .ou-posture.is-complete {
+          display: flex;
+          align-items: center;
+          flex: 0 0 auto;
+          line-height: 1;
+        }
+        .ou-posture.is-complete::before {
+          width: 6px;
+          height: 6px;
+          margin-right: 4px;
+        }
+        .ou-complete-copy {
+          display: grid;
+          gap: 2px;
+          text-align: left;
+        }
+        .ou-complete-copy strong {
+          font-size: 9px;
+          line-height: 1;
+        }
+        .ou-complete-copy small {
+          font-size: 7.5px;
+          font-weight: 750;
+          line-height: 1;
         }
         button.ou-posture { cursor: pointer; }
         .ou-posture { color: rgb(var(--ou-posture)); }

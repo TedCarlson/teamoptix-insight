@@ -18,6 +18,11 @@ export type DswCurrentRow = {
   actual_pickup_packages?: number;
   ils_percent?: number | string | null;
   miles?: number | null;
+  normalized_row_json?: {
+    miles?: number | null;
+    on_road_hours?: string | number | null;
+    on_duty_hours?: string | number | null;
+  } | null;
 };
 
 export type DswDispatchSignal = {
@@ -36,6 +41,9 @@ export type DswDispatchSignal = {
   actualPickupPackages: number;
   ilsPercent: number | string | null;
   miles: number | null;
+  onRoadHours: string | number | null;
+  onDutyHours: string | number | null;
+  returned: boolean;
   title: string;
 };
 
@@ -110,6 +118,11 @@ export function buildDswDispatchSignals(routes: DispatchRoute[], rows: DswCurren
     const actualPickupStops = Number(row.actual_pickup_stops ?? 0);
     const actualPickupPackages = Number(row.actual_pickup_packages ?? 0);
     const timeCritical = 0;
+    const miles = row.miles ?? row.normalized_row_json?.miles ?? null;
+    const onRoadHours = row.normalized_row_json?.on_road_hours ?? null;
+    const onDutyHours = row.normalized_row_json?.on_duty_hours ?? null;
+    const returned =
+      miles !== null && onRoadHours !== null && onDutyHours !== null;
 
     dswSignalsByRouteKey[route.route_key] = {
       batchId: rowKey(row.batch_id) || null,
@@ -130,7 +143,10 @@ export function buildDswDispatchSignals(routes: DispatchRoute[], rows: DswCurren
       actualPickupStops,
       actualPickupPackages,
       ilsPercent: row.ils_percent ?? null,
-      miles: row.miles ?? null,
+      miles,
+      onRoadHours,
+      onDutyHours,
+      returned,
       title: `${actualDeliveryStops}/${deliveryStops} delivery stops · ${actualDeliveryPackages}/${packages} delivered packages · ${actualPickupStops}/${pickupStops} pickups`,
     };
 
