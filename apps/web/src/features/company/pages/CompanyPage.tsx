@@ -16,6 +16,7 @@ type CompanyRecord = {
   company_slug: string;
   company_status: string;
   industry_label: string | null;
+  authorized_operator_name: string | null;
   contact_email: string | null;
   contact_phone: string | null;
   website_url: string | null;
@@ -249,6 +250,7 @@ export default function CompanyPage() {
   const [pageError, setPageError] = useState<string | null>(null);
 
   const [contactEmail, setContactEmail] = useState("");
+  const [authorizedOperatorName, setAuthorizedOperatorName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [companySizeBand, setCompanySizeBand] = useState("");
@@ -305,6 +307,7 @@ export default function CompanyPage() {
 
         const record = data?.company ?? null;
         setCompany(record);
+        setAuthorizedOperatorName(record?.authorized_operator_name ?? "");
         setContactEmail(record?.contact_email ?? "");
         setContactPhone(record?.contact_phone ?? "");
         setWebsiteUrl(record?.website_url ?? "");
@@ -426,6 +429,7 @@ export default function CompanyPage() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
+          authorized_operator_name: authorizedOperatorName,
           contact_email: contactEmail,
           contact_phone: contactPhone,
           website_url: websiteUrl,
@@ -444,6 +448,8 @@ export default function CompanyPage() {
         prev
           ? {
               ...prev,
+              authorized_operator_name:
+                data.company?.authorized_operator_name ?? authorizedOperatorName,
               contact_email: data.company?.contact_email ?? contactEmail,
               contact_phone: data.company?.contact_phone ?? contactPhone,
               website_url: data.company?.website_url ?? websiteUrl,
@@ -735,6 +741,7 @@ export default function CompanyPage() {
             section={activeConfigSection}
             company={company}
             canEditCompany={canEditCompany}
+            authorizedOperatorName={authorizedOperatorName}
             contactEmail={contactEmail}
             contactPhone={contactPhone}
             websiteUrl={websiteUrl}
@@ -744,6 +751,7 @@ export default function CompanyPage() {
             saveMessage={saveMessage}
             sizeOptions={SIZE_OPTIONS}
             onContactEmailChange={setContactEmail}
+            onAuthorizedOperatorNameChange={setAuthorizedOperatorName}
             onContactPhoneChange={setContactPhone}
             onWebsiteUrlChange={setWebsiteUrl}
             onCompanySizeBandChange={setCompanySizeBand}

@@ -11,7 +11,7 @@ export async function GET(
     const { slug } = await context.params;
     const supabase = await getSupabaseServerClient();
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from("companies_with_industry")
       .select(
         [
@@ -20,6 +20,7 @@ export async function GET(
           "company_slug",
           "company_status",
           "industry_label",
+          "authorized_operator_name",
           "contact_email",
           "contact_phone",
           "website_url",
@@ -29,6 +30,32 @@ export async function GET(
       )
       .eq("company_slug", slug)
       .single();
+
+    if (error && error.message.includes("authorized_operator_name")) {
+      const fallback = await supabase
+        .from("companies_with_industry")
+        .select(
+          [
+            "id",
+            "company_name",
+            "company_slug",
+            "company_status",
+            "industry_label",
+            "contact_email",
+            "contact_phone",
+            "website_url",
+            "company_size_band",
+            "created_at",
+          ].join(", ")
+        )
+        .eq("company_slug", slug)
+        .single();
+
+      data = fallback.data
+        ? Object.assign({}, fallback.data, { authorized_operator_name: null })
+        : null;
+      error = fallback.error;
+    }
 
     if (error || !data) {
       return NextResponse.json(
@@ -66,6 +93,7 @@ export async function PATCH(
       contact_phone,
       website_url,
       company_size_band,
+      authorized_operator_name,
     } = body ?? {};
 
     const {
@@ -105,48 +133,34 @@ export async function PATCH(
       );
     }
 
-    const { data: updated, error: updateError } = await supabase
-      .from("companies")
-      .update({
-        contact_email: contact_email.trim(),
-        contact_phone:
-          typeof contact_phone === "string" && contact_phone.trim()
-            ? contact_phone.trim()
-            : null,
-        website_url:
-          typeof website_url === "string" && website_url.trim()
-            ? website_url.trim()
-            : null,
-        company_size_band:
-          typeof company_size_band === "string" && company_size_band.trim()
-            ? company_size_band.trim()
-            : null,
-      })
-      .eq("company_slug", slug)
-      .select(
-        [
-          "id",
-          "company_name",
-          "company_slug",
-          "company_status",
-          "contact_email",
-          "contact_phone",
-          "website_url",
-          "company_size_band",
-          "created_at",
-        ].join(", ")
-      )
-      .single();
-
-    if (updateError || !updated) {
+    if (!authorized_operator_name || typeof authorized_operator_name !== "string") {
       return NextResponse.json(
-        { error: updateError?.message ?? "Failed to update company." },
+        { error: "Authorized Operator full name is required." },
         { status: 400 }
       );
     }
 
+    const { data: result, error: updateError } = await supabase.rpc(
+      "update_company_profile",
+      {
+        p_company_slug: slug,
+        p_authorized_operator_name: authorized_operator_name,
+        p_contact_email: contact_email,
+        p_contact_phone: typeof contact_phone === "string" ? contact_phone : "",
+        p_website_url: typeof website_url === "string" ? website_url : "",
+        p_company_size_band: typeof company_size_band === "string" ? company_size_band : "",
+      }
+    );
+
+    if (updateError || result?.error || !result?.company) {
+      return NextResponse.json(
+        { error: updateError?.message ?? result?.error ?? "Failed to update company." },
+        { status: result?.error === "Forbidden." ? 403 : 400 }
+      );
+    }
+
     return NextResponse.json(
-      { company: updated },
+      { company: result.company },
       { status: 200 }
     );
   } catch (error) {

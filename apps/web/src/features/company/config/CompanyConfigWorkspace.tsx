@@ -13,6 +13,7 @@ type CompanyRecord = {
   company_slug: string;
   company_status: string;
   industry_label: string | null;
+  authorized_operator_name: string | null;
   contact_email: string | null;
   contact_phone: string | null;
   website_url: string | null;
@@ -25,6 +26,7 @@ type CompanyConfigWorkspaceProps = {
   section: CompanyConfigSection;
   company: CompanyRecord | null;
   canEditCompany: boolean;
+  authorizedOperatorName: string;
   contactEmail: string;
   contactPhone: string;
   websiteUrl: string;
@@ -34,6 +36,7 @@ type CompanyConfigWorkspaceProps = {
   saveMessage: string | null;
   sizeOptions: string[];
   onContactEmailChange: (value: string) => void;
+  onAuthorizedOperatorNameChange: (value: string) => void;
   onContactPhoneChange: (value: string) => void;
   onWebsiteUrlChange: (value: string) => void;
   onCompanySizeBandChange: (value: string) => void;
@@ -79,6 +82,13 @@ function CompanySection(props: CompanyConfigWorkspaceProps) {
           >
             <input value={props.company?.company_name ?? ""} disabled style={inputStyleDisabled} />
             <input value={props.company?.company_slug ?? ""} disabled style={inputStyleDisabled} />
+            <input
+              value={props.authorizedOperatorName}
+              onChange={(e) => props.onAuthorizedOperatorNameChange(e.target.value)}
+              placeholder="Authorized Operator full name"
+              style={inputStyle}
+              required
+            />
             <input
               value={props.websiteUrl}
               onChange={(e) => props.onWebsiteUrlChange(e.target.value)}

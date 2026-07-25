@@ -7,6 +7,18 @@ type RosterPerson = { roster_member_id: string; full_name: string; email: string
 type OperatorProfile = { profile_id: string; display_name: string; email: string };
 type Payload = { can_manage: boolean; roles: Role[]; roster: RosterPerson[]; operator_profiles: OperatorProfile[] };
 
+function visibleRole(role: Role): Role | null {
+  if (role.role_key === "operations_support") return null;
+  if (role.role_key === "dispatch_coordinator") {
+    return {
+      ...role,
+      role_label: "HR",
+      description: "Owner of workforce administration, employee support, and people operations.",
+    };
+  }
+  return role;
+}
+
 export default function CompanyLeadershipManager({ slug }: { slug: string }) {
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,9 +43,13 @@ export default function CompanyLeadershipManager({ slug }: { slug: string }) {
 
   useEffect(() => { void load(); }, [load]);
 
-  const assignedCount = useMemo(
-    () => data?.roles.filter((role) => Boolean(role.profile_id || role.roster_member_id)).length ?? 0,
+  const roles = useMemo(
+    () => data?.roles.map(visibleRole).filter((role): role is Role => role !== null) ?? [],
     [data]
+  );
+  const assignedCount = useMemo(
+    () => roles.filter((role) => Boolean(role.profile_id || role.roster_member_id)).length,
+    [roles]
   );
 
   async function assign(role: Role, selectedId: string) {
@@ -75,8 +91,8 @@ export default function CompanyLeadershipManager({ slug }: { slug: string }) {
     <section style={{ display: "grid", gap: 14 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
         <div className="context-stat"><span className="context-stat__label">Assigned</span><strong>{assignedCount}</strong></div>
-        <div className="context-stat"><span className="context-stat__label">Open</span><strong>{data.roles.length - assignedCount}</strong></div>
-        <div className="context-stat"><span className="context-stat__label">Leadership roles</span><strong>{data.roles.length}</strong></div>
+        <div className="context-stat"><span className="context-stat__label">Open</span><strong>{roles.length - assignedCount}</strong></div>
+        <div className="context-stat"><span className="context-stat__label">Leadership roles</span><strong>{roles.length}</strong></div>
       </div>
 
       <div style={{ border: "1px solid #bfdbfe", background: "#eff6ff", borderRadius: 12, padding: 12, color: "#1e3a8a", fontSize: 13 }}>
@@ -84,7 +100,7 @@ export default function CompanyLeadershipManager({ slug }: { slug: string }) {
       </div>
 
       <div style={{ display: "grid", gap: 8 }}>
-        {data.roles.map((role) => {
+        {roles.map((role) => {
           const isOperator = role.role_key === "authorized_operator";
           const assignedId = isOperator ? role.profile_id : role.roster_member_id;
           return (
