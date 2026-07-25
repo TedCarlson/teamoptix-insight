@@ -10,6 +10,7 @@ import {
   buildScheduledRosterIds,
   buildUnscheduledDrivers,
   createRouteSorter,
+  orderedRouteLabel,
 } from "@/features/dispatch/lib/dispatchSelectors";
 import { buildAssignmentMapFromRoutesAndEvents } from "@/features/dispatch/lib/dispatchEventReducer";
 import { buildDroPlanSignals } from "@/features/dispatch/lib/droPlanSignals";
@@ -26,7 +27,6 @@ import RouteHealthOverlay, {
 import ExpressReportOverlay from "@/features/operations/manifests/components/ExpressReportOverlay";
 import ComplianceReportOverlay from "@/features/operations/components/ComplianceReportOverlay";
 import {
-  routeLabel,
   todayIso,
   type DispatchDayRow,
   type DispatchEventRow,
@@ -93,6 +93,17 @@ function normalize(value: string | null | undefined) {
 
 function personName(person: DispatchPerson | null) {
   return person?.full_name || "Needs driver";
+}
+
+function formatIls(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === "") return null;
+  const raw =
+    typeof value === "number"
+      ? value
+      : Number(String(value).replace("%", "").trim());
+  if (!Number.isFinite(raw)) return null;
+  const percent = raw <= 1 ? raw * 100 : raw;
+  return `${percent.toFixed(1).replace(/\.0$/, "")}%`;
 }
 
 function eventTime(value: string) {
@@ -205,6 +216,7 @@ function Metric(props: {
 
 function RouteUnit(props: {
   route: DispatchRoute;
+  routeSortKey: "route_name" | "current_wa_num";
   selected: boolean;
   phase: OperationalPhase;
   plan?: ReturnType<typeof buildDroPlanSignals>["planSignalsByRouteKey"][string];
@@ -215,6 +227,7 @@ function RouteUnit(props: {
 }) {
   const {
     route,
+    routeSortKey,
     selected,
     phase,
     plan,
@@ -259,6 +272,8 @@ function RouteUnit(props: {
     delivered > 0 ||
     Number(delivery?.actualPickupStops ?? 0) > 0;
   const phasePresentation = phaseCopy[phase];
+  const completedIls =
+    phase === "complete" ? formatIls(delivery?.ilsPercent) : null;
   const expressClass = express?.packages
     ? express?.open || express?.gaps
       ? "ou-express-metric has-attention"
@@ -287,7 +302,7 @@ function RouteUnit(props: {
             onSelect();
           }}
         >
-          <strong>{routeLabel(route)}</strong>
+          <strong>{orderedRouteLabel(route, routeSortKey)}</strong>
         </button>
         <button
           type="button"
@@ -300,9 +315,10 @@ function RouteUnit(props: {
             event.stopPropagation();
             onOpenSeat("driver", route.driver?.roster_member_id);
           }}
-          aria-label={`${needsDriver ? "Manage open seats" : "Manage route assignment"} for ${routeLabel(route)}`}
+          aria-label={`${needsDriver ? "Manage open seats" : "Manage route assignment"} for ${orderedRouteLabel(route, routeSortKey)}`}
         >
           {phasePresentation.label}
+          {completedIls ? ` · ILS ${completedIls}` : ""}
         </button>
       </div>
 
@@ -313,7 +329,7 @@ function RouteUnit(props: {
             event.stopPropagation();
             onOpenSeat("driver", route.driver?.roster_member_id);
           }}
-          aria-label={`Manage driver for ${routeLabel(route)}`}
+          aria-label={`Manage driver for ${orderedRouteLabel(route, routeSortKey)}`}
         >
         <strong>{effectiveDriverName || personName(route.driver)}</strong>
         </button>
@@ -416,6 +432,7 @@ function AttendanceOverlay(props: {
   people: DispatchPerson[];
   arrivedPersonIds: Set<string>;
   assignmentByPersonId: Map<string, { route: DispatchRoute; seat: Seat }>;
+  routeSortKey: "route_name" | "current_wa_num";
   locked: boolean;
   savingPersonId: string | null;
   onClose: () => void;
@@ -464,7 +481,7 @@ function AttendanceOverlay(props: {
                   <strong>{person.full_name}</strong>
                   <small>
                     {assignment
-                      ? `${assignment.seat} · ${routeLabel(assignment.route)}`
+                      ? `${assignment.seat} · ${orderedRouteLabel(assignment.route, props.routeSortKey)}`
                       : "Not assigned to a route"}
                   </small>
                 </span>
@@ -580,6 +597,8 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
     () => createRouteSorter(routeSortKey),
     [routeSortKey]
   );
+  const routeLabelForDisplay = (route: DispatchRoute) =>
+    orderedRouteLabel(route, routeSortKey);
 
   const hydratedRoutes = useMemo(
     () =>
@@ -871,7 +890,9 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
           person_roster_member_id: person.roster_member_id,
           person_name: person.full_name,
           route_key: assignment?.route.route_key ?? null,
-          route_label: assignment ? routeLabel(assignment.route) : null,
+          route_label: assignment
+            ? routeLabelForDisplay(assignment.route)
+            : null,
           event_payload: {
             source: "operational_unit_workspace",
             seat: assignment?.seat ?? null,
@@ -933,9 +954,9 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
           event_code: eventCode,
           event_label: eventLabel,
           route_key: selectedRoute.route_key,
-          route_label: routeLabel(selectedRoute),
+          route_label: routeLabelForDisplay(selectedRoute),
           to_route_key: selectedRoute.route_key,
-          to_route_label: routeLabel(selectedRoute),
+          to_route_label: routeLabelForDisplay(selectedRoute),
           seat: selectedSeat,
           person_roster_member_id: person?.roster_member_id ?? null,
           person_name: person?.full_name ?? null,
@@ -1302,6 +1323,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
               <RouteUnit
                 key={route.route_key}
                 route={route}
+                routeSortKey={routeSortKey}
                 selected={route.route_key === selectedRouteKey}
                 phase={phase}
                 plan={planSignalsByRouteKey[route.route_key]}
@@ -1319,11 +1341,11 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         </section>
 
         {selectedRoute ? (
-          <aside className="ou-workspace" aria-label={`${routeLabel(selectedRoute)} operational workspace`}>
+          <aside className="ou-workspace" aria-label={`${routeLabelForDisplay(selectedRoute)} operational workspace`}>
             <header className="ou-workspace-header">
               <span>
                 <small>Operational workspace</small>
-                <h2>{routeLabel(selectedRoute)}</h2>
+                <h2>{routeLabelForDisplay(selectedRoute)}</h2>
                 <p>{selectedEffectiveDriverName || personName(selectedRoute.driver)}</p>
               </span>
               <button
@@ -1464,7 +1486,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
                           >
                             {person.full_name}
                             {assignment
-                              ? ` · ${routeLabel(assignment.route)}`
+                              ? ` · ${routeLabelForDisplay(assignment.route)}`
                               : " · Available"}
                           </option>
                         );
@@ -1588,6 +1610,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         people={allPeople}
         arrivedPersonIds={arrivedPersonIds}
         assignmentByPersonId={assignmentByPersonId}
+        routeSortKey={routeSortKey}
         locked={dispatchDay?.status === "LOCKED"}
         savingPersonId={savingPresencePersonId}
         onClose={() => setAttendanceOpen(false)}
@@ -1600,7 +1623,9 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         open={routeEvidenceOpen && Boolean(selectedRoute)}
         slug={slug}
         serviceDate={serviceDate}
-        routeLabel={selectedRoute ? routeLabel(selectedRoute) : "Route"}
+        routeLabel={
+          selectedRoute ? routeLabelForDisplay(selectedRoute) : "Route"
+        }
         health={selectedManifestHealth}
         dsw={
           selectedDelivery
@@ -1793,6 +1818,9 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         .ou-unit.phase-complete.has-delivery-signal {
           --ou-signal: 42, 122, 92;
           --ou-posture: 42, 122, 92;
+          background:
+            radial-gradient(circle at 100% 100%, rgba(42, 122, 92, .17), transparent 60%),
+            linear-gradient(145deg, #fff 44%, rgba(237, 248, 242, .88));
         }
         .ou-unit.phase-needs_driver { --ou-signal: 190, 54, 54; --ou-posture: 190, 54, 54; }
         .ou-unit.is-selected {
