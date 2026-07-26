@@ -6,6 +6,7 @@ build
 coverage
 repo-snapshots/
 snapshots/
+/reports/
 .env
 .env.local
 .env.*.local
