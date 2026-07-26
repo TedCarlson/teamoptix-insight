@@ -1,7 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
-export async function getSupabaseServerClient() {
+export async function getSupabaseServerClient(options?: {
+  fetch?: typeof fetch;
+}) {
   const cookieStore = await cookies();
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -12,6 +14,7 @@ export async function getSupabaseServerClient() {
   }
 
   return createServerClient(url, anonKey, {
+    global: options?.fetch ? { fetch: options.fetch } : undefined,
     cookies: {
       getAll() {
         return cookieStore.getAll();

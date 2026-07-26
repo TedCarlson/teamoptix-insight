@@ -1,6 +1,12 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 type Membership = {
@@ -39,7 +45,9 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
     memberships: [],
   });
 
-  async function loadAccess() {
+  const loadAccess = useCallback(async function loadAccess(
+    attempt = 0
+  ): Promise<void> {
     try {
       const res = await fetch("/api/access-context", {
         method: "GET",
@@ -48,6 +56,10 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
       });
 
       const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error ?? "Unable to load access context.");
+      }
 
       if (!data) {
         setState({
@@ -71,6 +83,13 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
         memberships: Array.isArray(data.memberships) ? data.memberships : [],
       });
     } catch (err) {
+      if (attempt < 2) {
+        await new Promise((resolve) =>
+          window.setTimeout(resolve, 300 * 2 ** attempt)
+        );
+        return loadAccess(attempt + 1);
+      }
+
       console.error("access context load failed", err);
 
       setState({
@@ -78,7 +97,7 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
         memberships: [],
       });
     }
-  }
+  }, []);
 
   useEffect(() => {
     async function init() {
@@ -98,7 +117,7 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [loadAccess]);
 
   return <AccessCtx.Provider value={state}>{children}</AccessCtx.Provider>;
 }

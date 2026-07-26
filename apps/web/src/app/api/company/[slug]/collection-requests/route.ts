@@ -103,6 +103,34 @@ export async function GET(
     const mode = String(req.nextUrl.searchParams.get("mode") ?? "queue").toLowerCase();
     const activeStatuses = ["QUEUED", "CLAIMED", "RUNNING", "ARTIFACTS_READY", "INGESTING"];
 
+    if (mode === "status") {
+      const { operationalDate, start, end } = easternOperationalDayBounds();
+      const { data, error } = await supabase
+        .from("operations_collection_request_v")
+        .select("request_status,error_message,updated_at")
+        .eq("company_id", resolved.company.id)
+        .gte("created_at", start.toISOString())
+        .lt("created_at", end.toISOString())
+        .order("created_at", { ascending: false })
+        .limit(Math.min(limit, 10));
+
+      if (error) {
+        return NextResponse.json(
+          { error: error.message, rows: [] },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json(
+        { operational_date: operationalDate, rows: data ?? [] },
+        {
+          headers: {
+            "Cache-Control": "private, no-store",
+          },
+        }
+      );
+    }
+
     if (mode === "recovery") {
       const today = easternDateIso();
       const earliest = new Date(`${today}T12:00:00Z`);

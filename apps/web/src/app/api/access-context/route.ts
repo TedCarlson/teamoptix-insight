@@ -3,6 +3,16 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
+function isMissingSessionError(error: { message?: string; code?: string }) {
+  const value = `${error.code ?? ""} ${error.message ?? ""}`.toLowerCase();
+  return (
+    value.includes("auth session missing") ||
+    value.includes("session_not_found") ||
+    value.includes("refresh token not found") ||
+    value.includes("invalid refresh token")
+  );
+}
+
 export async function GET() {
   try {
     const supabase = await getSupabaseServerClient();
@@ -13,9 +23,19 @@ export async function GET() {
     } = await supabase.auth.getUser();
 
     if (userError) {
+      if (isMissingSessionError(userError)) {
+        return NextResponse.json(null, {
+          status: 200,
+          headers: { "Cache-Control": "private, no-store" },
+        });
+      }
+
       return NextResponse.json(
         { ok: false, stage: "getUser", error: userError.message },
-        { status: 500 }
+        {
+          status: 503,
+          headers: { "Cache-Control": "private, no-store" },
+        }
       );
     }
 
@@ -61,10 +81,20 @@ export async function GET() {
       );
     }
 
-    return NextResponse.json(data ?? null, { status: 200 });
+    return NextResponse.json(data ?? null, {
+      status: 200,
+      headers: { "Cache-Control": "private, no-store" },
+    });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "unknown access context error";
 
+    return NextResponse.json(
+      { ok: false, stage: "access_context_exception", error: message },
+      {
+        status: 503,
+        headers: { "Cache-Control": "private, no-store" },
+      }
+    );
   }
 }

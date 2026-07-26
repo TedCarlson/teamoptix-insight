@@ -571,36 +571,102 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
 
   useEffect(() => {
     let active = true;
+    let timerId: number | null = null;
+    let requestInFlight = false;
+    let failureCount = 0;
+    let previousCollectionActive: boolean | null = null;
+    let lastRefreshedCompletion: string | null = null;
+
+    const scheduleNextPoll = (delayMs: number) => {
+      if (!active) return;
+      if (timerId !== null) window.clearTimeout(timerId);
+      timerId = window.setTimeout(() => {
+        void loadCollectionRequests();
+      }, delayMs);
+    };
 
     async function loadCollectionRequests() {
+      if (!active || requestInFlight) return;
+
+      if (document.visibilityState === "hidden") {
+        scheduleNextPoll(60_000);
+        return;
+      }
+
+      requestInFlight = true;
+
       try {
         const response = await fetch(
-          `/api/company/${slug}/collection-requests?mode=today&limit=50`,
+          `/api/company/${slug}/collection-requests?mode=status&limit=10`,
           { credentials: "include", cache: "no-store" }
         );
         const data = await response.json().catch(() => ({}));
-        if (!active || !response.ok) return;
-        setCollectionRequests(
-          Array.isArray(data?.rows)
-            ? (data.rows as CollectionRequestSummary[])
-            : []
+        if (!response.ok) {
+          throw new Error(
+            typeof data?.error === "string"
+              ? data.error
+              : "Unable to load collection status."
+          );
+        }
+        if (!active) return;
+
+        const rows = Array.isArray(data?.rows)
+          ? (data.rows as CollectionRequestSummary[])
+          : [];
+        const collectionActive = rows.some((request) =>
+          activeCollectionStatuses.has(request.request_status)
         );
-        refreshWorkspace();
+        const latestCompletion =
+          rows.find(
+            (request) =>
+              request.request_status === "COMPLETE" &&
+              !request.error_message
+          )?.updated_at ?? null;
+
+        setCollectionRequests(rows);
+        failureCount = 0;
+
+        // Initial workspace hydration already loads operational data. Rehydrate
+        // only once when an observed collection moves from active to complete.
+        if (
+          previousCollectionActive === true &&
+          !collectionActive &&
+          latestCompletion &&
+          latestCompletion !== lastRefreshedCompletion
+        ) {
+          lastRefreshedCompletion = latestCompletion;
+          refreshWorkspace();
+        }
+
+        previousCollectionActive = collectionActive;
+        scheduleNextPoll(collectionActive ? 15_000 : 60_000);
       } catch {
-        if (active) setCollectionRequests([]);
+        if (!active) return;
+        failureCount += 1;
+        scheduleNextPoll(
+          Math.min(60_000, 15_000 * 2 ** Math.min(failureCount - 1, 2))
+        );
+      } finally {
+        requestInFlight = false;
       }
     }
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible" || requestInFlight) return;
+      if (timerId !== null) window.clearTimeout(timerId);
+      timerId = null;
+      void loadCollectionRequests();
+    };
+
     void loadCollectionRequests();
-    const interval = window.setInterval(
-      () => void loadCollectionRequests(),
-      hasActiveCollection ? 5_000 : 30_000
-    );
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
       active = false;
-      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (timerId !== null) window.clearTimeout(timerId);
     };
-  }, [hasActiveCollection, refreshWorkspace, slug]);
+  }, [refreshWorkspace, slug]);
 
   const latestSuccessfulCollection = collectionRequests.find(
     (request) =>

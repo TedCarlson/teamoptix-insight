@@ -88,24 +88,34 @@ function SignInInner() {
     setUnknownAccountEmail(null);
 
     try {
-      const supabase = getSupabaseBrowserClient();
-
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const response = await fetch("/api/auth/password-sign-in", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ email, password, captchaToken }),
       });
+      const data = await response.json().catch(() => null);
 
-      if (error) {
-        setError(error.message);
+      if (!response.ok || !data?.ok) {
+        setError(
+          typeof data?.error === "string" && data.error.trim()
+            ? data.error
+            : "Unable to complete sign-in."
+        );
         window.turnstile?.reset(turnstileWidgetId.current ?? undefined);
         setCaptchaToken(null);
         return;
       }
 
-      router.refresh();
-      router.push(nextHref);
-    } catch {
-      setError("Unexpected sign-in error.");
+      window.location.assign(nextHref);
+    } catch (reason) {
+      setError(
+        reason instanceof Error && reason.message
+          ? reason.message
+          : "Unable to complete sign-in."
+      );
     } finally {
       setSubmitting(false);
     }
