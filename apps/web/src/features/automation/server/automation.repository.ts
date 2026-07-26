@@ -42,6 +42,7 @@ export async function resolveAutomationAccess(
       allowed: false,
       canAdmin: false,
       isPlatformOwner: false,
+      userId: null,
       error: "Unauthorized.",
       status: 401,
     };
@@ -54,6 +55,7 @@ export async function resolveAutomationAccess(
       allowed: false,
       canAdmin: false,
       isPlatformOwner: false,
+      userId: user.id,
       error: error.message,
       status: 500,
     };
@@ -74,6 +76,7 @@ export async function resolveAutomationAccess(
     allowed,
     canAdmin,
     isPlatformOwner,
+    userId: user.id,
     error: allowed ? null : "Forbidden.",
     status: allowed ? 200 : 403,
   };

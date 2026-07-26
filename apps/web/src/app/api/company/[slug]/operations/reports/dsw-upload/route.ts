@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
+import { resolveAutomationAccess } from "@/features/automation/server/automation.repository";
 import { ingestDswWorkbook } from "@/features/operations/reports/dsw/dsw.ingest";
 
 export const runtime = "nodejs";
@@ -10,10 +12,13 @@ export async function POST(req: NextRequest, context: RouteContext) {
   try {
     const { slug } = await context.params;
     const supabase = await getSupabaseServerClient();
+    const access = await resolveAutomationAccess(supabase, slug);
 
-    const { data: auth, error: userError } = await supabase.auth.getUser();
-    if (userError || !auth.user) {
-      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    if (!access.allowed || !access.userId) {
+      return NextResponse.json(
+        { error: access.error ?? "Forbidden." },
+        { status: access.status }
+      );
     }
 
     const form = await req.formData();
@@ -29,18 +34,18 @@ export async function POST(req: NextRequest, context: RouteContext) {
     const { data: profile } = await supabase
       .from("user_profile")
       .select("profile_id")
-      .eq("auth_user_id", auth.user.id)
+      .eq("auth_user_id", access.userId)
       .maybeSingle();
 
     const buffer = Buffer.from(await file.arrayBuffer());
 
     const result = await ingestDswWorkbook({
-      supabase,
+      supabase: createSupabaseServiceRoleClient(),
       slug,
       buffer,
       filename: file.name,
       fileSize: file.size,
-      uploadedByAuthUserId: auth.user.id,
+      uploadedByAuthUserId: access.userId,
       uploadedByProfileId: profile?.profile_id ?? null,
       debugCandidates,
     });

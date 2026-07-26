@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { createHash } from "crypto";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
+import { resolveAutomationAccess } from "@/features/automation/server/automation.repository";
 
 export const runtime = "nodejs";
 
@@ -201,12 +203,16 @@ export async function POST(req: NextRequest, context: RouteContext) {
   try {
     const { slug } = await context.params;
     const supabase = await getSupabaseServerClient();
+    const access = await resolveAutomationAccess(supabase, slug);
 
-    const { data: auth, error: userError } = await supabase.auth.getUser();
-    if (userError || !auth.user) {
-      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    if (!access.allowed || !access.userId) {
+      return NextResponse.json(
+        { error: access.error ?? "Forbidden." },
+        { status: access.status }
+      );
     }
 
+    const admin = createSupabaseServiceRoleClient();
     const form = await req.formData();
     const file = form.get("file");
     const serviceDate = cellText(form.get("service_date"));
@@ -368,10 +374,10 @@ export async function POST(req: NextRequest, context: RouteContext) {
       const { data: profile } = await supabase
         .from("user_profile")
         .select("profile_id")
-        .eq("auth_user_id", auth.user.id)
+        .eq("auth_user_id", access.userId)
         .maybeSingle();
 
-      const { data: rpcResult, error: rpcError } = await supabase.rpc(
+      const { data: rpcResult, error: rpcError } = await admin.rpc(
         "stage_operations_fcc_report",
         {
           p_company_id: company.id,
@@ -389,7 +395,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
           p_metadata_json: {
             file_size: file.size,
             sheet_count: workbook.SheetNames.length,
-            uploaded_by_auth_user_id: auth.user.id,
+            uploaded_by_auth_user_id: access.userId,
             ownership_context: {
               config_id: ownership.id,
               contract_number: ownership.contract_number,
@@ -554,10 +560,10 @@ export async function POST(req: NextRequest, context: RouteContext) {
     const { data: profile } = await supabase
       .from("user_profile")
       .select("profile_id")
-      .eq("auth_user_id", auth.user.id)
+      .eq("auth_user_id", access.userId)
       .maybeSingle();
 
-    const { data: rpcResult, error: rpcError } = await supabase.rpc(
+    const { data: rpcResult, error: rpcError } = await admin.rpc(
       "stage_operations_dro_report",
       {
         p_company_id: company.id,
@@ -579,7 +585,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
         p_metadata_json: {
           file_size: file.size,
           sheet_count: workbook.SheetNames.length,
-          uploaded_by_auth_user_id: auth.user.id,
+          uploaded_by_auth_user_id: access.userId,
           ownership_context: {
             config_id: ownership.id,
             contract_number: ownership.contract_number,

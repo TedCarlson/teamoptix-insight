@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
+import { resolveAutomationAccess } from "@/features/automation/server/automation.repository";
 
 export const runtime = "nodejs";
 
@@ -215,12 +217,16 @@ export async function POST(req: NextRequest, context: RouteContext) {
   try {
     const { slug } = await context.params;
     const supabase = await getSupabaseServerClient();
+    const access = await resolveAutomationAccess(supabase, slug);
 
-    const { data: auth, error: userError } = await supabase.auth.getUser();
-    if (userError || !auth.user) {
-      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    if (!access.allowed || !access.userId) {
+      return NextResponse.json(
+        { error: access.error ?? "Forbidden." },
+        { status: access.status }
+      );
     }
 
+    const admin = createSupabaseServiceRoleClient();
     const form = await req.formData();
     const file = form.get("file");
 
@@ -246,7 +252,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     const { data: profile } = await supabase
       .from("user_profile")
       .select("profile_id")
-      .eq("auth_user_id", auth.user.id)
+      .eq("auth_user_id", access.userId)
       .maybeSingle();
 
     const { data: configs, error: configError } = await supabase
@@ -303,7 +309,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
         };
       });
 
-      const { data, error } = await supabase.rpc(
+      const { data, error } = await admin.rpc(
         "import_operations_dsw_finalized_day",
         {
           p_company_id: company.id,
@@ -316,7 +322,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
           p_metadata_json: {
             source: "legacy_spreadsheet_archive",
             file_size: file.size,
-            imported_by_auth_user_id: auth.user.id,
+            imported_by_auth_user_id: access.userId,
             route_match: {
               matched: stagedRows.filter((row) => row.normalized_row_json.route_baseline_id).length,
               unmatched: stagedRows.filter((row) => !row.normalized_row_json.route_baseline_id).length,

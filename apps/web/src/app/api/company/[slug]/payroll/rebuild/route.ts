@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
+import { resolveAutomationAccess } from "@/features/automation/server/automation.repository";
 
 export const runtime = "nodejs";
 
@@ -19,6 +21,14 @@ export async function POST(
     }
 
     const supabase = await getSupabaseServerClient();
+    const access = await resolveAutomationAccess(supabase, slug);
+
+    if (!access.allowed) {
+      return NextResponse.json(
+        { error: access.error ?? "Forbidden." },
+        { status: access.status }
+      );
+    }
 
     const { data: company, error: companyError } = await supabase
       .from("companies")
@@ -30,7 +40,8 @@ export async function POST(
       return NextResponse.json({ error: "Company not found" }, { status: 404 });
     }
 
-    const { data, error } = await supabase.rpc("rebuild_payroll_activity_fact", {
+    const admin = createSupabaseServiceRoleClient();
+    const { data, error } = await admin.rpc("rebuild_payroll_activity_fact", {
       p_company_id: company.id,
       p_start_date: startDate,
       p_end_date: endDate,
@@ -63,7 +74,7 @@ export async function POST(
       );
     }
 
-    await supabase.from("data_rebuild_log").insert({
+    await admin.from("data_rebuild_log").insert({
       company_id: company.id,
       rebuild_type: "PAYROLL_ACTIVITY",
       parameters_json: { startDate, endDate },

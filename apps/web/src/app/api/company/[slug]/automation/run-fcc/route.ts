@@ -191,23 +191,22 @@ export async function POST(
 
     const ingestStartedAt = Date.now();
 
-    const { data: auth } = await supabase.auth.getUser();
-    const { data: profile } = auth?.user?.id
+    const { data: profile } = access.userId
       ? await supabase
           .from("user_profile")
           .select("profile_id")
-          .eq("auth_user_id", auth.user.id)
+          .eq("auth_user_id", access.userId)
           .maybeSingle()
       : { data: null };
 
     const ingest = await ingestFccWorkbook({
-      supabase,
+      supabase: admin,
       slug,
       buffer: fileBuffer,
       filename: result.excelDownload.suggestedFilename,
       fileSize: fileStat.size,
       serviceDate,
-      uploadedByAuthUserId: auth?.user?.id ?? null,
+      uploadedByAuthUserId: access.userId,
       uploadedByProfileId: profile?.profile_id ?? null,
     });
 

@@ -160,24 +160,23 @@ export async function POST(
       size: workbook.size,
     };
 
-    const { data: auth } = await supabase.auth.getUser();
-    const { data: profile } = auth?.user?.id
+    const { data: profile } = access.userId
       ? await supabase
           .from("user_profile")
           .select("profile_id")
-          .eq("auth_user_id", auth.user.id)
+          .eq("auth_user_id", access.userId)
           .maybeSingle()
       : { data: null };
 
     const ingestStartedAt = Date.now();
 
     const ingest = await ingestDswWorkbook({
-      supabase,
+      supabase: admin,
       slug,
       buffer: downloadedFile,
       filename: result.excelDownload.suggestedFilename,
       fileSize: downloadedStat.size,
-      uploadedByAuthUserId: auth?.user?.id ?? null,
+      uploadedByAuthUserId: access.userId,
       uploadedByProfileId: profile?.profile_id ?? null,
     });
 
