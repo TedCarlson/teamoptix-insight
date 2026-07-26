@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCompanyBySlug } from "@/features/automation/server/automation.repository";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
+import {
+  resolveAutomationAccess,
+  resolveCompanyBySlug,
+} from "@/features/automation/server/automation.repository";
 import { ingestArtifactWorkbook } from "@/features/operations/reports/automation/ingestArtifactWorkbook";
 
 export const runtime = "nodejs";
@@ -84,13 +88,22 @@ async function handleArtifactIngest(req: NextRequest, context: RouteContext) {
 
   try {
     const { slug } = await context.params;
-    const supabase = await getSupabaseServerClient();
+    const session = await getSupabaseServerClient();
+    const access = await resolveAutomationAccess(session, slug);
 
-    const resolved = await resolveCompanyBySlug(supabase, slug);
+    if (!access.canAdmin) {
+      return NextResponse.json(
+        { error: access.error ?? "Forbidden." },
+        { status: access.allowed ? 403 : access.status }
+      );
+    }
+
+    const resolved = await resolveCompanyBySlug(session, slug);
     if (!resolved.company) {
       return NextResponse.json({ ok: false, error: resolved.error ?? "Company not found." }, { status: 404 });
     }
 
+    const supabase = createSupabaseServiceRoleClient();
     const { data: artifacts, error: artifactError } = await supabase
       .from("operations_collection_artifact_v")
       .select("*")

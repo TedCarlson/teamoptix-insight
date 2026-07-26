@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCompanyBySlug } from "@/features/automation/server/automation.repository";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
+import {
+  resolveAutomationAccess,
+  resolveCompanyBySlug,
+} from "@/features/automation/server/automation.repository";
 import { easternOperationalDayBounds } from "@/lib/operationalDay";
 
 export const runtime = "nodejs";
@@ -276,6 +280,14 @@ export async function POST(
     const { slug } = await context.params;
     const supabase = await getSupabaseServerClient();
     const body = await req.json().catch(() => ({}));
+    const access = await resolveAutomationAccess(supabase, slug);
+
+    if (!access.canAdmin) {
+      return NextResponse.json(
+        { error: access.error ?? "Forbidden." },
+        { status: access.allowed ? 403 : access.status }
+      );
+    }
 
     const recoveryOfRequestId = String(
       body.recovery_of_request_id ?? body.recoveryOfRequestId ?? ""
@@ -299,7 +311,7 @@ export async function POST(
       const recoveryArtifactId = String(
         body.artifact_id ?? body.artifactId ?? ""
       ).trim();
-      const { data, error } = await supabase.rpc(
+      const { data, error } = await createSupabaseServiceRoleClient().rpc(
         "queue_operations_collection_recovery",
         {
           p_collection_request_id: recoveryOfRequestId,

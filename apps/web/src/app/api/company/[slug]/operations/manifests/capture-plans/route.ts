@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCompanyBySlug } from "@/features/automation/server/automation.repository";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
+import {
+  resolveAutomationAccess,
+  resolveCompanyBySlug,
+} from "@/features/automation/server/automation.repository";
 
 export const runtime = "nodejs";
 
@@ -97,6 +101,14 @@ export async function POST(
     const { slug } = await context.params;
     const supabase = await getSupabaseServerClient();
     const body = await req.json().catch(() => ({}));
+    const access = await resolveAutomationAccess(supabase, slug);
+
+    if (!access.canAdmin) {
+      return NextResponse.json(
+        { error: access.error ?? "Forbidden." },
+        { status: access.allowed ? 403 : access.status }
+      );
+    }
 
     const serviceDate = normalizeDate(body.service_date ?? body.serviceDate);
     const routeKey = normalizeText(body.route_key ?? body.routeKey);
@@ -121,7 +133,7 @@ export async function POST(
       "Manual debug one-route manifest capture plan.";
     const metadata = normalizeMetadata(body.metadata_json ?? body.metadataJson);
 
-    const { data, error } = await supabase.rpc(
+    const { data, error } = await createSupabaseServiceRoleClient().rpc(
       "create_operations_manifest_capture_plan",
       {
         p_company_slug: slug,
