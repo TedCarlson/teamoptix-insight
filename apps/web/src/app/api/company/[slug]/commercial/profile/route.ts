@@ -11,9 +11,19 @@ export async function GET(
 ) {
   const { slug } = await context.params;
   const supabase = await getSupabaseServerClient();
-  const admin = createSupabaseServiceRoleClient();
 
-  const { data: company, error: companyError } = await admin
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session) {
+    return NextResponse.json(
+      { error: "Unauthorized." },
+      { status: 401 }
+    );
+  }
+
+  const { data: company, error: companyError } = await supabase
     .from("companies")
     .select("id")
     .eq("company_slug", slug)
@@ -23,7 +33,7 @@ export async function GET(
     return NextResponse.json({ error: "Company not found." }, { status: 404 });
   }
 
-  const { data, error } = await admin
+  const { data, error } = await supabase
     .schema("commercial")
     .from("profile")
     .select("*")
