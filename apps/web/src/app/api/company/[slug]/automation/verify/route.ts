@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import {
   getAutomationCredentialForVerify,
   getOrCreateFedExAutomationProfile,
   recordAutomationCredentialVerification,
+  resolveAutomationAccess,
   resolveCompanyBySlug,
 } from "@/features/automation/server/automation.repository";
 import { verifyFedExCredential } from "@/features/automation/server/automation.verify";
@@ -17,6 +19,14 @@ export async function POST(
   try {
     const { slug } = await context.params;
     const supabase = await getSupabaseServerClient();
+    const access = await resolveAutomationAccess(supabase, slug);
+
+    if (!access.canAdmin) {
+      return NextResponse.json(
+        { error: access.error ?? "Forbidden." },
+        { status: access.allowed ? 403 : access.status }
+      );
+    }
 
     const resolved = await resolveCompanyBySlug(supabase, slug);
 
@@ -27,8 +37,9 @@ export async function POST(
       );
     }
 
+    const admin = createSupabaseServiceRoleClient();
     const profileResult = await getOrCreateFedExAutomationProfile(
-      supabase,
+      admin,
       resolved.company.id
     );
 
@@ -40,7 +51,7 @@ export async function POST(
     }
 
     const credentialResult = await getAutomationCredentialForVerify(
-      supabase,
+      admin,
       profileResult.profile.id
     );
 
@@ -57,7 +68,7 @@ export async function POST(
     });
 
     await recordAutomationCredentialVerification(
-      supabase,
+      admin,
       profileResult.profile.id,
       verification.result,
       verification.status

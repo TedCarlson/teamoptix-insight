@@ -1,9 +1,11 @@
 import { readFile, stat } from "node:fs/promises";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import {
   getAutomationCredentialForVerify,
   getOrCreateFedExAutomationProfile,
+  resolveAutomationAccess,
   resolveCompanyBySlug,
 } from "@/features/automation/server/automation.repository";
 import { ingestDswWorkbook } from "@/features/operations/reports/dsw/dsw.ingest";
@@ -63,10 +65,19 @@ export async function POST(
   context: { params: Promise<{ slug: string }> }
 ) {
   const supabase = await getSupabaseServerClient();
+  const admin = createSupabaseServiceRoleClient();
   let runId: string | null = null;
 
   try {
     const { slug } = await context.params;
+    const access = await resolveAutomationAccess(supabase, slug);
+
+    if (!access.canAdmin) {
+      return NextResponse.json(
+        { error: access.error ?? "Forbidden." },
+        { status: access.allowed ? 403 : access.status }
+      );
+    }
 
     const resolved = await resolveCompanyBySlug(supabase, slug);
 
@@ -74,20 +85,20 @@ export async function POST(
       return NextResponse.json({ error: resolved.error ?? "Company not found." }, { status: 404 });
     }
 
-    const startRun = await supabase.rpc("start_operations_automation_run", {
+    const startRun = await admin.rpc("start_operations_automation_run", {
       p_company_id: resolved.company.id,
       p_automation_type: "DSW",
     });
 
     runId = typeof startRun.data === "string" ? startRun.data : null;
 
-    const profileResult = await getOrCreateFedExAutomationProfile(supabase, resolved.company.id);
+    const profileResult = await getOrCreateFedExAutomationProfile(admin, resolved.company.id);
 
     if (!profileResult.profile) {
       throw new Error(profileResult.error ?? "Profile not found.");
     }
 
-    const credentialResult = await getAutomationCredentialForVerify(supabase, profileResult.profile.id);
+    const credentialResult = await getAutomationCredentialForVerify(admin, profileResult.profile.id);
 
     if (!credentialResult.row) {
       throw new Error(credentialResult.error ?? "No credential saved.");
@@ -173,7 +184,7 @@ export async function POST(
     const ingestMs = Date.now() - ingestStartedAt;
 
     if (runId) {
-      await supabase.rpc("finish_operations_automation_run", {
+      await admin.rpc("finish_operations_automation_run", {
         p_run_id: runId,
         p_status: "SUCCESS",
         p_source_filename: result.excelDownload.suggestedFilename,
@@ -200,7 +211,7 @@ export async function POST(
     const message = error instanceof Error ? error.message : "Automation run failed.";
 
     if (runId) {
-      await supabase.rpc("finish_operations_automation_run", {
+      await admin.rpc("finish_operations_automation_run", {
         p_run_id: runId,
         p_status: "FAILED",
         p_source_filename: null,

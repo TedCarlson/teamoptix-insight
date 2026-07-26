@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 
 export const runtime = "nodejs";
 
@@ -139,7 +140,7 @@ export async function PATCH(
 
     const body = await req.json().catch(() => ({}));
 
-    const { data, error } = await supabase.rpc(
+    const { data, error } = await createSupabaseServiceRoleClient().rpc(
       "save_operations_automation_schedule_config_with_window",
       {
         p_company_slug: slug,

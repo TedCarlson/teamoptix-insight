@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import {
   getAutomationCredential,
   getOrCreateFedExAutomationProfile,
+  resolveAutomationAccess,
   resolveCompanyBySlug,
   saveAutomationCredential,
 } from "@/features/automation/server/automation.repository";
@@ -94,6 +96,14 @@ export async function PATCH(
     }
 
     const supabase = await getSupabaseServerClient();
+    const access = await resolveAutomationAccess(supabase, slug);
+
+    if (!access.canAdmin) {
+      return NextResponse.json(
+        { error: access.error ?? "Forbidden." },
+        { status: access.allowed ? 403 : access.status }
+      );
+    }
 
     const resolved = await resolveCompanyBySlug(supabase, slug);
 
@@ -119,7 +129,7 @@ export async function PATCH(
 
     const saveResult =
       await saveAutomationCredential(
-        supabase,
+        createSupabaseServiceRoleClient(),
         profileResult.profile.id,
         username,
         password

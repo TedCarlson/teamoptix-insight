@@ -19,6 +19,66 @@ export type AutomationProfile = {
   updated_at: string;
 };
 
+type AutomationAccessContext = {
+  is_platform_owner?: boolean;
+  memberships?: Array<{
+    company_slug?: string;
+    membership_status?: string;
+    relationship_type?: string;
+  }>;
+};
+
+export async function resolveAutomationAccess(
+  supabase: SupabaseServerClient,
+  slug: string
+) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return {
+      allowed: false,
+      canAdmin: false,
+      isPlatformOwner: false,
+      error: "Unauthorized.",
+      status: 401,
+    };
+  }
+
+  const { data, error } = await supabase.rpc("access_context");
+
+  if (error) {
+    return {
+      allowed: false,
+      canAdmin: false,
+      isPlatformOwner: false,
+      error: error.message,
+      status: 500,
+    };
+  }
+
+  const access = data as AutomationAccessContext | null;
+  const isPlatformOwner = Boolean(access?.is_platform_owner);
+  const membership = access?.memberships?.find(
+    (item) =>
+      item.company_slug === slug &&
+      item.membership_status === "active"
+  );
+  const allowed = isPlatformOwner || Boolean(membership);
+  const canAdmin =
+    isPlatformOwner || membership?.relationship_type === "admin";
+
+  return {
+    allowed,
+    canAdmin,
+    isPlatformOwner,
+    error: allowed ? null : "Forbidden.",
+    status: allowed ? 200 : 403,
+  };
+}
+
 export async function resolveCompanyBySlug(
   supabase: SupabaseServerClient,
   slug: string
