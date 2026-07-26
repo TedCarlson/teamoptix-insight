@@ -18,6 +18,7 @@ export type AutomationStatusResponse = {
   provider_key: "FEDEX";
   status: AutomationStatusValue;
   profile_id: string;
+  company_id: string;
   updated_at: string;
 };
 

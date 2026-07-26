@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 import {
   formatDateTime,
   formatDuration,
@@ -31,6 +32,20 @@ import type {
   CollectionRuntimeBaseline,
   CredentialResponse,
 } from "./automation.types";
+
+const ACTIVE_REQUEST_STATUSES = new Set([
+  "QUEUED",
+  "CLAIMED",
+  "RUNNING",
+  "ARTIFACTS_READY",
+  "INGESTING",
+]);
+
+const TERMINAL_REQUEST_STATUSES = new Set([
+  "COMPLETE",
+  "FAILED",
+  "CANCELLED",
+]);
 
 function formatRequestDate(request: CollectionRequest) {
   if (request.service_date) return request.service_date;
@@ -101,6 +116,8 @@ export default function AutomationConfigPanel(
   const [showCredentialEditor, setShowCredentialEditor] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [observedRequestIds, setObservedRequestIds] = useState<string[]>([]);
+  const completedRequestIds = useRef(new Set<string>());
 
   const loadStatus = useCallback(async () => {
     const res = await fetch(
@@ -195,6 +212,16 @@ export default function AutomationConfigPanel(
     ]);
   }, [loadStatus, loadCredential, loadCollectionRequests, loadRecoveryCandidates]);
 
+  const loadQueueSnapshot = useCallback(
+    () =>
+      Promise.all([
+        loadStatus(),
+        loadCollectionRequests(),
+        loadRecoveryCandidates(),
+      ]),
+    [loadCollectionRequests, loadRecoveryCandidates, loadStatus]
+  );
+
   useEffect(() => {
     let active = true;
 
@@ -219,35 +246,107 @@ export default function AutomationConfigPanel(
     };
   }, [props.slug, loadAll]);
 
-  const hasActiveCollection = collectionRequests.some((request) =>
-    ["QUEUED", "CLAIMED", "RUNNING", "ARTIFACTS_READY", "INGESTING"].includes(
-      request.request_status
-    )
+  const activeRequestIds = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...collectionRequests
+            .filter((request) =>
+              ACTIVE_REQUEST_STATUSES.has(request.request_status)
+            )
+            .map((request) => request.id),
+          ...observedRequestIds,
+        ])
+      ),
+    [collectionRequests, observedRequestIds]
   );
 
+  // The page may already be open when Vercel Cron creates the next request.
+  // Listen only for that company's INSERT so the new request ID can be handed
+  // to a request-scoped terminal listener without polling the warehouse.
   useEffect(() => {
-    if (!props.slug) return;
-    const interval = window.setInterval(() => {
-      void Promise.all([
-        loadStatus(),
-        loadCollectionRequests(),
-        loadRecoveryCandidates(),
-      ]).catch((error) => {
-        setStatusError(
-          error instanceof Error
-            ? error.message
-            : "Failed to poll collection progress."
-        );
-      });
-    }, hasActiveCollection ? 5_000 : 30_000);
-    return () => window.clearInterval(interval);
-  }, [
-    hasActiveCollection,
-    loadCollectionRequests,
-    loadRecoveryCandidates,
-    loadStatus,
-    props.slug,
-  ]);
+    if (!status?.company_id) return;
+
+    const supabase = getSupabaseBrowserClient();
+    const channel = supabase
+      .channel(`collection-created:${status.company_id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "core",
+          table: "operations_collection_request",
+          filter: `company_id=eq.${status.company_id}`,
+        },
+        (payload: { new: Record<string, unknown> }) => {
+          const requestId = String(payload.new.id ?? "");
+          const requestStatus = String(
+            payload.new.request_status ?? ""
+          ).toUpperCase();
+          if (!requestId || !ACTIVE_REQUEST_STATUSES.has(requestStatus)) return;
+          setObservedRequestIds((current) =>
+            current.includes(requestId) ? current : [...current, requestId]
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [status?.company_id]);
+
+  // Each active request gets one narrowly scoped listener. Intermediate
+  // transitions are ignored; a terminal transition causes one warehouse
+  // hydration and then the listener disappears.
+  useEffect(() => {
+    if (activeRequestIds.length === 0) return;
+
+    const supabase = getSupabaseBrowserClient();
+    const channels = activeRequestIds.map((requestId) =>
+      supabase
+        .channel(`collection-terminal:${requestId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "core",
+            table: "operations_collection_request",
+            filter: `id=eq.${requestId}`,
+          },
+          (payload: { new: Record<string, unknown> }) => {
+            const requestStatus = String(
+              payload.new.request_status ?? ""
+            ).toUpperCase();
+            if (
+              !TERMINAL_REQUEST_STATUSES.has(requestStatus) ||
+              completedRequestIds.current.has(requestId)
+            ) {
+              return;
+            }
+
+            completedRequestIds.current.add(requestId);
+            setObservedRequestIds((current) =>
+              current.filter((id) => id !== requestId)
+            );
+            void loadQueueSnapshot().catch((error) => {
+              setStatusError(
+                error instanceof Error
+                  ? error.message
+                  : "Failed to refresh the completed collection."
+              );
+            });
+          }
+        )
+        .subscribe()
+    );
+
+    return () => {
+      for (const channel of channels) {
+        void supabase.removeChannel(channel);
+      }
+    };
+  }, [activeRequestIds, loadQueueSnapshot]);
 
   const latestSuccessfulCollection = useMemo(
     () =>
@@ -289,11 +388,7 @@ export default function AutomationConfigPanel(
     try {
       setRefreshing(true);
       setStatusError(null);
-      await Promise.all([
-        loadStatus(),
-        loadCollectionRequests(),
-        loadRecoveryCandidates(),
-      ]);
+      await loadQueueSnapshot();
     } catch (error) {
       setStatusError(
         error instanceof Error

@@ -271,7 +271,7 @@ export default async function Page({ params }: { params: Promise<{ requestId: st
     <TeamOptixShell>
     <main className="workspace-shell teamoptix-domain-overview">
       <section className="workspace-main" style={{ display: "grid", gap: 18 }}>
-      <CollectionAutoRefresh active={active} />
+      <CollectionAutoRefresh active={active} requestId={requestId} />
       <header className="domain-heading">
         <p style={{ margin: "0 0 12px" }}>
           <Link href="/teamoptix/automation/collections" style={{ color: "#2563eb", fontWeight: 850, textDecoration: "none" }}>

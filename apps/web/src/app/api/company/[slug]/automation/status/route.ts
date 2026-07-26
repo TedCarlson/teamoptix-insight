@@ -41,6 +41,7 @@ export async function GET(
         provider_key: result.profile.provider_key,
         status: result.profile.status,
         profile_id: result.profile.id,
+        company_id: resolved.company.id,
         updated_at: result.profile.updated_at,
       },
       { status: 200 }
