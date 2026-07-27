@@ -96,6 +96,16 @@ export async function PATCH(
       );
     }
 
+    if (!/^\d+$/.test(username)) {
+      return NextResponse.json(
+        {
+          error:
+            "FedEx user ID must contain digits only. Email addresses are not valid FedEx credentials.",
+        },
+        { status: 400 }
+      );
+    }
+
     const supabase = await getSupabaseServerClient();
     const access = await resolveAutomationAccess(supabase, slug);
 
