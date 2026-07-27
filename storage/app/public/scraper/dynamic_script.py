@@ -48,6 +48,10 @@ formatted_date = current_date.strftime("%m-%d-%Y")
 
 DOWNLOAD_FOLDER = os.path.join(MAIN_FOLDER, formatted_date)
 START_TIME = time.time()
+SESSION_COOKIE_FILE = os.environ.get(
+    "FCMS_SESSION_COOKIE_FILE",
+    "/tmp/teamoptix-fedex-session.json",
+)
 
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.mkdir(DOWNLOAD_FOLDER)
@@ -445,8 +449,63 @@ def scrollTo(el, driver):
     scroll_y_by = desired_y - current_y
     driver.execute_script("window.scrollBy(0, arguments[0]);", scroll_y_by)
 
+def restoreSessionCookies(driver):
+    if not os.path.exists(SESSION_COOKIE_FILE):
+        return 0
+
+    try:
+        with open(SESSION_COOKIE_FILE, "r", encoding="utf-8") as cookie_file:
+            cookies = json.load(cookie_file)
+        if not isinstance(cookies, list):
+            return 0
+
+        driver.get("https://mybizaccount.fedex.com/")
+        restored = 0
+        for cookie in cookies:
+            if not isinstance(cookie, dict):
+                continue
+            allowed = {
+                key: cookie[key]
+                for key in (
+                    "name",
+                    "value",
+                    "path",
+                    "domain",
+                    "secure",
+                    "httpOnly",
+                    "sameSite",
+                    "expiry",
+                )
+                if key in cookie
+            }
+            if not allowed.get("name") or "value" not in allowed:
+                continue
+            if allowed.get("sameSite") not in (None, "Strict", "Lax", "None"):
+                allowed.pop("sameSite", None)
+            try:
+                driver.add_cookie(allowed)
+                restored += 1
+            except Exception:
+                pass
+        return restored
+    except Exception as error:
+        logging.info("FedEx session cookie restore skipped: %s", error)
+        return 0
+
+def persistSessionCookies(driver):
+    try:
+        cookies = driver.get_cookies()
+        temporary = f"{SESSION_COOKIE_FILE}.{os.getpid()}.tmp"
+        with open(temporary, "w", encoding="utf-8") as cookie_file:
+            json.dump(cookies, cookie_file)
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, SESSION_COOKIE_FILE)
+    except Exception as error:
+        logging.info("FedEx session cookie persistence skipped: %s", error)
+
 def authenticateDriver(driver):
     init_url = "https://mybizaccount.fedex.com/my.policy"
+    restored_cookie_count = restoreSessionCookies(driver)
     driver.get(init_url)
     logging.info("Visiting https://mybizaccount.fedex.com/my.policy")
 
@@ -462,7 +521,12 @@ def authenticateDriver(driver):
     )
     if driver.find_elements(By.XPATH, "//a[@id='PT_HOME']"):
         logging.info("FedEx session reused")
-        emit_runtime_event("SESSION_REUSED", "AUTHENTICATION")
+        persistSessionCookies(driver)
+        emit_runtime_event(
+            "SESSION_REUSED",
+            "AUTHENTICATION",
+            metadata={"restored_cookie_count": restored_cookie_count},
+        )
         return
 
     btn = WebDriverWait(driver, 20).until(
@@ -519,6 +583,7 @@ def authenticateDriver(driver):
         EC.presence_of_element_located((By.XPATH, "//a[@id='PT_HOME']"))
     )
     logging.info("Login successfull!")
+    persistSessionCookies(driver)
     emit_runtime_event("AUTH_COMPLETED", "AUTHENTICATION")
 
 def main(section_='', option_=0, retry=1):

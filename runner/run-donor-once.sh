@@ -139,6 +139,26 @@ else
     TARGET_SECTIONS=("ALL")
   fi
 
+  if [ "${FCMS_SINGLE_SESSION:-0}" = "1" ]; then
+    before_count="$(find "$SCRAPER_DIR/Excels" -type f -mmin -120 2>/dev/null | wc -l | tr -d ' ')"
+    session_started_at="$(date +%s)"
+
+    echo "[runner] continuous session start sections=${FCMS_TARGET_SECTIONS:-ALL}"
+
+    set +e
+    "$PY" "$SCRAPER_DIR/dynamic_script.py"
+    status=$?
+    set -e
+
+    after_count="$(find "$SCRAPER_DIR/Excels" -type f -mmin -120 2>/dev/null | wc -l | tr -d ' ')"
+    produced_count="$((after_count - before_count))"
+    [ "$produced_count" -lt 0 ] && produced_count=0
+    produced_total="$((produced_total + produced_count))"
+    elapsed_seconds="$(($(date +%s) - session_started_at))"
+
+    echo "[runner] continuous session exit status=$status produced_count=$produced_count elapsed_seconds=$elapsed_seconds"
+    overall_status="$status"
+  else
   for section in "${TARGET_SECTIONS[@]}"; do
     section="$(echo "$section" | xargs)"
     [ -z "$section" ] && continue
@@ -167,6 +187,7 @@ else
       overall_status="$status"
     fi
   done
+  fi
 fi
 
 echo "[runner] scraper exit status=$overall_status produced_total=$produced_total"

@@ -161,6 +161,10 @@ def child_environment(
     environment["FCMS_SKIP_COMBINED"] = (
         "1" if manifest_options["skip_combined"] else "0"
     )
+    environment["FCMS_SINGLE_SESSION"] = "1"
+    environment["FCMS_SESSION_COOKIE_FILE"] = str(
+        APP_DIR / "runtime" / "continuous-runner" / "fedex-session.json"
+    )
     return environment
 
 
