@@ -10,7 +10,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.chrome.service import Service
-from selenium.common.exceptions import StaleElementReferenceException
+from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
 from sys import platform
 import shutil
 import threading
@@ -512,13 +512,36 @@ def authenticateDriver(driver):
     # Chrome uses a durable runner profile. A successful Operations Pulse
     # session is therefore reused across completion-driven cycles instead of
     # submitting the username and password again for every report lane.
-    WebDriverWait(driver, 20).until(
-        lambda current_driver:
-            current_driver.find_elements(By.XPATH, "//a[@id='PT_HOME']")
-            or current_driver.find_elements(
-                By.XPATH, "//input[@class='credentials_input_submit']"
+    try:
+        WebDriverWait(driver, 20).until(
+            lambda current_driver:
+                current_driver.find_elements(By.XPATH, "//a[@id='PT_HOME']")
+                or current_driver.find_elements(
+                    By.XPATH, "//input[@class='credentials_input_submit']"
+                )
             )
-    )
+    except TimeoutException:
+        if restored_cookie_count <= 0:
+            raise
+
+        # A stale FedEx session can leave the landing page in neither an
+        # authenticated nor a login-ready state. Discard only that cached
+        # session and fall back to the normal credential flow.
+        logging.info("Cached FedEx session was not accepted; retrying fresh authentication")
+        driver.delete_all_cookies()
+        try:
+            os.remove(SESSION_COOKIE_FILE)
+        except FileNotFoundError:
+            pass
+        driver.get(init_url)
+        WebDriverWait(driver, 30).until(
+            lambda current_driver:
+                current_driver.find_elements(By.XPATH, "//a[@id='PT_HOME']")
+                or current_driver.find_elements(
+                    By.XPATH, "//input[@class='credentials_input_submit']"
+                )
+        )
+
     if driver.find_elements(By.XPATH, "//a[@id='PT_HOME']"):
         logging.info("FedEx session reused")
         persistSessionCookies(driver)
@@ -592,6 +615,7 @@ def main(section_='', option_=0, retry=1):
     logging.info("Driver loaded...")
     try:
         authenticateDriver(driver)
+        home_page_handle = driver.current_window_handle
 
         # headers = driver.execute_script("var req = new XMLHttpRequest();req.open('GET', document.location, false);req.send(null);return req.getAllResponseHeaders()")
         # headers = headers.splitlines()
@@ -858,6 +882,8 @@ def main(section_='', option_=0, retry=1):
         if secion_index <= 4 and should_run_section('Daily Service'):
             ACTIVE_SECTION = 'Daily Service'
             logging.info("Pickup Daily Service")
+            driver.switch_to.window(home_page_handle)
+            driver.switch_to.default_content()
             iframe = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//iframe[@title='FCC Links']")))
 
             driver.switch_to.frame(iframe)
@@ -915,6 +941,13 @@ def main(section_='', option_=0, retry=1):
                         pass
                 except Exception as ee:
                     logging.info(ee)
+
+        # Capture the latest sliding-session cookies after all requested
+        # sections have completed so the next success-chained cycle can reuse
+        # the session established by this cycle.
+        driver.switch_to.window(home_page_handle)
+        driver.switch_to.default_content()
+        persistSessionCookies(driver)
     except Exception as e:
         logging.info(e)
         driver.quit()
