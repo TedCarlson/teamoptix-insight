@@ -1502,47 +1502,47 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
     return counts;
   }, [unitsWithPhase]);
 
-  const routeFilters: Array<{
+  const availableRouteFilters: Array<{
     key: RouteFilter;
     label: string;
     count: number;
-  }> =
-    dispatchDay?.status === "LOCKED"
-      ? [
-          { key: "all", label: "All", count: routeFilterCounts.all },
-          {
-            key: "on_route",
-            label: "On route",
-            count: routeFilterCounts.on_route,
-          },
-          {
-            key: "end_of_day",
-            label: "End of day",
-            count: routeFilterCounts.end_of_day,
-          },
-        ]
-      : [
-          { key: "all", label: "All", count: routeFilterCounts.all },
-          {
-            key: "ready",
-            label: "Arrived",
-            count: routeFilterCounts.ready,
-          },
-          {
-            key: "awaiting",
-            label: "Waiting",
-            count: routeFilterCounts.awaiting,
-          },
-          {
-            key: "unassigned",
-            label: "Unassigned",
-            count: routeFilterCounts.unassigned,
-          },
-        ];
+  }> = [
+    { key: "all", label: "All", count: routeFilterCounts.all },
+    {
+      key: "ready",
+      label: "Arrived",
+      count: routeFilterCounts.ready,
+    },
+    {
+      key: "awaiting",
+      label: "Waiting",
+      count: routeFilterCounts.awaiting,
+    },
+    {
+      key: "unassigned",
+      label: "Unassigned",
+      count: routeFilterCounts.unassigned,
+    },
+    {
+      key: "on_route",
+      label: "On Job",
+      count: routeFilterCounts.on_route,
+    },
+    {
+      key: "end_of_day",
+      label: "End of day",
+      count: routeFilterCounts.end_of_day,
+    },
+  ];
+  const routeFilters = availableRouteFilters.filter(
+    (filter) => filter.key === "all" || filter.count > 0
+  );
 
   useEffect(() => {
-    setRouteFilter("all");
-  }, [dispatchDay?.status]);
+    if (routeFilter !== "all" && routeFilterCounts[routeFilter] === 0) {
+      setRouteFilter("all");
+    }
+  }, [routeFilter, routeFilterCounts]);
 
   const visibleUnits = unitsWithPhase.filter(({ phase }) =>
     routeMatchesFilter(phase, routeFilter)
