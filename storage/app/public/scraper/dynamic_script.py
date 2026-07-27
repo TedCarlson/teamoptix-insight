@@ -521,18 +521,19 @@ def authenticateDriver(driver):
                 )
             )
     except TimeoutException:
-        if restored_cookie_count <= 0:
-            raise
-
         # A stale FedEx session can leave the landing page in neither an
         # authenticated nor a login-ready state. Discard only that cached
-        # session and fall back to the normal credential flow.
+        # session and fall back to the normal credential flow. The durable
+        # Chrome profile may contain session state even when FedEx exposes no
+        # serializable cookies, so the fallback must not depend on the cookie
+        # file containing entries.
         logging.info("Cached FedEx session was not accepted; retrying fresh authentication")
         driver.delete_all_cookies()
         try:
             os.remove(SESSION_COOKIE_FILE)
         except FileNotFoundError:
             pass
+        driver.get("about:blank")
         driver.get(init_url)
         WebDriverWait(driver, 30).until(
             lambda current_driver:
