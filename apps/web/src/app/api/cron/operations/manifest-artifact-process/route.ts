@@ -283,17 +283,18 @@ async function handleManifestArtifactProcess(req: NextRequest) {
       );
     }
 
+    const batchLimit = collectionRequestId ? 250 : parseLimit(req);
     const supabase = createSupabaseServiceRoleClient();
     const prepared = await prepareManifestCollectionArtifacts(
       supabase,
-      parseLimit(req) * 5,
+      batchLimit,
       collectionRequestId
     );
     const { data: promoted, error: promoteError } = await supabase.rpc(
       "promote_operations_collection_manifest_artifacts",
       {
         p_collection_request_id: collectionRequestId,
-        p_limit: parseLimit(req),
+        p_limit: batchLimit,
       }
     );
 
@@ -303,7 +304,7 @@ async function handleManifestArtifactProcess(req: NextRequest) {
 
     const processed = await processCapturedManifestArtifacts({
       supabase,
-      limit: parseLimit(req),
+      limit: batchLimit,
       collectionRequestId,
     });
     const reconciled = await reconcileManifestCollectionRequests(
