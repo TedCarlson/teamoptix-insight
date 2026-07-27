@@ -719,6 +719,12 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
     (request) =>
       request.request_status === "COMPLETE" && !request.error_message
   );
+  const activeCollection = collectionRequests.find((request) =>
+    ["QUEUED", "CLAIMED", "RUNNING", "ARTIFACTS_READY", "INGESTING"].includes(
+      request.request_status
+    )
+  );
+  const latestCollection = collectionRequests[0];
 
   const collectionSignal = useMemo(() => {
     const now = new Date(signalNow);
@@ -749,9 +755,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         clockMinutes(runnerSchedule?.operations_pulse_start_time) &&
       eastern.minutes <
         clockMinutes(runnerSchedule?.operations_pulse_end_time);
-    const observedProcessing = collectionRequests.some((request) =>
-      ["ARTIFACTS_READY", "INGESTING"].includes(request.request_status)
-    );
+    const observedProcessing = Boolean(activeCollection);
     const active =
       observedProcessing ||
       Boolean(
@@ -784,26 +788,66 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
       completedAt > startedAt
         ? completedAt - startedAt
         : 17 * 60_000;
+
+    const activeStartedAt = activeCollection?.started_at
+      ? new Date(activeCollection.started_at).getTime()
+      : Number.NaN;
+    if (Number.isFinite(activeStartedAt)) {
+      const elapsedMinutes = Math.max(
+        0,
+        Math.floor((signalNow - activeStartedAt) / 60_000)
+      );
+      const remainingMinutes = Math.ceil(
+        (activeStartedAt + lastCycleMs - signalNow) / 60_000
+      );
+      const progress =
+        activeCollection?.request_status === "ARTIFACTS_READY" ||
+        activeCollection?.request_status === "INGESTING"
+          ? "processing collected files"
+          : remainingMinutes > 0
+            ? `collection running · ~${remainingMinutes} min to next update`
+            : `collection running · ${elapsedMinutes} min elapsed`;
+
+      return {
+        active: true,
+        copy: `Collection Active · ${progress}`,
+      };
+    }
+
+    if (
+      latestCollection?.request_status === "FAILED" ||
+      latestCollection?.request_status === "CANCELLED"
+    ) {
+      return {
+        active: true,
+        copy: `Collection recovery active · last attempt ${updateTime(
+          latestCollection.updated_at
+        )}`,
+      };
+    }
+
     const expectedAt = Number.isFinite(completedAt)
       ? completedAt + lastCycleMs
       : signalNow + lastCycleMs;
-    const remainingMinutes = Math.max(
-      0,
-      Math.ceil((expectedAt - signalNow) / 60_000)
-    );
+    const remainingMinutes = Math.ceil((expectedAt - signalNow) / 60_000);
     const expectation =
       remainingMinutes > 0
         ? `next data expected around ${updateTime(
             new Date(expectedAt).toISOString()
           )} · ~${remainingMinutes} min`
-        : "next data update due soon";
+        : Number.isFinite(completedAt)
+          ? `awaiting next collection · last update ${updateTime(
+              latestSuccessfulCollection?.completed_at ?? ""
+            )}`
+          : "awaiting first collection";
 
     return {
       active: true,
       copy: `Collection Active · ${expectation}`,
     };
   }, [
-    collectionRequests,
+    activeCollection,
+    latestCollection,
     latestSuccessfulCollection,
     runnerSchedule,
     signalNow,
