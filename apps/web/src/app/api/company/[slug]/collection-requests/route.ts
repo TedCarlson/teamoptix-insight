@@ -109,14 +109,29 @@ export async function GET(
 
     if (mode === "status") {
       const { operationalDate, start, end } = easternOperationalDayBounds();
-      const { data, error } = await supabase
-        .from("operations_collection_request_v")
-        .select("request_status,error_message,updated_at")
-        .eq("company_id", resolved.company.id)
-        .gte("created_at", start.toISOString())
-        .lt("created_at", end.toISOString())
-        .order("created_at", { ascending: false })
-        .limit(Math.min(limit, 10));
+      const service = createSupabaseServiceRoleClient();
+      const [
+        { data, error },
+        { data: runnerSchedule, error: scheduleError },
+      ] = await Promise.all([
+        service
+          .from("operations_collection_request_v")
+          .select(
+            "id,company_id,request_type,request_status,error_message,started_at,completed_at,updated_at"
+          )
+          .eq("company_id", resolved.company.id)
+          .gte("created_at", start.toISOString())
+          .lt("created_at", end.toISOString())
+          .order("created_at", { ascending: false })
+          .limit(Math.min(limit, 10)),
+        service
+          .from("operations_runner_schedule_v")
+          .select(
+            "collection_enabled,operations_pulse_enabled,operations_pulse_start_time,operations_pulse_end_time,timezone,report_config_json"
+          )
+          .eq("company_id", resolved.company.id)
+          .maybeSingle(),
+      ]);
 
       if (error) {
         return NextResponse.json(
@@ -124,9 +139,20 @@ export async function GET(
           { status: 500 }
         );
       }
+      if (scheduleError) {
+        return NextResponse.json(
+          { error: scheduleError.message, rows: [] },
+          { status: 500 }
+        );
+      }
 
       return NextResponse.json(
-        { operational_date: operationalDate, rows: data ?? [] },
+        {
+          operational_date: operationalDate,
+          company_id: resolved.company.id,
+          rows: data ?? [],
+          runner_schedule: runnerSchedule ?? null,
+        },
         {
           headers: {
             "Cache-Control": "private, no-store",

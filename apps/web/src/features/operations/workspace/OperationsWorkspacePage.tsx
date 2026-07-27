@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { useDispatchWorkspaceData } from "@/features/dispatch/hooks/useDispatchWorkspaceData";
 import {
   buildAllPeople,
@@ -60,18 +61,27 @@ type ExpressSignal = {
 type RouteHealthRow = ManifestRouteHealthCard;
 
 type CollectionRequestSummary = {
+  id: string;
+  company_id: string;
+  request_type: string;
   request_status: string;
   error_message: string | null;
+  started_at: string | null;
+  completed_at: string | null;
   updated_at: string;
 };
 
-const activeCollectionStatuses = new Set([
-  "QUEUED",
-  "CLAIMED",
-  "RUNNING",
-  "ARTIFACTS_READY",
-  "INGESTING",
-]);
+type RunnerScheduleSummary = {
+  collection_enabled: boolean;
+  operations_pulse_enabled: boolean;
+  operations_pulse_start_time: string;
+  operations_pulse_end_time: string;
+  timezone: string;
+  report_config_json: {
+    operating_weekdays?: number[];
+    operating_date_overrides?: Record<string, "OPERATING" | "CLOSED">;
+  } | null;
+};
 
 const phaseCopy: Record<
   OperationalPhase,
@@ -120,6 +130,44 @@ function updateTime(value: string | null) {
     minute: "2-digit",
     timeZone: "America/New_York",
   }).format(new Date(value));
+}
+
+function easternClockParts(value: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(value);
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return {
+    date: `${get("year")}-${get("month")}-${get("day")}`,
+    weekday: get("weekday"),
+    minutes: Number(get("hour")) * 60 + Number(get("minute")),
+  };
+}
+
+function clockMinutes(value: string | null | undefined) {
+  const [hour, minute] = String(value ?? "00:00")
+    .slice(0, 5)
+    .split(":")
+    .map(Number);
+  return hour * 60 + minute;
+}
+
+function formatScheduleClock(value: string | null | undefined) {
+  const [hour, minute] = String(value ?? "00:00")
+    .slice(0, 5)
+    .split(":")
+    .map(Number);
+  return `${hour % 12 || 12}:${String(minute).padStart(2, "0")} ${
+    hour >= 12 ? "PM" : "AM"
+  }`;
 }
 
 function routeEvents(events: DispatchEventRow[], route: DispatchRoute) {
@@ -545,6 +593,9 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
   const [collectionRequests, setCollectionRequests] = useState<
     CollectionRequestSummary[]
   >([]);
+  const [runnerSchedule, setRunnerSchedule] =
+    useState<RunnerScheduleSummary | null>(null);
+  const [signalNow, setSignalNow] = useState(() => Date.now());
 
   const {
     dispatchDay,
@@ -565,36 +616,13 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
     setError,
   } = useDispatchWorkspaceData(slug, serviceDate);
 
-  const hasActiveCollection = collectionRequests.some((request) =>
-    activeCollectionStatuses.has(request.request_status)
-  );
-
   useEffect(() => {
     let active = true;
-    let timerId: number | null = null;
-    let requestInFlight = false;
-    let failureCount = 0;
-    let previousCollectionActive: boolean | null = null;
-    let lastRefreshedCompletion: string | null = null;
-
-    const scheduleNextPoll = (delayMs: number) => {
-      if (!active) return;
-      if (timerId !== null) window.clearTimeout(timerId);
-      timerId = window.setTimeout(() => {
-        void loadCollectionRequests();
-      }, delayMs);
-    };
+    const supabase = getSupabaseBrowserClient();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    const refreshedCompletionIds = new Set<string>();
 
     async function loadCollectionRequests() {
-      if (!active || requestInFlight) return;
-
-      if (document.visibilityState === "hidden") {
-        scheduleNextPoll(60_000);
-        return;
-      }
-
-      requestInFlight = true;
-
       try {
         const response = await fetch(
           `/api/company/${slug}/collection-requests?mode=status&limit=10`,
@@ -613,65 +641,173 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         const rows = Array.isArray(data?.rows)
           ? (data.rows as CollectionRequestSummary[])
           : [];
-        const collectionActive = rows.some((request) =>
-          activeCollectionStatuses.has(request.request_status)
-        );
-        const latestCompletion =
-          rows.find(
-            (request) =>
-              request.request_status === "COMPLETE" &&
-              !request.error_message
-          )?.updated_at ?? null;
-
         setCollectionRequests(rows);
-        failureCount = 0;
-
-        // Initial workspace hydration already loads operational data. Rehydrate
-        // only once when an observed collection moves from active to complete.
-        if (
-          previousCollectionActive === true &&
-          !collectionActive &&
-          latestCompletion &&
-          latestCompletion !== lastRefreshedCompletion
-        ) {
-          lastRefreshedCompletion = latestCompletion;
-          refreshWorkspace();
-        }
-
-        previousCollectionActive = collectionActive;
-        scheduleNextPoll(collectionActive ? 15_000 : 60_000);
-      } catch {
-        if (!active) return;
-        failureCount += 1;
-        scheduleNextPoll(
-          Math.min(60_000, 15_000 * 2 ** Math.min(failureCount - 1, 2))
+        setRunnerSchedule(
+          data?.runner_schedule
+            ? (data.runner_schedule as RunnerScheduleSummary)
+            : null
         );
-      } finally {
-        requestInFlight = false;
+
+        const companyId =
+          typeof data?.company_id === "string" ? data.company_id : null;
+        if (!companyId || !active) return;
+
+        const handleRequestChange = (payload: {
+          new: Record<string, unknown>;
+        }) => {
+          const row = payload.new as unknown as CollectionRequestSummary;
+          if (!row.id || row.company_id !== companyId) return;
+
+          setCollectionRequests((current) => [
+            row,
+            ...current.filter((request) => request.id !== row.id),
+          ].slice(0, 10));
+
+          if (
+            row.request_status === "COMPLETE" &&
+            !row.error_message &&
+            !refreshedCompletionIds.has(row.id)
+          ) {
+            refreshedCompletionIds.add(row.id);
+            refreshWorkspace();
+          }
+        };
+
+        channel = supabase
+          .channel(`operations-collection-terminal:${companyId}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "INSERT",
+              schema: "core",
+              table: "operations_collection_request",
+              filter: `company_id=eq.${companyId}`,
+            },
+            handleRequestChange
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "core",
+              table: "operations_collection_request",
+              filter: `company_id=eq.${companyId}`,
+            },
+            handleRequestChange
+          )
+          .subscribe();
+      } catch {
+        // Initial workspace data remains usable if the collection signal is
+        // temporarily unavailable. Manual Refresh is still authoritative.
       }
     }
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState !== "visible" || requestInFlight) return;
-      if (timerId !== null) window.clearTimeout(timerId);
-      timerId = null;
-      void loadCollectionRequests();
-    };
-
     void loadCollectionRequests();
-    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       active = false;
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      if (timerId !== null) window.clearTimeout(timerId);
+      if (channel) void supabase.removeChannel(channel);
     };
   }, [refreshWorkspace, slug]);
+
+  useEffect(() => {
+    const timerId = window.setInterval(() => setSignalNow(Date.now()), 30_000);
+    return () => window.clearInterval(timerId);
+  }, []);
 
   const latestSuccessfulCollection = collectionRequests.find(
     (request) =>
       request.request_status === "COMPLETE" && !request.error_message
   );
+
+  const collectionSignal = useMemo(() => {
+    const now = new Date(signalNow);
+    const eastern = easternClockParts(now);
+    const weekdayNumber: Record<string, number> = {
+      Sun: 0,
+      Mon: 1,
+      Tue: 2,
+      Wed: 3,
+      Thu: 4,
+      Fri: 5,
+      Sat: 6,
+    };
+    const configuredWeekdays =
+      runnerSchedule?.report_config_json?.operating_weekdays ?? [
+        1, 2, 3, 4, 5, 6,
+      ];
+    const dateOverride =
+      runnerSchedule?.report_config_json?.operating_date_overrides?.[
+        eastern.date
+      ];
+    const operatesToday =
+      dateOverride === "OPERATING" ||
+      (dateOverride !== "CLOSED" &&
+        configuredWeekdays.includes(weekdayNumber[eastern.weekday] ?? -1));
+    const withinWindow =
+      eastern.minutes >=
+        clockMinutes(runnerSchedule?.operations_pulse_start_time) &&
+      eastern.minutes <
+        clockMinutes(runnerSchedule?.operations_pulse_end_time);
+    const observedProcessing = collectionRequests.some((request) =>
+      ["ARTIFACTS_READY", "INGESTING"].includes(request.request_status)
+    );
+    const active =
+      observedProcessing ||
+      Boolean(
+        runnerSchedule?.collection_enabled &&
+          runnerSchedule.operations_pulse_enabled &&
+          operatesToday &&
+          withinWindow
+      );
+
+    if (!active) {
+      return {
+        active: false,
+        copy: runnerSchedule?.operations_pulse_start_time
+          ? `Collection paused · next pulse begins ${formatScheduleClock(
+              runnerSchedule.operations_pulse_start_time
+            )}`
+          : "Collection paused",
+      };
+    }
+
+    const startedAt = latestSuccessfulCollection?.started_at
+      ? new Date(latestSuccessfulCollection.started_at).getTime()
+      : Number.NaN;
+    const completedAt = latestSuccessfulCollection?.completed_at
+      ? new Date(latestSuccessfulCollection.completed_at).getTime()
+      : Number.NaN;
+    const lastCycleMs =
+      Number.isFinite(startedAt) &&
+      Number.isFinite(completedAt) &&
+      completedAt > startedAt
+        ? completedAt - startedAt
+        : 17 * 60_000;
+    const expectedAt = Number.isFinite(completedAt)
+      ? completedAt + lastCycleMs
+      : signalNow + lastCycleMs;
+    const remainingMinutes = Math.max(
+      0,
+      Math.ceil((expectedAt - signalNow) / 60_000)
+    );
+    const expectation =
+      remainingMinutes > 0
+        ? `next data expected around ${updateTime(
+            new Date(expectedAt).toISOString()
+          )} · ~${remainingMinutes} min`
+        : "next data update due soon";
+
+    return {
+      active: true,
+      copy: `Collection Active · ${expectation}`,
+    };
+  }, [
+    collectionRequests,
+    latestSuccessfulCollection,
+    runnerSchedule,
+    signalNow,
+  ]);
 
   const routeSort = useMemo(
     () => createRouteSorter(routeSortKey),
@@ -1375,10 +1511,9 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         <section className="ou-collection" aria-label="Route operational units">
           <header>
             <span>
-              <small>
-                {routeUnits.length} routes · {serviceDate} - updated{" "}
-                {updateTime(latestSuccessfulCollection?.updated_at ?? null)}
-                {hasActiveCollection ? " · collection in progress" : ""}
+              <small className={collectionSignal.active ? "is-active" : ""}>
+                {routeUnits.length} routes · {serviceDate} ·{" "}
+                {collectionSignal.copy}
               </small>
             </span>
           </header>
@@ -1813,6 +1948,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         }
         .ou-collection > header span { display: grid; gap: 2px; }
         .ou-collection > header small { color: #7a8495; }
+        .ou-collection > header small.is-active { color: #315f9c; font-weight: 750; }
         .ou-route-filters {
           display: flex;
           gap: 7px;
@@ -1891,12 +2027,26 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
             #fff9f9;
           box-shadow: 0 8px 20px rgba(190, 54, 54, .08);
         }
-        .ou-unit.phase-awaiting_arrival { --ou-signal: 194, 132, 36; --ou-posture: 194, 132, 36; }
-        .ou-unit.phase-ready { --ou-signal: 48, 138, 84; --ou-posture: 48, 138, 84; }
+        .ou-unit.phase-awaiting_arrival {
+          --ou-signal: 194, 132, 36;
+          --ou-posture: 194, 132, 36;
+          border-color: rgba(194, 132, 36, .24);
+          background:
+            radial-gradient(circle at 100% 100%, rgba(194, 132, 36, .17), transparent 60%),
+            linear-gradient(145deg, #fff 42%, #fff8eb);
+        }
+        .ou-unit.phase-ready {
+          --ou-signal: 45, 103, 184;
+          --ou-posture: 45, 103, 184;
+          border-color: rgba(45, 103, 184, .28);
+          background:
+            radial-gradient(circle at 100% 100%, rgba(45, 103, 184, .19), transparent 60%),
+            linear-gradient(145deg, #fff 42%, #edf5ff);
+          box-shadow: 0 8px 20px rgba(45, 103, 184, .055);
+        }
         .ou-unit.phase-dispatched { --ou-signal: 103, 58, 183; --ou-posture: 103, 58, 183; }
         .ou-unit.phase-on_route { --ou-signal: 103, 58, 183; --ou-posture: 103, 58, 183; }
         .ou-unit.phase-complete { --ou-signal: 42, 122, 92; --ou-posture: 42, 122, 92; }
-        .ou-unit.has-express-risk { --ou-signal: 217, 119, 34; }
         .ou-unit.has-delivery-signal {
           --ou-signal: 103, 58, 183;
           --ou-posture: 103, 58, 183;
