@@ -52,6 +52,17 @@ type RouteFilter =
   | "on_route"
   | "end_of_day";
 
+function routeMatchesFilter(phase: OperationalPhase, filter: RouteFilter) {
+  if (filter === "all") return true;
+  if (filter === "ready") return phase === "ready";
+  if (filter === "awaiting") return phase === "awaiting_arrival";
+  if (filter === "unassigned") return phase === "needs_driver";
+  if (filter === "on_route") {
+    return phase === "dispatched" || phase === "on_route";
+  }
+  return phase === "complete";
+}
+
 type ExpressSignal = {
   packages: number;
   open: number;
@@ -1470,34 +1481,72 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
     ]
   );
 
-  const routeFilters: Array<{ key: RouteFilter; label: string }> =
+  const routeFilterCounts = useMemo(() => {
+    const counts: Record<RouteFilter, number> = {
+      all: unitsWithPhase.length,
+      ready: 0,
+      awaiting: 0,
+      unassigned: 0,
+      on_route: 0,
+      end_of_day: 0,
+    };
+
+    for (const { phase } of unitsWithPhase) {
+      if (routeMatchesFilter(phase, "ready")) counts.ready += 1;
+      if (routeMatchesFilter(phase, "awaiting")) counts.awaiting += 1;
+      if (routeMatchesFilter(phase, "unassigned")) counts.unassigned += 1;
+      if (routeMatchesFilter(phase, "on_route")) counts.on_route += 1;
+      if (routeMatchesFilter(phase, "end_of_day")) counts.end_of_day += 1;
+    }
+
+    return counts;
+  }, [unitsWithPhase]);
+
+  const routeFilters: Array<{
+    key: RouteFilter;
+    label: string;
+    count: number;
+  }> =
     dispatchDay?.status === "LOCKED"
       ? [
-          { key: "all", label: "All" },
-          { key: "on_route", label: "On route" },
-          { key: "end_of_day", label: "End of day" },
+          { key: "all", label: "All", count: routeFilterCounts.all },
+          {
+            key: "on_route",
+            label: "On route",
+            count: routeFilterCounts.on_route,
+          },
+          {
+            key: "end_of_day",
+            label: "End of day",
+            count: routeFilterCounts.end_of_day,
+          },
         ]
       : [
-          { key: "all", label: "All" },
-          { key: "ready", label: "Arrived" },
-          { key: "awaiting", label: "Waiting" },
-          { key: "unassigned", label: "Unassigned" },
+          { key: "all", label: "All", count: routeFilterCounts.all },
+          {
+            key: "ready",
+            label: "Arrived",
+            count: routeFilterCounts.ready,
+          },
+          {
+            key: "awaiting",
+            label: "Waiting",
+            count: routeFilterCounts.awaiting,
+          },
+          {
+            key: "unassigned",
+            label: "Unassigned",
+            count: routeFilterCounts.unassigned,
+          },
         ];
 
   useEffect(() => {
     setRouteFilter("all");
   }, [dispatchDay?.status]);
 
-  const visibleUnits = unitsWithPhase.filter(({ phase }) => {
-    if (routeFilter === "all") return true;
-    if (routeFilter === "ready") return phase === "ready";
-    if (routeFilter === "awaiting") return phase === "awaiting_arrival";
-    if (routeFilter === "unassigned") return phase === "needs_driver";
-    if (routeFilter === "on_route") {
-      return phase === "dispatched" || phase === "on_route";
-    }
-    return phase === "complete";
-  });
+  const visibleUnits = unitsWithPhase.filter(({ phase }) =>
+    routeMatchesFilter(phase, routeFilter)
+  );
 
   return (
     <main className="ou-shell">
@@ -1571,8 +1620,10 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
                 key={filter.key}
                 className={routeFilter === filter.key ? "is-active" : ""}
                 onClick={() => setRouteFilter(filter.key)}
+                aria-pressed={routeFilter === filter.key}
               >
-                {filter.label}
+                <span>{filter.label}</span>
+                <strong className="ou-filter-count">{filter.count}</strong>
               </button>
             ))}
           </nav>
@@ -2002,6 +2053,9 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         .ou-route-filters button {
           flex: 0 0 auto;
           min-height: 32px;
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
           border: 1px solid #d8dee8;
           border-radius: 999px;
           background: #fff;
@@ -2015,6 +2069,21 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
           border-color: #5369a8;
           background: #f1f4fb;
           color: #253655;
+        }
+        .ou-filter-count {
+          min-width: 19px;
+          height: 19px;
+          display: inline-grid;
+          place-items: center;
+          border-radius: 999px;
+          background: #eef1f6;
+          color: #4c5870;
+          font-size: 10px;
+          line-height: 1;
+        }
+        .ou-route-filters button.is-active .ou-filter-count {
+          background: #5369a8;
+          color: #fff;
         }
         .ou-grid {
           display: grid;
