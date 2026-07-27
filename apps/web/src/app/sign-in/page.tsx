@@ -94,7 +94,7 @@ function SignInInner() {
           "Content-Type": "application/json",
         },
         credentials: "include",
-        body: JSON.stringify({ email, password, captchaToken }),
+        body: JSON.stringify({ email, password }),
       });
       const data = await response.json().catch(() => null);
 

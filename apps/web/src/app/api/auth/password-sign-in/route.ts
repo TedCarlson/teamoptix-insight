@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { verifyTurnstile } from "@/lib/security/turnstile";
 
 export const runtime = "nodejs";
 
@@ -60,10 +59,6 @@ export async function POST(request: Request) {
       typeof payload?.email === "string" ? payload.email.trim() : "";
     const password =
       typeof payload?.password === "string" ? payload.password : "";
-    const captchaToken =
-      typeof payload?.captchaToken === "string"
-        ? payload.captchaToken.trim()
-        : "";
 
     if (!email || !password) {
       return NextResponse.json(
@@ -72,30 +67,9 @@ export async function POST(request: Request) {
       );
     }
 
-    if (process.env.TURNSTILE_REQUIRED === "true") {
-      if (!captchaToken) {
-        return NextResponse.json(
-          { ok: false, error: "Security verification is required." },
-          { status: 400, headers: noStoreHeaders }
-        );
-      }
-
-      const remoteIp =
-        request.headers.get("cf-connecting-ip") ??
-        request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-      const verified = await verifyTurnstile(captchaToken, remoteIp);
-
-      if (!verified) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "Security verification failed. Please try again.",
-          },
-          { status: 403, headers: noStoreHeaders }
-        );
-      }
-    }
-
+    // Password sign-in is limited to accounts already registered with
+    // Supabase Auth. Keep Turnstile on public intake and account-link actions,
+    // but do not make an existing user's login depend on the widget.
     const supabase = await getSupabaseServerClient({
       fetch: fetchWithTimeout,
     });
