@@ -460,12 +460,26 @@ def restoreSessionCookies(driver):
     try:
         with open(SESSION_COOKIE_FILE, "r", encoding="utf-8") as cookie_file:
             cookies = json.load(cookie_file)
-        if not isinstance(cookies, list):
+        if not isinstance(cookies, list) or not cookies:
             return 0
 
-        driver.get("https://mybizaccount.fedex.com/")
-        restored = 0
-        for cookie in cookies:
+        # FedEx session state spans its application and identity-provider
+        # domains. CDP can restore all of those cookies before navigation;
+        # Selenium's add_cookie API is limited to the current domain.
+        driver.execute_cdp_cmd("Network.setCookies", {"cookies": cookies})
+        return len(cookies)
+    except Exception as error:
+        logging.info("FedEx session cookie restore skipped: %s", error)
+        return 0
+
+def persistSessionCookies(driver):
+    try:
+        raw_cookies = driver.execute_cdp_cmd(
+            "Network.getAllCookies",
+            {},
+        ).get("cookies", [])
+        cookies = []
+        for cookie in raw_cookies:
             if not isinstance(cookie, dict):
                 continue
             allowed = {
@@ -473,12 +487,12 @@ def restoreSessionCookies(driver):
                 for key in (
                     "name",
                     "value",
-                    "path",
                     "domain",
+                    "path",
                     "secure",
                     "httpOnly",
                     "sameSite",
-                    "expiry",
+                    "expires",
                 )
                 if key in cookie
             }
@@ -486,19 +500,9 @@ def restoreSessionCookies(driver):
                 continue
             if allowed.get("sameSite") not in (None, "Strict", "Lax", "None"):
                 allowed.pop("sameSite", None)
-            try:
-                driver.add_cookie(allowed)
-                restored += 1
-            except Exception:
-                pass
-        return restored
-    except Exception as error:
-        logging.info("FedEx session cookie restore skipped: %s", error)
-        return 0
-
-def persistSessionCookies(driver):
-    try:
-        cookies = driver.get_cookies()
+            if float(allowed.get("expires", 0) or 0) <= 0:
+                allowed.pop("expires", None)
+            cookies.append(allowed)
         temporary = f"{SESSION_COOKIE_FILE}.{os.getpid()}.tmp"
         with open(temporary, "w", encoding="utf-8") as cookie_file:
             json.dump(cookies, cookie_file)
@@ -887,6 +891,11 @@ def main(section_='', option_=0, retry=1):
         if secion_index <= 4 and should_run_section('Daily Service'):
             ACTIVE_SECTION = 'Daily Service'
             logging.info("Pickup Daily Service")
+            for handle in driver.window_handles:
+                if handle == home_page_handle:
+                    continue
+                driver.switch_to.window(handle)
+                driver.close()
             driver.switch_to.window(home_page_handle)
             driver.switch_to.default_content()
             iframe = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//iframe[@title='FCC Links']")))
@@ -895,14 +904,21 @@ def main(section_='', option_=0, retry=1):
 
             daily_service_week = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//a[contains(text(), 'Daily Service Wk & Vision IBPR')]")))
 
+            existing_window_handles = set(driver.window_handles)
             daily_service_week.click()
 
             driver.switch_to.default_content()
 
-            WebDriverWait(driver, 30).until(EC.number_of_windows_to_be(2))
+            WebDriverWait(driver, 30).until(
+                lambda current_driver:
+                    len(set(current_driver.window_handles) - existing_window_handles) > 0
+            )
 
-            window_handles = driver.window_handles
-            daily_service_week_page_handle = window_handles[-1]
+            daily_service_week_page_handle = next(
+                handle
+                for handle in driver.window_handles
+                if handle not in existing_window_handles
+            )
             driver.switch_to.window(daily_service_week_page_handle)
 
             daily_service_week_page_title = driver.title
