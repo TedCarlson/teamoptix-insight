@@ -162,8 +162,15 @@ def child_environment(
         "1" if manifest_options["skip_combined"] else "0"
     )
     environment["FCMS_SINGLE_SESSION"] = "1"
+    continuous_runtime_dir = APP_DIR / "runtime" / "continuous-runner"
+    continuous_runtime_dir.mkdir(parents=True, exist_ok=True)
+    continuous_runtime_dir.chmod(0o700)
+    chrome_profile_dir = continuous_runtime_dir / "chrome-profile"
+    chrome_profile_dir.mkdir(parents=True, exist_ok=True)
+    chrome_profile_dir.chmod(0o700)
+    environment["FCMS_CHROME_PROFILE_DIR"] = str(chrome_profile_dir)
     environment["FCMS_SESSION_COOKIE_FILE"] = str(
-        APP_DIR / "runtime" / "continuous-runner" / "fedex-session.json"
+        continuous_runtime_dir / "fedex-session.json"
     )
     return environment
 

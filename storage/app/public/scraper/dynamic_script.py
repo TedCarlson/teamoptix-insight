@@ -362,7 +362,11 @@ def getDriver():
     if isPlatformLinux():
         options.add_argument('--headless=new')
         options.add_argument('--remote-debugging-port=0')
-        options.add_argument('--user-data-dir=/tmp/teamoptix-selenium-chrome')
+        chrome_profile_dir = os.environ.get(
+            "FCMS_CHROME_PROFILE_DIR",
+            "/tmp/teamoptix-selenium-chrome",
+        )
+        options.add_argument(f'--user-data-dir={chrome_profile_dir}')
     # options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
