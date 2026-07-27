@@ -162,6 +162,8 @@ def child_environment(
         "1" if manifest_options["skip_combined"] else "0"
     )
     environment["FCMS_SINGLE_SESSION"] = "1"
+    environment["FCMS_PERSIST_BROWSER"] = "1"
+    environment["FCMS_CHROME_DEBUGGER_ADDRESS"] = "127.0.0.1:9222"
     continuous_runtime_dir = APP_DIR / "runtime" / "continuous-runner"
     continuous_runtime_dir.mkdir(parents=True, exist_ok=True)
     continuous_runtime_dir.chmod(0o700)

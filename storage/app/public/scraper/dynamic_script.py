@@ -13,6 +13,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
 from sys import platform
 import shutil
+import socket
 import threading
 from datetime import datetime, timezone
 
@@ -51,6 +52,14 @@ START_TIME = time.time()
 SESSION_COOKIE_FILE = os.environ.get(
     "FCMS_SESSION_COOKIE_FILE",
     "/tmp/teamoptix-fedex-session.json",
+)
+PERSIST_BROWSER = os.environ.get(
+    "FCMS_PERSIST_BROWSER",
+    "0",
+).strip().lower() in {"1", "true", "yes", "on"}
+CHROME_DEBUGGER_ADDRESS = os.environ.get(
+    "FCMS_CHROME_DEBUGGER_ADDRESS",
+    "127.0.0.1:9222",
 )
 
 if not os.path.exists(DOWNLOAD_FOLDER):
@@ -354,6 +363,33 @@ def recordObservedDownload(
     )
 
 def getDriver():
+    if isPlatformLinux() and PERSIST_BROWSER:
+        try:
+            debugger_host, debugger_port = CHROME_DEBUGGER_ADDRESS.rsplit(":", 1)
+            with socket.create_connection(
+                (debugger_host, int(debugger_port)),
+                timeout=1,
+            ):
+                pass
+            attach_options = webdriver.ChromeOptions()
+            attach_options.binary_location = '/usr/bin/google-chrome-stable'
+            attach_options.add_experimental_option(
+                "debuggerAddress",
+                CHROME_DEBUGGER_ADDRESS,
+            )
+            attached_driver = webdriver.Chrome(options=attach_options)
+            attached_driver.execute_cdp_cmd(
+                "Page.setDownloadBehavior",
+                {
+                    "behavior": "allow",
+                    "downloadPath": DOWNLOAD_FOLDER,
+                },
+            )
+            logging.info("Attached to persistent FedEx browser session")
+            return attached_driver
+        except Exception as error:
+            logging.info("Persistent FedEx browser attach unavailable: %s", error)
+
     options = webdriver.ChromeOptions()
     options.add_argument("start-maximized")
     if isPlatformLinux():
@@ -361,12 +397,18 @@ def getDriver():
 
     if isPlatformLinux():
         options.add_argument('--headless=new')
-        options.add_argument('--remote-debugging-port=0')
+        options.add_argument(
+            '--remote-debugging-port=9222'
+            if PERSIST_BROWSER
+            else '--remote-debugging-port=0'
+        )
         chrome_profile_dir = os.environ.get(
             "FCMS_CHROME_PROFILE_DIR",
             "/tmp/teamoptix-selenium-chrome",
         )
         options.add_argument(f'--user-data-dir={chrome_profile_dir}')
+        if PERSIST_BROWSER:
+            options.add_experimental_option('detach', True)
     # options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
@@ -597,15 +639,31 @@ def authenticateDriver(driver):
         except Exception:
             pass
 
-    password = WebDriverWait(driver, 25).until(
-        EC.presence_of_element_located(
-            (
-                By.XPATH,
-                '//input[@name="credentials.passcode"] | '
-                '//input[@name="password"] | //input[@type="password"]',
+    try:
+        password = WebDriverWait(driver, 25).until(
+            EC.presence_of_element_located(
+                (
+                    By.XPATH,
+                    '//input[@name="credentials.passcode"] | '
+                    '//input[@name="password"] | //input[@type="password"]',
+                )
             )
         )
-    )
+    except TimeoutException:
+        visible_inputs = [
+            {
+                "name": element.get_attribute("name"),
+                "type": element.get_attribute("type"),
+            }
+            for element in driver.find_elements(By.CSS_SELECTOR, "input")
+        ]
+        logging.info(
+            "PurpleID password challenge unavailable url=%s title=%s inputs=%s",
+            driver.current_url,
+            driver.title,
+            visible_inputs,
+        )
+        raise
     time.sleep(1)
     password.send_keys(SCRAP_INFO['password'])
     time.sleep(1)
@@ -621,6 +679,7 @@ def authenticateDriver(driver):
 def main(section_='', option_=0, retry=1):
     global SECTION_LIST, ACTIVE_SECTION, ACTIVE_SECTION_OPTION
     driver = getDriver()
+    home_page_handle = None
     logging.info("Driver loaded...")
     try:
         authenticateDriver(driver)
@@ -971,7 +1030,21 @@ def main(section_='', option_=0, retry=1):
         persistSessionCookies(driver)
     except Exception as e:
         logging.info(e)
-        driver.quit()
+        browser_retained = False
+        if PERSIST_BROWSER and home_page_handle and ACTIVE_SECTION:
+            try:
+                driver.switch_to.window(home_page_handle)
+                driver.switch_to.default_content()
+                persistSessionCookies(driver)
+                browser_retained = True
+                logging.info("FedEx browser session retained after section failure")
+            except Exception as retain_error:
+                logging.info(
+                    "FedEx browser session could not be retained: %s",
+                    retain_error,
+                )
+        if not browser_retained:
+            driver.quit()
         logging.info("Crashed On: " + str(ACTIVE_SECTION) + ' and ' + str(ACTIVE_SECTION_OPTION))
         writeError(formatted_date, f"Crashed On:{ACTIVE_SECTION} and {ACTIVE_SECTION_OPTION}", "Daily scrape", START_TIME)
         time.sleep(3)
@@ -982,7 +1055,10 @@ def main(section_='', option_=0, retry=1):
             logging.info(f'{retry} retries attempted; max_retries={max_retries}. exiting one-shot run.')
             sys.exit(1)
 
-    driver.quit()
+    if PERSIST_BROWSER:
+        logging.info("FedEx browser session retained for the next cycle")
+    else:
+        driver.quit()
     time.sleep(5)
     success = renameFolder(DOWNLOAD_FOLDER)
 
