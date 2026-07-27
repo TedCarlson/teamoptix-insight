@@ -394,15 +394,24 @@ export async function processManifestArtifact(params: {
 export async function processCapturedManifestArtifacts(params: {
   supabase: SupabaseClientLike;
   limit?: number;
+  collectionRequestId?: string | null;
 }) {
-  const { supabase, limit = 10 } = params;
+  const { supabase, limit = 10, collectionRequestId = null } = params;
 
-  const { data, error } = await supabase
+  let artifactQuery = supabase
     .from("operations_manifest_artifact_v")
     .select("*")
     .eq("artifact_status", "CAPTURED")
     .order("captured_at", { ascending: true })
     .limit(limit);
+
+  if (collectionRequestId) {
+    artifactQuery = artifactQuery.contains("metadata_json", {
+      source_collection_request_id: collectionRequestId,
+    });
+  }
+
+  const { data, error } = await artifactQuery;
 
   if (error) {
     throw new Error(error.message);

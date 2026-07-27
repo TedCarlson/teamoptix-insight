@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import {
@@ -15,6 +16,21 @@ const DECOMMISSIONED_FCC_ARTIFACT_KEYS = new Set([
 ]);
 
 type RouteContext = { params: Promise<{ slug: string }> };
+
+function isRunnerAuthorized(req: NextRequest) {
+  const configured = process.env.INSIGHT_ARTIFACT_INGEST_TOKEN ?? "";
+  const supplied = (req.headers.get("authorization") ?? "").replace(
+    /^Bearer\s+/i,
+    ""
+  );
+  if (!configured || !supplied) return false;
+  const configuredBuffer = Buffer.from(configured);
+  const suppliedBuffer = Buffer.from(supplied);
+  return (
+    configuredBuffer.length === suppliedBuffer.length &&
+    timingSafeEqual(configuredBuffer, suppliedBuffer)
+  );
+}
 
 async function markArtifact(params: {
   supabase: any;
@@ -88,23 +104,36 @@ async function handleArtifactIngest(req: NextRequest, context: RouteContext) {
 
   try {
     const { slug } = await context.params;
+    const runnerAuthorized = isRunnerAuthorized(req);
     const session = await getSupabaseServerClient();
-    const access = await resolveAutomationAccess(session, slug);
 
-    if (!access.canAdmin) {
-      return NextResponse.json(
-        { error: access.error ?? "Forbidden." },
-        { status: access.allowed ? 403 : access.status }
-      );
+    if (!runnerAuthorized) {
+      const access = await resolveAutomationAccess(session, slug);
+      if (!access.canAdmin) {
+        return NextResponse.json(
+          { error: access.error ?? "Forbidden." },
+          { status: access.allowed ? 403 : access.status }
+        );
+      }
     }
 
-    const resolved = await resolveCompanyBySlug(session, slug);
+    const supabase = createSupabaseServiceRoleClient();
+    const resolved = await resolveCompanyBySlug(
+      runnerAuthorized ? (supabase as any) : session,
+      slug
+    );
     if (!resolved.company) {
       return NextResponse.json({ ok: false, error: resolved.error ?? "Company not found." }, { status: 404 });
     }
 
-    const supabase = createSupabaseServiceRoleClient();
-    const { data: artifacts, error: artifactError } = await supabase
+    const body =
+      req.method === "POST"
+        ? await req.json().catch(() => ({}))
+        : {};
+    const requestId =
+      typeof body?.request_id === "string" ? body.request_id : null;
+
+    let artifactQuery = supabase
       .from("operations_collection_artifact_v")
       .select("*")
       .eq("company_id", resolved.company.id)
@@ -113,6 +142,18 @@ async function handleArtifactIngest(req: NextRequest, context: RouteContext) {
       .not("normalized_filename", "in", '("Delivery Manifest.xlsx","Pickup Manifest.xlsx","Combined Manifest.xlsx")')
       .order("created_at", { ascending: true })
       .limit(5);
+
+    if (runnerAuthorized && !requestId) {
+      return NextResponse.json(
+        { ok: false, error: "Runner request_id is required." },
+        { status: 400 }
+      );
+    }
+    if (requestId) {
+      artifactQuery = artifactQuery.eq("collection_request_id", requestId);
+    }
+
+    const { data: artifacts, error: artifactError } = await artifactQuery;
 
     if (artifactError) throw new Error(artifactError.message);
 
@@ -198,10 +239,41 @@ async function handleArtifactIngest(req: NextRequest, context: RouteContext) {
       }
     }
 
+    let manifestProcessing: Record<string, unknown> | null = null;
+    if (runnerAuthorized && requestId) {
+      const manifestResponse = await fetch(
+        new URL(
+          "/api/cron/operations/manifest-artifact-process",
+          req.nextUrl.origin
+        ),
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${process.env.INSIGHT_ARTIFACT_INGEST_TOKEN}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ request_id: requestId }),
+          cache: "no-store",
+        }
+      );
+      manifestProcessing = await manifestResponse.json().catch(() => ({
+        ok: false,
+        error: "Manifest processor returned an unreadable response.",
+      }));
+      if (!manifestResponse.ok) {
+        throw new Error(
+          typeof manifestProcessing?.error === "string"
+            ? manifestProcessing.error
+            : "Manifest processor failed."
+        );
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       processed_count: processed.length,
       processed,
+      manifest_processing: manifestProcessing,
       elapsed_ms: Date.now() - startedAt,
     });
   } catch (error) {

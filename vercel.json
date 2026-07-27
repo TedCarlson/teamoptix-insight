@@ -1,24 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/cron/operations/artifact-ingest",
-      "schedule": "*/5 * * * *"
-    },
-    {
       "path": "/api/cron/fleet/archive-evidence",
       "schedule": "17 4 * * *"
-    },
-    {
-      "path": "/api/cron/operations/generate-collection-requests",
-      "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/cron/operations/manifest-artifact-process",
-      "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/cron/operations/expire-collection-leases",
-      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/cron/engineering/platform-telemetry",

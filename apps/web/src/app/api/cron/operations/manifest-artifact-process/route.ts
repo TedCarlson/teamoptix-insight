@@ -1,9 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 import { processCapturedManifestArtifacts } from "@/features/operations/manifests/manifest.processor";
 import { manifestIdentityFromBuffer } from "@/features/operations/manifests/manifest.identity";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 
 export const runtime = "nodejs";
+
+function isRunnerAuthorized(req: NextRequest) {
+  const configured = process.env.INSIGHT_ARTIFACT_INGEST_TOKEN ?? "";
+  const supplied = (req.headers.get("authorization") ?? "").replace(
+    /^Bearer\s+/i,
+    ""
+  );
+  if (!configured || !supplied) return false;
+  const configuredBuffer = Buffer.from(configured);
+  const suppliedBuffer = Buffer.from(supplied);
+  return (
+    configuredBuffer.length === suppliedBuffer.length &&
+    timingSafeEqual(configuredBuffer, suppliedBuffer)
+  );
+}
+
+function isCronAuthorized(req: NextRequest) {
+  const configured = process.env.CRON_SECRET;
+  return Boolean(
+    configured &&
+      req.headers.get("authorization") === `Bearer ${configured}`
+  );
+}
 
 function parseLimit(req: NextRequest) {
   const raw = Number(req.nextUrl.searchParams.get("limit") ?? "10");
@@ -21,8 +45,12 @@ function expectedManifestType(row: any) {
   return row.normalized_filename === "Delivery Manifest.xlsx" ? "delivery" : "pickup";
 }
 
-async function prepareManifestCollectionArtifacts(supabase: any, limit: number) {
-  const { data: artifacts, error } = await supabase
+async function prepareManifestCollectionArtifacts(
+  supabase: any,
+  limit: number,
+  collectionRequestId: string | null
+) {
+  let artifactQuery = supabase
     .from("operations_collection_artifact_v")
     .select("*")
     .eq("artifact_kind", "REPORT_FILE")
@@ -30,6 +58,15 @@ async function prepareManifestCollectionArtifacts(supabase: any, limit: number) 
     .in("normalized_filename", ["Delivery Manifest.xlsx", "Pickup Manifest.xlsx"])
     .order("created_at", { ascending: true })
     .limit(Math.max(1, Math.min(limit, 250)));
+
+  if (collectionRequestId) {
+    artifactQuery = artifactQuery.eq(
+      "collection_request_id",
+      collectionRequestId
+    );
+  }
+
+  const { data: artifacts, error } = await artifactQuery;
 
   if (error) throw new Error(error.message);
 
@@ -113,13 +150,25 @@ async function prepareManifestCollectionArtifacts(supabase: any, limit: number) 
   return prepared;
 }
 
-async function reconcileManifestCollectionRequests(supabase: any) {
-  const { data: requests, error: requestError } = await supabase
+async function reconcileManifestCollectionRequests(
+  supabase: any,
+  collectionRequestId: string | null
+) {
+  let requestQuery = supabase
     .from("operations_collection_artifact_v")
     .select("collection_request_id, created_at")
     .eq("request_status", "ARTIFACTS_READY")
     .order("created_at", { ascending: true })
     .limit(50);
+
+  if (collectionRequestId) {
+    requestQuery = requestQuery.eq(
+      "collection_request_id",
+      collectionRequestId
+    );
+  }
+
+  const { data: requests, error: requestError } = await requestQuery;
 
   if (requestError) {
     throw new Error(requestError.message);
@@ -212,16 +261,38 @@ async function reconcileManifestCollectionRequests(supabase: any) {
   return reconciled;
 }
 
-export async function GET(req: NextRequest) {
+async function handleManifestArtifactProcess(req: NextRequest) {
   const startedAt = Date.now();
 
   try {
+    const runnerAuthorized = isRunnerAuthorized(req);
+    if (!runnerAuthorized && !isCronAuthorized(req)) {
+      return NextResponse.json({ ok: false, error: "Unauthorized." }, { status: 401 });
+    }
+
+    const body =
+      req.method === "POST"
+        ? await req.json().catch(() => ({}))
+        : {};
+    const collectionRequestId =
+      typeof body?.request_id === "string" ? body.request_id : null;
+    if (runnerAuthorized && !collectionRequestId) {
+      return NextResponse.json(
+        { ok: false, error: "Runner request_id is required." },
+        { status: 400 }
+      );
+    }
+
     const supabase = createSupabaseServiceRoleClient();
-    const prepared = await prepareManifestCollectionArtifacts(supabase, parseLimit(req) * 5);
+    const prepared = await prepareManifestCollectionArtifacts(
+      supabase,
+      parseLimit(req) * 5,
+      collectionRequestId
+    );
     const { data: promoted, error: promoteError } = await supabase.rpc(
       "promote_operations_collection_manifest_artifacts",
       {
-        p_collection_request_id: null,
+        p_collection_request_id: collectionRequestId,
         p_limit: parseLimit(req),
       }
     );
@@ -233,8 +304,12 @@ export async function GET(req: NextRequest) {
     const processed = await processCapturedManifestArtifacts({
       supabase,
       limit: parseLimit(req),
+      collectionRequestId,
     });
-    const reconciled = await reconcileManifestCollectionRequests(supabase);
+    const reconciled = await reconcileManifestCollectionRequests(
+      supabase,
+      collectionRequestId
+    );
 
     return NextResponse.json({
       ok: true,
@@ -260,4 +335,12 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+export async function GET(req: NextRequest) {
+  return handleManifestArtifactProcess(req);
+}
+
+export async function POST(req: NextRequest) {
+  return handleManifestArtifactProcess(req);
 }

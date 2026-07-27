@@ -8,6 +8,7 @@ import {
   resolveCompanyBySlug,
   saveAutomationCredential,
 } from "@/features/automation/server/automation.repository";
+import { pushOperationsRunnerSchedule } from "@/features/automation/server/runner-control";
 
 export const runtime = "nodejs";
 
@@ -127,9 +128,10 @@ export async function PATCH(
       );
     }
 
+    const service = createSupabaseServiceRoleClient();
     const saveResult =
       await saveAutomationCredential(
-        createSupabaseServiceRoleClient(),
+        service,
         profileResult.profile.id,
         username,
         password
@@ -142,8 +144,25 @@ export async function PATCH(
       );
     }
 
+    let runnerSync: {
+      status: "APPLIED" | "PENDING";
+      error?: string;
+    } = { status: "APPLIED" };
+    try {
+      await pushOperationsRunnerSchedule(service);
+    } catch (runnerError) {
+      runnerSync = {
+        status: "PENDING",
+        error:
+          runnerError instanceof Error
+            ? runnerError.message
+            : "Runner did not acknowledge the credential version.",
+      };
+    }
+
     return NextResponse.json({
       success: true,
+      runner_sync: runnerSync,
     });
   } catch (error) {
     return NextResponse.json(

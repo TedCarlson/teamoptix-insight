@@ -10,6 +10,9 @@ import {
   formatTime,
 } from "./automationFormatters";
 import { MiniStat, SectionCard } from "./automationShared";
+import RunnerScheduleEditor, {
+  defaultRunnerSchedule,
+} from "./RunnerScheduleEditor";
 import {
   credentialEditorBox,
   credentialField,
@@ -31,6 +34,7 @@ import type {
   CollectionRequest,
   CollectionRuntimeBaseline,
   CredentialResponse,
+  RunnerSchedule,
 } from "./automation.types";
 
 const ACTIVE_REQUEST_STATUSES = new Set([
@@ -106,6 +110,8 @@ export default function AutomationConfigPanel(
   const [runtimeBaselines, setRuntimeBaselines] = useState<
     CollectionRuntimeBaseline[]
   >([]);
+  const [runnerSchedule, setRunnerSchedule] =
+    useState<RunnerSchedule | null>(null);
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -114,6 +120,7 @@ export default function AutomationConfigPanel(
   const [refreshing, setRefreshing] = useState(false);
   const [queuingRecovery, setQueuingRecovery] = useState<string | null>(null);
   const [showCredentialEditor, setShowCredentialEditor] = useState(false);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [observedRequestIds, setObservedRequestIds] = useState<string[]>([]);
@@ -203,14 +210,43 @@ export default function AutomationConfigPanel(
     setRecoveryCandidates(Array.isArray(data?.rows) ? data.rows : []);
   }, [props.slug]);
 
+  const loadRunnerSchedule = useCallback(async () => {
+    if (props.workspaceMode !== "governance") return;
+
+    const res = await fetch(
+      `/api/company/${props.slug}/automation/schedule`,
+      { cache: "no-store", credentials: "include" }
+    );
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data?.error ?? "Failed to load the runner schedule.");
+    }
+
+    setRunnerSchedule(
+      data?.row ??
+        defaultRunnerSchedule({
+          companySlug: props.slug,
+          runnerKey: data?.runner_key,
+        })
+    );
+  }, [props.slug, props.workspaceMode]);
+
   const loadAll = useCallback(async () => {
     await Promise.all([
       loadStatus(),
       loadCredential(),
       loadCollectionRequests(),
       loadRecoveryCandidates(),
+      loadRunnerSchedule(),
     ]);
-  }, [loadStatus, loadCredential, loadCollectionRequests, loadRecoveryCandidates]);
+  }, [
+    loadStatus,
+    loadCredential,
+    loadCollectionRequests,
+    loadRecoveryCandidates,
+    loadRunnerSchedule,
+  ]);
 
   const loadQueueSnapshot = useCallback(
     () =>
@@ -504,6 +540,48 @@ export default function AutomationConfigPanel(
     }
   }
 
+  async function saveRunnerSchedule(row: RunnerSchedule) {
+    try {
+      setScheduleSaving(true);
+      setMessage(null);
+      setStatusError(null);
+
+      const res = await fetch(
+        `/api/company/${props.slug}/automation/schedule`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(row),
+        }
+      );
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error ?? "Failed to save the runner schedule.");
+      }
+
+      setRunnerSchedule(data?.row ?? row);
+      setMessage(
+        data?.runner_sync?.status === "APPLIED"
+          ? "Schedule saved and applied to the runner."
+          : `Schedule saved but is pending runner delivery.${
+              data?.runner_sync?.error
+                ? ` ${data.runner_sync.error}`
+                : ""
+            }`
+      );
+    } catch (error) {
+      setStatusError(
+        error instanceof Error
+          ? error.message
+          : "Failed to save the runner schedule."
+      );
+    } finally {
+      setScheduleSaving(false);
+    }
+  }
+
   return (
     <section style={{ display: "grid", gap: 10 }}>
       <SectionCard
@@ -739,6 +817,16 @@ export default function AutomationConfigPanel(
           </p>
         ) : null}
       </SectionCard>
+
+      {props.workspaceMode === "governance" && runnerSchedule ? (
+        <RunnerScheduleEditor
+          row={runnerSchedule}
+          disabled={!props.canEdit}
+          saving={scheduleSaving}
+          onChange={setRunnerSchedule}
+          onSave={saveRunnerSchedule}
+        />
+      ) : null}
 
       <SectionCard
         eyebrow="Request Warehouse"

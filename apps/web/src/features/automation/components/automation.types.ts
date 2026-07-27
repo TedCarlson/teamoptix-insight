@@ -62,6 +62,44 @@ export type ScheduleRow = {
   updated_at: string;
 };
 
+export type RunnerSchedule = {
+  id: string;
+  company_id: string;
+  company_slug: string;
+  runner_key: string;
+  timezone: string;
+  collection_enabled: boolean;
+  previous_day_close_enabled: boolean;
+  previous_day_close_time: string;
+  operations_pulse_enabled: boolean;
+  operations_pulse_start_time: string;
+  operations_pulse_end_time: string;
+  report_config_json: {
+    previous_day_close?: string[];
+    operations_pulse?: string[];
+    operating_weekdays?: number[];
+    operating_date_overrides?: Record<string, "OPERATING" | "CLOSED">;
+  };
+  recovery_config_json: Record<string, unknown>;
+  historical_config_json: Record<string, unknown>;
+  config_version: number;
+  applied_version: number;
+  runner_state:
+    | "PENDING"
+    | "APPLIED"
+    | "RUNNING"
+    | "IDLE"
+    | "DISABLED"
+    | "ERROR"
+    | string;
+  applied_at: string | null;
+  runner_last_seen_at: string | null;
+  runner_last_error: string | null;
+  runner_metadata_json: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
 export type CollectionRequest = {
   id: string;
   company_id: string;
