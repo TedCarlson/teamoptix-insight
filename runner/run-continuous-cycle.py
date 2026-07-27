@@ -421,7 +421,19 @@ def main() -> int:
     donor_exit_code, stages, lane_timings, output_tail = execute_donor(
         environment
     )
-    auth_failure = bool(AUTH_FAILURE_PATTERN.search(output_tail))
+    event_types = {
+        str(stage.get("event_type") or "")
+        for stage in stages
+    }
+    authentication_attempted = "AUTH_ATTEMPTED" in event_types
+    authentication_succeeded = bool(
+        {"AUTH_COMPLETED", "SESSION_REUSED"} & event_types
+    )
+    auth_failure = bool(AUTH_FAILURE_PATTERN.search(output_tail)) or (
+        donor_exit_code != 0
+        and authentication_attempted
+        and not authentication_succeeded
+    )
 
     artifacts: list[dict[str, Any]] = []
     upload_metrics: list[dict[str, Any]] = []

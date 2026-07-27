@@ -260,6 +260,7 @@ def main(section_='', option_=0, retry=1):
         )
 
         logging.info("On login page....")
+        emit_runtime_event("AUTH_ATTEMPTED", "AUTHENTICATION")
         time.sleep(1)
 
         username.send_keys(SCRAP_INFO['username'])

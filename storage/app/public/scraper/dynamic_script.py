@@ -617,6 +617,7 @@ def authenticateDriver(driver):
     )
 
     logging.info("On login page....")
+    emit_runtime_event("AUTH_ATTEMPTED", "AUTHENTICATION")
     time.sleep(1)
 
     username.send_keys(SCRAP_INFO['username'])

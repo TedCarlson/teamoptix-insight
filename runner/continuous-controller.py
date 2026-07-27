@@ -48,6 +48,10 @@ RUNNER_VERSION = os.environ.get(
 )
 
 
+class CredentialConfigurationError(RuntimeError):
+    """A governed credential cannot be used for a FedEx login."""
+
+
 def utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -145,9 +149,18 @@ class ContinuousController:
             previous_version = int(
                 self.schedule.get("config_version") or 0
             )
+            previous_credential_version = int(
+                (self.schedule.get("credential") or {}).get("version") or 0
+            )
             next_version = int(value.get("config_version") or 0)
+            next_credential_version = int(
+                (value.get("credential") or {}).get("version") or 0
+            )
             self.schedule = value
             atomic_json_write(SCHEDULE_FILE, value)
+            if next_credential_version != previous_credential_version:
+                self.failure_count = 0
+                self.next_retry_at = 0
 
         print(
             "[controller] schedule applied "
@@ -241,6 +254,12 @@ class ContinuousController:
             and cached_version == expected
             and self.credential_blocked_version != cached_version
         ):
+            username = str(self.credential.get("username") or "").strip()
+            if not username.isdigit():
+                raise CredentialConfigurationError(
+                    "The governed FedEx username is invalid. FedEx user IDs "
+                    "must contain digits only; refusing to start a login."
+                )
             return self.credential
 
         known_version = cached_version if self.credential else None
@@ -259,6 +278,14 @@ class ContinuousController:
                 raise RuntimeError(
                     "Credential version changed without a usable secret."
                 )
+            username = str(value["username"]).strip()
+            if not username.isdigit():
+                self.credential = value
+                raise CredentialConfigurationError(
+                    "The governed FedEx username is invalid. FedEx user IDs "
+                    "must contain digits only; refusing to start a login."
+                )
+            value["username"] = username
             self.credential = value
             self.credential_blocked_version = None
             return value
@@ -336,6 +363,13 @@ class ContinuousController:
 
     def start_allowed(self) -> bool:
         return bool(self.schedule.get("collection_enabled"))
+
+    def credential_attempt_allowed(self) -> bool:
+        return (
+            self.credential_blocked_version is None
+            or self.credential_blocked_version
+            != self.expected_credential_version()
+        )
 
     def reports_for(self, key: str) -> list[str]:
         block = self.schedule.get(key) or {}
@@ -491,7 +525,10 @@ class ContinuousController:
                         self.stop_event.wait(5)
                         continue
 
-                    if self.previous_day_close_due(now):
+                    if (
+                        self.previous_day_close_due(now)
+                        and self.credential_attempt_allowed()
+                    ):
                         service_date = (
                             now.date() - timedelta(days=1)
                         ).isoformat()
@@ -525,6 +562,7 @@ class ContinuousController:
                         pulse.get("enabled")
                         and self.pulse_operates_today(now)
                         and self.within_pulse_window(now)
+                        and self.credential_attempt_allowed()
                         and time.monotonic() >= self.next_retry_at
                     ):
                         reports = self.reports_for("operations_pulse")
@@ -554,6 +592,10 @@ class ContinuousController:
                         self.stop_event.wait(1)
                         continue
 
+                    self.stop_event.wait(5)
+                except CredentialConfigurationError as exc:
+                    print(f"[controller] credential blocked: {exc}", flush=True)
+                    self.mark_auth_failure()
                     self.stop_event.wait(5)
                 except Exception as exc:
                     print(f"[controller] loop error: {exc}", flush=True)
