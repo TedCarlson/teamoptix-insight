@@ -1,0 +1,21 @@
+[Unit]
+Description=TeamOptix Continuous Collection Controller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/teamoptix-report-runner/app
+Environment=RUNNER_KEY=vps-laravel-runner-001
+Environment=CONTINUOUS_RUNNER_SHADOW=1
+Environment=TEAMOPTIX_RUNNER_VERSION=continuous-runner-v1
+Environment=RUNNER_CONTROL_PORT=8790
+EnvironmentFile=-/root/teamoptix-report-runner/app/runtime/continuous-runner/control.env
+ExecStart=/root/teamoptix-report-runner/app/storage/app/public/scraper/.venv/bin/python /root/teamoptix-report-runner/app/runner/continuous-controller.py
+Restart=always
+RestartSec=10
+User=root
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -445,60 +445,88 @@ def scrollTo(el, driver):
     scroll_y_by = desired_y - current_y
     driver.execute_script("window.scrollBy(0, arguments[0]);", scroll_y_by)
 
+def authenticateDriver(driver):
+    init_url = "https://mybizaccount.fedex.com/my.policy"
+    driver.get(init_url)
+    logging.info("Visiting https://mybizaccount.fedex.com/my.policy")
+
+    # Chrome uses a durable runner profile. A successful Operations Pulse
+    # session is therefore reused across completion-driven cycles instead of
+    # submitting the username and password again for every report lane.
+    WebDriverWait(driver, 20).until(
+        lambda current_driver:
+            current_driver.find_elements(By.XPATH, "//a[@id='PT_HOME']")
+            or current_driver.find_elements(
+                By.XPATH, "//input[@class='credentials_input_submit']"
+            )
+    )
+    if driver.find_elements(By.XPATH, "//a[@id='PT_HOME']"):
+        logging.info("FedEx session reused")
+        emit_runtime_event("SESSION_REUSED", "AUTHENTICATION")
+        return
+
+    btn = WebDriverWait(driver, 20).until(
+        EC.presence_of_element_located(
+            (By.XPATH, "//input[@class='credentials_input_submit']")
+        )
+    )
+    btn.click()
+
+    username = WebDriverWait(driver, 20).until(
+        EC.presence_of_element_located(
+            (By.XPATH, '//input[@name="identifier"]')
+        )
+    )
+
+    logging.info("On login page....")
+    time.sleep(1)
+
+    username.send_keys(SCRAP_INFO['username'])
+    time.sleep(1)
+
+    continue_candidates = [
+        "//input[@type='submit']",
+        "//button[@type='submit']",
+        "//input[contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'next')]",
+        "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'next')]",
+        "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue')]",
+    ]
+
+    for candidate in continue_candidates:
+        try:
+            el = driver.find_element(By.XPATH, candidate)
+            el.click()
+            logging.info("Clicked username continue...")
+            break
+        except Exception:
+            pass
+
+    password = WebDriverWait(driver, 25).until(
+        EC.presence_of_element_located(
+            (
+                By.XPATH,
+                '//input[@name="credentials.passcode"] | '
+                '//input[@name="password"] | //input[@type="password"]',
+            )
+        )
+    )
+    time.sleep(1)
+    password.send_keys(SCRAP_INFO['password'])
+    time.sleep(1)
+    password.send_keys(Keys.ENTER)
+
+    WebDriverWait(driver, 30).until(
+        EC.presence_of_element_located((By.XPATH, "//a[@id='PT_HOME']"))
+    )
+    logging.info("Login successfull!")
+    emit_runtime_event("AUTH_COMPLETED", "AUTHENTICATION")
+
 def main(section_='', option_=0, retry=1):
     global SECTION_LIST, ACTIVE_SECTION, ACTIVE_SECTION_OPTION
     driver = getDriver()
     logging.info("Driver loaded...")
-    init_url = "https://mybizaccount.fedex.com/my.policy"
-
-    driver.get(init_url)
-    logging.info("Visiting https://mybizaccount.fedex.com/my.policy")
     try:
-        btn = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.XPATH, "//input[@class='credentials_input_submit']")))
-        btn.click()
-
-        username = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.XPATH, '//input[@name="identifier"]')))
-
-        logging.info("On login page....")
-        time.sleep(1)
-
-        username.send_keys(SCRAP_INFO['username'])
-        time.sleep(1)
-
-        continue_candidates = [
-            "//input[@type='submit']",
-            "//button[@type='submit']",
-            "//input[contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'next')]",
-            "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'next')]",
-            "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue')]",
-        ]
-
-        for candidate in continue_candidates:
-            try:
-                el = driver.find_element(By.XPATH, candidate)
-                el.click()
-                logging.info("Clicked username continue...")
-                break
-            except Exception:
-                pass
-
-        password = WebDriverWait(driver, 25).until(
-            EC.presence_of_element_located((By.XPATH, '//input[@name="credentials.passcode"] | //input[@name="password"] | //input[@type="password"]'))
-        )
-        time.sleep(1)
-        password.send_keys(SCRAP_INFO['password'])
-        time.sleep(1)
-
-        password.send_keys(Keys.ENTER)
-
-        WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//a[@id='PT_HOME']")))
-        # WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//div[@class='gf_header-welcometext']")))
-
-        # //div[@class='gf_header-welcometext']
-        # //div[@class='gf_header-UserDtl']
-
-        logging.info("Login successfull!")
-        emit_runtime_event("AUTH_COMPLETED", "AUTHENTICATION")
+        authenticateDriver(driver)
 
         # headers = driver.execute_script("var req = new XMLHttpRequest();req.open('GET', document.location, false);req.send(null);return req.getAllResponseHeaders()")
         # headers = headers.splitlines()
