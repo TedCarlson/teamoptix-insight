@@ -78,7 +78,39 @@ EXPRESSION = r"""
         if (!contractMatch) continue;
         const cell = grid[rowIndex]?.[origin.columnIndex];
         const countText = normalize(cell?.innerText);
-        const link = cell?.querySelector("a[href], a[onclick]");
+        const link = cell?.querySelector("a");
+        const describe = (element) => {
+          if (!element) return null;
+          const allowedAttributes = Array.from(element.attributes || [])
+            .filter((attribute) =>
+              ["class", "role", "onclick", "style", "tabindex", "target"]
+                .includes(attribute.name.toLowerCase()) ||
+              attribute.name.toLowerCase().startsWith("data-")
+            )
+            .reduce((attributes, attribute) => {
+              attributes[attribute.name] = attribute.value;
+              return attributes;
+            }, {});
+          return {
+            tag_name: element.tagName,
+            text: normalize(element.innerText || element.textContent) || null,
+            attributes: allowedAttributes,
+            has_href: Boolean(element.getAttribute?.("href")),
+            href_path:
+              (() => {
+                const href = element.getAttribute?.("href");
+                if (!href) return null;
+                try {
+                  return new URL(href, document.location.href).pathname;
+                } catch {
+                  return "UNPARSEABLE";
+                }
+              })(),
+            onclick_property: typeof element.onclick === "function",
+            cursor: window.getComputedStyle(element).cursor,
+            pointer_events: window.getComputedStyle(element).pointerEvents,
+          };
+        };
         result.package_contract = {
           header_exact_match: true,
           physical_column_index: origin.columnIndex,
@@ -90,6 +122,10 @@ EXPRESSION = r"""
           link_target: link?.getAttribute("target") || null,
           link_has_href: Boolean(link?.getAttribute("href")),
           link_has_onclick: Boolean(link?.getAttribute("onclick")),
+          cell: describe(cell),
+          descendants: Array.from(cell?.querySelectorAll("*") || [])
+            .slice(0, 12)
+            .map(describe),
         };
       }
     }

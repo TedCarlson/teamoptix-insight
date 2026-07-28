@@ -209,7 +209,9 @@ for (const table of tables) {
 
       const countText = normalize(targetCell.innerText);
       const countMatch = countText.replace(/,/g, "").match(/\d+/);
-      const link = targetCell.querySelector("a[href], a[onclick]");
+      // FedEx binds the drill-down handler with page JavaScript to a bare
+      // anchor, so the clickable count may have neither href nor onclick.
+      const link = targetCell.querySelector("a");
       const blankWithoutLink = !countText && !link;
       return {
         status: countMatch || blankWithoutLink ? "FOUND" : "INVALID_COUNT",
