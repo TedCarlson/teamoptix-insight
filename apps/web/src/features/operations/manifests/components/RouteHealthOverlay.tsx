@@ -630,7 +630,7 @@ function RouteManifestDetail(props: {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 6 }}>
           {([[
             "all", "All", items.length,
-          ], ["open", "Manifest open", openCount], ["coded", "Attempted", codedCount], ["completed", "Completed", closedCount], ["attention", "Needs attention", attentionCount]] as const).map(([key, label, count]) => (
+          ], ["open", "Open", openCount], ["coded", "Attempted", codedCount], ["completed", "Completed", closedCount], ["attention", "Inspect", attentionCount]] as const).map(([key, label, count]) => (
             <button key={key} type="button" onClick={() => setCompletionFilter(key)} style={{ border: `1px solid ${completionFilter === key ? "#0f172a" : "transparent"}`, borderRadius: 9, background: completionFilter === key ? "#0f172a" : "#f8fafc", color: completionFilter === key ? "#fff" : "#475569", minHeight: 36, fontSize: 11, fontWeight: 950 }}>
               {label} · {count}
             </button>
