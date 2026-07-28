@@ -52,7 +52,7 @@ export const COLLECTION_TARGETS: CollectionTarget[] = [
     artifact_key: "DSW",
     runner_section: "DAILY_SERVICE",
     vps_target: 11,
-    expected_filename_match: ["daily service worksheet"],
+    expected_filename_match: ["daily service worksheet", "PackageLevelDetails"],
     default_last_look: true,
     default_targeted: true,
   },

@@ -59,7 +59,7 @@ async function refreshRequestStatus(params: { supabase: any; requestId: string }
 
   const { data: artifacts, error: artifactError } = await supabase
     .from("operations_collection_artifact_v")
-    .select("artifact_status,report_batch_id,request_type,report_family_key,service_date,ingest_metadata_json")
+    .select("artifact_status,report_batch_id,request_type,report_family_key,service_date,ingest_metadata_json,runner_artifact_json")
     .eq("collection_request_id", requestId)
     .eq("artifact_kind", "REPORT_FILE");
 
@@ -68,7 +68,12 @@ async function refreshRequestStatus(params: { supabase: any; requestId: string }
   if (rows.some((row: any) => ["READY_FOR_INGEST", "INGESTING", "ARTIFACTS_READY"].includes(row.artifact_status))) return;
 
   const isPreviousDayClose = rows.some((row: any) => row.request_type === "PREVIOUS_DAY_CLOSE");
-  const validClose = rows.length > 0 && rows.every((row: any) => {
+  const requiredCloseRows = rows.filter(
+    (row: any) =>
+      String(row?.runner_artifact_json?.artifact_key ?? "").toUpperCase() !==
+      "DSW_ALL_STATUS_CODE_PACKAGES"
+  );
+  const validClose = requiredCloseRows.length > 0 && requiredCloseRows.every((row: any) => {
     const ingest = row?.ingest_metadata_json?.ingest;
     return row.artifact_status === "INGESTED" &&
       row.report_family_key === "DSW" &&
@@ -140,8 +145,7 @@ async function handleArtifactIngest(req: NextRequest, context: RouteContext) {
       .eq("artifact_kind", "REPORT_FILE")
       .eq("artifact_status", "READY_FOR_INGEST")
       .not("normalized_filename", "in", '("Delivery Manifest.xlsx","Pickup Manifest.xlsx","Combined Manifest.xlsx")')
-      .order("created_at", { ascending: true })
-      .limit(5);
+      .order("created_at", { ascending: true });
 
     if (runnerAuthorized && !requestId) {
       return NextResponse.json(
@@ -150,7 +154,11 @@ async function handleArtifactIngest(req: NextRequest, context: RouteContext) {
       );
     }
     if (requestId) {
-      artifactQuery = artifactQuery.eq("collection_request_id", requestId);
+      artifactQuery = artifactQuery
+        .eq("collection_request_id", requestId)
+        .limit(100);
+    } else {
+      artifactQuery = artifactQuery.limit(5);
     }
 
     const { data: artifacts, error: artifactError } = await artifactQuery;
@@ -219,6 +227,8 @@ async function handleArtifactIngest(req: NextRequest, context: RouteContext) {
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Artifact ingest failed.";
+        const optionalPackageStatus =
+          artifactKey === "DSW_ALL_STATUS_CODE_PACKAGES";
 
         await markArtifact({
           supabase,
@@ -228,13 +238,26 @@ async function handleArtifactIngest(req: NextRequest, context: RouteContext) {
           errorMessage: message,
         });
 
-        await supabase.rpc("update_operations_collection_request_status", {
-          p_request_id: artifact.collection_request_id,
-          p_request_status: "FAILED",
-          p_error_message: message,
-          p_automation_run_id: null,
-          p_report_batch_ids: null,
-        });
+        if (optionalPackageStatus) {
+          await refreshRequestStatus({
+            supabase,
+            requestId: artifact.collection_request_id,
+          });
+          processed.push({
+            artifact_id: artifact.id,
+            collection_request_id: artifact.collection_request_id,
+            status: "FAILED_OPTIONAL",
+            warning: message,
+          });
+        } else {
+          await supabase.rpc("update_operations_collection_request_status", {
+            p_request_id: artifact.collection_request_id,
+            p_request_status: "FAILED",
+            p_error_message: message,
+            p_automation_run_id: null,
+            p_report_batch_ids: null,
+          });
+        }
 
       }
     }

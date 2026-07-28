@@ -9,6 +9,10 @@
       "schedule": "17 4 * * *"
     },
     {
+      "path": "/api/cron/operations/dsw-package-retention",
+      "schedule": "41 8 * * *"
+    },
+    {
       "path": "/api/cron/operations/generate-collection-requests",
       "schedule": "*/5 * * * *"
     },

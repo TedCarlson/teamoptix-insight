@@ -1,5 +1,5 @@
 const RUNNER_TARGETS: Record<string, Record<string, unknown>> = {
-  DSW: { key: "DSW_DAILY_SERVICE", label: "DSW · Daily Service Worksheet", artifact_key: "DSW", report_family_key: "DSW", runner_section: "DAILY_SERVICE", vps_target: 11, expected_filename_match: ["daily service worksheet"] },
+  DSW: { key: "DSW_DAILY_SERVICE", label: "DSW · Daily Service Worksheet", artifact_key: "DSW", report_family_key: "DSW", runner_section: "DAILY_SERVICE", vps_target: 11, expected_filename_match: ["daily service worksheet", "PackageLevelDetails"] },
   FCC: { key: "FCC_WORK_AREA_SUMMARY", label: "FCC · Work Area Summary", artifact_key: "WORK_AREA_SUMMARY", report_family_key: "FCC", report_shape_key: "FCC_WORK_AREA_SUMMARY", runner_section: "SERVICE", vps_target: 5, expected_filename_match: ["ServiceAreaStatus", "SAStatus_"] },
   WORK_AREA_SUMMARY: { key: "FCC_WORK_AREA_SUMMARY", label: "FCC · Work Area Summary", artifact_key: "WORK_AREA_SUMMARY", report_family_key: "FCC", report_shape_key: "FCC_WORK_AREA_SUMMARY", runner_section: "SERVICE", vps_target: 5, expected_filename_match: ["ServiceAreaStatus", "SAStatus_"] },
   // Legacy templates are deliberately redirected away from the unsupported SA Summary export.

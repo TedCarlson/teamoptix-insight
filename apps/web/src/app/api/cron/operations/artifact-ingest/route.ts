@@ -56,6 +56,13 @@ function isValidPreviousDayCloseArtifact(row: any) {
   );
 }
 
+function isOptionalPackageStatusArtifact(row: any) {
+  return (
+    String(row?.runner_artifact_json?.artifact_key ?? "").toUpperCase() ===
+    "DSW_ALL_STATUS_CODE_PACKAGES"
+  );
+}
+
 async function failRequest(supabase: any, requestId: string, message: string) {
   await supabase.rpc("update_operations_collection_request_status", {
     p_request_id: requestId,
@@ -69,7 +76,7 @@ async function failRequest(supabase: any, requestId: string, message: string) {
 async function completeRequest(supabase: any, requestId: string) {
   const { data: artifacts } = await supabase
     .from("operations_collection_artifact_v")
-    .select("artifact_status,report_batch_id,request_type,request_status,report_family_key,service_date,ingest_metadata_json")
+    .select("artifact_status,report_batch_id,request_type,request_status,report_family_key,service_date,ingest_metadata_json,runner_artifact_json")
     .eq("collection_request_id", requestId)
     .eq("artifact_kind", "REPORT_FILE");
 
@@ -78,7 +85,16 @@ async function completeRequest(supabase: any, requestId: string) {
   if (rows.some((row: any) => row.request_status !== "ARTIFACTS_READY")) return;
 
   const isPreviousDayClose = rows.some((row: any) => row.request_type === "PREVIOUS_DAY_CLOSE");
-  if (isPreviousDayClose && (rows.length === 0 || !rows.every(isValidPreviousDayCloseArtifact))) {
+  const requiredCloseRows = rows.filter(
+    (row: any) => !isOptionalPackageStatusArtifact(row)
+  );
+  if (
+    isPreviousDayClose &&
+    (
+      requiredCloseRows.length === 0 ||
+      !requiredCloseRows.every(isValidPreviousDayCloseArtifact)
+    )
+  ) {
     await failRequest(
       supabase,
       requestId,
@@ -111,7 +127,7 @@ async function reconcileArtifactReadyRequests(supabase: any) {
   for (const request of requests ?? []) {
     const { data: artifacts } = await supabase
       .from("operations_collection_artifact_v")
-      .select("artifact_status,report_batch_id,request_type,report_family_key,service_date,ingest_metadata_json")
+      .select("artifact_status,report_batch_id,request_type,report_family_key,service_date,ingest_metadata_json,runner_artifact_json")
       .eq("collection_request_id", request.collection_request_id)
       .eq("artifact_kind", "REPORT_FILE");
 
@@ -122,10 +138,19 @@ async function reconcileArtifactReadyRequests(supabase: any) {
     const failed = rows.some((row: any) => row.artifact_status === "FAILED");
     const ingested = rows.filter((row: any) => row.artifact_status === "INGESTED");
     const isPreviousDayClose = rows.some((row: any) => row.request_type === "PREVIOUS_DAY_CLOSE");
+    const requiredCloseRows = rows.filter(
+      (row: any) => !isOptionalPackageStatusArtifact(row)
+    );
 
     if (readyOrIngesting) continue;
 
-    if (isPreviousDayClose && !rows.every(isValidPreviousDayCloseArtifact)) {
+    if (
+      isPreviousDayClose &&
+      (
+        requiredCloseRows.length === 0 ||
+        !requiredCloseRows.every(isValidPreviousDayCloseArtifact)
+      )
+    ) {
       await failRequest(
         supabase,
         request.collection_request_id,

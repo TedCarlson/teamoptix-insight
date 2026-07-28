@@ -237,7 +237,10 @@ function buildPreviousDayClosePayload(assignment: ScheduledManifestAssignment, s
         artifact_key: "DSW",
         report_family_key: "DSW",
         runner_section: "DAILY_SERVICE",
-        expected_filename_match: ["daily service worksheet"],
+        expected_filename_match: [
+          "daily service worksheet",
+          "PackageLevelDetails",
+        ],
       },
     ],
   };

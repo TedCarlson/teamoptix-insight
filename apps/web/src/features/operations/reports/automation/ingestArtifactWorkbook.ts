@@ -1,4 +1,5 @@
 import { ingestDswWorkbook } from "@/features/operations/reports/dsw/dsw.ingest";
+import { ingestDswPackageStatusWorkbook } from "@/features/operations/reports/dsw/packageStatus/packageStatus.ingest";
 import { ingestFccWorkbook } from "@/features/operations/reports/fcc/fcc.ingest";
 
 type ArtifactRow = {
@@ -11,6 +12,7 @@ type ArtifactRow = {
   original_filename: string | null;
   normalized_filename: string | null;
   size_bytes: number | null;
+  runner_artifact_json?: Record<string, unknown> | null;
 };
 
 async function downloadArtifactBuffer(params: {
@@ -63,8 +65,20 @@ export async function ingestArtifactWorkbook(params: {
   });
 
   const filename = artifact.original_filename || artifact.normalized_filename || "artifact.xls";
+  const artifactKey = String(
+    artifact.runner_artifact_json?.artifact_key ?? ""
+  ).toUpperCase();
 
   if (artifact.report_family_key === "DSW") {
+    if (artifactKey === "DSW_ALL_STATUS_CODE_PACKAGES") {
+      return ingestDswPackageStatusWorkbook({
+        supabase,
+        slug,
+        buffer,
+        filename,
+        artifact,
+      });
+    }
     return ingestDswWorkbook({
       supabase,
       slug,
