@@ -892,6 +892,32 @@ def selectWorkArea(driver, option_index, max_attempts=3):
     raise last_error
 
 
+def clickManifestSearch(driver, option_index, max_attempts=3):
+    last_error = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            search_button = WebDriverWait(driver, 30).until(
+                EC.element_to_be_clickable(
+                    (By.XPATH, "//input[@id='manifestForm:search']")
+                )
+            )
+            search_button.click()
+            return
+        except StaleElementReferenceException as error:
+            last_error = error
+            logging.info(
+                "Manifest search refreshed during option %s; "
+                "reacquiring attempt %s/%s",
+                option_index,
+                attempt,
+                max_attempts,
+            )
+            time.sleep(0.5)
+
+    raise last_error
+
+
 def main(section_='', option_=0, retry=1):
     global SECTION_LIST, ACTIVE_SECTION, ACTIVE_SECTION_OPTION
     purge_expired_local_package_artifacts(MAIN_FOLDER)
@@ -1007,10 +1033,7 @@ def main(section_='', option_=0, retry=1):
                 time.sleep(1)
 
                 logging.info("Waiting for the search button to be visible...")
-                el = WebDriverWait(driver, 30).until(EC.element_to_be_clickable((By.XPATH, "//input[@id='manifestForm:search']")))
-                # scrollTo(el, driver)
-                # time.sleep(1)
-                el.click()
+                clickManifestSearch(driver, i)
                 time.sleep(1)
 
                 logging.info("Waiting for the load screen...")
