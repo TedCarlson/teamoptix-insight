@@ -344,6 +344,25 @@ function sequenceValue(valueToParse: unknown, fallback: number) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+const MANIFEST_FALLBACK_LAG_MS = 30 * 60 * 1000;
+
+function timestamp(valueToParse: unknown) {
+  const parsed = new Date(String(valueToParse ?? "")).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function latestManifestTimestamp(detail: RouteDetailPayload | null) {
+  if (!detail) return null;
+  const timestamps = [
+    ...detail.delivery_stops,
+    ...detail.packages,
+    ...detail.pickups,
+  ]
+    .map((row) => timestamp(row.created_at))
+    .filter((entry): entry is number => entry !== null);
+  return timestamps.length ? Math.max(...timestamps) : null;
+}
+
 function buildCombinedManifest(detail: RouteDetailPayload) {
   const packagesByStop = new Map<string, Array<Record<string, unknown>>>();
   detail.packages.forEach((packageRow) => {
@@ -531,12 +550,24 @@ function RouteManifestDetail(props: {
     () => (props.detail ? buildCombinedManifest(props.detail) : []),
     [props.detail]
   );
+  const manifestLatestAt = useMemo(
+    () => latestManifestTimestamp(props.detail),
+    [props.detail]
+  );
+  const dswGeneratedAt = timestamp(props.dsw?.generated_at_text);
+  const useDswFallback = Boolean(
+    props.dsw &&
+      dswGeneratedAt !== null &&
+      (manifestLatestAt === null ||
+        dswGeneratedAt - manifestLatestAt > MANIFEST_FALLBACK_LAG_MS)
+  );
 
   if (props.loading) return <div style={{ padding: 12, color: "#64748b" }}>Loading manifest rows…</div>;
   if (props.error) return <div style={{ padding: 12, color: "#991b1b" }}>{props.error}</div>;
   if (!props.detail) return null;
 
-  const visibleItems = items.filter((item) => {
+  const evidenceItems = useDswFallback ? [] : items;
+  const visibleItems = evidenceItems.filter((item) => {
     const completionMatches =
       completionFilter === "all" ||
       (completionFilter === "open" && item.open) ||
@@ -555,12 +586,38 @@ function RouteManifestDetail(props: {
       (typeFilter === "hazmat" && item.hazmat);
     return completionMatches && typeMatches;
   });
-  const openCount = items.filter((item) => item.open).length;
-  const codedCount = items.filter((item) => item.coded).length;
-  const closedCount = items.filter((item) => item.complete).length;
-  const attentionCount = items.filter(
+  const manifestOpenCount = evidenceItems.filter((item) => item.open).length;
+  const manifestCodedCount = evidenceItems.filter((item) => item.coded).length;
+  const manifestClosedCount = evidenceItems.filter((item) => item.complete).length;
+  const manifestAttentionCount = evidenceItems.filter(
     (item) => item.attention
   ).length;
+  const fallbackAllCount = props.dsw
+    ? Math.max(
+        props.dsw.planned_delivery_stops,
+        props.dsw.actual_delivery_stops
+      )
+    : 0;
+  const fallbackOpenCount = props.dsw
+    ? Math.max(
+        props.dsw.planned_delivery_stops -
+          props.dsw.actual_delivery_stops,
+        0
+      )
+    : 0;
+  const fallbackCompletedCount = props.dsw
+    ? Math.max(props.dsw.actual_delivery_stops, 0)
+    : 0;
+  const allCount = useDswFallback ? fallbackAllCount : items.length;
+  const openCount = useDswFallback ? fallbackOpenCount : manifestOpenCount;
+  const codedCount = useDswFallback ? 0 : manifestCodedCount;
+  const closedCount = useDswFallback
+    ? fallbackCompletedCount
+    : manifestClosedCount;
+  const attentionCount = useDswFallback ? 0 : manifestAttentionCount;
+  const packageCount = useDswFallback
+    ? Math.max(props.dsw?.vscan_packages ?? 0, 0)
+    : props.detail.packages.length;
   const remainingStops = props.dsw
     ? Math.max(
         props.dsw.planned_delivery_stops -
@@ -576,14 +633,14 @@ function RouteManifestDetail(props: {
       )
     : null;
   const typeOptions = [
-    { key: "delivery", label: "Delivery", count: items.filter((item) => item.kind === "delivery").length, color: "#166534", bg: "#ecfdf5" },
-    { key: "express", label: "Express", count: items.filter((item) => item.express).length, color: "#9a3412", bg: "#fff7ed" },
-    { key: "pickup", label: "Pickup", count: items.filter((item) => item.kind === "pickup").length, color: "#1d4ed8", bg: "#eff6ff" },
-    { key: "combined", label: "Combined", count: items.filter((item) => item.kind === "combined").length, color: "#7c3aed", bg: "#f5f3ff" },
-    { key: "unmanifested", label: "Unmanifested", count: items.filter((item) => item.unmanifested).length, color: "#b91c1c", bg: "#fef2f2" },
-    { key: "package_mismatch", label: "Package Link Failure", count: items.filter((item) => item.packageMismatch).length, color: "#be123c", bg: "#fff1f2" },
-    { key: "signature", label: "Signature", count: items.filter((item) => item.signature).length, color: "#6d28d9", bg: "#f5f3ff" },
-    { key: "hazmat", label: "Hazmat", count: items.filter((item) => item.hazmat).length, color: "#991b1b", bg: "#fef2f2" },
+    { key: "delivery", label: "Delivery", count: evidenceItems.filter((item) => item.kind === "delivery").length, color: "#166534", bg: "#ecfdf5" },
+    { key: "express", label: "Express", count: evidenceItems.filter((item) => item.express).length, color: "#9a3412", bg: "#fff7ed" },
+    { key: "pickup", label: "Pickup", count: evidenceItems.filter((item) => item.kind === "pickup").length, color: "#1d4ed8", bg: "#eff6ff" },
+    { key: "combined", label: "Combined", count: evidenceItems.filter((item) => item.kind === "combined").length, color: "#7c3aed", bg: "#f5f3ff" },
+    { key: "unmanifested", label: "Unmanifested", count: evidenceItems.filter((item) => item.unmanifested).length, color: "#b91c1c", bg: "#fef2f2" },
+    { key: "package_mismatch", label: "Package Link Failure", count: evidenceItems.filter((item) => item.packageMismatch).length, color: "#be123c", bg: "#fff1f2" },
+    { key: "signature", label: "Signature", count: evidenceItems.filter((item) => item.signature).length, color: "#6d28d9", bg: "#f5f3ff" },
+    { key: "hazmat", label: "Hazmat", count: evidenceItems.filter((item) => item.hazmat).length, color: "#991b1b", bg: "#fef2f2" },
   ].filter((option) => option.count > 0) as Array<{
     key: Exclude<typeof typeFilter, "all">;
     label: string;
@@ -597,11 +654,38 @@ function RouteManifestDetail(props: {
       <div>
         <strong style={{ fontSize: 18 }}>Route execution sequence</strong>
         <div style={{ color: "#64748b", fontSize: 12, marginTop: 3 }}>
-          {items.length} stops · {props.detail.packages.length} packages · {codedCount} attempted/coded · {openCount} open · {attentionCount} need attention
+          {allCount} stops · {packageCount} packages · {codedCount} attempted/coded · {openCount} open · {attentionCount} need attention
         </div>
       </div>
 
-      {remainingStops !== null && remainingPackages !== null ? (
+      {useDswFallback ? (
+        <div
+          style={{
+            border: "1px solid #93c5fd",
+            borderRadius: 12,
+            background: "#eff6ff",
+            color: "#1e40af",
+            padding: "10px 12px",
+            display: "grid",
+            gap: 4,
+            fontSize: 12,
+            fontWeight: 900,
+          }}
+        >
+          <span>
+            DSW fallback active · {closedCount} completed · {openCount} open
+          </span>
+          <span style={{ color: "#64748b" }}>
+            DSW is newer than the available manifest detail. Stale item rows are
+            withheld until the runner refreshes this route.
+            {manifestLatestAt !== null
+              ? ` Last manifest refresh ${formatAsOf(
+                  new Date(manifestLatestAt).toISOString()
+                )}.`
+              : ""}
+          </span>
+        </div>
+      ) : remainingStops !== null && remainingPackages !== null ? (
         <div
           style={{
             border: "1px solid #fed7aa",
@@ -629,7 +713,7 @@ function RouteManifestDetail(props: {
       <div style={{ border: "1px solid #dbe4ef", borderRadius: 14, background: "#fff", padding: 8, display: "grid", gap: 8 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 6 }}>
           {([[
-            "all", "All", items.length,
+            "all", "All", allCount,
           ], ["open", "Open", openCount], ["coded", "Attempted", codedCount], ["completed", "Completed", closedCount], ["attention", "Inspect", attentionCount]] as const).map(([key, label, count]) => (
             <button key={key} type="button" onClick={() => setCompletionFilter(key)} style={{ border: `1px solid ${completionFilter === key ? "#0f172a" : "transparent"}`, borderRadius: 9, background: completionFilter === key ? "#0f172a" : "#f8fafc", color: completionFilter === key ? "#fff" : "#475569", minHeight: 36, fontSize: 11, fontWeight: 950 }}>
               {label} · {count}
@@ -641,7 +725,7 @@ function RouteManifestDetail(props: {
           <div style={{ borderTop: "1px solid #eef2f7", paddingTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
             {typeOptions.length > 1 ? (
               <button type="button" onClick={() => setTypeFilter("all")} style={{ border: `1px solid ${typeFilter === "all" ? "#64748b" : "#dbe4ef"}`, borderRadius: 999, background: typeFilter === "all" ? "#f1f5f9" : "#fff", color: "#475569", padding: "6px 9px", fontSize: 10, fontWeight: 950 }}>
-                All types · {items.length}
+                All types · {allCount}
               </button>
             ) : null}
             {typeOptions.map((option) => (
@@ -654,7 +738,13 @@ function RouteManifestDetail(props: {
       </div>
 
       <div style={{ display: "grid", gap: 8 }}>
-        {visibleItems.length === 0 ? (
+        {useDswFallback ? (
+          <div style={{ border: "1px solid #bfdbfe", borderRadius: 14, background: "#fff", padding: 14, color: "#475569", fontSize: 13 }}>
+            Current route totals are supplied by DSW. Item-level manifest
+            evidence will return automatically after this route receives a
+            newer manifest refresh.
+          </div>
+        ) : visibleItems.length === 0 ? (
           <div style={{ border: "1px solid #e5ecf6", borderRadius: 14, background: "#fff", padding: 14, color: "#64748b", fontSize: 13 }}>No combined-manifest stops match this view.</div>
         ) : visibleItems.map((item) => {
           const itemColor = item.unmanifested ? "#b91c1c" : item.hazmat ? "#dc2626" : item.kind === "combined" ? "#7c3aed" : item.kind === "pickup" ? "#2563eb" : item.express ? "#f97316" : item.collection ? "#0284c7" : "#16a34a";
