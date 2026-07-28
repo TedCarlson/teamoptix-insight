@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   annotateManifestPackageEvidence,
   expressEvidenceCountsByRoute,
+  markPackageEvidenceUnavailable,
 } from "./packageStatus.evidence";
 import { trackingReference } from "./packageStatus.crypto";
 
@@ -91,5 +92,26 @@ describe("DSW package evidence classification", () => {
     });
 
     expect(packageRow.delivery_evidence_state).toBe("COMPLETED");
+  });
+
+  it("keeps manifest rows visible when local evidence configuration is absent", () => {
+    const packages = markPackageEvidenceUnavailable([
+      {
+        route_key: "BPV 01",
+        tracking_id: "TRACK-OPEN",
+        is_express: true,
+      },
+    ]);
+
+    expect(packages[0]).toMatchObject({
+      delivery_evidence_state: "NEEDS_ATTENTION",
+      delivery_evidence_basis: "EVIDENCE_CONFIGURATION_REQUIRED",
+    });
+    expect(expressEvidenceCountsByRoute(packages).get("BPV 01")).toEqual({
+      package_count: 1,
+      completed_package_count: 0,
+      open_package_count: 0,
+      tracking_gap_package_count: 1,
+    });
   });
 });

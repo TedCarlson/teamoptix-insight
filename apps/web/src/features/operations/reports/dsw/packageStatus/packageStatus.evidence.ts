@@ -22,7 +22,8 @@ export type EvidenceAnnotatedPackage = Record<string, unknown> & {
   delivery_evidence_basis:
     | "DSW_ALL_CODES"
     | "DSW_ALL_CODES_ABSENCE"
-    | "TRACKING_GAP";
+    | "TRACKING_GAP"
+    | "EVIDENCE_CONFIGURATION_REQUIRED";
   status_code_source: "VSA" | "STAR" | "VSA_AND_STAR" | null;
   vsa_status_code: string | null;
   star_status_code: string | null;
@@ -58,6 +59,25 @@ function codeSource(
   if (vsaStatusCode) return "VSA" as const;
   if (starStatusCode) return "STAR" as const;
   return null;
+}
+
+export function packageEvidenceConfigurationAvailable() {
+  return Boolean(process.env.TRACKING_REFERENCE_HMAC_KEY?.trim());
+}
+
+export function markPackageEvidenceUnavailable(
+  packages: Array<Record<string, unknown>>
+) {
+  return packages.map<EvidenceAnnotatedPackage>((packageRow) => ({
+    ...packageRow,
+    delivery_evidence_state: "NEEDS_ATTENTION",
+    delivery_evidence_basis: "EVIDENCE_CONFIGURATION_REQUIRED",
+    status_code_source: null,
+    vsa_status_code: null,
+    star_status_code: null,
+    status_code_at_local: null,
+    evidence_snapshot_generated_at: null,
+  }));
 }
 
 export function annotateManifestPackageEvidence(params: {

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   annotateManifestPackageEvidence,
   expressEvidenceCountsByRoute,
+  markPackageEvidenceUnavailable,
+  packageEvidenceConfigurationAvailable,
   type CurrentPackageStatusEvidence,
 } from "@/features/operations/reports/dsw/packageStatus/packageStatus.evidence";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
@@ -374,15 +376,18 @@ export async function GET(
         return NextResponse.json({ error: detailError.message }, { status: 500 });
       }
 
-      const packages = annotateManifestPackageEvidence({
-        companyId: company.id,
-        packages: (packagesResult.data ?? []) as Array<
-          Record<string, unknown>
-        >,
-        currentStatusRows:
-          (packageStatusResult.data ??
-            []) as CurrentPackageStatusEvidence[],
-      });
+      const manifestPackages = (packagesResult.data ?? []) as Array<
+        Record<string, unknown>
+      >;
+      const packages = packageEvidenceConfigurationAvailable()
+        ? annotateManifestPackageEvidence({
+            companyId: company.id,
+            packages: manifestPackages,
+            currentStatusRows:
+              (packageStatusResult.data ??
+                []) as CurrentPackageStatusEvidence[],
+          })
+        : markPackageEvidenceUnavailable(manifestPackages);
 
       return NextResponse.json({
         company_slug: slug,
@@ -435,15 +440,22 @@ export async function GET(
     const canonicalRows = canonicalRouteRows(
       (routeHealthResult.data ?? []) as RouteHealthRow[]
     );
-    const annotatedExpressPackages = annotateManifestPackageEvidence({
-      companyId: company.id,
-      packages: (expressPackagesResult.data ?? []).map((packageRow) => ({
+    const manifestExpressPackages = (expressPackagesResult.data ?? []).map(
+      (packageRow) => ({
         ...packageRow,
         is_express: true,
-      })),
-      currentStatusRows:
-        (packageStatusResult.data ?? []) as CurrentPackageStatusEvidence[],
-    });
+      })
+    );
+    const annotatedExpressPackages =
+      packageEvidenceConfigurationAvailable()
+        ? annotateManifestPackageEvidence({
+            companyId: company.id,
+            packages: manifestExpressPackages,
+            currentStatusRows:
+              (packageStatusResult.data ??
+                []) as CurrentPackageStatusEvidence[],
+          })
+        : markPackageEvidenceUnavailable(manifestExpressPackages);
     const expressByRoute = expressEvidenceCountsByRoute(
       annotatedExpressPackages
     );
