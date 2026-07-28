@@ -859,6 +859,39 @@ def findReusableFccWindow(driver):
     return home_page_handle, customer_connection_page_handle
 
 
+def selectWorkArea(driver, option_index, max_attempts=3):
+    last_error = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            select_element = WebDriverWait(driver, 30).until(
+                EC.presence_of_element_located(
+                    (By.XPATH, "//select[@id='manifestForm:workAreas']")
+                )
+            )
+            select = Select(select_element)
+            option = select.options[option_index]
+            selected_work_area = (
+                option.text
+                or option.get_attribute("value")
+                or f"option-{option_index}"
+            ).strip()
+            select.select_by_index(option_index)
+            return selected_work_area
+        except StaleElementReferenceException as error:
+            last_error = error
+            logging.info(
+                "Work area selector refreshed during option %s; "
+                "reacquiring attempt %s/%s",
+                option_index,
+                attempt,
+                max_attempts,
+            )
+            time.sleep(0.5)
+
+    raise last_error
+
+
 def main(section_='', option_=0, retry=1):
     global SECTION_LIST, ACTIVE_SECTION, ACTIVE_SECTION_OPTION
     purge_expired_local_package_artifacts(MAIN_FOLDER)
@@ -969,16 +1002,8 @@ def main(section_='', option_=0, retry=1):
                 if i == 0: continue
                 logging.info(f'Selecting option {i}')
                 ACTIVE_SECTION_OPTION = i
-                select_element = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//select[@id='manifestForm:workAreas']")))
                 time.sleep(1)
-                select = Select(select_element)
-
-                select.select_by_index(i)
-                selected_work_area = (
-                    select.first_selected_option.text
-                    or select.first_selected_option.get_attribute("value")
-                    or f"option-{i}"
-                ).strip()
+                selected_work_area = selectWorkArea(driver, i)
                 time.sleep(1)
 
                 logging.info("Waiting for the search button to be visible...")
