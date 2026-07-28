@@ -356,7 +356,6 @@ function latestManifestTimestamp(detail: RouteDetailPayload | null) {
   const timestamps = [
     ...detail.delivery_stops,
     ...detail.packages,
-    ...detail.pickups,
   ]
     .map((row) => timestamp(row.created_at))
     .filter((entry): entry is number => entry !== null);
