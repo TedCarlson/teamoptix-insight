@@ -10,7 +10,11 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.chrome.service import Service
-from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
+from selenium.common.exceptions import (
+    ElementClickInterceptedException,
+    StaleElementReferenceException,
+    TimeoutException,
+)
 from sys import platform
 import shutil
 import socket
@@ -918,6 +922,52 @@ def clickManifestSearch(driver, option_index, max_attempts=3):
     raise last_error
 
 
+def clickManifestTab(driver, tab_label, option_index, max_attempts=3):
+    last_error = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            WebDriverWait(driver, 30).until(
+                EC.invisibility_of_element_located(
+                    (
+                        By.XPATH,
+                        "//div[@id='manifestForm:submitTransferNotification_bg']",
+                    )
+                )
+            )
+            tab = WebDriverWait(driver, 30).until(
+                EC.element_to_be_clickable(
+                    (By.XPATH, f"//em[contains(text(), '{tab_label}')]")
+                )
+            )
+            try:
+                tab.click()
+            except ElementClickInterceptedException:
+                tab.find_element(By.XPATH, '..').click()
+
+            tab_id = tab.find_element(By.XPATH, '../..').get_attribute('id')
+            WebDriverWait(driver, 30).until(
+                element_opacity_exists(tab_id)
+            )
+            return
+        except (
+            ElementClickInterceptedException,
+            StaleElementReferenceException,
+        ) as error:
+            last_error = error
+            logging.info(
+                "Manifest tab %s refreshed during option %s; "
+                "reacquiring attempt %s/%s",
+                tab_label,
+                option_index,
+                attempt,
+                max_attempts,
+            )
+            time.sleep(0.5)
+
+    raise last_error
+
+
 def main(section_='', option_=0, retry=1):
     global SECTION_LIST, ACTIVE_SECTION, ACTIVE_SECTION_OPTION
     purge_expired_local_package_artifacts(MAIN_FOLDER)
@@ -1038,19 +1088,25 @@ def main(section_='', option_=0, retry=1):
 
                 logging.info("Waiting for the load screen...")
                 WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//div[@class='mobi-submitnotific-container-hide']")))
+                WebDriverWait(driver, 30).until(
+                    EC.invisibility_of_element_located(
+                        (
+                            By.XPATH,
+                            "//div[@id='manifestForm:submitTransferNotification_bg']",
+                        )
+                    )
+                )
                 time.sleep(1)
 
                 # Combined Manifest
                 if should_download_manifest("combined"):
-                    c_m = WebDriverWait(driver, 30).until( EC.element_to_be_clickable((By.XPATH, "//em[contains(text(), 'Combined Manifest')]")) )
                     time.sleep(1)
-                    try:
-                        c_m.click()
-                    except:
-                        c_m.find_element(By.XPATH, '..').click()
-
+                    clickManifestTab(
+                        driver,
+                        "Combined Manifest",
+                        i,
+                    )
                     logging.info("Clicked the tab Combined Manifest...")
-                    WebDriverWait(driver, 30).until( element_opacity_exists(c_m.find_element(By.XPATH, '../..').get_attribute('id')) )
                     time.sleep(1)
                     logging.info("Waiting for loading...")
                     collectOptionalManifest(
@@ -1064,15 +1120,13 @@ def main(section_='', option_=0, retry=1):
 
                 # Delivery Manifest
                 if should_download_manifest("delivery"):
-                    d_m = WebDriverWait(driver, 30).until( EC.element_to_be_clickable((By.XPATH, "//em[contains(text(), 'Delivery Manifest')]")) )
                     time.sleep(1)
-                    try:
-                        d_m.click()
-                    except:
-                        d_m.find_element(By.XPATH, '..').click()
-
+                    clickManifestTab(
+                        driver,
+                        "Delivery Manifest",
+                        i,
+                    )
                     logging.info("Clicked the tab Delivery Manifest...")
-                    WebDriverWait(driver, 30).until( element_opacity_exists(d_m.find_element(By.XPATH, '../..').get_attribute('id')) )
                     time.sleep(1)
                     logging.info("Waiting for loading...")
 
@@ -1087,15 +1141,13 @@ def main(section_='', option_=0, retry=1):
 
                 # Pickup manifest
                 if should_download_manifest("pickup"):
-                    p_m = WebDriverWait(driver, 30).until( EC.element_to_be_clickable((By.XPATH, "//em[contains(text(), 'Pickup Manifest')]")) )
                     time.sleep(1)
-                    try:
-                        p_m.click()
-                    except:
-                        p_m.find_element(By.XPATH, '..').click()
-
+                    clickManifestTab(
+                        driver,
+                        "Pickup Manifest",
+                        i,
+                    )
                     logging.info("Clicked the tab Pickup manifest...")
-                    WebDriverWait(driver, 30).until( element_opacity_exists(p_m.find_element(By.XPATH, '../..').get_attribute('id')) )
                     time.sleep(1)
                     logging.info("Waiting for loading...")
 
