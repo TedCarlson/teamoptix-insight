@@ -949,7 +949,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
     };
   }, [refreshKey, serviceDate, slug]);
 
-  const expressByRouteKey = useMemo(() => {
+  const manifestHealthByRouteKey = useMemo(() => {
     const index = new Map<string, RouteHealthRow>();
     expressRows.forEach((row) => {
       [row.route_key, row.route_label].forEach((value) => {
@@ -958,7 +958,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
       });
     });
 
-    return routeUnits.reduce<Record<string, ExpressSignal>>((result, route) => {
+    return routeUnits.reduce<Record<string, RouteHealthRow>>((result, route) => {
       const candidates = [route.route_key, route.route_name, route.current_wa_num]
         .map(normalize)
         .filter(Boolean);
@@ -978,16 +978,27 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         });
 
       if (row) {
-        result[route.route_key] = {
+        result[route.route_key] = row;
+      }
+      return result;
+    }, {});
+  }, [expressRows, routeUnits]);
+
+  const expressByRouteKey = useMemo(
+    () =>
+      Object.entries(manifestHealthByRouteKey).reduce<
+        Record<string, ExpressSignal>
+      >((result, [routeKey, row]) => {
+        result[routeKey] = {
           packages: Number(row.express.package_count ?? 0),
           completed: Number(row.express.completed_package_count ?? 0),
           open: Number(row.express.incomplete_package_count ?? 0),
           gaps: Number(row.express.tracking_gap_package_count ?? 0),
         };
-      }
-      return result;
-    }, {});
-  }, [expressRows, routeUnits]);
+        return result;
+      }, {}),
+    [manifestHealthByRouteKey]
+  );
 
   const selectedRoute =
     routeUnits.find((route) => route.route_key === selectedRouteKey) ?? null;
@@ -1001,31 +1012,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
     ? dswSignalsByRouteKey[selectedRoute.route_key]
     : undefined;
   const selectedManifestHealth = selectedRoute
-    ? expressRows.find((health) => {
-        const routeCandidates = [
-          selectedRoute.route_key,
-          selectedRoute.route_name,
-          selectedRoute.current_wa_num,
-        ]
-          .map(normalize)
-          .filter(Boolean);
-        const healthCandidates = [
-          health.route_key,
-          health.route_label,
-        ]
-          .map(normalize)
-          .filter(Boolean);
-        return routeCandidates.some((routeCandidate) =>
-          healthCandidates.some(
-            (healthCandidate) =>
-              routeCandidate === healthCandidate ||
-              routeCandidate.startsWith(healthCandidate) ||
-              routeCandidate.endsWith(healthCandidate) ||
-              healthCandidate.startsWith(routeCandidate) ||
-              healthCandidate.endsWith(routeCandidate)
-          )
-        );
-      }) ?? null
+    ? manifestHealthByRouteKey[selectedRoute.route_key] ?? null
     : null;
   const selectedExpress = selectedRoute
     ? expressByRouteKey[selectedRoute.route_key]
