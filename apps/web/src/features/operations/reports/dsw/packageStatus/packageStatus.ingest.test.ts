@@ -112,7 +112,7 @@ describe("ingestDswPackageStatusWorkbook", () => {
 
   it("sends only protected package identity to the import RPC", async () => {
     const supabase = fakeSupabase();
-    await ingestDswPackageStatusWorkbook({
+    const result = await ingestDswPackageStatusWorkbook({
       supabase: supabase.client,
       slug: "synthetic-company",
       buffer: workbookBuffer(),
@@ -140,6 +140,10 @@ describe("ingestDswPackageStatusWorkbook", () => {
     expect(serializedRows).not.toContain(TRACKING_ID);
     expect(serializedRows).not.toContain(DESTINATION);
     expect(serializedRows).toMatch(/v1_[a-f0-9]{64}/);
+    expect(result.batch_id).toBeNull();
+    expect(result.snapshot_id).toBe(
+      "00000000-0000-4000-8000-000000000002"
+    );
   });
 
   it("fails closed when the Runner date disagrees with the workbook", async () => {

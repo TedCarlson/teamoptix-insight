@@ -117,7 +117,11 @@ export async function ingestDswPackageStatusWorkbook(params: {
 
   return {
     ok: true,
-    batch_id: typeof data?.snapshot_id === "string" ? data.snapshot_id : null,
+    // Package-status snapshots live outside the legacy operations report
+    // batch table, so their IDs must not populate the report_batch_id FK.
+    batch_id: null,
+    snapshot_id:
+      typeof data?.snapshot_id === "string" ? data.snapshot_id : null,
     report_family_key: "DSW",
     report_shape_key: "DSW_ALL_STATUS_CODE_PACKAGES",
     snapshot_kind: snapshotKind,
