@@ -553,6 +553,22 @@ def getDriver():
     driver = webdriver.Chrome(options=options)
     return driver
 
+def releasePersistentDriver(driver):
+    if not PERSIST_BROWSER:
+        return
+    try:
+        service = getattr(driver, "service", None)
+        if service is not None:
+            service.stop()
+        logging.info(
+            "Detached WebDriver service; persistent Chrome remains available"
+        )
+    except Exception as error:
+        logging.info(
+            "Persistent WebDriver service detach failed: %s",
+            error,
+        )
+
 def element_opacity_exists(el_ID):
     def _predicate(driver):
         try:
@@ -1202,6 +1218,7 @@ def main(section_='', option_=0, retry=1):
                 driver.switch_to.window(home_page_handle)
                 driver.switch_to.default_content()
                 persistSessionCookies(driver)
+                releasePersistentDriver(driver)
                 browser_retained = True
                 logging.info("FedEx browser session retained after section failure")
             except Exception as retain_error:
@@ -1222,6 +1239,7 @@ def main(section_='', option_=0, retry=1):
             sys.exit(1)
 
     if PERSIST_BROWSER:
+        releasePersistentDriver(driver)
         logging.info("FedEx browser session retained for the next cycle")
     else:
         driver.quit()
