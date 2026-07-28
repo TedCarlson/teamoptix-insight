@@ -825,16 +825,67 @@ def retainOnlyWindow(driver, keep_handle):
     driver.switch_to.default_content()
 
 
+def findReusableFccWindow(driver):
+    home_page_handle = None
+    customer_connection_page_handle = None
+
+    for handle in list(driver.window_handles):
+        try:
+            driver.switch_to.window(handle)
+            driver.switch_to.default_content()
+
+            if driver.find_elements(By.XPATH, "//li[@id='mainTabSettab_1']"):
+                customer_connection_page_handle = handle
+                continue
+
+            if (
+                driver.find_elements(By.XPATH, "//a[@id='PT_HOME']")
+                or driver.find_elements(
+                    By.XPATH,
+                    "//iframe[@title='FCC Links']",
+                )
+            ):
+                home_page_handle = handle
+        except Exception as error:
+            logging.info(
+                "Existing FedEx window inspection skipped: %s",
+                error,
+            )
+
+    if customer_connection_page_handle:
+        driver.switch_to.window(customer_connection_page_handle)
+        driver.switch_to.default_content()
+
+    return home_page_handle, customer_connection_page_handle
+
+
 def main(section_='', option_=0, retry=1):
     global SECTION_LIST, ACTIVE_SECTION, ACTIVE_SECTION_OPTION
     purge_expired_local_package_artifacts(MAIN_FOLDER)
     driver = getDriver()
     home_page_handle = None
+    customer_connection_page_handle = None
     logging.info("Driver loaded...")
     try:
-        authenticateDriver(driver)
-        home_page_handle = driver.current_window_handle
-        retainOnlyWindow(driver, home_page_handle)
+        (
+            home_page_handle,
+            customer_connection_page_handle,
+        ) = findReusableFccWindow(driver)
+
+        if customer_connection_page_handle:
+            logging.info(
+                "FedEx Customer Connection application session reused"
+            )
+            persistSessionCookies(driver)
+            emit_runtime_event(
+                "SESSION_REUSED",
+                "AUTHENTICATION",
+                metadata={"persistent_fcc_window": True},
+            )
+        else:
+            authenticateDriver(driver)
+            home_page_handle = driver.current_window_handle
+            retainOnlyWindow(driver, home_page_handle)
 
         # headers = driver.execute_script("var req = new XMLHttpRequest();req.open('GET', document.location, false);req.send(null);return req.getAllResponseHeaders()")
         # headers = headers.splitlines()
@@ -860,38 +911,47 @@ def main(section_='', option_=0, retry=1):
         )
 
         if secion_index <= 3 and needs_fcc_window:
-            iframe = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//iframe[@title='FCC Links']")))
+            if customer_connection_page_handle:
+                driver.switch_to.window(customer_connection_page_handle)
+                driver.switch_to.default_content()
+                WebDriverWait(driver, 30).until(
+                    EC.presence_of_element_located(
+                        (By.XPATH, "//li[@id='mainTabSettab_1']")
+                    )
+                )
+            else:
+                iframe = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//iframe[@title='FCC Links']")))
 
-            driver.switch_to.frame(iframe)
+                driver.switch_to.frame(iframe)
 
-            customer_connection = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//a[contains(text(), 'FedEx Customer Connection')]")))
+                customer_connection = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//a[contains(text(), 'FedEx Customer Connection')]")))
 
-            # logging.info(customer_connection.get_attribute('href'))
+                # logging.info(customer_connection.get_attribute('href'))
 
-            existing_window_handles = set(driver.window_handles)
-            customer_connection.click()
+                existing_window_handles = set(driver.window_handles)
+                customer_connection.click()
 
-            driver.switch_to.default_content()
+                driver.switch_to.default_content()
 
-            WebDriverWait(driver, 30).until(
-                lambda current_driver:
-                    len(
-                        set(current_driver.window_handles)
-                        - existing_window_handles
-                    ) > 0
-            )
-            customer_connection_page_handle = next(
-                handle
-                for handle in driver.window_handles
-                if handle not in existing_window_handles
-            )
-            driver.switch_to.window(customer_connection_page_handle)
+                WebDriverWait(driver, 30).until(
+                    lambda current_driver:
+                        len(
+                            set(current_driver.window_handles)
+                            - existing_window_handles
+                        ) > 0
+                )
+                customer_connection_page_handle = next(
+                    handle
+                    for handle in driver.window_handles
+                    if handle not in existing_window_handles
+                )
+                driver.switch_to.window(customer_connection_page_handle)
 
-            customer_connection_page_title = driver.title
-            logging.info("Title of the customer_connection page: " + customer_connection_page_title)
+                customer_connection_page_title = driver.title
+                logging.info("Title of the customer_connection page: " + customer_connection_page_title)
 
-            WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.XPATH, "//li[@id='mainTabSettab_1']")))
-            time.sleep(5)
+                WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.XPATH, "//li[@id='mainTabSettab_1']")))
+                time.sleep(5)
 
         if secion_index <= 0 and should_run_section('P&D'):
             # P&D Mainifests
@@ -1207,7 +1267,7 @@ def main(section_='', option_=0, retry=1):
         # Capture the latest sliding-session cookies after all requested
         # sections have completed so the next success-chained cycle can reuse
         # the session established by this cycle.
-        driver.switch_to.window(home_page_handle)
+        driver.switch_to.window(home_page_handle or customer_connection_page_handle)
         driver.switch_to.default_content()
         persistSessionCookies(driver)
     except Exception as e:
