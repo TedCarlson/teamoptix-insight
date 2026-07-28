@@ -288,6 +288,91 @@ def finalizeManifestDownload(before, expected_type, requested_at):
     return renamed_path
 
 
+def collectOptionalManifest(
+    driver,
+    *,
+    button_xpath,
+    expected_type,
+    route_identity,
+    wait_seconds=8,
+):
+    artifact_key = {
+        "combined": "COMBINED_MANIFEST",
+        "delivery": "DELIVERY_MANIFEST",
+        "pickup": "PICKUP_MANIFEST",
+    }[expected_type]
+    lane_key = {
+        "combined": "FCC_COMBINED_MANIFESTS",
+        "delivery": "FCC_DELIVERY_MANIFESTS",
+        "pickup": "FCC_PICKUP_MANIFESTS",
+    }[expected_type]
+    event_common = {
+        "artifact_key": artifact_key,
+        "lane_key": lane_key,
+        "route_identity": route_identity,
+    }
+
+    try:
+        button = WebDriverWait(driver, wait_seconds).until(
+            EC.element_to_be_clickable((By.XPATH, button_xpath))
+        )
+    except TimeoutException:
+        logging.info(
+            "Manifest export unavailable "
+            + json.dumps(
+                {
+                    "expected_type": expected_type,
+                    "route_identity": route_identity,
+                    "wait_seconds": wait_seconds,
+                },
+                sort_keys=True,
+            )
+        )
+        emit_runtime_event(
+            "SOURCE_UNAVAILABLE",
+            "SOURCE",
+            metadata={
+                "reason": "EXPORT_CONTROL_NOT_AVAILABLE",
+                "wait_seconds": wait_seconds,
+            },
+            **event_common,
+        )
+        return None
+
+    before_download = downloadSnapshot()
+    requested_at = time.time()
+
+    try:
+        button.click()
+        return finalizeManifestDownload(
+            before_download,
+            expected_type,
+            requested_at,
+        )
+    except Exception as error:
+        logging.info(
+            "Manifest download failed "
+            + json.dumps(
+                {
+                    "expected_type": expected_type,
+                    "route_identity": route_identity,
+                    "error": str(error),
+                },
+                sort_keys=True,
+            )
+        )
+        emit_runtime_event(
+            "DOWNLOAD_FAILED",
+            "DOWNLOAD",
+            metadata={
+                "reason": type(error).__name__,
+                "message": str(error),
+            },
+            **event_common,
+        )
+        return None
+
+
 def finalizeSimpleDownload(
     before,
     artifact_key,
@@ -785,6 +870,11 @@ def main(section_='', option_=0, retry=1):
                 select = Select(select_element)
 
                 select.select_by_index(i)
+                selected_work_area = (
+                    select.first_selected_option.text
+                    or select.first_selected_option.get_attribute("value")
+                    or f"option-{i}"
+                ).strip()
                 time.sleep(1)
 
                 logging.info("Waiting for the search button to be visible...")
@@ -811,11 +901,12 @@ def main(section_='', option_=0, retry=1):
                     WebDriverWait(driver, 30).until( element_opacity_exists(c_m.find_element(By.XPATH, '../..').get_attribute('id')) )
                     time.sleep(1)
                     logging.info("Waiting for loading...")
-                    if driver.find_elements(By.XPATH, "//input[@id='manifestForm:buttonCombinedGenerateExcel']"):
-                        before_download = downloadSnapshot()
-                        requested_at = time.time()
-                        driver.find_element(By.XPATH, "//input[@id='manifestForm:buttonCombinedGenerateExcel']").click()
-                        finalizeManifestDownload(before_download, "combined", requested_at)
+                    collectOptionalManifest(
+                        driver,
+                        button_xpath="//input[@id='manifestForm:buttonCombinedGenerateExcel']",
+                        expected_type="combined",
+                        route_identity=selected_work_area,
+                    )
                 else:
                     logging.info("Skipping Combined Manifest by request payload")
 
@@ -833,11 +924,12 @@ def main(section_='', option_=0, retry=1):
                     time.sleep(1)
                     logging.info("Waiting for loading...")
 
-                    if driver.find_elements(By.XPATH, "//input[@id='manifestForm:buttonDeliveryGenerateExcel']"):
-                        before_download = downloadSnapshot()
-                        requested_at = time.time()
-                        driver.find_element(By.XPATH, "//input[@id='manifestForm:buttonDeliveryGenerateExcel']").click()
-                        finalizeManifestDownload(before_download, "delivery", requested_at)
+                    collectOptionalManifest(
+                        driver,
+                        button_xpath="//input[@id='manifestForm:buttonDeliveryGenerateExcel']",
+                        expected_type="delivery",
+                        route_identity=selected_work_area,
+                    )
                 else:
                     logging.info("Skipping Delivery Manifest by request payload")
 
@@ -855,11 +947,12 @@ def main(section_='', option_=0, retry=1):
                     time.sleep(1)
                     logging.info("Waiting for loading...")
 
-                    if driver.find_elements(By.XPATH, "//input[@id='manifestForm:buttonGenerateExcel']"):
-                        before_download = downloadSnapshot()
-                        requested_at = time.time()
-                        driver.find_element(By.XPATH, "//input[@id='manifestForm:buttonGenerateExcel']").click()
-                        finalizeManifestDownload(before_download, "pickup", requested_at)
+                    collectOptionalManifest(
+                        driver,
+                        button_xpath="//input[@id='manifestForm:buttonGenerateExcel']",
+                        expected_type="pickup",
+                        route_identity=selected_work_area,
+                    )
                 else:
                     logging.info("Skipping Pickup Manifest by request payload")
             ACTIVE_SECTION_OPTION = 0
