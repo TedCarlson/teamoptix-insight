@@ -213,7 +213,12 @@ export default function RouteHealthOverlay({
         ) : (
           <>
             <DswContract dsw={dsw} />
-            <RouteManifestDetail detail={detail} loading={detailLoading} error={detailError} />
+            <RouteManifestDetail
+              detail={detail}
+              dsw={dsw}
+              loading={detailLoading}
+              error={detailError}
+            />
           </>
         )}
       </section>
@@ -514,6 +519,7 @@ function buildCombinedManifest(detail: RouteDetailPayload) {
 
 function RouteManifestDetail(props: {
   detail: RouteDetailPayload | null;
+  dsw: Props["dsw"];
   loading: boolean;
   error: string | null;
 }) {
@@ -555,6 +561,20 @@ function RouteManifestDetail(props: {
   const attentionCount = items.filter(
     (item) => item.attention
   ).length;
+  const remainingStops = props.dsw
+    ? Math.max(
+        props.dsw.planned_delivery_stops -
+          props.dsw.actual_delivery_stops,
+        0
+      )
+    : null;
+  const remainingPackages = props.dsw
+    ? Math.max(
+        props.dsw.vscan_packages -
+          props.dsw.actual_delivery_packages,
+        0
+      )
+    : null;
   const typeOptions = [
     { key: "delivery", label: "Delivery", count: items.filter((item) => item.kind === "delivery").length, color: "#166534", bg: "#ecfdf5" },
     { key: "express", label: "Express", count: items.filter((item) => item.express).length, color: "#9a3412", bg: "#fff7ed" },
@@ -581,11 +601,36 @@ function RouteManifestDetail(props: {
         </div>
       </div>
 
+      {remainingStops !== null && remainingPackages !== null ? (
+        <div
+          style={{
+            border: "1px solid #fed7aa",
+            borderRadius: 12,
+            background: "#fff7ed",
+            color: "#9a3412",
+            padding: "10px 12px",
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 10,
+            flexWrap: "wrap",
+            fontSize: 12,
+            fontWeight: 900,
+          }}
+        >
+          <span>
+            Open by DSW · {remainingStops} stops · {remainingPackages} packages
+          </span>
+          <span style={{ color: "#64748b" }}>
+            Manifest rows below provide item-level delivery and attempt evidence.
+          </span>
+        </div>
+      ) : null}
+
       <div style={{ border: "1px solid #dbe4ef", borderRadius: 14, background: "#fff", padding: 8, display: "grid", gap: 8 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 6 }}>
           {([[
             "all", "All", items.length,
-          ], ["open", "Open", openCount], ["coded", "Attempted", codedCount], ["completed", "Completed", closedCount], ["attention", "Needs attention", attentionCount]] as const).map(([key, label, count]) => (
+          ], ["open", "Manifest open", openCount], ["coded", "Attempted", codedCount], ["completed", "Completed", closedCount], ["attention", "Needs attention", attentionCount]] as const).map(([key, label, count]) => (
             <button key={key} type="button" onClick={() => setCompletionFilter(key)} style={{ border: `1px solid ${completionFilter === key ? "#0f172a" : "transparent"}`, borderRadius: 9, background: completionFilter === key ? "#0f172a" : "#f8fafc", color: completionFilter === key ? "#fff" : "#475569", minHeight: 36, fontSize: 11, fontWeight: 950 }}>
               {label} · {count}
             </button>
