@@ -908,8 +908,13 @@ def clickManifestSearch(driver, option_index, max_attempts=3):
             )
             search_button.click()
             return
-        except StaleElementReferenceException as error:
+        except (
+            ElementClickInterceptedException,
+            StaleElementReferenceException,
+        ) as error:
             last_error = error
+            if isinstance(error, ElementClickInterceptedException):
+                dismissStuckManifestOverlay(driver)
             logging.info(
                 "Manifest search refreshed during option %s; "
                 "reacquiring attempt %s/%s",
@@ -920,6 +925,36 @@ def clickManifestSearch(driver, option_index, max_attempts=3):
             time.sleep(0.5)
 
     raise last_error
+
+
+def dismissStuckManifestOverlay(driver):
+    dismissed = False
+    overlays = driver.find_elements(
+        By.XPATH,
+        "//div[@id='manifestForm:submitTransferNotification_bg']",
+    )
+    for overlay in overlays:
+        try:
+            if not overlay.is_displayed():
+                continue
+            driver.execute_script(
+                """
+                arguments[0].style.setProperty(
+                  'display',
+                  'none',
+                  'important'
+                );
+                arguments[0].setAttribute('aria-hidden', 'true');
+                """,
+                overlay,
+            )
+            dismissed = True
+        except StaleElementReferenceException:
+            continue
+
+    if dismissed:
+        logging.info("Cleared stale FedEx manifest loading overlay")
+    return dismissed
 
 
 def clickManifestTab(driver, tab_label, option_index, max_attempts=3):
@@ -953,8 +988,14 @@ def clickManifestTab(driver, tab_label, option_index, max_attempts=3):
         except (
             ElementClickInterceptedException,
             StaleElementReferenceException,
+            TimeoutException,
         ) as error:
             last_error = error
+            if isinstance(
+                error,
+                (ElementClickInterceptedException, TimeoutException),
+            ):
+                dismissStuckManifestOverlay(driver)
             logging.info(
                 "Manifest tab %s refreshed during option %s; "
                 "reacquiring attempt %s/%s",
@@ -1023,21 +1064,10 @@ def main(section_='', option_=0, retry=1):
             if customer_connection_page_handle:
                 driver.switch_to.window(customer_connection_page_handle)
                 driver.switch_to.default_content()
-                driver.refresh()
-                logging.info(
-                    "Refreshed reused FedEx Customer Connection application"
-                )
+                dismissStuckManifestOverlay(driver)
                 WebDriverWait(driver, 30).until(
                     EC.presence_of_element_located(
                         (By.XPATH, "//li[@id='mainTabSettab_1']")
-                    )
-                )
-                WebDriverWait(driver, 30).until(
-                    EC.invisibility_of_element_located(
-                        (
-                            By.XPATH,
-                            "//div[@id='manifestForm:submitTransferNotification_bg']",
-                        )
                     )
                 )
             else:
@@ -1088,7 +1118,8 @@ def main(section_='', option_=0, retry=1):
             )
             p_d = WebDriverWait(driver, 30).until(EC.element_to_be_clickable((By.XPATH, "//li[@id='mainTabSettab_1']")))
             time.sleep(2)
-            p_d.click()
+            if "activeTab" not in str(p_d.get_attribute("class") or ""):
+                p_d.click()
 
             select_element = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//select[@id='manifestForm:workAreas']")))
 
