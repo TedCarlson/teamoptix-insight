@@ -1023,9 +1023,21 @@ def main(section_='', option_=0, retry=1):
             if customer_connection_page_handle:
                 driver.switch_to.window(customer_connection_page_handle)
                 driver.switch_to.default_content()
+                driver.refresh()
+                logging.info(
+                    "Refreshed reused FedEx Customer Connection application"
+                )
                 WebDriverWait(driver, 30).until(
                     EC.presence_of_element_located(
                         (By.XPATH, "//li[@id='mainTabSettab_1']")
+                    )
+                )
+                WebDriverWait(driver, 30).until(
+                    EC.invisibility_of_element_located(
+                        (
+                            By.XPATH,
+                            "//div[@id='manifestForm:submitTransferNotification_bg']",
+                        )
                     )
                 )
             else:
@@ -1066,7 +1078,15 @@ def main(section_='', option_=0, retry=1):
             # P&D Mainifests
             ACTIVE_SECTION = 'P&D'
             logging.info("Accessing P&D")
-            p_d = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//li[@id='mainTabSettab_1']")))
+            WebDriverWait(driver, 30).until(
+                EC.invisibility_of_element_located(
+                    (
+                        By.XPATH,
+                        "//div[@id='manifestForm:submitTransferNotification_bg']",
+                    )
+                )
+            )
+            p_d = WebDriverWait(driver, 30).until(EC.element_to_be_clickable((By.XPATH, "//li[@id='mainTabSettab_1']")))
             time.sleep(2)
             p_d.click()
 
