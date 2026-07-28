@@ -22,6 +22,10 @@ from datetime import datetime, timezone
 from rename_files import renameFolder, renameDownloadedManifest
 from runtime_events import emit_runtime_event
 from extract_data import extractDataFromFolder
+from dsw_package_status import (
+    collect_dsw_package_status,
+    purge_expired_local_package_artifacts,
+)
 
 from connections import getConnection, closeConnection, getScrapingConfig, getMainFolder, writeError, isPlatformLinux, getDailyServiceOptions
 # if platform == "linux" or platform == "linux2":
@@ -362,6 +366,7 @@ def recordObservedDownload(
         **event_common,
     )
 
+
 def getDriver():
     if isPlatformLinux() and PERSIST_BROWSER:
         try:
@@ -559,17 +564,22 @@ def authenticateDriver(driver):
     driver.get(init_url)
     logging.info("Visiting https://mybizaccount.fedex.com/my.policy")
 
+    def authentication_entry_ready(current_driver):
+        return (
+            current_driver.find_elements(By.XPATH, "//a[@id='PT_HOME']")
+            or current_driver.find_elements(
+                By.XPATH, "//input[@class='credentials_input_submit']"
+            )
+            or current_driver.find_elements(
+                By.XPATH, '//input[@name="identifier"]'
+            )
+        )
+
     # Chrome uses a durable runner profile. A successful Operations Pulse
     # session is therefore reused across completion-driven cycles instead of
     # submitting the username and password again for every report lane.
     try:
-        WebDriverWait(driver, 20).until(
-            lambda current_driver:
-                current_driver.find_elements(By.XPATH, "//a[@id='PT_HOME']")
-                or current_driver.find_elements(
-                    By.XPATH, "//input[@class='credentials_input_submit']"
-                )
-            )
+        WebDriverWait(driver, 20).until(authentication_entry_ready)
     except TimeoutException:
         # A stale FedEx session can leave the landing page in neither an
         # authenticated nor a login-ready state. Discard only that cached
@@ -585,13 +595,7 @@ def authenticateDriver(driver):
             pass
         driver.get("about:blank")
         driver.get(init_url)
-        WebDriverWait(driver, 30).until(
-            lambda current_driver:
-                current_driver.find_elements(By.XPATH, "//a[@id='PT_HOME']")
-                or current_driver.find_elements(
-                    By.XPATH, "//input[@class='credentials_input_submit']"
-                )
-        )
+        WebDriverWait(driver, 30).until(authentication_entry_ready)
 
     if driver.find_elements(By.XPATH, "//a[@id='PT_HOME']"):
         logging.info("FedEx session reused")
@@ -603,12 +607,13 @@ def authenticateDriver(driver):
         )
         return
 
-    btn = WebDriverWait(driver, 20).until(
-        EC.presence_of_element_located(
-            (By.XPATH, "//input[@class='credentials_input_submit']")
+    if not driver.find_elements(By.XPATH, '//input[@name="identifier"]'):
+        btn = WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located(
+                (By.XPATH, "//input[@class='credentials_input_submit']")
+            )
         )
-    )
-    btn.click()
+        btn.click()
 
     username = WebDriverWait(driver, 20).until(
         EC.presence_of_element_located(
@@ -677,14 +682,30 @@ def authenticateDriver(driver):
     persistSessionCookies(driver)
     emit_runtime_event("AUTH_COMPLETED", "AUTHENTICATION")
 
+
+def retainOnlyWindow(driver, keep_handle):
+    for handle in list(driver.window_handles):
+        if handle == keep_handle:
+            continue
+        try:
+            driver.switch_to.window(handle)
+            driver.close()
+        except Exception as error:
+            logging.info("Stale FedEx window cleanup skipped: %s", error)
+    driver.switch_to.window(keep_handle)
+    driver.switch_to.default_content()
+
+
 def main(section_='', option_=0, retry=1):
     global SECTION_LIST, ACTIVE_SECTION, ACTIVE_SECTION_OPTION
+    purge_expired_local_package_artifacts(MAIN_FOLDER)
     driver = getDriver()
     home_page_handle = None
     logging.info("Driver loaded...")
     try:
         authenticateDriver(driver)
         home_page_handle = driver.current_window_handle
+        retainOnlyWindow(driver, home_page_handle)
 
         # headers = driver.execute_script("var req = new XMLHttpRequest();req.open('GET', document.location, false);req.send(null);return req.getAllResponseHeaders()")
         # headers = headers.splitlines()
@@ -718,14 +739,23 @@ def main(section_='', option_=0, retry=1):
 
             # logging.info(customer_connection.get_attribute('href'))
 
+            existing_window_handles = set(driver.window_handles)
             customer_connection.click()
 
             driver.switch_to.default_content()
 
-            WebDriverWait(driver, 30).until(EC.number_of_windows_to_be(2))
-
-            window_handles = driver.window_handles
-            customer_connection_page_handle = window_handles[-1]
+            WebDriverWait(driver, 30).until(
+                lambda current_driver:
+                    len(
+                        set(current_driver.window_handles)
+                        - existing_window_handles
+                    ) > 0
+            )
+            customer_connection_page_handle = next(
+                handle
+                for handle in driver.window_handles
+                if handle not in existing_window_handles
+            )
             driver.switch_to.window(customer_connection_page_handle)
 
             customer_connection_page_title = driver.title
@@ -1001,6 +1031,12 @@ def main(section_='', option_=0, retry=1):
                     select = Select(select_element)
 
                     select.select_by_index(i)
+                    selected_facility = select.first_selected_option
+                    facility_identity = (
+                        selected_facility.get_attribute("value")
+                        or selected_facility.text
+                        or f"option-{i}"
+                    ).strip()
                     time.sleep(1)
                     btn = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.selectionButton")))
                     btn.click()
@@ -1020,6 +1056,14 @@ def main(section_='', option_=0, retry=1):
                             )
                     except:
                         pass
+
+                    collect_dsw_package_status(
+                        driver,
+                        dsw_window_handle=daily_service_week_page_handle,
+                        download_folder=DOWNLOAD_FOLDER,
+                        facility_identity=facility_identity,
+                        service_date=current_date.strftime("%Y-%m-%d"),
+                    )
                 except Exception as ee:
                     logging.info(ee)
 

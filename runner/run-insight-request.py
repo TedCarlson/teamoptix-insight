@@ -110,6 +110,14 @@ def infer_report_identity(filename: str) -> dict:
     name = filename.lower()
     compact_name = re.sub(r"[^a-z0-9]+", "", name)
 
+    if "packageleveldetails" in compact_name:
+        return {
+            "artifact_key": "DSW_ALL_STATUS_CODE_PACKAGES",
+            "report_family_key": "DSW",
+            "report_shape_key": "DSW_ALL_STATUS_CODE_PACKAGES",
+            "report_frame": None,
+            "display_filename": "All Status Code Packages.xls",
+        }
     if "daily service worksheet" in name:
         return {"artifact_key": "DSW_DAILY_SERVICE", "report_family_key": "DSW", "report_shape_key": "DSW_DAILY_SERVICE_WORKSHEET", "report_frame": None, "display_filename": "Daily Service Worksheet.xlsx"}
     if "serviceareasummary" in name or "sasummary" in name:
@@ -285,7 +293,7 @@ def load_runner_artifact_metadata(file: Path) -> dict:
     if not isinstance(metadata, dict):
         return {}
 
-    return {
+    result = {
         "header_identity": {
             "page": metadata.get("page"),
             "manifest_type": metadata.get("manifest_type"),
@@ -306,7 +314,24 @@ def load_runner_artifact_metadata(file: Path) -> dict:
         ),
         "canonical_filename": metadata.get("canonical_filename"),
         "download_source_hash": metadata.get("source_hash"),
+        "contract_number": metadata.get("contract_number"),
+        "expected_package_count": metadata.get(
+            "expected_package_count"
+        ),
+        "facility_identity": metadata.get("facility_identity"),
+        "discovery_status": metadata.get("discovery_status"),
     }
+
+    for key in (
+        "artifact_key",
+        "report_family_key",
+        "report_shape_key",
+    ):
+        value = metadata.get(key)
+        if value:
+            result[key] = value
+
+    return result
 
 
 def collect_artifacts(request: dict, run_started_at: float) -> list[dict]:

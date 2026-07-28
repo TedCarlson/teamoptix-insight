@@ -21,6 +21,10 @@ from webdriver_manager.chrome import ChromeDriverManager
 from rename_files import renameFolder
 from runtime_events import emit_runtime_event
 from extract_data import extractDataFromFolder
+from dsw_package_status import (
+    collect_dsw_package_status,
+    purge_expired_local_package_artifacts,
+)
 
 from connections import getConnection, closeConnection, getScrapingConfig, getMainFolder, writeError, isPlatformLinux, getDailyServiceOptions
 
@@ -243,6 +247,7 @@ def scrollTo(el, driver):
 
 def main(section_='', option_=0, retry=1):
     global SECTION_LIST, ACTIVE_SECTION, ACTIVE_SECTION_OPTION
+    purge_expired_local_package_artifacts(MAIN_FOLDER)
     driver = getDriver()
     logging.info("Driver loaded...")
     init_url = "https://mybizaccount.fedex.com/my.policy"
@@ -537,14 +542,20 @@ def main(section_='', option_=0, retry=1):
 
             daily_service_week = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//a[contains(text(), 'Daily Service Wk & Vision IBPR')]")))
 
+            existing_window_handles = set(driver.window_handles)
             daily_service_week.click()
 
             driver.switch_to.default_content()
 
-            WebDriverWait(driver, 30).until(EC.number_of_windows_to_be(2))
-
-            window_handles = driver.window_handles
-            daily_service_week_page_handle = window_handles[-1]
+            WebDriverWait(driver, 30).until(
+                lambda current_driver:
+                    len(set(current_driver.window_handles) - existing_window_handles) > 0
+            )
+            daily_service_week_page_handle = next(
+                handle
+                for handle in driver.window_handles
+                if handle not in existing_window_handles
+            )
             driver.switch_to.window(daily_service_week_page_handle)
 
             daily_service_week_page_title = driver.title
@@ -601,6 +612,12 @@ def main(section_='', option_=0, retry=1):
                     select = Select(select_element)
 
                     select.select_by_index(i)
+                    selected_facility = select.first_selected_option
+                    facility_identity = (
+                        selected_facility.get_attribute("value")
+                        or selected_facility.text
+                        or f"option-{i}"
+                    ).strip()
                     time.sleep(1)
 
                     driver.find_element(By.XPATH, '//button[@class="selectionButton"]').click()
@@ -621,6 +638,14 @@ def main(section_='', option_=0, retry=1):
                             )
                     except:
                         pass
+
+                    collect_dsw_package_status(
+                        driver,
+                        dsw_window_handle=daily_service_week_page_handle,
+                        download_folder=DOWNLOAD_FOLDER,
+                        facility_identity=facility_identity,
+                        service_date=current_date.strftime("%Y-%m-%d"),
+                    )
                 except Exception as ee:
                     logging.info(ee)
     except Exception as e:
