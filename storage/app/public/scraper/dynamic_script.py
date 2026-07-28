@@ -317,6 +317,32 @@ def collectOptionalManifest(
             EC.element_to_be_clickable((By.XPATH, button_xpath))
         )
     except TimeoutException:
+        control_hints = driver.execute_script(
+            """
+            return Array.from(document.querySelectorAll(
+              'input, button, a, img'
+            ))
+              .map((element) => ({
+                tag: (element.tagName || '').toLowerCase(),
+                id: element.id || '',
+                name: element.getAttribute('name') || '',
+                type: element.getAttribute('type') || '',
+                title: element.getAttribute('title') || '',
+                alt: element.getAttribute('alt') || ''
+              }))
+              .filter((control) => {
+                const signature = [
+                  control.id,
+                  control.name,
+                  control.title,
+                  control.alt
+                ].join(' ').toLowerCase();
+                return ['excel', 'export', 'download', 'generate']
+                  .some((token) => signature.includes(token));
+              })
+              .slice(0, 25);
+            """
+        )
         logging.info(
             "Manifest export unavailable "
             + json.dumps(
@@ -324,6 +350,7 @@ def collectOptionalManifest(
                     "expected_type": expected_type,
                     "route_identity": route_identity,
                     "wait_seconds": wait_seconds,
+                    "control_hints": control_hints,
                 },
                 sort_keys=True,
             )
@@ -334,6 +361,7 @@ def collectOptionalManifest(
             metadata={
                 "reason": "EXPORT_CONTROL_NOT_AVAILABLE",
                 "wait_seconds": wait_seconds,
+                "control_hints": control_hints,
             },
             **event_common,
         )
