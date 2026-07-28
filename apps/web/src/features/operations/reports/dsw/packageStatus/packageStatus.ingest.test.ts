@@ -69,6 +69,18 @@ function fakeSupabase() {
       }),
       rpc: async (name: string, args: Record<string, unknown>) => {
         rpcCalls.push({ name, args });
+        if (
+          name ===
+          "record_operations_dsw_package_status_snapshot_membership"
+        ) {
+          return {
+            data: {
+              snapshot_id: "00000000-0000-4000-8000-000000000002",
+              inserted_membership_count: 1,
+            },
+            error: null,
+          };
+        }
         return {
           data: {
             snapshot_id: "00000000-0000-4000-8000-000000000002",
@@ -129,7 +141,7 @@ describe("ingestDswPackageStatusWorkbook", () => {
       },
     });
 
-    expect(supabase.rpcCalls).toHaveLength(1);
+    expect(supabase.rpcCalls).toHaveLength(2);
     expect(supabase.rpcCalls[0].name).toBe(
       "import_operations_dsw_package_status"
     );
@@ -140,6 +152,17 @@ describe("ingestDswPackageStatusWorkbook", () => {
     expect(serializedRows).not.toContain(TRACKING_ID);
     expect(serializedRows).not.toContain(DESTINATION);
     expect(serializedRows).toMatch(/v1_[a-f0-9]{64}/);
+    expect(supabase.rpcCalls[1]).toMatchObject({
+      name: "record_operations_dsw_package_status_snapshot_membership",
+      args: {
+        p_snapshot_id: "00000000-0000-4000-8000-000000000002",
+        p_company_id: "00000000-0000-4000-8000-000000000001",
+        p_service_date: "2026-07-27",
+      },
+    });
+    expect(supabase.rpcCalls[1].args.p_tracking_refs).toEqual([
+      expect.stringMatching(/^v1_[a-f0-9]{64}$/),
+    ]);
     expect(result.batch_id).toBeNull();
     expect(result.snapshot_id).toBe(
       "00000000-0000-4000-8000-000000000002"

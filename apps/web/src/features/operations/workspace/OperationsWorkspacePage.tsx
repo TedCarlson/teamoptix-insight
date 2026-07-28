@@ -65,6 +65,7 @@ function routeMatchesFilter(phase: OperationalPhase, filter: RouteFilter) {
 
 type ExpressSignal = {
   packages: number;
+  completed: number;
   open: number;
   gaps: number;
 };
@@ -320,10 +321,7 @@ function RouteUnit(props: {
   const completedPickupStops = Number(delivery?.actualPickupStops ?? 0);
   const visibleStops = tenderedStops || Number(plan?.stops ?? 0);
   const visiblePackages = tendered || Number(plan?.packages ?? 0);
-  const expressCompleted = Math.max(
-    0,
-    Number(express?.packages ?? 0) - Number(express?.open ?? 0)
-  );
+  const expressCompleted = Math.max(0, Number(express?.completed ?? 0));
   const servicePct =
     tenderedStops > 0
       ? Math.min(100, Math.round((deliveredStops / tenderedStops) * 100))
@@ -982,6 +980,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
       if (row) {
         result[route.route_key] = {
           packages: Number(row.express.package_count ?? 0),
+          completed: Number(row.express.completed_package_count ?? 0),
           open: Number(row.express.incomplete_package_count ?? 0),
           gaps: Number(row.express.tracking_gap_package_count ?? 0),
         };

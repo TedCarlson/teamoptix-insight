@@ -285,6 +285,7 @@ type CombinedManifestItem = {
   pickupExpectedCount: number | null;
   complete: boolean;
   open: boolean;
+  attention: boolean;
   packageLinked: boolean;
   packageMismatch: boolean;
   express: boolean;
@@ -359,7 +360,21 @@ function buildCombinedManifest(detail: RouteDetailPayload) {
     const packages = packagesByStop.get(identity(stop)) ?? [];
     const unmanifested = !rawValue(stop, "sid");
     const packageLinked = packages.length > 0;
-    const completed = truthy(stop, "completed");
+    const evidenceStates = packages.map((packageRow) =>
+      rawValue(packageRow, "delivery_evidence_state")
+    );
+    const hasOpenCode = evidenceStates.includes("OPEN_CODED");
+    const hasTrackingGap = evidenceStates.includes("NEEDS_ATTENTION");
+    const hasCompleteEvidence = evidenceStates.every(
+      (state) => state === "COMPLETED"
+    );
+    const attention =
+      unmanifested ||
+      !packageLinked ||
+      hasTrackingGap ||
+      !evidenceStates.every((state) =>
+        ["OPEN_CODED", "COMPLETED", "NEEDS_ATTENTION"].includes(state)
+      );
     return {
       key: `delivery-${identity(stop)}-${index}`,
       kind: "delivery",
@@ -372,8 +387,9 @@ function buildCombinedManifest(detail: RouteDetailPayload) {
       expectedCount: null,
       pickupPackageCount: 0,
       pickupExpectedCount: null,
-      complete: !unmanifested && packageLinked && completed,
-      open: !unmanifested && packageLinked && !completed,
+      complete: !attention && hasCompleteEvidence,
+      open: !attention && hasOpenCode,
+      attention,
       packageLinked,
       packageMismatch: !unmanifested && !packageLinked,
       express: packages.some((row) => truthy(row, "is_express")),
@@ -404,6 +420,7 @@ function buildCombinedManifest(detail: RouteDetailPayload) {
       pickupExpectedCount: expected,
       complete: expected === 0 ? Boolean(pickup.pu_closed_at) : actual >= expected,
       open: expected === 0 ? !pickup.pu_closed_at : actual < expected,
+      attention: false,
       packageLinked: true,
       packageMismatch: false,
       express: false,
@@ -462,8 +479,13 @@ function buildCombinedManifest(detail: RouteDetailPayload) {
       window: `${delivery.window} · Pickup ${pickup.window}`,
       pickupPackageCount: pickup.packageCount,
       pickupExpectedCount: pickup.expectedCount,
-      complete: delivery.complete && pickup.complete,
-      open: !delivery.unmanifested && !delivery.packageMismatch && (delivery.open || pickup.open),
+      complete: !delivery.attention && delivery.complete && pickup.complete,
+      open:
+        !delivery.attention &&
+        !delivery.unmanifested &&
+        !delivery.packageMismatch &&
+        (delivery.open || pickup.open),
+      attention: delivery.attention,
       collection: delivery.collection,
       instructions: [delivery.instructions, pickup.instructions]
         .filter((part) => part !== "—")
@@ -484,7 +506,9 @@ function RouteManifestDetail(props: {
   loading: boolean;
   error: string | null;
 }) {
-  const [completionFilter, setCompletionFilter] = useState<"all" | "open" | "completed">("all");
+  const [completionFilter, setCompletionFilter] = useState<
+    "all" | "open" | "completed" | "attention"
+  >("all");
   const [typeFilter, setTypeFilter] = useState<"all" | "delivery" | "express" | "pickup" | "combined" | "unmanifested" | "package_mismatch" | "signature" | "hazmat">("all");
   const items = useMemo(
     () => (props.detail ? buildCombinedManifest(props.detail) : []),
@@ -499,7 +523,8 @@ function RouteManifestDetail(props: {
     const completionMatches =
       completionFilter === "all" ||
       (completionFilter === "open" && item.open) ||
-      (completionFilter === "completed" && item.complete);
+      (completionFilter === "completed" && item.complete) ||
+      (completionFilter === "attention" && item.attention);
     const typeMatches =
       typeFilter === "all" ||
       (typeFilter === "delivery" && item.kind === "delivery") ||
@@ -515,7 +540,7 @@ function RouteManifestDetail(props: {
   const openCount = items.filter((item) => item.open).length;
   const closedCount = items.filter((item) => item.complete).length;
   const attentionCount = items.filter(
-    (item) => item.open || item.unmanifested || item.packageMismatch
+    (item) => item.attention
   ).length;
   const typeOptions = [
     { key: "delivery", label: "Delivery", count: items.filter((item) => item.kind === "delivery").length, color: "#166534", bg: "#ecfdf5" },
@@ -539,15 +564,15 @@ function RouteManifestDetail(props: {
       <div>
         <strong style={{ fontSize: 18 }}>Route execution sequence</strong>
         <div style={{ color: "#64748b", fontSize: 12, marginTop: 3 }}>
-          {items.length} stops · {props.detail.packages.length} packages · {attentionCount} need attention
+          {items.length} stops · {props.detail.packages.length} packages · {openCount} coded open · {attentionCount} need attention
         </div>
       </div>
 
       <div style={{ border: "1px solid #dbe4ef", borderRadius: 14, background: "#fff", padding: 8, display: "grid", gap: 8 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 6 }}>
           {([[
             "all", "All", items.length,
-          ], ["open", "Open", openCount], ["completed", "Completed", closedCount]] as const).map(([key, label, count]) => (
+          ], ["open", "Open", openCount], ["completed", "Completed", closedCount], ["attention", "Needs attention", attentionCount]] as const).map(([key, label, count]) => (
             <button key={key} type="button" onClick={() => setCompletionFilter(key)} style={{ border: `1px solid ${completionFilter === key ? "#0f172a" : "transparent"}`, borderRadius: 9, background: completionFilter === key ? "#0f172a" : "#f8fafc", color: completionFilter === key ? "#fff" : "#475569", minHeight: 36, fontSize: 11, fontWeight: 950 }}>
               {label} · {count}
             </button>
@@ -577,7 +602,7 @@ function RouteManifestDetail(props: {
           const itemColor = item.unmanifested ? "#b91c1c" : item.hazmat ? "#dc2626" : item.kind === "combined" ? "#7c3aed" : item.kind === "pickup" ? "#2563eb" : item.express ? "#f97316" : item.collection ? "#0284c7" : "#16a34a";
           const itemTint = item.unmanifested ? "#fef2f2" : item.hazmat ? "#fef2f2" : item.kind === "combined" ? "#f5f3ff" : item.kind === "pickup" ? "#eff6ff" : item.express ? "#fff7ed" : item.collection ? "#f0f9ff" : "#ecfdf5";
           return (
-          <details key={item.key} style={{ border: `1px solid ${!item.complete ? "#fbbf24" : itemColor}`, borderLeft: `6px solid ${itemColor}`, borderRadius: 14, background: "#fff", overflow: "hidden" }}>
+          <details key={item.key} style={{ border: `1px solid ${item.attention ? "#ef4444" : item.open ? "#fbbf24" : itemColor}`, borderLeft: `6px solid ${itemColor}`, borderRadius: 14, background: "#fff", overflow: "hidden" }}>
             <summary style={{ listStyle: "none", cursor: "pointer", padding: 12, display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}>
               <div style={{ display: "grid", gap: 3, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
@@ -593,8 +618,8 @@ function RouteManifestDetail(props: {
                     ? `D ${item.packageCount} · P ${item.pickupPackageCount}${item.pickupExpectedCount !== null ? ` / ${item.pickupExpectedCount}` : ""}`
                     : `${item.packageCount}${item.expectedCount !== null ? ` / ${item.expectedCount}` : ""} pkg`}
                 </strong>
-                <span style={{ color: item.unmanifested || item.packageMismatch ? "#b91c1c" : item.complete ? "#166534" : "#92400e", fontSize: 10, fontWeight: 950 }}>
-                  {item.unmanifested ? "UNMANIFESTED" : item.packageMismatch ? "PACKAGE LINK FAILURE" : item.complete ? "COMPLETED" : "OPEN"}
+                <span style={{ color: item.attention ? "#b91c1c" : item.complete ? "#166534" : "#92400e", fontSize: 10, fontWeight: 950 }}>
+                  {item.unmanifested ? "UNMANIFESTED" : item.packageMismatch ? "PACKAGE LINK FAILURE" : item.attention ? "NEEDS ATTENTION" : item.complete ? "COMPLETED" : item.open && item.kind !== "pickup" ? "OPEN · CODED" : "OPEN"}
                 </span>
               </div>
             </summary>
@@ -619,12 +644,45 @@ function RouteManifestDetail(props: {
               </div>
               {item.packages.length ? (
                 <div style={{ display: "grid", gap: 4 }}>
-                  {item.packages.map((packageRow, index) => (
-                    <div key={`${value(packageRow, "tracking_id")}-${index}`} style={{ borderTop: "1px solid #eef2f7", paddingTop: 6, display: "flex", justifyContent: "space-between", gap: 8 }}>
-                      <span>{value(packageRow, "tracking_id")}</span>
-                      <span style={{ color: "#64748b" }}>{value(packageRow, "prem_svc_raw")}</span>
-                    </div>
-                  ))}
+                  {item.packages.map((packageRow, index) => {
+                    const evidenceState = rawValue(
+                      packageRow,
+                      "delivery_evidence_state"
+                    );
+                    const codeParts = [
+                      rawValue(packageRow, "vsa_status_code")
+                        ? `VSA ${rawValue(packageRow, "vsa_status_code")}`
+                        : "",
+                      rawValue(packageRow, "star_status_code")
+                        ? `STAR ${rawValue(packageRow, "star_status_code")}`
+                        : "",
+                    ].filter(Boolean);
+                    const evidenceLabel =
+                      evidenceState === "OPEN_CODED"
+                        ? `OPEN${codeParts.length ? ` · ${codeParts.join(" · ")}` : " · CODED"}`
+                        : evidenceState === "COMPLETED"
+                          ? "COMPLETED"
+                          : "NEEDS ATTENTION";
+                    const evidenceColor =
+                      evidenceState === "OPEN_CODED"
+                        ? "#92400e"
+                        : evidenceState === "COMPLETED"
+                          ? "#166534"
+                          : "#b91c1c";
+                    return (
+                      <div key={`${value(packageRow, "tracking_id")}-${index}`} style={{ borderTop: "1px solid #eef2f7", paddingTop: 6, display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8 }}>
+                        <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
+                          <span>{value(packageRow, "tracking_id")}</span>
+                          <span style={{ color: "#64748b", fontSize: 10 }}>
+                            {value(packageRow, "prem_svc_raw")}
+                          </span>
+                        </div>
+                        <span style={{ color: evidenceColor, fontSize: 10, fontWeight: 950, textAlign: "right" }}>
+                          {evidenceLabel}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               ) : null}
             </div>

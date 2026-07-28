@@ -115,13 +115,29 @@ export async function ingestDswPackageStatusWorkbook(params: {
   );
   if (error) throw new Error(error.message);
 
+  const snapshotId =
+    typeof data?.snapshot_id === "string" ? data.snapshot_id : null;
+  if (!snapshotId) {
+    throw new Error("Package status import did not return a snapshot ID.");
+  }
+
+  const { error: membershipError } = await supabase.rpc(
+    "record_operations_dsw_package_status_snapshot_membership",
+    {
+      p_snapshot_id: snapshotId,
+      p_company_id: company.id,
+      p_service_date: parsed.service_date,
+      p_tracking_refs: rows.map((row) => row.tracking_ref),
+    }
+  );
+  if (membershipError) throw new Error(membershipError.message);
+
   return {
     ok: true,
     // Package-status snapshots live outside the legacy operations report
     // batch table, so their IDs must not populate the report_batch_id FK.
     batch_id: null,
-    snapshot_id:
-      typeof data?.snapshot_id === "string" ? data.snapshot_id : null,
+    snapshot_id: snapshotId,
     report_family_key: "DSW",
     report_shape_key: "DSW_ALL_STATUS_CODE_PACKAGES",
     snapshot_kind: snapshotKind,

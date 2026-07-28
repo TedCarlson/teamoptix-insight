@@ -1,4 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  annotateManifestPackageEvidence,
+  expressEvidenceCountsByRoute,
+  type CurrentPackageStatusEvidence,
+} from "@/features/operations/reports/dsw/packageStatus/packageStatus.evidence";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -299,6 +305,7 @@ export async function GET(
     }
 
     const supabase = await getSupabaseServerClient();
+    const serviceRole = createSupabaseServiceRoleClient();
 
     const { data: company, error: companyError } = await supabase
       .from("companies")
@@ -320,60 +327,104 @@ export async function GET(
     const routeKey = String(req.nextUrl.searchParams.get("routeKey") ?? "").trim();
 
     if (routeKey) {
-      const [deliveryStopsResult, packagesResult, pickupsResult] = await Promise.all([
-        supabase
-          .from("operations_delivery_manifest_stop_v")
-          .select("*")
-          .eq("company_id", company.id)
-          .eq("service_date", serviceDate)
-          .eq("route_key", routeKey)
-          .order("st_number", { ascending: true }),
-        supabase
-          .from("operations_delivery_manifest_package_v")
-          .select("*")
-          .eq("company_id", company.id)
-          .eq("service_date", serviceDate)
-          .eq("route_key", routeKey)
-          .order("st_number", { ascending: true })
-          .order("tracking_id", { ascending: true }),
-        supabase
-          .from("operations_pickup_manifest_stop_v")
-          .select("*")
-          .eq("company_id", company.id)
-          .eq("service_date", serviceDate)
-          .eq("route_key", routeKey)
-          .order("ready_at", { ascending: true }),
-      ]);
+      const [
+        deliveryStopsResult,
+        packagesResult,
+        pickupsResult,
+        packageStatusResult,
+      ] = await Promise.all([
+          supabase
+            .from("operations_delivery_manifest_stop_v")
+            .select("*")
+            .eq("company_id", company.id)
+            .eq("service_date", serviceDate)
+            .eq("route_key", routeKey)
+            .order("st_number", { ascending: true }),
+          supabase
+            .from("operations_delivery_manifest_package_v")
+            .select("*")
+            .eq("company_id", company.id)
+            .eq("service_date", serviceDate)
+            .eq("route_key", routeKey)
+            .order("st_number", { ascending: true })
+            .order("tracking_id", { ascending: true }),
+          supabase
+            .from("operations_pickup_manifest_stop_v")
+            .select("*")
+            .eq("company_id", company.id)
+            .eq("service_date", serviceDate)
+            .eq("route_key", routeKey)
+            .order("ready_at", { ascending: true }),
+          serviceRole
+            .from("operations_dsw_package_status_current_v")
+            .select(
+              "tracking_ref,work_area_name,work_area_number,vision_label,vision_label_at_local,vsa_status_code,star_status_code,star_scan_at_local,snapshot_generated_at"
+            )
+            .eq("company_id", company.id)
+            .eq("service_date", serviceDate),
+        ]);
 
       const detailError =
-        deliveryStopsResult.error ?? packagesResult.error ?? pickupsResult.error;
+        deliveryStopsResult.error ??
+        packagesResult.error ??
+        pickupsResult.error ??
+        packageStatusResult.error;
 
       if (detailError) {
         return NextResponse.json({ error: detailError.message }, { status: 500 });
       }
+
+      const packages = annotateManifestPackageEvidence({
+        companyId: company.id,
+        packages: (packagesResult.data ?? []) as Array<
+          Record<string, unknown>
+        >,
+        currentStatusRows:
+          (packageStatusResult.data ??
+            []) as CurrentPackageStatusEvidence[],
+      });
 
       return NextResponse.json({
         company_slug: slug,
         service_date: serviceDate,
         route_key: routeKey,
         delivery_stops: deliveryStopsResult.data ?? [],
-        packages: packagesResult.data ?? [],
+        packages,
         pickups: pickupsResult.data ?? [],
       });
     }
 
-    const { data, error } = await supabase
-      .from("operations_manifest_route_health_v")
-      .select("*")
-      .eq("company_id", company.id)
-      .eq("service_date", serviceDate)
-      .order("route_health_severity", { ascending: true })
-      .order("route_key", { ascending: true });
+    const [routeHealthResult, expressPackagesResult, packageStatusResult] =
+      await Promise.all([
+        supabase
+          .from("operations_manifest_route_health_v")
+          .select("*")
+          .eq("company_id", company.id)
+          .eq("service_date", serviceDate)
+          .order("route_health_severity", { ascending: true })
+          .order("route_key", { ascending: true }),
+        supabase
+          .from("operations_manifest_express_report_v")
+          .select("route_key,tracking_id")
+          .eq("company_id", company.id)
+          .eq("service_date", serviceDate),
+        serviceRole
+          .from("operations_dsw_package_status_current_v")
+          .select(
+            "tracking_ref,work_area_name,work_area_number,vision_label,vision_label_at_local,vsa_status_code,star_status_code,star_scan_at_local,snapshot_generated_at"
+          )
+          .eq("company_id", company.id)
+          .eq("service_date", serviceDate),
+      ]);
 
-    if (error) {
+    const summaryError =
+      routeHealthResult.error ??
+      expressPackagesResult.error ??
+      packageStatusResult.error;
+    if (summaryError) {
       return NextResponse.json(
         {
-          error: error.message,
+          error: summaryError.message,
           routes: [],
           totals: null,
         },
@@ -381,32 +432,33 @@ export async function GET(
       );
     }
 
-    const canonicalRows = canonicalRouteRows((data ?? []) as RouteHealthRow[]);
-    const { data: expressSignals, error: expressSignalError } = await supabase
-      .from("operations_manifest_express_route_signal_v")
-      .select("route_key,package_count,completed_package_count,open_package_count,tracking_gap_package_count")
-      .eq("company_id", company.id)
-      .eq("service_date", serviceDate);
-
-    if (expressSignalError) {
-      return NextResponse.json(
-        { error: expressSignalError.message, routes: [], totals: null },
-        { status: 500 }
-      );
-    }
-
-    const expressByRoute = new Map(
-      (expressSignals ?? []).map((signal) => [String(signal.route_key), signal])
+    const canonicalRows = canonicalRouteRows(
+      (routeHealthResult.data ?? []) as RouteHealthRow[]
+    );
+    const annotatedExpressPackages = annotateManifestPackageEvidence({
+      companyId: company.id,
+      packages: (expressPackagesResult.data ?? []).map((packageRow) => ({
+        ...packageRow,
+        is_express: true,
+      })),
+      currentStatusRows:
+        (packageStatusResult.data ?? []) as CurrentPackageStatusEvidence[],
+    });
+    const expressByRoute = expressEvidenceCountsByRoute(
+      annotatedExpressPackages
     );
     const rows = canonicalRows.map((row) => {
       const signal = expressByRoute.get(String(row.route_key));
-      if (!signal) return { ...row, tracking_gap_express_package_count: 0 };
       return {
         ...row,
-        express_package_count: n(signal.package_count),
-        completed_express_package_count: n(signal.completed_package_count),
-        incomplete_express_package_count: n(signal.open_package_count),
-        tracking_gap_express_package_count: n(signal.tracking_gap_package_count),
+        express_package_count: n(signal?.package_count),
+        completed_express_package_count: n(
+          signal?.completed_package_count
+        ),
+        incomplete_express_package_count: n(signal?.open_package_count),
+        tracking_gap_express_package_count: n(
+          signal?.tracking_gap_package_count
+        ),
       };
     });
 
