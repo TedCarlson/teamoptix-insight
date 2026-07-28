@@ -1330,7 +1330,15 @@ def main(section_='', option_=0, retry=1):
             ACTIVE_SECTION = 'Daily Service'
             logging.info("Pickup Daily Service")
             for handle in driver.window_handles:
-                if handle == home_page_handle:
+                # The FCC window carries application-level authorization that
+                # is not recreated by the home-page cookie alone. Preserve it
+                # while DSW opens in its own tab so the next success-chained
+                # pulse can continue exporting manifests without logging in
+                # again or reopening FCC in a degraded state.
+                if handle in {
+                    home_page_handle,
+                    customer_connection_page_handle,
+                }:
                     continue
                 driver.switch_to.window(handle)
                 driver.close()
