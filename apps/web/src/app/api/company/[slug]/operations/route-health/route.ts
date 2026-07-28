@@ -118,6 +118,42 @@ function n(value: number | string | null | undefined) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function normalizedManifestKey(value: unknown) {
+  return String(value ?? "").trim().replace(/\s+/g, " ").toUpperCase();
+}
+
+function manifestStopKeys(row: Record<string, unknown>) {
+  const sid = normalizedManifestKey(row.sid);
+  const stopNumber = normalizedManifestKey(row.st_number);
+  return [
+    sid ? `SID|${sid}` : "",
+    stopNumber ? `STOP|${stopNumber}` : "",
+  ].filter(Boolean);
+}
+
+function packagesWithManifestCompletion(params: {
+  packages: Array<Record<string, unknown>>;
+  stops: Array<Record<string, unknown>>;
+}) {
+  const completionByStopKey = new Map<string, unknown>();
+
+  params.stops.forEach((stop) => {
+    manifestStopKeys(stop).forEach((key) => {
+      completionByStopKey.set(key, stop.completed);
+    });
+  });
+
+  return params.packages.map((packageRow) => {
+    const completed = manifestStopKeys(packageRow)
+      .map((key) => completionByStopKey.get(key))
+      .find((value) => value !== undefined);
+    return {
+      ...packageRow,
+      manifest_completed: completed ?? null,
+    };
+  });
+}
+
 function statusCounts(rows: RouteHealthRow[]) {
   return rows.reduce<Record<string, number>>((counts, row) => {
     const key = String(row.route_health_status ?? "UNKNOWN").trim() || "UNKNOWN";
@@ -376,9 +412,12 @@ export async function GET(
         return NextResponse.json({ error: detailError.message }, { status: 500 });
       }
 
-      const manifestPackages = (packagesResult.data ?? []) as Array<
-        Record<string, unknown>
-      >;
+      const manifestPackages = packagesWithManifestCompletion({
+        packages: (packagesResult.data ?? []) as Array<Record<string, unknown>>,
+        stops: (deliveryStopsResult.data ?? []) as Array<
+          Record<string, unknown>
+        >,
+      });
       const packages = packageEvidenceConfigurationAvailable()
         ? annotateManifestPackageEvidence({
             companyId: company.id,
@@ -410,7 +449,7 @@ export async function GET(
           .order("route_key", { ascending: true }),
         supabase
           .from("operations_manifest_express_report_v")
-          .select("route_key,tracking_id")
+          .select("route_key,tracking_id,completed")
           .eq("company_id", company.id)
           .eq("service_date", serviceDate),
         serviceRole

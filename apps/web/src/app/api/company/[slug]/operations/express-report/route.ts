@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  annotateManifestPackageEvidence,
+  markPackageEvidenceUnavailable,
+  packageEvidenceConfigurationAvailable,
+  type CurrentPackageStatusEvidence,
+  type EvidenceAnnotatedPackage,
+} from "@/features/operations/reports/dsw/packageStatus/packageStatus.evidence";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-type ExpressReportRow = {
+type ExpressReportRow = EvidenceAnnotatedPackage & {
   company_id: string;
   company_slug: string;
   service_date: string;
@@ -50,6 +58,8 @@ type RouteSummary = {
   express_stop_count: number;
   completed_express_package_count: number;
   incomplete_express_package_count: number;
+  coded_attempt_express_package_count: number;
+  open_uncoded_express_package_count: number;
   residential_express_package_count: number;
   signature_express_package_count: number;
   hazmat_express_package_count: number;
@@ -75,6 +85,7 @@ type ExpressMapStop = {
   geocode_status: string | null;
   package_count: number;
   open_count: number;
+  coded_attempt_count: number;
   complete_count: number;
   delivery_time_begin: string | null;
   delivery_time_end: string | null;
@@ -104,6 +115,14 @@ function stopKey(row: ExpressReportRow) {
 
 function isCompleted(row: ExpressReportRow) {
   return String(row.completed ?? "").trim().toUpperCase() === "Y";
+}
+
+function isCodedAttempt(row: ExpressReportRow) {
+  return row.delivery_evidence_state === "CODED_ATTEMPT";
+}
+
+function isOpenUncoded(row: ExpressReportRow) {
+  return row.delivery_evidence_state === "OPEN";
 }
 
 function normalizedPart(value: string | null | undefined) {
@@ -168,6 +187,7 @@ function buildMapStops(rows: ExpressReportRow[]) {
       geocode_status: first.geocode_status ?? "PENDING",
       package_count: stopRows.length,
       open_count: stopRows.length - completeCount,
+      coded_attempt_count: stopRows.filter(isCodedAttempt).length,
       complete_count: completeCount,
       delivery_time_begin: earliest(stopRows.map((row) => row.delivery_time_begin)),
       delivery_time_end: latest(stopRows.map((row) => row.delivery_time_end)),
@@ -212,6 +232,10 @@ function buildRouteSummaries(rows: ExpressReportRow[]) {
       express_stop_count: stopKeys.size,
       completed_express_package_count: routeRows.filter(isCompleted).length,
       incomplete_express_package_count: routeRows.filter((row) => !isCompleted(row)).length,
+      coded_attempt_express_package_count:
+        routeRows.filter(isCodedAttempt).length,
+      open_uncoded_express_package_count:
+        routeRows.filter(isOpenUncoded).length,
       residential_express_package_count: routeRows.filter((row) => row.is_residential).length,
       signature_express_package_count: routeRows.filter((row) => row.is_signature).length,
       hazmat_express_package_count: routeRows.filter((row) => row.is_hazmat).length,
@@ -236,6 +260,12 @@ function buildTotals(routeSummaries: RouteSummary[]) {
       incomplete_express_package_count:
         totals.incomplete_express_package_count +
         route.incomplete_express_package_count,
+      coded_attempt_express_package_count:
+        totals.coded_attempt_express_package_count +
+        route.coded_attempt_express_package_count,
+      open_uncoded_express_package_count:
+        totals.open_uncoded_express_package_count +
+        route.open_uncoded_express_package_count,
       residential_express_package_count:
         totals.residential_express_package_count +
         route.residential_express_package_count,
@@ -254,6 +284,8 @@ function buildTotals(routeSummaries: RouteSummary[]) {
       express_stop_count: 0,
       completed_express_package_count: 0,
       incomplete_express_package_count: 0,
+      coded_attempt_express_package_count: 0,
+      open_uncoded_express_package_count: 0,
       residential_express_package_count: 0,
       signature_express_package_count: 0,
       hazmat_express_package_count: 0,
@@ -287,6 +319,7 @@ export async function GET(
     const serviceDate = currentOperatingDate();
 
     const supabase = await getSupabaseServerClient();
+    const serviceRole = createSupabaseServiceRoleClient();
 
     const { data, error } = await supabase
       .from("operations_manifest_express_report_v")
@@ -309,7 +342,41 @@ export async function GET(
       );
     }
 
-    const rows = (data ?? []) as ExpressReportRow[];
+    const manifestRows = (data ?? []) as Array<Record<string, unknown>>;
+    const companyId = String(manifestRows[0]?.company_id ?? "").trim();
+    const packageStatusResult = companyId
+      ? await serviceRole
+          .from("operations_dsw_package_status_current_v")
+          .select(
+            "tracking_ref,work_area_name,work_area_number,vision_label,vision_label_at_local,vsa_status_code,star_status_code,star_scan_at_local,snapshot_generated_at"
+          )
+          .eq("company_id", companyId)
+          .eq("service_date", serviceDate)
+      : { data: [], error: null };
+
+    if (packageStatusResult.error) {
+      return NextResponse.json(
+        {
+          error: packageStatusResult.error.message,
+          packages: [],
+          route_summaries: [],
+          totals: null,
+        },
+        { status: 500 }
+      );
+    }
+
+    const rows = (
+      packageEvidenceConfigurationAvailable()
+        ? annotateManifestPackageEvidence({
+            companyId,
+            packages: manifestRows,
+            currentStatusRows:
+              (packageStatusResult.data ??
+                []) as CurrentPackageStatusEvidence[],
+          })
+        : markPackageEvidenceUnavailable(manifestRows)
+    ) as ExpressReportRow[];
     const routeSummaries = buildRouteSummaries(rows);
 
     return NextResponse.json({
@@ -331,6 +398,13 @@ export async function GET(
         tracking_id: row.tracking_id,
         prem_svc_raw: row.prem_svc_raw,
         completed: row.completed,
+        delivery_evidence_state: row.delivery_evidence_state,
+        delivery_evidence_basis: row.delivery_evidence_basis,
+        status_code_source: row.status_code_source,
+        vsa_status_code: row.vsa_status_code,
+        star_status_code: row.star_status_code,
+        status_code_at_local: row.status_code_at_local,
+        evidence_snapshot_generated_at: row.evidence_snapshot_generated_at,
         delivery_time_begin: row.delivery_time_begin,
         delivery_time_end: row.delivery_time_end,
         recipient: row.recipient,

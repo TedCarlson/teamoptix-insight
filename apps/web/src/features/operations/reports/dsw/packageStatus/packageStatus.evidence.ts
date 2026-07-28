@@ -1,7 +1,8 @@
 import { trackingReference } from "./packageStatus.crypto";
 
 export type PackageEvidenceState =
-  | "OPEN_CODED"
+  | "OPEN"
+  | "CODED_ATTEMPT"
   | "COMPLETED"
   | "NEEDS_ATTENTION";
 
@@ -21,7 +22,8 @@ export type EvidenceAnnotatedPackage = Record<string, unknown> & {
   delivery_evidence_state: PackageEvidenceState;
   delivery_evidence_basis:
     | "DSW_ALL_CODES"
-    | "DSW_ALL_CODES_ABSENCE"
+    | "MANIFEST_COMPLETED"
+    | "MANIFEST_OPEN"
     | "TRACKING_GAP"
     | "EVIDENCE_CONFIGURATION_REQUIRED";
   status_code_source: "VSA" | "STAR" | "VSA_AND_STAR" | null;
@@ -46,6 +48,12 @@ function truthy(value: unknown) {
   return value === true || text(value).toUpperCase() === "Y";
 }
 
+function manifestCompleted(packageRow: Record<string, unknown>) {
+  return truthy(
+    packageRow.manifest_completed ?? packageRow.completed
+  );
+}
+
 function meaningfulCode(value: unknown) {
   const normalized = text(value);
   return normalized && normalized !== "0" ? normalized : null;
@@ -68,16 +76,21 @@ export function packageEvidenceConfigurationAvailable() {
 export function markPackageEvidenceUnavailable(
   packages: Array<Record<string, unknown>>
 ) {
-  return packages.map<EvidenceAnnotatedPackage>((packageRow) => ({
-    ...packageRow,
-    delivery_evidence_state: "NEEDS_ATTENTION",
-    delivery_evidence_basis: "EVIDENCE_CONFIGURATION_REQUIRED",
-    status_code_source: null,
-    vsa_status_code: null,
-    star_status_code: null,
-    status_code_at_local: null,
-    evidence_snapshot_generated_at: null,
-  }));
+  return packages.map<EvidenceAnnotatedPackage>((packageRow) => {
+    const completed = manifestCompleted(packageRow);
+    return {
+      ...packageRow,
+      delivery_evidence_state: completed ? "COMPLETED" : "NEEDS_ATTENTION",
+      delivery_evidence_basis: completed
+        ? "MANIFEST_COMPLETED"
+        : "EVIDENCE_CONFIGURATION_REQUIRED",
+      status_code_source: null,
+      vsa_status_code: null,
+      star_status_code: null,
+      status_code_at_local: null,
+      evidence_snapshot_generated_at: null,
+    };
+  });
 }
 
 export function annotateManifestPackageEvidence(params: {
@@ -108,12 +121,25 @@ export function annotateManifestPackageEvidence(params: {
       companyId: params.companyId,
       trackingId,
     });
+    if (manifestCompleted(packageRow)) {
+      return {
+        ...packageRow,
+        delivery_evidence_state: "COMPLETED",
+        delivery_evidence_basis: "MANIFEST_COMPLETED",
+        status_code_source: null,
+        vsa_status_code: null,
+        star_status_code: null,
+        status_code_at_local: null,
+        evidence_snapshot_generated_at: null,
+      };
+    }
+
     const currentEvidence = evidenceByReference.get(trackingRef);
     if (!currentEvidence) {
       return {
         ...packageRow,
-        delivery_evidence_state: "COMPLETED",
-        delivery_evidence_basis: "DSW_ALL_CODES_ABSENCE",
+        delivery_evidence_state: "OPEN",
+        delivery_evidence_basis: "MANIFEST_OPEN",
         status_code_source: null,
         vsa_status_code: null,
         star_status_code: null,
@@ -126,7 +152,7 @@ export function annotateManifestPackageEvidence(params: {
     const starStatusCode = meaningfulCode(currentEvidence.star_status_code);
     return {
       ...packageRow,
-      delivery_evidence_state: "OPEN_CODED",
+      delivery_evidence_state: "CODED_ATTEMPT",
       delivery_evidence_basis: "DSW_ALL_CODES",
       status_code_source: codeSource(vsaStatusCode, starStatusCode),
       vsa_status_code: vsaStatusCode,
@@ -157,7 +183,10 @@ export function expressEvidenceCountsByRoute(
       tracking_gap_package_count: 0,
     };
     counts.package_count += 1;
-    if (packageRow.delivery_evidence_state === "OPEN_CODED") {
+    if (
+      packageRow.delivery_evidence_state === "OPEN" ||
+      packageRow.delivery_evidence_state === "CODED_ATTEMPT"
+    ) {
       counts.open_package_count += 1;
     } else if (packageRow.delivery_evidence_state === "COMPLETED") {
       counts.completed_package_count += 1;

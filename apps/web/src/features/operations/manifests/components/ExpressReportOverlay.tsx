@@ -12,6 +12,8 @@ type ExpressRouteSummary = {
   express_stop_count: number;
   completed_express_package_count: number;
   incomplete_express_package_count: number;
+  coded_attempt_express_package_count: number;
+  open_uncoded_express_package_count: number;
   residential_express_package_count: number;
   signature_express_package_count: number;
   hazmat_express_package_count: number;
@@ -28,6 +30,15 @@ type ExpressPackageRow = {
   tracking_id: string | null;
   prem_svc_raw: string | null;
   completed: string | null;
+  delivery_evidence_state:
+    | "OPEN"
+    | "CODED_ATTEMPT"
+    | "COMPLETED"
+    | "NEEDS_ATTENTION";
+  status_code_source: "VSA" | "STAR" | "VSA_AND_STAR" | null;
+  vsa_status_code: string | null;
+  star_status_code: string | null;
+  status_code_at_local: string | null;
   delivery_time_begin: string | null;
   delivery_time_end: string | null;
   recipient: string | null;
@@ -57,6 +68,7 @@ type ExpressMapStop = {
   geocode_status: string | null;
   package_count: number;
   open_count: number;
+  coded_attempt_count: number;
   complete_count: number;
   delivery_time_begin: string | null;
   delivery_time_end: string | null;
@@ -72,6 +84,8 @@ type ExpressReportPayload = {
     express_stop_count: number;
     completed_express_package_count: number;
     incomplete_express_package_count: number;
+    coded_attempt_express_package_count: number;
+    open_uncoded_express_package_count: number;
     residential_express_package_count: number;
     signature_express_package_count: number;
     hazmat_express_package_count: number;
@@ -97,12 +111,14 @@ type TimeFrameGroup = {
     route_label: string | null;
     package_count: number;
     open_count: number;
+    coded_attempt_count: number;
     complete_count: number;
     stop_count: number;
     packages: ExpressPackageRow[];
   }>;
   package_count: number;
   open_count: number;
+  coded_attempt_count: number;
   complete_count: number;
   stop_count: number;
 };
@@ -141,6 +157,20 @@ function fmtAddress(row: ExpressPackageRow | ExpressMapStop) {
 
 function isComplete(value: string | null) {
   return String(value ?? "").trim().toUpperCase() === "Y";
+}
+
+function packageEvidenceLabel(row: ExpressPackageRow) {
+  if (isComplete(row.completed)) return "Complete";
+  if (row.delivery_evidence_state === "OPEN") return "Open";
+  if (row.delivery_evidence_state !== "CODED_ATTEMPT") {
+    return "Needs attention";
+  }
+
+  const codes = [
+    row.vsa_status_code ? `VSA ${row.vsa_status_code}` : "",
+    row.star_status_code ? `STAR ${row.star_status_code}` : "",
+  ].filter(Boolean);
+  return `Attempted${codes.length ? ` · ${codes.join(" · ")}` : " · Coded"}`;
 }
 
 function serviceWindow(row: Pick<ExpressPackageRow | ExpressMapStop, "delivery_time_begin" | "delivery_time_end">) {
@@ -187,12 +217,18 @@ function buildTimeFrameGroups(rows: ExpressPackageRow[]): TimeFrameGroup[] {
         route_label: routePackages[0]?.route_label ?? null,
         package_count: routePackages.length,
         open_count: routePackages.filter((pkg) => !isComplete(pkg.completed)).length,
+        coded_attempt_count: routePackages.filter(
+          (pkg) => pkg.delivery_evidence_state === "CODED_ATTEMPT"
+        ).length,
         complete_count: routePackages.filter((pkg) => isComplete(pkg.completed)).length,
         stop_count: new Set(routePackages.map(stopKey)).size,
         packages: routePackages,
       }));
 
       const openCount = packages.filter((pkg) => !isComplete(pkg.completed)).length;
+      const codedAttemptCount = packages.filter(
+        (pkg) => pkg.delivery_evidence_state === "CODED_ATTEMPT"
+      ).length;
       const completeCount = packages.length - openCount;
 
       return {
@@ -203,6 +239,7 @@ function buildTimeFrameGroups(rows: ExpressPackageRow[]): TimeFrameGroup[] {
         routes: routes.sort((a, b) => b.open_count - a.open_count || b.package_count - a.package_count),
         package_count: packages.length,
         open_count: openCount,
+        coded_attempt_count: codedAttemptCount,
         complete_count: completeCount,
         stop_count: new Set(packages.map(stopKey)).size,
       };
@@ -322,6 +359,8 @@ export default function ExpressReportOverlay({
 
   const totals = payload?.totals;
   const openCount = totals?.incomplete_express_package_count ?? 0;
+  const codedAttemptCount =
+    totals?.coded_attempt_express_package_count ?? 0;
   const completeCount = totals?.completed_express_package_count ?? 0;
   const totalCount = totals?.express_package_count ?? 0;
   const openPct = totalCount > 0 ? Math.round((openCount / totalCount) * 100) : 0;
@@ -411,6 +450,12 @@ export default function ExpressReportOverlay({
             }}
           >
             <MetricCard label="Open" value={openCount} tone="hot" sublabel={`${openPct}% of express volume`} />
+            <MetricCard
+              label="Attempted"
+              value={codedAttemptCount}
+              tone="attempt"
+              sublabel="Coded, still undelivered"
+            />
             <MetricCard label="Complete" value={completeCount} tone="cool" sublabel="Closed packages" />
             <MetricCard label="Time windows" value={timeFrameGroups.length} tone="neutral" sublabel="Grouped first" />
             {EXPRESS_MAP_TAB_ENABLED ? (
@@ -615,6 +660,7 @@ export default function ExpressReportOverlay({
                   </span>
                   <span style={{ color: "#475569", fontSize: 12, fontWeight: 850 }}>
                     {selectedStop.package_count} packages · {selectedStop.open_count} open ·{" "}
+                    {selectedStop.coded_attempt_count} attempted ·{" "}
                     {selectedStop.complete_count} complete · {selectedStop.route_label || selectedStop.route_key}
                   </span>
                 </div>
@@ -703,10 +749,22 @@ function MetricCard({
   label: string;
   value: number;
   sublabel: string;
-  tone: "hot" | "cool" | "neutral";
+  tone: "hot" | "attempt" | "cool" | "neutral";
 }) {
-  const color = tone === "hot" ? "#9a3412" : tone === "cool" ? "#166534" : "#0f172a";
-  const background = tone === "hot" ? "#fff7ed" : tone === "cool" ? "#ecfdf5" : "#fff";
+  const color =
+    tone === "hot"
+      ? "#9a3412"
+      : tone === "attempt"
+        ? "#c2410c"
+        : tone === "cool"
+          ? "#166534"
+          : "#0f172a";
+  const background =
+    tone === "hot" || tone === "attempt"
+      ? "#fff7ed"
+      : tone === "cool"
+        ? "#ecfdf5"
+        : "#fff";
 
   return (
     <div
@@ -770,6 +828,10 @@ function TimeFrameCard({ group }: { group: TimeFrameGroup }) {
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <Pill label={`${group.open_count} open`} hot={group.open_count > 0} />
+          <Pill
+            label={`${group.coded_attempt_count} attempted`}
+            hot={group.coded_attempt_count > 0}
+          />
           <Pill label={`${group.complete_count} complete`} hot={false} />
         </div>
       </div>
@@ -789,6 +851,7 @@ function TimeFrameCard({ group }: { group: TimeFrameGroup }) {
               <TableHead>Stops</TableHead>
               <TableHead>Packages</TableHead>
               <TableHead>Open</TableHead>
+              <TableHead>Attempted</TableHead>
               <TableHead>Complete</TableHead>
               <TableHead align="left">Status</TableHead>
             </tr>
@@ -830,6 +893,7 @@ type RouteStopGroup = {
   window: string;
   packages: ExpressPackageRow[];
   open_count: number;
+  coded_attempt_count: number;
   complete_count: number;
 };
 
@@ -853,6 +917,9 @@ function buildRouteStops(packages: ExpressPackageRow[]): RouteStopGroup[] {
         window: serviceWindow(first),
         packages: stopPackages,
         open_count: stopPackages.length - completeCount,
+        coded_attempt_count: stopPackages.filter(
+          (pkg) => pkg.delivery_evidence_state === "CODED_ATTEMPT"
+        ).length,
         complete_count: completeCount,
       };
     })
@@ -895,6 +962,9 @@ function RouteTableRows({
         <TableCell>{route.stop_count}</TableCell>
         <TableCell>{route.package_count}</TableCell>
         <TableCell tone={route.open_count > 0 ? "hot" : undefined}>{route.open_count}</TableCell>
+        <TableCell tone={route.coded_attempt_count > 0 ? "hot" : undefined}>
+          {route.coded_attempt_count}
+        </TableCell>
         <TableCell tone="cool">{route.complete_count}</TableCell>
         <TableCell align="left">
           <span style={{ fontWeight: 950, color: route.open_count > 0 ? "#9a3412" : "#166534" }}>
@@ -905,7 +975,7 @@ function RouteTableRows({
 
       {expanded ? (
         <tr>
-          <td colSpan={6} style={{ padding: 0, background: "#f8fafc", borderTop: "1px solid #e2e8f0" }}>
+          <td colSpan={7} style={{ padding: 0, background: "#f8fafc", borderTop: "1px solid #e2e8f0" }}>
             <div style={{ padding: "10px 12px 12px 28px" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", border: "1px solid #dbe3ef" }}>
                 <thead>
@@ -955,7 +1025,9 @@ function StopTableRows({ stop, expanded, onToggle }: { stop: RouteStopGroup; exp
         <TableCell align="left">{stop.window}</TableCell>
         <TableCell>{stop.packages.length}</TableCell>
         <TableCell align="left" tone={stop.open_count > 0 ? "hot" : "cool"}>
-          {stop.open_count > 0 ? `${stop.open_count} open` : "Complete"}
+          {stop.open_count > 0
+            ? `${stop.open_count} open${stop.coded_attempt_count ? ` · ${stop.coded_attempt_count} attempted` : ""}`
+            : "Complete"}
         </TableCell>
       </tr>
       {expanded ? (
@@ -980,7 +1052,7 @@ function StopTableRows({ stop, expanded, onToggle }: { stop: RouteStopGroup; exp
                       </TableCell>
                       <TableCell align="left">{pkg.prem_svc_raw || "—"}</TableCell>
                       <TableCell align="left" tone={isComplete(pkg.completed) ? "cool" : "hot"}>
-                        {isComplete(pkg.completed) ? "Complete" : "Open"}
+                        {packageEvidenceLabel(pkg)}
                       </TableCell>
                     </tr>
                   ))}
