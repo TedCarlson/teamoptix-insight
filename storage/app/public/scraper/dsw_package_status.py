@@ -97,16 +97,21 @@ def purge_expired_local_package_artifacts(
 
 
 def download_snapshot(download_folder):
-    return {
-        str(os.path.realpath(path))
-        for path in (
-            os.path.join(download_folder, filename)
-            for filename in os.listdir(download_folder)
+    snapshot = {}
+    for filename in os.listdir(download_folder):
+        path = os.path.join(download_folder, filename)
+        if (
+            not os.path.isfile(path)
+            or filename.startswith(".")
+            or os.path.splitext(path)[1].lower() not in {".xls", ".xlsx"}
+        ):
+            continue
+        stat = os.stat(path)
+        snapshot[str(os.path.realpath(path))] = (
+            stat.st_mtime_ns,
+            stat.st_size,
         )
-        if os.path.isfile(path)
-        and not os.path.basename(path).startswith(".")
-        and os.path.splitext(path)[1].lower() in {".xls", ".xlsx"}
-    }
+    return snapshot
 
 
 def wait_for_completed_download(
@@ -128,14 +133,17 @@ def wait_for_completed_download(
 
         for filename in os.listdir(download_folder):
             path = os.path.join(download_folder, filename)
+            real_path = str(os.path.realpath(path))
             if (
                 os.path.isfile(path)
                 and not filename.startswith(".")
                 and os.path.splitext(filename)[1].lower()
                 in {".xls", ".xlsx"}
-                and str(os.path.realpath(path)) not in before
             ):
-                candidates.append(path)
+                stat = os.stat(path)
+                fingerprint = (stat.st_mtime_ns, stat.st_size)
+                if real_path not in before or before[real_path] != fingerprint:
+                    candidates.append(path)
 
         if candidates and first_seen_at is None:
             first_seen_at = time.time()
