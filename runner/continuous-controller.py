@@ -40,6 +40,7 @@ STATE_DIR = Path(
 SCHEDULE_FILE = STATE_DIR / "schedule.json"
 JOURNAL_FILE = STATE_DIR / "controller-state.json"
 CYCLE_RUNNER = APP_DIR / "runner" / "run-continuous-cycle.py"
+DONOR_LOCK_FILE = APP_DIR / "runtime" / "locks" / "report-runner.lock"
 SHADOW_MODE = os.environ.get("CONTINUOUS_RUNNER_SHADOW", "1") != "0"
 CONTROL_PORT = int(os.environ.get("RUNNER_CONTROL_PORT", "8790"))
 CONTROL_SECRET = os.environ.get("RUNNER_CONTROL_SECRET", "")
@@ -364,6 +365,25 @@ class ContinuousController:
     def start_allowed(self) -> bool:
         return bool(self.schedule.get("collection_enabled"))
 
+    @staticmethod
+    def donor_run_active() -> bool:
+        """Return true while any governed runner owns the serial donor."""
+
+        try:
+            pid = int(
+                DONOR_LOCK_FILE.read_text(encoding="utf-8").strip()
+            )
+            if pid <= 0:
+                return False
+            os.kill(pid, 0)
+            return True
+        except (FileNotFoundError, ValueError, ProcessLookupError):
+            return False
+        except PermissionError:
+            return True
+        except OSError:
+            return False
+
     def credential_attempt_allowed(self) -> bool:
         return (
             self.credential_blocked_version is None
@@ -523,6 +543,13 @@ class ContinuousController:
 
                     if not self.start_allowed():
                         self.stop_event.wait(5)
+                        continue
+
+                    # Manual recoveries and controller cycles share one donor.
+                    # Defer rather than creating an overlapping pulse request
+                    # that can only fail the runner lock.
+                    if self.donor_run_active():
+                        self.stop_event.wait(1)
                         continue
 
                     if (
