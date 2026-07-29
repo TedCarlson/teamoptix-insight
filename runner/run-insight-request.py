@@ -21,6 +21,7 @@ INSIGHT_ENV_FILE = Path(os.environ.get(
 RUNNER_KEY = os.environ.get("RUNNER_KEY", "vps-laravel-runner-001")
 PROVIDER_KEY = "FEDEX"
 DONOR_RUNNER = APP_DIR / "runner" / "run-donor-once.sh"
+DONOR_LOCK_FILE = APP_DIR / "runtime" / "locks" / "report-runner.lock"
 SCRAPER_HOME = APP_DIR / "storage" / "app" / "public" / "scraper"
 RUNTIME_LEDGER_DIR = Path(os.environ.get(
     "INSIGHT_RUNTIME_LEDGER_DIR",
@@ -693,6 +694,56 @@ def one(row_or_rows):
         return row_or_rows[0] if row_or_rows else None
     return row_or_rows
 
+
+def donor_run_active() -> bool:
+    try:
+        pid = int(DONOR_LOCK_FILE.read_text(encoding="utf-8").strip())
+        if pid <= 0:
+            return False
+        os.kill(pid, 0)
+        return True
+    except (FileNotFoundError, ValueError, ProcessLookupError):
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+
+
+def wait_for_donor_slot(request: dict) -> None:
+    timeout_seconds = int(
+        os.environ.get("INSIGHT_DONOR_WAIT_SECONDS", "3600")
+    )
+    deadline = time.monotonic() + timeout_seconds
+    next_heartbeat = 0.0
+    announced = False
+
+    while donor_run_active():
+        now = time.monotonic()
+        if now >= deadline:
+            raise RuntimeError(
+                "Timed out waiting for the serial donor slot."
+            )
+        if not announced:
+            print(
+                "[insight-runner] queued behind active donor; "
+                "waiting for serial slot"
+            )
+            announced = True
+        if now >= next_heartbeat:
+            record_runtime_event(
+                request,
+                "WAITING_FOR_DONOR",
+                "CLAIM",
+                metadata={"serial_slot": "report-runner"},
+            )
+            next_heartbeat = now + 30
+        time.sleep(0.25)
+
+    if announced:
+        print("[insight-runner] serial donor slot available")
+
+
 def update_status(request_id: str, status: str, error_message: str | None = None):
     return rpc("update_operations_collection_request_status", {
         "p_request_id": request_id,
@@ -763,6 +814,7 @@ def main() -> int:
             duration_ms=int((time.time() - credential_started) * 1000),
             metadata={"profile_id": profile.get("id")},
         )
+        wait_for_donor_slot(request)
         update_status(request_id, "RUNNING")
 
         run_started_at = time.time()
