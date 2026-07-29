@@ -52,7 +52,12 @@ START_TIME = time.time()
 runtime_service_date = os.environ.get("FCMS_SERVICE_DATE", "").strip()
 INSIGHT_HISTORICAL_MODE = bool(runtime_service_date)
 
-logging.info(SCRAP_INFO)
+logging.info(
+    "Scraping configuration loaded: can_scrape=%s source=%s username_present=%s",
+    bool(SCRAP_INFO.get("can_scrape")),
+    SCRAP_INFO.get("source", "configured"),
+    bool(SCRAP_INFO.get("username")),
+)
 
 if INSIGHT_HISTORICAL_MODE:
     try:
@@ -103,6 +108,7 @@ CHROME_DEBUGGER_ADDRESS = os.environ.get(
     "127.0.0.1:9222",
 )
 PERSIST_ORIGINAL_WINDOW_HANDLES = set()
+PERSIST_DSW_WINDOW_HANDLE = None
 
 logging.info(f"{current_date} {formatted_date} {DOWNLOAD_FOLDER}")
 
@@ -186,7 +192,7 @@ def recordObservedDownload(artifact_key, lane_key, requested_at):
     )
 
 def getDriver():
-    global PERSIST_ORIGINAL_WINDOW_HANDLES
+    global PERSIST_DSW_WINDOW_HANDLE, PERSIST_ORIGINAL_WINDOW_HANDLES
     if isPlatformLinux() and PERSIST_BROWSER:
         try:
             debugger_host, debugger_port = CHROME_DEBUGGER_ADDRESS.rsplit(":", 1)
@@ -212,6 +218,18 @@ def getDriver():
             PERSIST_ORIGINAL_WINDOW_HANDLES = set(
                 attached_driver.window_handles
             )
+            for handle in attached_driver.window_handles:
+                attached_driver.switch_to.window(handle)
+                current_url = attached_driver.current_url
+                if (
+                    attached_driver.title == "AutoDSW"
+                    or "/mgba/dsw" in current_url
+                ):
+                    PERSIST_DSW_WINDOW_HANDLE = handle
+                    logging.info(
+                        "Reusing existing AutoDSW window for historical collection"
+                    )
+                    return attached_driver
             attached_driver.switch_to.new_window("tab")
             logging.info(
                 "Attached historical collection to persistent FedEx browser session"
@@ -502,7 +520,21 @@ def main(section_='', option_=0, retry=1):
         raise
     logging.info("Driver loaded...")
     try:
-        authenticateDriver(driver)
+        if PERSIST_DSW_WINDOW_HANDLE:
+            driver.switch_to.window(PERSIST_DSW_WINDOW_HANDLE)
+            logging.info(
+                "FedEx AutoDSW session reused for historical collection"
+            )
+            emit_runtime_event(
+                "SESSION_REUSED",
+                "AUTHENTICATION",
+                metadata={
+                    "historical": True,
+                    "persistent_dsw_window": True,
+                },
+            )
+        else:
+            authenticateDriver(driver)
 
         # headers = driver.execute_script("var req = new XMLHttpRequest();req.open('GET', document.location, false);req.send(null);return req.getAllResponseHeaders()")
         # headers = headers.splitlines()
@@ -723,27 +755,31 @@ def main(section_='', option_=0, retry=1):
         if secion_index <= 4:
             ACTIVE_SECTION = 'Daily Service'
             logging.info("Pickup Daily Service")
-            iframe = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//iframe[@title='FCC Links']")))
+            if PERSIST_DSW_WINDOW_HANDLE:
+                daily_service_week_page_handle = PERSIST_DSW_WINDOW_HANDLE
+                driver.switch_to.window(daily_service_week_page_handle)
+            else:
+                iframe = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//iframe[@title='FCC Links']")))
 
-            driver.switch_to.frame(iframe)
+                driver.switch_to.frame(iframe)
 
-            daily_service_week = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//a[contains(text(), 'Daily Service Wk & Vision IBPR')]")))
+                daily_service_week = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//a[contains(text(), 'Daily Service Wk & Vision IBPR')]")))
 
-            existing_window_handles = set(driver.window_handles)
-            daily_service_week.click()
+                existing_window_handles = set(driver.window_handles)
+                daily_service_week.click()
 
-            driver.switch_to.default_content()
+                driver.switch_to.default_content()
 
-            WebDriverWait(driver, 30).until(
-                lambda current_driver:
-                    len(set(current_driver.window_handles) - existing_window_handles) > 0
-            )
-            daily_service_week_page_handle = next(
-                handle
-                for handle in driver.window_handles
-                if handle not in existing_window_handles
-            )
-            driver.switch_to.window(daily_service_week_page_handle)
+                WebDriverWait(driver, 30).until(
+                    lambda current_driver:
+                        len(set(current_driver.window_handles) - existing_window_handles) > 0
+                )
+                daily_service_week_page_handle = next(
+                    handle
+                    for handle in driver.window_handles
+                    if handle not in existing_window_handles
+                )
+                driver.switch_to.window(daily_service_week_page_handle)
 
             daily_service_week_page_title = driver.title
             logging.info("Title of the daily_service_week page: " + daily_service_week_page_title)
@@ -841,10 +877,15 @@ def main(section_='', option_=0, retry=1):
         logging.info("Crashed On: " + str(ACTIVE_SECTION) + ' and ' + str(ACTIVE_SECTION_OPTION))
         writeError(formatted_date, f"Crashed On:{ACTIVE_SECTION} and {ACTIVE_SECTION_OPTION}", "Specific scrape", START_TIME)
         time.sleep(3)
-        if retry < 75:
+        max_retries = int(os.environ.get("FCMS_MAX_RETRIES", "0"))
+        if retry < max_retries:
             return main(ACTIVE_SECTION, ACTIVE_SECTION_OPTION, retry+1)
         else:
-            logging.info(f'{retry} time retried...')
+            logging.info(
+                "%s retries attempted; max_retries=%s. exiting one-shot run.",
+                retry,
+                max_retries,
+            )
             try:
                 releaseDriver(driver)
                 closeConnection(CONNECTION)
