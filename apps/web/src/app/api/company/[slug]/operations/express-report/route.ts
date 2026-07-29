@@ -316,7 +316,7 @@ export async function GET(
     const requestedServiceDate = normalizeDate(
       req.nextUrl.searchParams.get("serviceDate")
     );
-    const serviceDate = currentOperatingDate();
+    const serviceDate = requestedServiceDate ?? currentOperatingDate();
 
     const supabase = await getSupabaseServerClient();
     const serviceRole = createSupabaseServiceRoleClient();

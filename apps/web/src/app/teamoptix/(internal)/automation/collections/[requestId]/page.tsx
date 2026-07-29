@@ -86,6 +86,88 @@ function friendlyOutcome(value: unknown) {
   return "In progress";
 }
 
+function cycleExceptionSummary(events: any[]) {
+  const exceptions = events.filter((event) =>
+    ["DOWNLOAD_FAILED", "SOURCE_UNAVAILABLE", "NEEDS_ATTENTION"].includes(
+      String(event.event_type ?? "").toUpperCase()
+    )
+  );
+  if (!exceptions.length) return null;
+
+  const downloadFailures = exceptions.filter(
+    (event) =>
+      String(event.event_type ?? "").toUpperCase() === "DOWNLOAD_FAILED"
+  );
+  const unavailable = exceptions.filter(
+    (event) =>
+      String(event.event_type ?? "").toUpperCase() === "SOURCE_UNAVAILABLE"
+  );
+  const attention = exceptions.filter(
+    (event) =>
+      String(event.event_type ?? "").toUpperCase() === "NEEDS_ATTENTION"
+  );
+  const artifactCounts = unavailable.reduce((counts, event) => {
+    const key = String(event.artifact_key ?? "Unknown source")
+      .replaceAll("_", " ")
+      .toLowerCase()
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+    return counts;
+  }, new Map<string, number>());
+  const reasonCounts = attention.reduce((counts, event) => {
+    const metadata = objectValue(event.metadata_json);
+    const key = String(metadata?.reason ?? "Unspecified")
+      .replaceAll("_", " ")
+      .toLowerCase()
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+    return counts;
+  }, new Map<string, number>());
+
+  const parts = [];
+  if (downloadFailures.length) {
+    parts.push(
+      `${downloadFailures.length} requested report ${
+        downloadFailures.length === 1 ? "download failed" : "downloads failed"
+      }`
+    );
+  }
+  if (unavailable.length) {
+    const detail = [...artifactCounts.entries()]
+      .map(([label, count]) => `${count} ${label}`)
+      .join(", ");
+    parts.push(
+      `${unavailable.length} requested source exports were unavailable${
+        detail ? ` (${detail})` : ""
+      }`
+    );
+  }
+  if (attention.length) {
+    const detail = [...reasonCounts.entries()]
+      .map(([label, count]) => `${count} ${label}`)
+      .join(", ");
+    parts.push(
+      `${attention.length} collection ${
+        attention.length === 1 ? "lane requires" : "lanes require"
+      } attention${detail ? ` (${detail})` : ""}`
+    );
+  }
+
+  const affectedRoutes = [
+    ...new Set(
+      exceptions
+        .map((event) => String(event.route_identity ?? "").trim())
+        .filter(Boolean)
+    ),
+  ];
+
+  return `${parts.join("; ")}.${
+    affectedRoutes.length
+      ? ` Affected routes (${affectedRoutes.length}): ${affectedRoutes.join(", ")}.`
+      : ""
+  }`;
+}
+
 const card = {
   border: "1px solid #dbe4ef",
   borderRadius: 18,
@@ -188,6 +270,7 @@ export default async function Page({ params }: { params: Promise<{ requestId: st
   const diagnosticSources = textList(
     failureEvidence?.source_logs ?? receiptDiagnostics?.source_logs
   );
+  const recordedCycleException = cycleExceptionSummary(runtimeEvents ?? []);
   const measuredRows = (artifactRuntime ?? []).length
     ? (artifactRuntime ?? []).map((artifact: any) => ({
         key: artifact.artifact_execution_key,
@@ -317,6 +400,25 @@ export default async function Page({ params }: { params: Promise<{ requestId: st
         <section style={{ ...card, borderColor: "#fecaca", background: "#fff7f7", color: "#991b1b" }}>
           <strong>Request outcome</strong>
           <p style={{ marginBottom: 0 }}>{request.error_message}</p>
+        </section>
+      ) : null}
+
+      {recordedCycleException ? (
+        <section
+          style={{
+            ...card,
+            borderColor: "#fdba74",
+            background: "#fffaf2",
+            color: "#9a3412",
+          }}
+        >
+          <strong>Cycle exceptions</strong>
+          <p style={{ margin: "8px 0 0" }}>{recordedCycleException}</p>
+          <p style={{ margin: "8px 0 0", color: "#7c2d12", fontSize: 13 }}>
+            The successful files remain usable. The affected source lanes and
+            route identities are retained in the technical runtime event trail
+            below.
+          </p>
         </section>
       ) : null}
 
