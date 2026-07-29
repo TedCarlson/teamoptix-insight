@@ -22,6 +22,9 @@ RUNNER_KEY = os.environ.get("RUNNER_KEY", "vps-laravel-runner-001")
 PROVIDER_KEY = "FEDEX"
 DONOR_RUNNER = APP_DIR / "runner" / "run-donor-once.sh"
 DONOR_LOCK_FILE = APP_DIR / "runtime" / "locks" / "report-runner.lock"
+DONOR_RESERVATION_FILE = (
+    APP_DIR / "runtime" / "locks" / "report-runner.reservation"
+)
 SCRAPER_HOME = APP_DIR / "storage" / "app" / "public" / "scraper"
 RUNTIME_LEDGER_DIR = Path(os.environ.get(
     "INSIGHT_RUNTIME_LEDGER_DIR",
@@ -710,6 +713,36 @@ def donor_run_active() -> bool:
         return False
 
 
+def reserve_donor_slot(request: dict) -> None:
+    request_id = str(request.get("id") or "").strip()
+    if not request_id:
+        raise RuntimeError("Cannot reserve the donor slot without a request ID.")
+    DONOR_RESERVATION_FILE.parent.mkdir(parents=True, exist_ok=True)
+    existing = ""
+    try:
+        existing = DONOR_RESERVATION_FILE.read_text(
+            encoding="utf-8"
+        ).strip()
+    except FileNotFoundError:
+        pass
+    if existing and existing != request_id:
+        raise RuntimeError(
+            f"Donor slot is already reserved for governed request {existing}."
+        )
+    DONOR_RESERVATION_FILE.write_text(request_id, encoding="utf-8")
+
+
+def release_donor_reservation(request_id: str) -> None:
+    try:
+        existing = DONOR_RESERVATION_FILE.read_text(
+            encoding="utf-8"
+        ).strip()
+        if existing == request_id:
+            DONOR_RESERVATION_FILE.unlink()
+    except FileNotFoundError:
+        pass
+
+
 def wait_for_donor_slot(request: dict) -> None:
     timeout_seconds = int(
         os.environ.get("INSIGHT_DONOR_WAIT_SECONDS", "3600")
@@ -794,6 +827,7 @@ def main() -> int:
         "runner_sections": target_runner_sections(request),
     }, indent=2))
 
+    reservation_owned = False
     try:
         credential_started = time.time()
         profile = get_profile(request["company_id"])
@@ -814,6 +848,8 @@ def main() -> int:
             duration_ms=int((time.time() - credential_started) * 1000),
             metadata={"profile_id": profile.get("id")},
         )
+        reserve_donor_slot(request)
+        reservation_owned = True
         wait_for_donor_slot(request)
         update_status(request_id, "RUNNING")
 
@@ -1084,6 +1120,9 @@ def main() -> int:
         except Exception as update_exc:
             print(f"[insight-runner] failed to mark request failed: {update_exc}", file=sys.stderr)
         return 1
+    finally:
+        if reservation_owned:
+            release_donor_reservation(request_id)
 
 if __name__ == "__main__":
     raise SystemExit(main())

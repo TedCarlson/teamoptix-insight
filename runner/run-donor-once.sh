@@ -5,6 +5,7 @@ APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRAPER_DIR="$APP_DIR/storage/app/public/scraper"
 PY="$SCRAPER_DIR/.venv/bin/python"
 LOCK_FILE="$APP_DIR/runtime/locks/report-runner.lock"
+RESERVATION_FILE="$APP_DIR/runtime/locks/report-runner.reservation"
 COOLDOWN_FILE="$APP_DIR/runtime/state/login-failure-cooldown.until"
 LOG_FILE="$APP_DIR/runtime/logs/run-$(date -u +%Y%m%dT%H%M%SZ).log"
 
@@ -39,6 +40,22 @@ if [ -f "$COOLDOWN_FILE" ]; then
   fi
 fi
 
+reservation_owned=0
+while [ -f "$RESERVATION_FILE" ]; do
+  reservation_request_id="$(cat "$RESERVATION_FILE" 2>/dev/null || true)"
+  if [ -z "${reservation_request_id:-}" ]; then
+    rm -f "$RESERVATION_FILE"
+    break
+  fi
+  if [ "${FCMS_REQUEST_ID:-}" = "$reservation_request_id" ]; then
+    reservation_owned=1
+    echo "[runner] donor reservation accepted request=$reservation_request_id"
+    break
+  fi
+  echo "[runner] waiting: donor reserved for governed request=$reservation_request_id"
+  sleep 0.25
+done
+
 if [ -f "$LOCK_FILE" ]; then
   old_pid="$(cat "$LOCK_FILE" || true)"
   if [ -n "${old_pid:-}" ] && kill -0 "$old_pid" 2>/dev/null; then
@@ -50,7 +67,14 @@ if [ -f "$LOCK_FILE" ]; then
 fi
 
 echo "$$" > "$LOCK_FILE"
-trap 'rm -f "$LOCK_FILE"' EXIT
+cleanup_runner_state() {
+  rm -f "$LOCK_FILE"
+  if [ "$reservation_owned" -eq 1 ] \
+    && [ "$(cat "$RESERVATION_FILE" 2>/dev/null || true)" = "${FCMS_REQUEST_ID:-}" ]; then
+    rm -f "$RESERVATION_FILE"
+  fi
+}
+trap cleanup_runner_state EXIT
 
 export FCMS_SCRAPER_HOME="$SCRAPER_DIR"
 
