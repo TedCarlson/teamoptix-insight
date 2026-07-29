@@ -3,26 +3,19 @@ import Link from "next/link";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import { getGovernedCompanies } from "@/features/teamoptix/command-center/commandCenter.server";
 import TeamOptixShell from "@/features/teamoptix/navigation/TeamOptixShell";
+import LocalDateTime from "@/features/automation/components/LocalDateTime";
 import CollectionAutoRefresh from "./CollectionAutoRefresh";
 
 export const dynamic = "force-dynamic";
 
 function dateTime(value: unknown) {
   if (!value) return "—";
-  const parsed = new Date(String(value));
-  return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString();
+  return <LocalDateTime value={String(value)} />;
 }
 
 function timeOnly(value: unknown) {
   if (!value) return "—";
-  const parsed = new Date(String(value));
-  return Number.isNaN(parsed.getTime())
-    ? String(value)
-    : parsed.toLocaleTimeString([], {
-        hour: "numeric",
-        minute: "2-digit",
-        second: "2-digit",
-      });
+  return <LocalDateTime value={String(value)} display="time" />;
 }
 
 function artifactName(artifact: any) {
@@ -35,6 +28,22 @@ function artifactType(artifact: any) {
 
 function artifactError(artifact: any) {
   return artifact.error_message || artifact.ingest_metadata_json?.error || artifact.runner_artifact_json?.error || null;
+}
+
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function textValue(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function textList(value: unknown) {
+  return Array.isArray(value)
+    ? value.map((item) => textValue(item)).filter((item): item is string => Boolean(item))
+    : [];
 }
 
 function duration(value: unknown) {
@@ -169,6 +178,16 @@ export default async function Page({ params }: { params: Promise<{ requestId: st
   const active = ["QUEUED", "CLAIMED", "RUNNING", "ARTIFACTS_READY", "INGESTING"].includes(
     String(request.request_status).toUpperCase()
   );
+  const terminalReceipt = objectValue(request.output_receipt_json);
+  const receiptError = objectValue(terminalReceipt?.error);
+  const failureEvidence = objectValue(receiptError?.evidence);
+  const receiptDiagnostics = objectValue(terminalReceipt?.diagnostics);
+  const diagnosticExcerpt = textList(
+    failureEvidence?.log_excerpt ?? receiptDiagnostics?.log_excerpt
+  );
+  const diagnosticSources = textList(
+    failureEvidence?.source_logs ?? receiptDiagnostics?.source_logs
+  );
   const measuredRows = (artifactRuntime ?? []).length
     ? (artifactRuntime ?? []).map((artifact: any) => ({
         key: artifact.artifact_execution_key,
@@ -301,6 +320,62 @@ export default async function Page({ params }: { params: Promise<{ requestId: st
         </section>
       ) : null}
 
+      {failureEvidence ? (
+        <section style={{ ...card, borderColor: "#fca5a5", background: "#fffafa" }}>
+          <span style={{ color: "#b91c1c", fontSize: 11, fontWeight: 900, letterSpacing: ".1em", textTransform: "uppercase" }}>
+            Failure evidence
+          </span>
+          <h2 style={{ margin: "6px 0 6px", color: "#17233d" }}>
+            {textValue(failureEvidence.summary) || "The runner preserved technical evidence for this failure."}
+          </h2>
+          <div style={{ display: "flex", gap: 18, flexWrap: "wrap", color: "#60708a", fontSize: 13 }}>
+            <span><strong style={{ color: "#25334d" }}>Stage:</strong> {textValue(failureEvidence.stage)?.replaceAll("_", " ") || "Unknown"}</span>
+            {textValue(failureEvidence.exception_type) ? (
+              <span><strong style={{ color: "#25334d" }}>Exception:</strong> {textValue(failureEvidence.exception_type)}</span>
+            ) : null}
+            {diagnosticSources.length ? (
+              <span><strong style={{ color: "#25334d" }}>Runner log:</strong> {diagnosticSources.join(", ")}</span>
+            ) : null}
+          </div>
+          {textValue(failureEvidence.technical_message) ? (
+            <p style={{ margin: "12px 0 0", color: "#7f1d1d" }}>
+              {textValue(failureEvidence.technical_message)}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
+      {terminalReceipt ? (
+        <section style={{ ...card }}>
+          <details open={Boolean(failureEvidence)}>
+            <summary style={{ cursor: "pointer", fontWeight: 900, color: "#17233d" }}>
+              Stored terminal JSON and runner log evidence
+            </summary>
+            <p style={{ color: "#60708a", margin: "10px 0" }}>
+              This is the information-dense receipt submitted once when the run ended. Sensitive values are excluded and the log tail is bounded.
+            </p>
+            {diagnosticExcerpt.length ? (
+              <>
+                <h3 style={{ margin: "16px 0 8px", color: "#17233d", fontSize: 15 }}>Bounded runner log</h3>
+                <pre style={{ margin: 0, padding: 14, borderRadius: 12, background: "#0f172a", color: "#dbeafe", whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 11, maxHeight: 420, overflow: "auto" }}>
+                  {diagnosticExcerpt.join("\n")}
+                </pre>
+              </>
+            ) : (
+              <p style={{ color: "#92400e" }}>
+                This older receipt predates bounded log capture. The runner’s local journal may still contain the detailed cause.
+              </p>
+            )}
+            <details style={{ marginTop: 14 }}>
+              <summary style={{ cursor: "pointer", fontWeight: 800 }}>Raw terminal receipt</summary>
+              <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 11, color: "#334155" }}>
+                {JSON.stringify(terminalReceipt, null, 2)}
+              </pre>
+            </details>
+          </details>
+        </section>
+      ) : null}
+
       {measuredRows.length ? (
         <section style={{ ...card }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
@@ -316,7 +391,7 @@ export default async function Page({ params }: { params: Promise<{ requestId: st
               <p style={{ margin: 0, color: "#60708a" }}>
                 {slowest
                   ? `${duration(slowest.value)} was spent in that step.`
-                  : "This page updates every five seconds while the collection is active."}
+                  : "This page refreshes once when the active collection reaches a terminal state."}
               </p>
             </div>
             {runtime?.end_to_end_ms ? (

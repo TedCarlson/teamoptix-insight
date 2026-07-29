@@ -1,8 +1,9 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import TeamOptixShell from "@/features/teamoptix/navigation/TeamOptixShell";
 
 export type DomainMetric = { label: string; value: string | number; detail: string };
-export type DomainRow = { id?: string; title: string; detail: string; status?: string; href: string };
+export type DomainRow = { id?: string; title: string; detail: ReactNode; status?: string; href: string };
 export type DomainPanel = { eyebrow: string; title: string; actionLabel?: string; actionHref?: string; rows: DomainRow[] };
 
 function signalClass(status?: string) {
