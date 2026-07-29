@@ -46,10 +46,7 @@ REPORT_TARGETS: dict[str, dict[str, Any]] = {
         "artifact_key": "DSW",
         "report_family_key": "DSW",
         "runner_section": "DAILY_SERVICE",
-        "expected_filename_match": [
-            "daily service worksheet",
-            "PackageLevelDetails",
-        ],
+        "expected_filename_match": ["daily service worksheet"],
     },
     "FCC": {
         "key": "FCC_WORK_AREA_SUMMARY",
@@ -78,11 +75,34 @@ REPORT_TARGETS: dict[str, dict[str, Any]] = {
     },
 }
 
+DSW_ALL_CODES_TARGET: dict[str, Any] = {
+    "key": "DSW_ALL_STATUS_CODE_PACKAGES",
+    "label": "DSW · All Status Code Packages",
+    "artifact_key": "DSW_ALL_STATUS_CODE_PACKAGES",
+    "report_family_key": "DSW",
+    "report_shape_key": "DSW_ALL_STATUS_CODE_PACKAGES",
+    "runner_section": "DAILY_SERVICE",
+    "expected_filename_match": ["PackageLevelDetails"],
+    "optional_when_empty": True,
+}
+
 AUTH_FAILURE_PATTERN = re.compile(
     r"login failed|login failure|authentication failed|invalid credentials|"
     r"incorrect credentials|invalid username|invalid password|"
     r"credentials rejected",
     re.IGNORECASE,
+)
+
+SENSITIVE_DIAGNOSTIC_PATTERN = re.compile(
+    r"(?i)\b(authorization|apikey|api_key|password|passwd|secret|token|cookie)"
+    r"(\s*[:=]\s*)([^\s,;]+)"
+)
+SENSITIVE_QUERY_PATTERN = re.compile(
+    r"(?i)([?&](?:apikey|api_key|password|secret|token|code)=)[^&\s]+"
+)
+EXCEPTION_PATTERN = re.compile(
+    r"^(?P<type>[A-Za-z_][\w.]*(?:Error|Exception|Timeout))"
+    r"(?::\s*(?P<message>.+))?$"
 )
 
 
@@ -111,11 +131,16 @@ def parse_args() -> argparse.Namespace:
 
 
 def request_payload(args: argparse.Namespace, reports: list[str]) -> dict[str, Any]:
-    targets = [
-        REPORT_TARGETS[report]
-        for report in reports
-        if report in REPORT_TARGETS
-    ]
+    targets: list[dict[str, Any]] = []
+    for report in reports:
+        if report not in REPORT_TARGETS:
+            continue
+        targets.append(REPORT_TARGETS[report])
+        if report == "DSW":
+            # All Codes is part of the DSW contract. It remains optional only
+            # when the DSW reports zero status-code packages and exposes no
+            # drill-down link.
+            targets.append(DSW_ALL_CODES_TARGET)
     previous_day = args.request_type == "PREVIOUS_DAY_CLOSE"
     return {
         "payload_contract_version": "operations_collection_v1",
@@ -189,6 +214,91 @@ def parse_runtime_marker(line: str) -> dict[str, Any] | None:
         return value if isinstance(value, dict) else None
     except json.JSONDecodeError:
         return None
+
+
+def sanitize_diagnostic_line(line: str) -> str:
+    sanitized = SENSITIVE_DIAGNOSTIC_PATTERN.sub(
+        r"\1\2[REDACTED]",
+        line.strip(),
+    )
+    return SENSITIVE_QUERY_PATTERN.sub(r"\1[REDACTED]", sanitized)
+
+
+def failure_evidence(
+    *,
+    donor_exit_code: int,
+    output_tail: str,
+    stages: list[dict[str, Any]],
+    auth_failure: bool,
+    upload_error: str | None,
+) -> dict[str, Any] | None:
+    if donor_exit_code == 0 and upload_error is None:
+        return None
+
+    lines = [
+        sanitize_diagnostic_line(line)
+        for line in output_tail.splitlines()
+        if line.strip()
+    ]
+    exception_type = None
+    technical_message = upload_error
+    for line in reversed(lines):
+        match = EXCEPTION_PATTERN.match(line)
+        if match:
+            exception_type = match.group("type")
+            technical_message = match.group("message") or line
+            break
+
+    combined = "\n".join(lines)
+    stage = "UPLOAD" if upload_error else "COLLECTION"
+    summary = (
+        "The collected files could not be uploaded to the warehouse."
+        if upload_error
+        else f"The collector stopped with status {donor_exit_code}."
+    )
+
+    if auth_failure:
+        stage = "AUTHENTICATION"
+        summary = "FedEx rejected or did not complete authentication."
+    elif (
+        "ReadTimeoutError" in combined
+        and "HTTPConnectionPool(host='localhost'" in combined
+        and "start_session" in combined
+    ):
+        stage = "BROWSER_STARTUP"
+        summary = (
+            "Chrome did not complete its local browser-session handshake "
+            "before the 120-second timeout."
+        )
+    elif "Timed out waiting for manifest download" in combined:
+        stage = "DOWNLOAD"
+        summary = "A requested report download did not finish before timeout."
+    elif "collect_dsw_package_status" in combined:
+        stage = "DSW_ALL_CODES"
+        summary = "The DSW All Status Code Packages drill-down failed."
+
+    source_logs = []
+    for line in lines:
+        for pattern in (r"\[runner\] log=(.+)$", r"latest_log=(\S+)"):
+            match = re.search(pattern, line)
+            if match:
+                basename = Path(match.group(1)).name
+                if basename and basename not in source_logs:
+                    source_logs.append(basename)
+
+    last_event = stages[-1] if stages else None
+    excerpt = lines[-40:]
+    return {
+        "stage": stage,
+        "summary": summary,
+        "exception_type": exception_type,
+        "technical_message": technical_message,
+        "last_runtime_event": last_event,
+        "source_logs": source_logs,
+        "log_excerpt": excerpt,
+        "excerpt_truncated": len(lines) > len(excerpt),
+        "captured_at": utc_iso(),
+    }
 
 
 def execute_donor(
@@ -288,6 +398,7 @@ def terminal_receipt(
     artifacts: list[dict[str, Any]],
     upload_metrics: list[dict[str, Any]],
     auth_failure: bool,
+    diagnostics: dict[str, Any],
 ) -> dict[str, Any]:
     route_identities = {
         str((artifact.get("header_identity") or {}).get("work_area"))
@@ -349,6 +460,7 @@ def terminal_receipt(
                 "TEAMOPTIX_RUNNER_VERSION", "continuous-runner-v1"
             ),
         },
+        "diagnostics": diagnostics,
     }
     interrupted_value = os.environ.get(
         "CONTINUOUS_INTERRUPTED_CYCLE_JSON", ""
@@ -462,6 +574,48 @@ def main() -> int:
             else donor_error
         )
 
+    failure = failure_evidence(
+        donor_exit_code=donor_exit_code,
+        output_tail=output_tail,
+        stages=stages,
+        auth_failure=auth_failure,
+        upload_error=upload_error,
+    )
+    diagnostic_lines = [
+        sanitize_diagnostic_line(line)
+        for line in output_tail.splitlines()
+        if line.strip()
+    ]
+    diagnostics = {
+        "capture": "BOUNDED_SANITIZED_TAIL",
+        "source_logs": failure.get("source_logs", []) if failure else [],
+        "log_excerpt": (
+            failure["log_excerpt"]
+            if failure
+            else diagnostic_lines[-8:]
+        ),
+        "excerpt_truncated": (
+            failure["excerpt_truncated"]
+            if failure
+            else len(diagnostic_lines) > 8
+        ),
+    }
+    if failure:
+        stages.append(
+            {
+                "event_type": "COLLECTION_FAILED",
+                "stage": failure["stage"],
+                "occurred_at": utc_iso(completed_at),
+                "outcome": "FAILED",
+                "duration_ms": int((completed_at - started_at) * 1000),
+                "metadata": {
+                    "summary": failure["summary"],
+                    "exception_type": failure["exception_type"],
+                    "technical_message": failure["technical_message"],
+                },
+            }
+        )
+
     receipt = terminal_receipt(
         args=args,
         request=request,
@@ -473,6 +627,7 @@ def main() -> int:
         artifacts=artifacts,
         upload_metrics=upload_metrics,
         auth_failure=auth_failure,
+        diagnostics=diagnostics,
     )
     receipt["outcome"] = outcome
     receipt["partial"] = partial
@@ -482,6 +637,7 @@ def main() -> int:
             "classification": (
                 "AUTHENTICATION" if auth_failure else "COLLECTION"
             ),
+            "evidence": failure,
         }
 
     terminal = RUNNER.rpc(
