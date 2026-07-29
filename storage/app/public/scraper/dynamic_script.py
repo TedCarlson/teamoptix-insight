@@ -878,35 +878,6 @@ def findReusableFccWindow(driver):
     return home_page_handle, customer_connection_page_handle
 
 
-def refreshReusableFccApplication(driver):
-    started_at = time.time()
-    logging.info("Refreshing reused FedEx Customer Connection application")
-    driver.refresh()
-    WebDriverWait(driver, 60).until(
-        lambda current_driver: current_driver.execute_script(
-            "return document.readyState"
-        ) == "complete"
-    )
-    WebDriverWait(driver, 60).until(
-        EC.presence_of_element_located(
-            (By.XPATH, "//li[@id='mainTabSettab_1']")
-        )
-    )
-    WebDriverWait(driver, 60).until(
-        EC.presence_of_element_located(
-            (By.XPATH, "//select[@id='manifestForm:workAreas']")
-        )
-    )
-    dismissStuckManifestOverlay(driver)
-    emit_runtime_event(
-        "APPLICATION_REFRESHED",
-        "SOURCE_DISCOVERY",
-        duration_ms=int((time.time() - started_at) * 1000),
-        lane_key="FCC",
-        metadata={"session_reused": True},
-    )
-
-
 def selectWorkArea(driver, option_index, max_attempts=3):
     last_error = None
 
@@ -950,31 +921,7 @@ def clickManifestSearch(driver, option_index, max_attempts=3):
                     (By.XPATH, "//input[@id='manifestForm:search']")
                 )
             )
-            manifest_form = driver.find_element(By.ID, "manifestForm")
             search_button.click()
-            try:
-                WebDriverWait(driver, 15).until(
-                    EC.staleness_of(manifest_form)
-                )
-            except TimeoutException:
-                logging.info(
-                    "Manifest search did not replace its form for option %s; "
-                    "continuing with the rendered page state",
-                    option_index,
-                )
-            WebDriverWait(driver, 30).until(
-                EC.presence_of_element_located(
-                    (By.XPATH, "//form[@id='manifestForm']")
-                )
-            )
-            WebDriverWait(driver, 30).until(
-                EC.invisibility_of_element_located(
-                    (
-                        By.XPATH,
-                        "//div[@id='manifestForm:submitTransferNotification_bg']",
-                    )
-                )
-            )
             return
         except (
             ElementClickInterceptedException,
@@ -1128,11 +1075,46 @@ def main(section_='', option_=0, retry=1):
             or should_run_section('SCH')
         )
 
+        # The long-lived FCC application window can retain stale JSF state even
+        # while the authenticated FedEx home session remains valid.  A stale
+        # manifest page still accepts route searches but no longer renders the
+        # Excel export controls.  Reopen only the FCC application window for
+        # P&D work so every manifest cycle starts with a fresh application
+        # state without replaying PurpleID authentication.
+        if (
+            should_run_section('P&D')
+            and customer_connection_page_handle
+            and home_page_handle
+        ):
+            logging.info(
+                "Reopening FedEx Customer Connection application for "
+                "manifest collection"
+            )
+            driver.switch_to.window(customer_connection_page_handle)
+            driver.close()
+            customer_connection_page_handle = None
+            driver.switch_to.window(home_page_handle)
+            driver.switch_to.default_content()
+            emit_runtime_event(
+                "APPLICATION_REOPENED",
+                "SOURCE_DISCOVERY",
+                lane_key="FCC_P_AND_D",
+                metadata={
+                    "session_reused": True,
+                    "reason": "FRESH_MANIFEST_APPLICATION",
+                },
+            )
+
         if secion_index <= 3 and needs_fcc_window:
             if customer_connection_page_handle:
                 driver.switch_to.window(customer_connection_page_handle)
                 driver.switch_to.default_content()
-                refreshReusableFccApplication(driver)
+                dismissStuckManifestOverlay(driver)
+                WebDriverWait(driver, 30).until(
+                    EC.presence_of_element_located(
+                        (By.XPATH, "//li[@id='mainTabSettab_1']")
+                    )
+                )
             else:
                 iframe = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//iframe[@title='FCC Links']")))
 
