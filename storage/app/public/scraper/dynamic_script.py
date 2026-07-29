@@ -27,6 +27,7 @@ from rename_files import renameFolder, renameDownloadedManifest
 from runtime_events import emit_runtime_event
 from extract_data import extractDataFromFolder
 from dsw_package_status import (
+    collect_dsw_daily_service,
     collect_dsw_package_status,
     purge_expired_local_package_artifacts,
 )
@@ -1378,7 +1379,9 @@ def main(section_='', option_=0, retry=1):
 
             # time.sleep(1000)
 
-            for i in range(option_, getDailyServiceOptions()):
+            required_download_count = 0
+            facility_errors = []
+            for i in range(option_, total_select_options):
                 try:
                     logging.info(f'Selecting option {i}')
                     ACTIVE_SECTION_OPTION = i
@@ -1397,21 +1400,21 @@ def main(section_='', option_=0, retry=1):
                     btn = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.selectionButton")))
                     btn.click()
                     time.sleep(1)
-                    try:
-                        WebDriverWait(driver, 30).until(EC.invisibility_of_element_located((By.XPATH, "//loading-table-animation/div[@class='cssload-piano']")))
-
-                        if driver.find_elements(By.XPATH, '//img[@class="downloadIcon"]'):
-                            requested_at = time.time()
-                            driver.find_elements(By.XPATH, '//img[@class="downloadIcon"]')[-1].click()
-                            checkDownloads(11)
-                            time.sleep(3)
-                            recordObservedDownload(
-                                "DSW_DAILY_SERVICE",
-                                "DSW",
-                                requested_at,
+                    WebDriverWait(driver, 30).until(
+                        EC.invisibility_of_element_located(
+                            (
+                                By.XPATH,
+                                "//loading-table-animation/"
+                                "div[@class='cssload-piano']",
                             )
-                    except:
-                        pass
+                        )
+                    )
+                    collect_dsw_daily_service(
+                        driver,
+                        download_folder=DOWNLOAD_FOLDER,
+                        facility_identity=facility_identity,
+                    )
+                    required_download_count += 1
 
                     collect_dsw_package_status(
                         driver,
@@ -1421,7 +1424,19 @@ def main(section_='', option_=0, retry=1):
                         service_date=current_date.strftime("%Y-%m-%d"),
                     )
                 except Exception as ee:
-                    logging.info(ee)
+                    logging.exception(
+                        "DSW facility option %s failed: %s",
+                        i,
+                        ee,
+                    )
+                    facility_errors.append(
+                        f"option {i}: {type(ee).__name__}: {ee}"
+                    )
+            if required_download_count == 0:
+                raise RuntimeError(
+                    "No DSW Daily Service workbook was downloaded. "
+                    + " | ".join(facility_errors[:3])
+                )
 
         # Capture the latest sliding-session cookies after all requested
         # sections have completed so the next success-chained cycle can reuse

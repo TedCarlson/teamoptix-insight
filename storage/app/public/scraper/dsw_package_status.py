@@ -17,6 +17,8 @@ from runtime_events import emit_runtime_event
 
 ARTIFACT_KEY = "DSW_ALL_STATUS_CODE_PACKAGES"
 LANE_KEY = "DSW_PACKAGE_STATUS"
+DAILY_SERVICE_ARTIFACT_KEY = "DSW_DAILY_SERVICE"
+DAILY_SERVICE_LANE_KEY = "DSW"
 
 
 def purge_expired_local_package_artifacts(
@@ -255,6 +257,90 @@ const nonPdf = controls.filter(({ semantic, image }) =>
 return nonPdf.length === 1 ? nonPdf[0].clickable : null;
 """
     )
+
+
+def find_daily_service_excel_control(driver):
+    return driver.execute_script(
+        r"""
+const normalize = (value) => String(value || "").toLowerCase();
+const controls = Array.from(document.querySelectorAll("img")).map((image) => {
+  const clickable = image.closest("a, button, input") || image;
+  const semantic = [
+    image.alt,
+    image.title,
+    image.src,
+    clickable.getAttribute("href"),
+    clickable.getAttribute("onclick"),
+    clickable.getAttribute("title"),
+    clickable.getAttribute("aria-label"),
+  ].map(normalize).join(" ");
+  return { image, clickable, semantic };
+});
+const explicit = controls.find(({ semantic }) =>
+  /(excel|spreadsheet|\.xls|xlsx)/.test(semantic) && !/(pdf)/.test(semantic)
+);
+if (explicit) return explicit.clickable;
+const nonPdf = controls.filter(({ semantic, image }) =>
+  image.classList.contains("downloadIcon") && !/(pdf)/.test(semantic)
+);
+return nonPdf.length === 1 ? nonPdf[0].clickable : null;
+"""
+    )
+
+
+def collect_dsw_daily_service(
+    driver,
+    *,
+    download_folder,
+    facility_identity,
+):
+    """Download the required DSW workbook using its Excel-specific control."""
+
+    before_download = download_snapshot(download_folder)
+    excel_control = WebDriverWait(driver, 60).until(
+        lambda current_driver: find_daily_service_excel_control(
+            current_driver
+        )
+    )
+    requested_at = time.time()
+    driver.execute_script("arguments[0].click();", excel_control)
+    downloaded_path, source_ready_at = wait_for_completed_download(
+        download_folder,
+        before_download,
+    )
+    filename = os.path.basename(downloaded_path)
+    event_common = {
+        "artifact_key": DAILY_SERVICE_ARTIFACT_KEY,
+        "lane_key": DAILY_SERVICE_LANE_KEY,
+        "filename": filename,
+        "metadata": {
+            "facility_identity": facility_identity,
+        },
+    }
+    emit_runtime_event(
+        "SOURCE_REQUESTED",
+        "SOURCE",
+        occurred_at=datetime.fromtimestamp(
+            requested_at,
+            timezone.utc,
+        ).isoformat().replace("+00:00", "Z"),
+        **event_common,
+    )
+    emit_runtime_event(
+        "SOURCE_READY",
+        "SOURCE",
+        occurred_at=datetime.fromtimestamp(
+            source_ready_at,
+            timezone.utc,
+        ).isoformat().replace("+00:00", "Z"),
+        **event_common,
+    )
+    emit_runtime_event(
+        "DOWNLOAD_COMPLETED",
+        "DOWNLOAD",
+        **event_common,
+    )
+    return downloaded_path
 
 
 def write_runner_metadata(path, metadata):
