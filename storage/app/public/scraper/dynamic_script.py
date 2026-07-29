@@ -322,30 +322,44 @@ def collectOptionalManifest(
             EC.element_to_be_clickable((By.XPATH, button_xpath))
         )
     except TimeoutException:
-        control_hints = driver.execute_script(
+        page_state = driver.execute_script(
             """
-            return Array.from(document.querySelectorAll(
-              'input, button, a, img'
-            ))
-              .map((element) => ({
-                tag: (element.tagName || '').toLowerCase(),
-                id: element.id || '',
-                name: element.getAttribute('name') || '',
-                type: element.getAttribute('type') || '',
-                title: element.getAttribute('title') || '',
-                alt: element.getAttribute('alt') || ''
-              }))
-              .filter((control) => {
-                const signature = [
-                  control.id,
-                  control.name,
-                  control.title,
-                  control.alt
-                ].join(' ').toLowerCase();
-                return ['excel', 'export', 'download', 'generate']
-                  .some((token) => signature.includes(token));
-              })
-              .slice(0, 25);
+            const workArea = document.getElementById(
+              'manifestForm:workAreas'
+            );
+            return {
+              ready_state: document.readyState,
+              service_date: document.getElementById(
+                'manifestForm:date_input'
+              )?.value || null,
+              selected_work_area: workArea?.selectedOptions?.[0]
+                ?.textContent?.trim() || null,
+              active_tabs: Array.from(
+                document.getElementsByClassName('ui-state-active')
+              ).map((element) => element.id).filter(Boolean).slice(0, 10),
+              control_hints: Array.from(document.querySelectorAll(
+                'input, button, a, img'
+              ))
+                .map((element) => ({
+                  tag: (element.tagName || '').toLowerCase(),
+                  id: element.id || '',
+                  name: element.getAttribute('name') || '',
+                  type: element.getAttribute('type') || '',
+                  title: element.getAttribute('title') || '',
+                  alt: element.getAttribute('alt') || ''
+                }))
+                .filter((control) => {
+                  const signature = [
+                    control.id,
+                    control.name,
+                    control.title,
+                    control.alt
+                  ].join(' ').toLowerCase();
+                  return ['excel', 'export', 'download', 'generate']
+                    .some((token) => signature.includes(token));
+                })
+                .slice(0, 25)
+            };
             """
         )
         logging.info(
@@ -355,7 +369,7 @@ def collectOptionalManifest(
                     "expected_type": expected_type,
                     "route_identity": route_identity,
                     "wait_seconds": wait_seconds,
-                    "control_hints": control_hints,
+                    "page_state": page_state,
                 },
                 sort_keys=True,
             )
@@ -366,7 +380,7 @@ def collectOptionalManifest(
             metadata={
                 "reason": "EXPORT_CONTROL_NOT_AVAILABLE",
                 "wait_seconds": wait_seconds,
-                "control_hints": control_hints,
+                "page_state": page_state,
             },
             **event_common,
         )
@@ -864,6 +878,35 @@ def findReusableFccWindow(driver):
     return home_page_handle, customer_connection_page_handle
 
 
+def refreshReusableFccApplication(driver):
+    started_at = time.time()
+    logging.info("Refreshing reused FedEx Customer Connection application")
+    driver.refresh()
+    WebDriverWait(driver, 60).until(
+        lambda current_driver: current_driver.execute_script(
+            "return document.readyState"
+        ) == "complete"
+    )
+    WebDriverWait(driver, 60).until(
+        EC.presence_of_element_located(
+            (By.XPATH, "//li[@id='mainTabSettab_1']")
+        )
+    )
+    WebDriverWait(driver, 60).until(
+        EC.presence_of_element_located(
+            (By.XPATH, "//select[@id='manifestForm:workAreas']")
+        )
+    )
+    dismissStuckManifestOverlay(driver)
+    emit_runtime_event(
+        "APPLICATION_REFRESHED",
+        "SOURCE_DISCOVERY",
+        duration_ms=int((time.time() - started_at) * 1000),
+        lane_key="FCC",
+        metadata={"session_reused": True},
+    )
+
+
 def selectWorkArea(driver, option_index, max_attempts=3):
     last_error = None
 
@@ -907,7 +950,31 @@ def clickManifestSearch(driver, option_index, max_attempts=3):
                     (By.XPATH, "//input[@id='manifestForm:search']")
                 )
             )
+            manifest_form = driver.find_element(By.ID, "manifestForm")
             search_button.click()
+            try:
+                WebDriverWait(driver, 15).until(
+                    EC.staleness_of(manifest_form)
+                )
+            except TimeoutException:
+                logging.info(
+                    "Manifest search did not replace its form for option %s; "
+                    "continuing with the rendered page state",
+                    option_index,
+                )
+            WebDriverWait(driver, 30).until(
+                EC.presence_of_element_located(
+                    (By.XPATH, "//form[@id='manifestForm']")
+                )
+            )
+            WebDriverWait(driver, 30).until(
+                EC.invisibility_of_element_located(
+                    (
+                        By.XPATH,
+                        "//div[@id='manifestForm:submitTransferNotification_bg']",
+                    )
+                )
+            )
             return
         except (
             ElementClickInterceptedException,
@@ -1065,12 +1132,7 @@ def main(section_='', option_=0, retry=1):
             if customer_connection_page_handle:
                 driver.switch_to.window(customer_connection_page_handle)
                 driver.switch_to.default_content()
-                dismissStuckManifestOverlay(driver)
-                WebDriverWait(driver, 30).until(
-                    EC.presence_of_element_located(
-                        (By.XPATH, "//li[@id='mainTabSettab_1']")
-                    )
-                )
+                refreshReusableFccApplication(driver)
             else:
                 iframe = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//iframe[@title='FCC Links']")))
 

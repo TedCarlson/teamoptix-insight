@@ -105,6 +105,12 @@ EXCEPTION_PATTERN = re.compile(
     r"(?::\s*(?P<message>.+))?$"
 )
 
+CYCLE_EXCEPTION_EVENT_TYPES = {
+    "DOWNLOAD_FAILED",
+    "SOURCE_UNAVAILABLE",
+    "NEEDS_ATTENTION",
+}
+
 
 def utc_iso(epoch: float | None = None) -> str:
     value = epoch if epoch is not None else time.time()
@@ -353,6 +359,118 @@ def failure_evidence(
         "log_excerpt": excerpt,
         "excerpt_truncated": len(lines) > len(excerpt),
         "captured_at": utc_iso(),
+    }
+
+
+def cycle_exception_evidence(
+    stages: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    exceptions = [
+        stage
+        for stage in stages
+        if str(stage.get("event_type") or "").upper()
+        in CYCLE_EXCEPTION_EVENT_TYPES
+    ]
+    if not exceptions:
+        return None
+
+    event_counts = Counter(
+        str(stage.get("event_type") or "UNKNOWN").upper()
+        for stage in exceptions
+    )
+    artifact_counts = Counter(
+        str(stage.get("artifact_key") or "UNKNOWN").upper()
+        for stage in exceptions
+    )
+    lane_counts = Counter(
+        str(stage.get("lane_key") or "UNKNOWN").upper()
+        for stage in exceptions
+    )
+    reason_counts = Counter(
+        str((stage.get("metadata") or {}).get("reason") or "UNSPECIFIED").upper()
+        for stage in exceptions
+    )
+    affected_routes = sorted(
+        {
+            str(stage.get("route_identity")).strip()
+            for stage in exceptions
+            if str(stage.get("route_identity") or "").strip()
+        }
+    )
+
+    summary_parts = []
+    download_failed_count = event_counts.get("DOWNLOAD_FAILED", 0)
+    unavailable_count = event_counts.get("SOURCE_UNAVAILABLE", 0)
+    attention_count = event_counts.get("NEEDS_ATTENTION", 0)
+    if download_failed_count:
+        failed_artifacts = Counter(
+            str(stage.get("artifact_key") or "UNKNOWN").upper()
+            for stage in exceptions
+            if str(stage.get("event_type") or "").upper()
+            == "DOWNLOAD_FAILED"
+        )
+        detail = ", ".join(
+            f"{count} {key.replace('_', ' ').title()}"
+            for key, count in failed_artifacts.most_common()
+        )
+        summary_parts.append(
+            f"{download_failed_count} requested report "
+            + ("download failed" if download_failed_count == 1 else "downloads failed")
+            + (f" ({detail})" if detail else "")
+        )
+    if unavailable_count:
+        unavailable_artifacts = Counter(
+            str(stage.get("artifact_key") or "UNKNOWN").upper()
+            for stage in exceptions
+            if str(stage.get("event_type") or "").upper()
+            == "SOURCE_UNAVAILABLE"
+        )
+        detail = ", ".join(
+            f"{count} {key.replace('_', ' ').title()}"
+            for key, count in unavailable_artifacts.most_common()
+        )
+        summary_parts.append(
+            f"{unavailable_count} requested source exports were unavailable"
+            + (f" ({detail})" if detail else "")
+        )
+    if attention_count:
+        attention_reasons = Counter(
+            str(
+                (stage.get("metadata") or {}).get("reason")
+                or "UNSPECIFIED"
+            ).upper()
+            for stage in exceptions
+            if str(stage.get("event_type") or "").upper()
+            == "NEEDS_ATTENTION"
+        )
+        detail = ", ".join(
+            f"{count} {reason.replace('_', ' ').title()}"
+            for reason, count in attention_reasons.most_common()
+        )
+        summary_parts.append(
+            f"{attention_count} collection "
+            + ("lane requires" if attention_count == 1 else "lanes require")
+            + " attention"
+            + (f" ({detail})" if detail else "")
+        )
+
+    return {
+        "stage": "SOURCE",
+        "summary": "Collection completed with exceptions: "
+        + "; ".join(summary_parts)
+        + ".",
+        "exception_type": None,
+        "technical_message": None,
+        "last_runtime_event": exceptions[-1],
+        "source_logs": [],
+        "log_excerpt": [],
+        "excerpt_truncated": False,
+        "captured_at": utc_iso(),
+        "event_counts": dict(event_counts),
+        "artifact_counts": dict(artifact_counts),
+        "lane_counts": dict(lane_counts),
+        "reason_counts": dict(reason_counts),
+        "affected_routes": affected_routes,
     }
 
 
@@ -614,7 +732,12 @@ def main() -> int:
         upload_error = str(exc)
 
     completed_at = time.time()
-    partial = donor_exit_code != 0 and bool(artifacts)
+    exception_evidence = cycle_exception_evidence(stages)
+    partial = bool(artifacts) and (
+        donor_exit_code != 0
+        or upload_error is not None
+        or exception_evidence is not None
+    )
     outcome = (
         "COMPLETE"
         if artifacts and upload_error is None
@@ -628,6 +751,8 @@ def main() -> int:
             if partial
             else donor_error
         )
+    elif exception_evidence:
+        error_message = str(exception_evidence["summary"])
 
     failure = failure_evidence(
         donor_exit_code=donor_exit_code,
@@ -686,13 +811,15 @@ def main() -> int:
     )
     receipt["outcome"] = outcome
     receipt["partial"] = partial
+    if exception_evidence:
+        receipt["exceptions"] = exception_evidence
     if error_message:
         receipt["error"] = {
             "message": error_message,
             "classification": (
                 "AUTHENTICATION" if auth_failure else "COLLECTION"
             ),
-            "evidence": failure,
+            "evidence": failure or exception_evidence,
         }
 
     terminal = RUNNER.rpc(
