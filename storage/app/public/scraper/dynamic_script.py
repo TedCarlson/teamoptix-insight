@@ -1075,36 +1075,6 @@ def main(section_='', option_=0, retry=1):
             or should_run_section('SCH')
         )
 
-        # The long-lived FCC application window can retain stale JSF state even
-        # while the authenticated FedEx home session remains valid.  A stale
-        # manifest page still accepts route searches but no longer renders the
-        # Excel export controls.  Reopen only the FCC application window for
-        # P&D work so every manifest cycle starts with a fresh application
-        # state without replaying PurpleID authentication.
-        if (
-            should_run_section('P&D')
-            and customer_connection_page_handle
-            and home_page_handle
-        ):
-            logging.info(
-                "Reopening FedEx Customer Connection application for "
-                "manifest collection"
-            )
-            driver.switch_to.window(customer_connection_page_handle)
-            driver.close()
-            customer_connection_page_handle = None
-            driver.switch_to.window(home_page_handle)
-            driver.switch_to.default_content()
-            emit_runtime_event(
-                "APPLICATION_REOPENED",
-                "SOURCE_DISCOVERY",
-                lane_key="FCC_P_AND_D",
-                metadata={
-                    "session_reused": True,
-                    "reason": "FRESH_MANIFEST_APPLICATION",
-                },
-            )
-
         if secion_index <= 3 and needs_fcc_window:
             if customer_connection_page_handle:
                 driver.switch_to.window(customer_connection_page_handle)
