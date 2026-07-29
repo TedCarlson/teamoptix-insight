@@ -850,8 +850,8 @@ def main() -> int:
         )
         reserve_donor_slot(request)
         reservation_owned = True
-        wait_for_donor_slot(request)
         update_status(request_id, "RUNNING")
+        wait_for_donor_slot(request)
 
         run_started_at = time.time()
 
