@@ -50,6 +50,7 @@ class ContinuousCycleContractTests(unittest.TestCase):
             [
                 "[runner] log=/root/private/run.log",
                 "Authorization: Bearer-should-not-survive",
+                "{'username': '8819969', 'password': 'also-secret'}",
                 "Traceback (most recent call last):",
                 "  File \"scrape_particular_date.py\", line 201, in getDriver",
                 "  File \"webdriver.py\", line 300, in start_session",
@@ -71,6 +72,10 @@ class ContinuousCycleContractTests(unittest.TestCase):
         self.assertIn("120-second timeout", evidence["summary"])
         self.assertNotIn(
             "Bearer-should-not-survive",
+            "\n".join(evidence["log_excerpt"]),
+        )
+        self.assertNotIn(
+            "also-secret",
             "\n".join(evidence["log_excerpt"]),
         )
         self.assertEqual(evidence["source_logs"], ["run.log"])

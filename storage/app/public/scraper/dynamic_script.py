@@ -1430,7 +1430,23 @@ def main(section_='', option_=0, retry=1):
         driver.switch_to.default_content()
         persistSessionCookies(driver)
     except Exception as e:
-        logging.info(e)
+        logging.exception(
+            "Unhandled %s in section %s option %s: %s",
+            type(e).__name__,
+            ACTIVE_SECTION or "UNKNOWN",
+            ACTIVE_SECTION_OPTION,
+            e,
+        )
+        emit_runtime_event(
+            "COLLECTION_FAILED",
+            "SOURCE",
+            lane_key=ACTIVE_SECTION or None,
+            metadata={
+                "exception_type": type(e).__name__,
+                "message": str(e)[:500] or "No exception message was provided.",
+                "option": ACTIVE_SECTION_OPTION,
+            },
+        )
         browser_retained = False
         if PERSIST_BROWSER and home_page_handle and ACTIVE_SECTION:
             try:

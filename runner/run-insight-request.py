@@ -785,6 +785,19 @@ def main() -> int:
         child_env["FCMS_TARGET_ARTIFACT_KEYS"] = ",".join(sorted(target_artifact_keys(request)))
         child_env["FCMS_MANIFEST_TYPES"] = ",".join(manifest_options["manifest_types"])
         child_env["FCMS_SKIP_COMBINED"] = "1" if manifest_options["skip_combined"] else "0"
+        child_env["FCMS_SINGLE_SESSION"] = "1"
+        child_env["FCMS_PERSIST_BROWSER"] = "1"
+        child_env["FCMS_CHROME_DEBUGGER_ADDRESS"] = "127.0.0.1:9222"
+        continuous_runtime_dir = APP_DIR / "runtime" / "continuous-runner"
+        continuous_runtime_dir.mkdir(parents=True, exist_ok=True)
+        continuous_runtime_dir.chmod(0o700)
+        chrome_profile_dir = continuous_runtime_dir / "chrome-profile"
+        chrome_profile_dir.mkdir(parents=True, exist_ok=True)
+        chrome_profile_dir.chmod(0o700)
+        child_env["FCMS_CHROME_PROFILE_DIR"] = str(chrome_profile_dir)
+        child_env["FCMS_SESSION_COOKIE_FILE"] = str(
+            continuous_runtime_dir / "fedex-session.json"
+        )
 
         print("[insight-runner] ready to execute donor runner")
         if os.environ.get("INSIGHT_RUNNER_DRY_RUN", "1") == "1":

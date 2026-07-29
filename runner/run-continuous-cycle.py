@@ -94,8 +94,8 @@ AUTH_FAILURE_PATTERN = re.compile(
 )
 
 SENSITIVE_DIAGNOSTIC_PATTERN = re.compile(
-    r"(?i)\b(authorization|apikey|api_key|password|passwd|secret|token|cookie)"
-    r"(\s*[:=]\s*)([^\s,;]+)"
+    r"(?i)(['\"]?(?:authorization|apikey|api_key|password|passwd|secret|token|cookie)"
+    r"['\"]?\s*[:=]\s*)([^,;}]+)"
 )
 SENSITIVE_QUERY_PATTERN = re.compile(
     r"(?i)([?&](?:apikey|api_key|password|secret|token|code)=)[^&\s]+"
@@ -218,10 +218,36 @@ def parse_runtime_marker(line: str) -> dict[str, Any] | None:
 
 def sanitize_diagnostic_line(line: str) -> str:
     sanitized = SENSITIVE_DIAGNOSTIC_PATTERN.sub(
-        r"\1\2[REDACTED]",
+        r"\1[REDACTED]",
         line.strip(),
     )
     return SENSITIVE_QUERY_PATTERN.sub(r"\1[REDACTED]", sanitized)
+
+
+def sanitize_diagnostic_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return sanitize_diagnostic_line(value)
+    if isinstance(value, list):
+        return [sanitize_diagnostic_value(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            str(key): (
+                "[REDACTED]"
+                if str(key).lower() in {
+                    "authorization",
+                    "apikey",
+                    "api_key",
+                    "password",
+                    "passwd",
+                    "secret",
+                    "token",
+                    "cookie",
+                }
+                else sanitize_diagnostic_value(item)
+            )
+            for key, item in value.items()
+        }
+    return value
 
 
 def failure_evidence(
@@ -277,6 +303,35 @@ def failure_evidence(
         stage = "DSW_ALL_CODES"
         summary = "The DSW All Status Code Packages drill-down failed."
 
+    marker_failure = next(
+        (
+            stage_event
+            for stage_event in reversed(stages)
+            if str(stage_event.get("event_type") or "").upper()
+            == "COLLECTION_FAILED"
+        ),
+        None,
+    )
+    if marker_failure:
+        marker_metadata = marker_failure.get("metadata") or {}
+        marker_lane = marker_failure.get("lane_key")
+        stage = str(marker_failure.get("stage") or stage)
+        exception_type = (
+            str(marker_metadata.get("exception_type"))
+            if marker_metadata.get("exception_type")
+            else exception_type
+        )
+        technical_message = (
+            str(marker_metadata.get("message"))
+            if marker_metadata.get("message")
+            else technical_message
+        )
+        summary = (
+            f"The collector failed in the {marker_lane} lane."
+            if marker_lane
+            else summary
+        )
+
     source_logs = []
     for line in lines:
         for pattern in (r"\[runner\] log=(.+)$", r"latest_log=(\S+)"):
@@ -327,7 +382,7 @@ def execute_donor(
 
         marker = parse_runtime_marker(line)
         if marker:
-            stages.append(marker)
+            stages.append(sanitize_diagnostic_value(marker))
 
         lane_match = re.search(
             r"\[runner\] (?:section|governed date) start:\s*(.+)$",
