@@ -10,9 +10,14 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.chrome.service import Service
-from selenium.common.exceptions import StaleElementReferenceException
+from selenium.common.exceptions import (
+    ElementClickInterceptedException,
+    StaleElementReferenceException,
+    TimeoutException,
+)
 from sys import platform
 import shutil
+import socket
 import threading
 from datetime import datetime, timezone
 
@@ -21,6 +26,11 @@ from datetime import datetime, timezone
 from rename_files import renameFolder, renameDownloadedManifest
 from runtime_events import emit_runtime_event
 from extract_data import extractDataFromFolder
+from dsw_package_status import (
+    collect_dsw_daily_service,
+    collect_dsw_package_status,
+    purge_expired_local_package_artifacts,
+)
 
 from connections import getConnection, closeConnection, getScrapingConfig, getMainFolder, writeError, isPlatformLinux, getDailyServiceOptions
 # if platform == "linux" or platform == "linux2":
@@ -48,6 +58,18 @@ formatted_date = current_date.strftime("%m-%d-%Y")
 
 DOWNLOAD_FOLDER = os.path.join(MAIN_FOLDER, formatted_date)
 START_TIME = time.time()
+SESSION_COOKIE_FILE = os.environ.get(
+    "FCMS_SESSION_COOKIE_FILE",
+    "/tmp/teamoptix-fedex-session.json",
+)
+PERSIST_BROWSER = os.environ.get(
+    "FCMS_PERSIST_BROWSER",
+    "0",
+).strip().lower() in {"1", "true", "yes", "on"}
+CHROME_DEBUGGER_ADDRESS = os.environ.get(
+    "FCMS_CHROME_DEBUGGER_ADDRESS",
+    "127.0.0.1:9222",
+)
 
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.mkdir(DOWNLOAD_FOLDER)
@@ -271,6 +293,133 @@ def finalizeManifestDownload(before, expected_type, requested_at):
     return renamed_path
 
 
+def collectOptionalManifest(
+    driver,
+    *,
+    button_xpath,
+    expected_type,
+    route_identity,
+    wait_seconds=8,
+):
+    artifact_key = {
+        "combined": "COMBINED_MANIFEST",
+        "delivery": "DELIVERY_MANIFEST",
+        "pickup": "PICKUP_MANIFEST",
+    }[expected_type]
+    lane_key = {
+        "combined": "FCC_COMBINED_MANIFESTS",
+        "delivery": "FCC_DELIVERY_MANIFESTS",
+        "pickup": "FCC_PICKUP_MANIFESTS",
+    }[expected_type]
+    event_common = {
+        "artifact_key": artifact_key,
+        "lane_key": lane_key,
+        "route_identity": route_identity,
+    }
+
+    try:
+        button = WebDriverWait(driver, wait_seconds).until(
+            EC.element_to_be_clickable((By.XPATH, button_xpath))
+        )
+    except TimeoutException:
+        page_state = driver.execute_script(
+            """
+            const workArea = document.getElementById(
+              'manifestForm:workAreas'
+            );
+            return {
+              ready_state: document.readyState,
+              service_date: document.getElementById(
+                'manifestForm:date_input'
+              )?.value || null,
+              selected_work_area: workArea?.selectedOptions?.[0]
+                ?.textContent?.trim() || null,
+              active_tabs: Array.from(
+                document.getElementsByClassName('ui-state-active')
+              ).map((element) => element.id).filter(Boolean).slice(0, 10),
+              control_hints: Array.from(document.querySelectorAll(
+                'input, button, a, img'
+              ))
+                .map((element) => ({
+                  tag: (element.tagName || '').toLowerCase(),
+                  id: element.id || '',
+                  name: element.getAttribute('name') || '',
+                  type: element.getAttribute('type') || '',
+                  title: element.getAttribute('title') || '',
+                  alt: element.getAttribute('alt') || ''
+                }))
+                .filter((control) => {
+                  const signature = [
+                    control.id,
+                    control.name,
+                    control.title,
+                    control.alt
+                  ].join(' ').toLowerCase();
+                  return ['excel', 'export', 'download', 'generate']
+                    .some((token) => signature.includes(token));
+                })
+                .slice(0, 25)
+            };
+            """
+        )
+        logging.info(
+            "Manifest export unavailable "
+            + json.dumps(
+                {
+                    "expected_type": expected_type,
+                    "route_identity": route_identity,
+                    "wait_seconds": wait_seconds,
+                    "page_state": page_state,
+                },
+                sort_keys=True,
+            )
+        )
+        emit_runtime_event(
+            "SOURCE_UNAVAILABLE",
+            "SOURCE",
+            metadata={
+                "reason": "EXPORT_CONTROL_NOT_AVAILABLE",
+                "wait_seconds": wait_seconds,
+                "page_state": page_state,
+            },
+            **event_common,
+        )
+        return None
+
+    before_download = downloadSnapshot()
+    requested_at = time.time()
+
+    try:
+        button.click()
+        return finalizeManifestDownload(
+            before_download,
+            expected_type,
+            requested_at,
+        )
+    except Exception as error:
+        logging.info(
+            "Manifest download failed "
+            + json.dumps(
+                {
+                    "expected_type": expected_type,
+                    "route_identity": route_identity,
+                    "error": str(error),
+                },
+                sort_keys=True,
+            )
+        )
+        emit_runtime_event(
+            "DOWNLOAD_FAILED",
+            "DOWNLOAD",
+            metadata={
+                "reason": type(error).__name__,
+                "message": str(error),
+            },
+            **event_common,
+        )
+        return None
+
+
 def finalizeSimpleDownload(
     before,
     artifact_key,
@@ -349,7 +498,35 @@ def recordObservedDownload(
         **event_common,
     )
 
+
 def getDriver():
+    if isPlatformLinux() and PERSIST_BROWSER:
+        try:
+            debugger_host, debugger_port = CHROME_DEBUGGER_ADDRESS.rsplit(":", 1)
+            with socket.create_connection(
+                (debugger_host, int(debugger_port)),
+                timeout=1,
+            ):
+                pass
+            attach_options = webdriver.ChromeOptions()
+            attach_options.binary_location = '/usr/bin/google-chrome-stable'
+            attach_options.add_experimental_option(
+                "debuggerAddress",
+                CHROME_DEBUGGER_ADDRESS,
+            )
+            attached_driver = webdriver.Chrome(options=attach_options)
+            attached_driver.execute_cdp_cmd(
+                "Page.setDownloadBehavior",
+                {
+                    "behavior": "allow",
+                    "downloadPath": DOWNLOAD_FOLDER,
+                },
+            )
+            logging.info("Attached to persistent FedEx browser session")
+            return attached_driver
+        except Exception as error:
+            logging.info("Persistent FedEx browser attach unavailable: %s", error)
+
     options = webdriver.ChromeOptions()
     options.add_argument("start-maximized")
     if isPlatformLinux():
@@ -357,8 +534,18 @@ def getDriver():
 
     if isPlatformLinux():
         options.add_argument('--headless=new')
-        options.add_argument('--remote-debugging-port=0')
-        options.add_argument('--user-data-dir=/tmp/teamoptix-selenium-chrome')
+        options.add_argument(
+            '--remote-debugging-port=9222'
+            if PERSIST_BROWSER
+            else '--remote-debugging-port=0'
+        )
+        chrome_profile_dir = os.environ.get(
+            "FCMS_CHROME_PROFILE_DIR",
+            "/tmp/teamoptix-selenium-chrome",
+        )
+        options.add_argument(f'--user-data-dir={chrome_profile_dir}')
+        if PERSIST_BROWSER:
+            options.add_experimental_option('detach', True)
     # options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
@@ -384,6 +571,22 @@ def getDriver():
 
     driver = webdriver.Chrome(options=options)
     return driver
+
+def releasePersistentDriver(driver):
+    if not PERSIST_BROWSER:
+        return
+    try:
+        service = getattr(driver, "service", None)
+        if service is not None:
+            service.stop()
+        logging.info(
+            "Detached WebDriver service; persistent Chrome remains available"
+        )
+    except Exception as error:
+        logging.info(
+            "Persistent WebDriver service detach failed: %s",
+            error,
+        )
 
 def element_opacity_exists(el_ID):
     def _predicate(driver):
@@ -445,60 +648,409 @@ def scrollTo(el, driver):
     scroll_y_by = desired_y - current_y
     driver.execute_script("window.scrollBy(0, arguments[0]);", scroll_y_by)
 
-def main(section_='', option_=0, retry=1):
-    global SECTION_LIST, ACTIVE_SECTION, ACTIVE_SECTION_OPTION
-    driver = getDriver()
-    logging.info("Driver loaded...")
-    init_url = "https://mybizaccount.fedex.com/my.policy"
+def restoreSessionCookies(driver):
+    if not os.path.exists(SESSION_COOKIE_FILE):
+        return 0
 
+    try:
+        with open(SESSION_COOKIE_FILE, "r", encoding="utf-8") as cookie_file:
+            cookies = json.load(cookie_file)
+        if not isinstance(cookies, list) or not cookies:
+            return 0
+
+        # FedEx session state spans its application and identity-provider
+        # domains. CDP can restore all of those cookies before navigation;
+        # Selenium's add_cookie API is limited to the current domain.
+        driver.execute_cdp_cmd("Network.setCookies", {"cookies": cookies})
+        return len(cookies)
+    except Exception as error:
+        logging.info("FedEx session cookie restore skipped: %s", error)
+        return 0
+
+def persistSessionCookies(driver):
+    try:
+        raw_cookies = driver.execute_cdp_cmd(
+            "Network.getAllCookies",
+            {},
+        ).get("cookies", [])
+        cookies = []
+        for cookie in raw_cookies:
+            if not isinstance(cookie, dict):
+                continue
+            allowed = {
+                key: cookie[key]
+                for key in (
+                    "name",
+                    "value",
+                    "domain",
+                    "path",
+                    "secure",
+                    "httpOnly",
+                    "sameSite",
+                    "expires",
+                )
+                if key in cookie
+            }
+            if not allowed.get("name") or "value" not in allowed:
+                continue
+            if allowed.get("sameSite") not in (None, "Strict", "Lax", "None"):
+                allowed.pop("sameSite", None)
+            if float(allowed.get("expires", 0) or 0) <= 0:
+                allowed.pop("expires", None)
+            cookies.append(allowed)
+        temporary = f"{SESSION_COOKIE_FILE}.{os.getpid()}.tmp"
+        with open(temporary, "w", encoding="utf-8") as cookie_file:
+            json.dump(cookies, cookie_file)
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, SESSION_COOKIE_FILE)
+    except Exception as error:
+        logging.info("FedEx session cookie persistence skipped: %s", error)
+
+def authenticateDriver(driver):
+    init_url = "https://mybizaccount.fedex.com/my.policy"
+    restored_cookie_count = restoreSessionCookies(driver)
     driver.get(init_url)
     logging.info("Visiting https://mybizaccount.fedex.com/my.policy")
+
+    def authentication_entry_ready(current_driver):
+        return (
+            current_driver.find_elements(By.XPATH, "//a[@id='PT_HOME']")
+            or current_driver.find_elements(
+                By.XPATH, "//input[@class='credentials_input_submit']"
+            )
+            or current_driver.find_elements(
+                By.XPATH, '//input[@name="identifier"]'
+            )
+        )
+
+    # Chrome uses a durable runner profile. A successful Operations Pulse
+    # session is therefore reused across completion-driven cycles instead of
+    # submitting the username and password again for every report lane.
     try:
-        btn = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.XPATH, "//input[@class='credentials_input_submit']")))
+        WebDriverWait(driver, 20).until(authentication_entry_ready)
+    except TimeoutException:
+        # A stale FedEx session can leave the landing page in neither an
+        # authenticated nor a login-ready state. Discard only that cached
+        # session and fall back to the normal credential flow. The durable
+        # Chrome profile may contain session state even when FedEx exposes no
+        # serializable cookies, so the fallback must not depend on the cookie
+        # file containing entries.
+        logging.info("Cached FedEx session was not accepted; retrying fresh authentication")
+        driver.delete_all_cookies()
+        try:
+            os.remove(SESSION_COOKIE_FILE)
+        except FileNotFoundError:
+            pass
+        driver.get("about:blank")
+        driver.get(init_url)
+        WebDriverWait(driver, 30).until(authentication_entry_ready)
+
+    if driver.find_elements(By.XPATH, "//a[@id='PT_HOME']"):
+        logging.info("FedEx session reused")
+        persistSessionCookies(driver)
+        emit_runtime_event(
+            "SESSION_REUSED",
+            "AUTHENTICATION",
+            metadata={"restored_cookie_count": restored_cookie_count},
+        )
+        return
+
+    if not driver.find_elements(By.XPATH, '//input[@name="identifier"]'):
+        btn = WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located(
+                (By.XPATH, "//input[@class='credentials_input_submit']")
+            )
+        )
         btn.click()
 
-        username = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.XPATH, '//input[@name="identifier"]')))
-
-        logging.info("On login page....")
-        time.sleep(1)
-
-        username.send_keys(SCRAP_INFO['username'])
-        time.sleep(1)
-
-        continue_candidates = [
-            "//input[@type='submit']",
-            "//button[@type='submit']",
-            "//input[contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'next')]",
-            "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'next')]",
-            "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue')]",
-        ]
-
-        for candidate in continue_candidates:
-            try:
-                el = driver.find_element(By.XPATH, candidate)
-                el.click()
-                logging.info("Clicked username continue...")
-                break
-            except Exception:
-                pass
-
-        password = WebDriverWait(driver, 25).until(
-            EC.presence_of_element_located((By.XPATH, '//input[@name="credentials.passcode"] | //input[@name="password"] | //input[@type="password"]'))
+    username = WebDriverWait(driver, 20).until(
+        EC.presence_of_element_located(
+            (By.XPATH, '//input[@name="identifier"]')
         )
-        time.sleep(1)
-        password.send_keys(SCRAP_INFO['password'])
-        time.sleep(1)
+    )
 
-        password.send_keys(Keys.ENTER)
+    logging.info("On login page....")
+    emit_runtime_event("AUTH_ATTEMPTED", "AUTHENTICATION")
+    time.sleep(1)
 
-        WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//a[@id='PT_HOME']")))
-        # WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//div[@class='gf_header-welcometext']")))
+    username.send_keys(SCRAP_INFO['username'])
+    time.sleep(1)
 
-        # //div[@class='gf_header-welcometext']
-        # //div[@class='gf_header-UserDtl']
+    continue_candidates = [
+        "//input[@type='submit']",
+        "//button[@type='submit']",
+        "//input[contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'next')]",
+        "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'next')]",
+        "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue')]",
+    ]
 
-        logging.info("Login successfull!")
-        emit_runtime_event("AUTH_COMPLETED", "AUTHENTICATION")
+    for candidate in continue_candidates:
+        try:
+            el = driver.find_element(By.XPATH, candidate)
+            el.click()
+            logging.info("Clicked username continue...")
+            break
+        except Exception:
+            pass
+
+    try:
+        password = WebDriverWait(driver, 25).until(
+            EC.presence_of_element_located(
+                (
+                    By.XPATH,
+                    '//input[@name="credentials.passcode"] | '
+                    '//input[@name="password"] | //input[@type="password"]',
+                )
+            )
+        )
+    except TimeoutException:
+        visible_inputs = [
+            {
+                "name": element.get_attribute("name"),
+                "type": element.get_attribute("type"),
+            }
+            for element in driver.find_elements(By.CSS_SELECTOR, "input")
+        ]
+        logging.info(
+            "PurpleID password challenge unavailable url=%s title=%s inputs=%s",
+            driver.current_url,
+            driver.title,
+            visible_inputs,
+        )
+        raise
+    time.sleep(1)
+    password.send_keys(SCRAP_INFO['password'])
+    time.sleep(1)
+    password.send_keys(Keys.ENTER)
+
+    WebDriverWait(driver, 30).until(
+        EC.presence_of_element_located((By.XPATH, "//a[@id='PT_HOME']"))
+    )
+    logging.info("Login successfull!")
+    persistSessionCookies(driver)
+    emit_runtime_event("AUTH_COMPLETED", "AUTHENTICATION")
+
+
+def retainOnlyWindow(driver, keep_handle):
+    for handle in list(driver.window_handles):
+        if handle == keep_handle:
+            continue
+        try:
+            driver.switch_to.window(handle)
+            driver.close()
+        except Exception as error:
+            logging.info("Stale FedEx window cleanup skipped: %s", error)
+    driver.switch_to.window(keep_handle)
+    driver.switch_to.default_content()
+
+
+def findReusableFccWindow(driver):
+    home_page_handle = None
+    customer_connection_page_handle = None
+
+    for handle in list(driver.window_handles):
+        try:
+            driver.switch_to.window(handle)
+            driver.switch_to.default_content()
+
+            if driver.find_elements(By.XPATH, "//li[@id='mainTabSettab_1']"):
+                customer_connection_page_handle = handle
+                continue
+
+            if (
+                driver.find_elements(By.XPATH, "//a[@id='PT_HOME']")
+                or driver.find_elements(
+                    By.XPATH,
+                    "//iframe[@title='FCC Links']",
+                )
+            ):
+                home_page_handle = handle
+        except Exception as error:
+            logging.info(
+                "Existing FedEx window inspection skipped: %s",
+                error,
+            )
+
+    if customer_connection_page_handle:
+        driver.switch_to.window(customer_connection_page_handle)
+        driver.switch_to.default_content()
+
+    return home_page_handle, customer_connection_page_handle
+
+
+def selectWorkArea(driver, option_index, max_attempts=3):
+    last_error = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            select_element = WebDriverWait(driver, 30).until(
+                EC.presence_of_element_located(
+                    (By.XPATH, "//select[@id='manifestForm:workAreas']")
+                )
+            )
+            select = Select(select_element)
+            option = select.options[option_index]
+            selected_work_area = (
+                option.text
+                or option.get_attribute("value")
+                or f"option-{option_index}"
+            ).strip()
+            select.select_by_index(option_index)
+            return selected_work_area
+        except StaleElementReferenceException as error:
+            last_error = error
+            logging.info(
+                "Work area selector refreshed during option %s; "
+                "reacquiring attempt %s/%s",
+                option_index,
+                attempt,
+                max_attempts,
+            )
+            time.sleep(0.5)
+
+    raise last_error
+
+
+def clickManifestSearch(driver, option_index, max_attempts=3):
+    last_error = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            search_button = WebDriverWait(driver, 30).until(
+                EC.element_to_be_clickable(
+                    (By.XPATH, "//input[@id='manifestForm:search']")
+                )
+            )
+            search_button.click()
+            return
+        except (
+            ElementClickInterceptedException,
+            StaleElementReferenceException,
+        ) as error:
+            last_error = error
+            if isinstance(error, ElementClickInterceptedException):
+                dismissStuckManifestOverlay(driver)
+            logging.info(
+                "Manifest search refreshed during option %s; "
+                "reacquiring attempt %s/%s",
+                option_index,
+                attempt,
+                max_attempts,
+            )
+            time.sleep(0.5)
+
+    raise last_error
+
+
+def dismissStuckManifestOverlay(driver):
+    dismissed = False
+    overlays = driver.find_elements(
+        By.XPATH,
+        "//div[@id='manifestForm:submitTransferNotification_bg']",
+    )
+    for overlay in overlays:
+        try:
+            if not overlay.is_displayed():
+                continue
+            driver.execute_script(
+                """
+                arguments[0].style.setProperty(
+                  'display',
+                  'none',
+                  'important'
+                );
+                arguments[0].setAttribute('aria-hidden', 'true');
+                """,
+                overlay,
+            )
+            dismissed = True
+        except StaleElementReferenceException:
+            continue
+
+    if dismissed:
+        logging.info("Cleared stale FedEx manifest loading overlay")
+    return dismissed
+
+
+def clickManifestTab(driver, tab_label, option_index, max_attempts=3):
+    last_error = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            WebDriverWait(driver, 30).until(
+                EC.invisibility_of_element_located(
+                    (
+                        By.XPATH,
+                        "//div[@id='manifestForm:submitTransferNotification_bg']",
+                    )
+                )
+            )
+            tab = WebDriverWait(driver, 30).until(
+                EC.element_to_be_clickable(
+                    (By.XPATH, f"//em[contains(text(), '{tab_label}')]")
+                )
+            )
+            try:
+                tab.click()
+            except ElementClickInterceptedException:
+                tab.find_element(By.XPATH, '..').click()
+
+            tab_id = tab.find_element(By.XPATH, '../..').get_attribute('id')
+            WebDriverWait(driver, 30).until(
+                element_opacity_exists(tab_id)
+            )
+            return
+        except (
+            ElementClickInterceptedException,
+            StaleElementReferenceException,
+            TimeoutException,
+        ) as error:
+            last_error = error
+            if isinstance(
+                error,
+                (ElementClickInterceptedException, TimeoutException),
+            ):
+                dismissStuckManifestOverlay(driver)
+            logging.info(
+                "Manifest tab %s refreshed during option %s; "
+                "reacquiring attempt %s/%s",
+                tab_label,
+                option_index,
+                attempt,
+                max_attempts,
+            )
+            time.sleep(0.5)
+
+    raise last_error
+
+
+def main(section_='', option_=0, retry=1):
+    global SECTION_LIST, ACTIVE_SECTION, ACTIVE_SECTION_OPTION
+    purge_expired_local_package_artifacts(MAIN_FOLDER)
+    driver = getDriver()
+    home_page_handle = None
+    customer_connection_page_handle = None
+    logging.info("Driver loaded...")
+    try:
+        (
+            home_page_handle,
+            customer_connection_page_handle,
+        ) = findReusableFccWindow(driver)
+
+        if customer_connection_page_handle:
+            logging.info(
+                "FedEx Customer Connection application session reused"
+            )
+            persistSessionCookies(driver)
+            emit_runtime_event(
+                "SESSION_REUSED",
+                "AUTHENTICATION",
+                metadata={"persistent_fcc_window": True},
+            )
+        else:
+            authenticateDriver(driver)
+            home_page_handle = driver.current_window_handle
+            retainOnlyWindow(driver, home_page_handle)
 
         # headers = driver.execute_script("var req = new XMLHttpRequest();req.open('GET', document.location, false);req.send(null);return req.getAllResponseHeaders()")
         # headers = headers.splitlines()
@@ -524,37 +1076,65 @@ def main(section_='', option_=0, retry=1):
         )
 
         if secion_index <= 3 and needs_fcc_window:
-            iframe = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//iframe[@title='FCC Links']")))
+            if customer_connection_page_handle:
+                driver.switch_to.window(customer_connection_page_handle)
+                driver.switch_to.default_content()
+                dismissStuckManifestOverlay(driver)
+                WebDriverWait(driver, 30).until(
+                    EC.presence_of_element_located(
+                        (By.XPATH, "//li[@id='mainTabSettab_1']")
+                    )
+                )
+            else:
+                iframe = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//iframe[@title='FCC Links']")))
 
-            driver.switch_to.frame(iframe)
+                driver.switch_to.frame(iframe)
 
-            customer_connection = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//a[contains(text(), 'FedEx Customer Connection')]")))
+                customer_connection = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//a[contains(text(), 'FedEx Customer Connection')]")))
 
-            # logging.info(customer_connection.get_attribute('href'))
+                # logging.info(customer_connection.get_attribute('href'))
 
-            customer_connection.click()
+                existing_window_handles = set(driver.window_handles)
+                customer_connection.click()
 
-            driver.switch_to.default_content()
+                driver.switch_to.default_content()
 
-            WebDriverWait(driver, 30).until(EC.number_of_windows_to_be(2))
+                WebDriverWait(driver, 30).until(
+                    lambda current_driver:
+                        len(
+                            set(current_driver.window_handles)
+                            - existing_window_handles
+                        ) > 0
+                )
+                customer_connection_page_handle = next(
+                    handle
+                    for handle in driver.window_handles
+                    if handle not in existing_window_handles
+                )
+                driver.switch_to.window(customer_connection_page_handle)
 
-            window_handles = driver.window_handles
-            customer_connection_page_handle = window_handles[-1]
-            driver.switch_to.window(customer_connection_page_handle)
+                customer_connection_page_title = driver.title
+                logging.info("Title of the customer_connection page: " + customer_connection_page_title)
 
-            customer_connection_page_title = driver.title
-            logging.info("Title of the customer_connection page: " + customer_connection_page_title)
-
-            WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.XPATH, "//li[@id='mainTabSettab_1']")))
-            time.sleep(5)
+                WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.XPATH, "//li[@id='mainTabSettab_1']")))
+                time.sleep(5)
 
         if secion_index <= 0 and should_run_section('P&D'):
             # P&D Mainifests
             ACTIVE_SECTION = 'P&D'
             logging.info("Accessing P&D")
-            p_d = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//li[@id='mainTabSettab_1']")))
+            WebDriverWait(driver, 30).until(
+                EC.invisibility_of_element_located(
+                    (
+                        By.XPATH,
+                        "//div[@id='manifestForm:submitTransferNotification_bg']",
+                    )
+                )
+            )
+            p_d = WebDriverWait(driver, 30).until(EC.element_to_be_clickable((By.XPATH, "//li[@id='mainTabSettab_1']")))
             time.sleep(2)
-            p_d.click()
+            if "activeTab" not in str(p_d.get_attribute("class") or ""):
+                p_d.click()
 
             select_element = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//select[@id='manifestForm:workAreas']")))
 
@@ -564,86 +1144,85 @@ def main(section_='', option_=0, retry=1):
                 if i == 0: continue
                 logging.info(f'Selecting option {i}')
                 ACTIVE_SECTION_OPTION = i
-                select_element = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//select[@id='manifestForm:workAreas']")))
                 time.sleep(1)
-                select = Select(select_element)
-
-                select.select_by_index(i)
+                selected_work_area = selectWorkArea(driver, i)
                 time.sleep(1)
 
                 logging.info("Waiting for the search button to be visible...")
-                el = WebDriverWait(driver, 30).until(EC.element_to_be_clickable((By.XPATH, "//input[@id='manifestForm:search']")))
-                # scrollTo(el, driver)
-                # time.sleep(1)
-                el.click()
+                clickManifestSearch(driver, i)
                 time.sleep(1)
 
                 logging.info("Waiting for the load screen...")
                 WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//div[@class='mobi-submitnotific-container-hide']")))
+                WebDriverWait(driver, 30).until(
+                    EC.invisibility_of_element_located(
+                        (
+                            By.XPATH,
+                            "//div[@id='manifestForm:submitTransferNotification_bg']",
+                        )
+                    )
+                )
                 time.sleep(1)
 
                 # Combined Manifest
                 if should_download_manifest("combined"):
-                    c_m = WebDriverWait(driver, 30).until( EC.element_to_be_clickable((By.XPATH, "//em[contains(text(), 'Combined Manifest')]")) )
                     time.sleep(1)
-                    try:
-                        c_m.click()
-                    except:
-                        c_m.find_element(By.XPATH, '..').click()
-
+                    clickManifestTab(
+                        driver,
+                        "Combined Manifest",
+                        i,
+                    )
                     logging.info("Clicked the tab Combined Manifest...")
-                    WebDriverWait(driver, 30).until( element_opacity_exists(c_m.find_element(By.XPATH, '../..').get_attribute('id')) )
                     time.sleep(1)
                     logging.info("Waiting for loading...")
-                    if driver.find_elements(By.XPATH, "//input[@id='manifestForm:buttonCombinedGenerateExcel']"):
-                        before_download = downloadSnapshot()
-                        requested_at = time.time()
-                        driver.find_element(By.XPATH, "//input[@id='manifestForm:buttonCombinedGenerateExcel']").click()
-                        finalizeManifestDownload(before_download, "combined", requested_at)
+                    collectOptionalManifest(
+                        driver,
+                        button_xpath="//input[@id='manifestForm:buttonCombinedGenerateExcel']",
+                        expected_type="combined",
+                        route_identity=selected_work_area,
+                    )
                 else:
                     logging.info("Skipping Combined Manifest by request payload")
 
                 # Delivery Manifest
                 if should_download_manifest("delivery"):
-                    d_m = WebDriverWait(driver, 30).until( EC.element_to_be_clickable((By.XPATH, "//em[contains(text(), 'Delivery Manifest')]")) )
                     time.sleep(1)
-                    try:
-                        d_m.click()
-                    except:
-                        d_m.find_element(By.XPATH, '..').click()
-
+                    clickManifestTab(
+                        driver,
+                        "Delivery Manifest",
+                        i,
+                    )
                     logging.info("Clicked the tab Delivery Manifest...")
-                    WebDriverWait(driver, 30).until( element_opacity_exists(d_m.find_element(By.XPATH, '../..').get_attribute('id')) )
                     time.sleep(1)
                     logging.info("Waiting for loading...")
 
-                    if driver.find_elements(By.XPATH, "//input[@id='manifestForm:buttonDeliveryGenerateExcel']"):
-                        before_download = downloadSnapshot()
-                        requested_at = time.time()
-                        driver.find_element(By.XPATH, "//input[@id='manifestForm:buttonDeliveryGenerateExcel']").click()
-                        finalizeManifestDownload(before_download, "delivery", requested_at)
+                    collectOptionalManifest(
+                        driver,
+                        button_xpath="//input[@id='manifestForm:buttonDeliveryGenerateExcel']",
+                        expected_type="delivery",
+                        route_identity=selected_work_area,
+                    )
                 else:
                     logging.info("Skipping Delivery Manifest by request payload")
 
                 # Pickup manifest
                 if should_download_manifest("pickup"):
-                    p_m = WebDriverWait(driver, 30).until( EC.element_to_be_clickable((By.XPATH, "//em[contains(text(), 'Pickup Manifest')]")) )
                     time.sleep(1)
-                    try:
-                        p_m.click()
-                    except:
-                        p_m.find_element(By.XPATH, '..').click()
-
+                    clickManifestTab(
+                        driver,
+                        "Pickup Manifest",
+                        i,
+                    )
                     logging.info("Clicked the tab Pickup manifest...")
-                    WebDriverWait(driver, 30).until( element_opacity_exists(p_m.find_element(By.XPATH, '../..').get_attribute('id')) )
                     time.sleep(1)
                     logging.info("Waiting for loading...")
 
-                    if driver.find_elements(By.XPATH, "//input[@id='manifestForm:buttonGenerateExcel']"):
-                        before_download = downloadSnapshot()
-                        requested_at = time.time()
-                        driver.find_element(By.XPATH, "//input[@id='manifestForm:buttonGenerateExcel']").click()
-                        finalizeManifestDownload(before_download, "pickup", requested_at)
+                    collectOptionalManifest(
+                        driver,
+                        button_xpath="//input[@id='manifestForm:buttonGenerateExcel']",
+                        expected_type="pickup",
+                        route_identity=selected_work_area,
+                    )
                 else:
                     logging.info("Skipping Pickup Manifest by request payload")
             ACTIVE_SECTION_OPTION = 0
@@ -765,20 +1344,42 @@ def main(section_='', option_=0, retry=1):
         if secion_index <= 4 and should_run_section('Daily Service'):
             ACTIVE_SECTION = 'Daily Service'
             logging.info("Pickup Daily Service")
+            for handle in driver.window_handles:
+                # The FCC window carries application-level authorization that
+                # is not recreated by the home-page cookie alone. Preserve it
+                # while DSW opens in its own tab so the next success-chained
+                # pulse can continue exporting manifests without logging in
+                # again or reopening FCC in a degraded state.
+                if handle in {
+                    home_page_handle,
+                    customer_connection_page_handle,
+                }:
+                    continue
+                driver.switch_to.window(handle)
+                driver.close()
+            driver.switch_to.window(home_page_handle)
+            driver.switch_to.default_content()
             iframe = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//iframe[@title='FCC Links']")))
 
             driver.switch_to.frame(iframe)
 
             daily_service_week = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//a[contains(text(), 'Daily Service Wk & Vision IBPR')]")))
 
+            existing_window_handles = set(driver.window_handles)
             daily_service_week.click()
 
             driver.switch_to.default_content()
 
-            WebDriverWait(driver, 30).until(EC.number_of_windows_to_be(2))
+            WebDriverWait(driver, 30).until(
+                lambda current_driver:
+                    len(set(current_driver.window_handles) - existing_window_handles) > 0
+            )
 
-            window_handles = driver.window_handles
-            daily_service_week_page_handle = window_handles[-1]
+            daily_service_week_page_handle = next(
+                handle
+                for handle in driver.window_handles
+                if handle not in existing_window_handles
+            )
             driver.switch_to.window(daily_service_week_page_handle)
 
             daily_service_week_page_title = driver.title
@@ -792,7 +1393,9 @@ def main(section_='', option_=0, retry=1):
 
             # time.sleep(1000)
 
-            for i in range(option_, getDailyServiceOptions()):
+            required_download_count = 0
+            facility_errors = []
+            for i in range(option_, total_select_options):
                 try:
                     logging.info(f'Selecting option {i}')
                     ACTIVE_SECTION_OPTION = i
@@ -801,30 +1404,94 @@ def main(section_='', option_=0, retry=1):
                     select = Select(select_element)
 
                     select.select_by_index(i)
+                    selected_facility = select.first_selected_option
+                    facility_identity = (
+                        selected_facility.get_attribute("value")
+                        or selected_facility.text
+                        or f"option-{i}"
+                    ).strip()
                     time.sleep(1)
                     btn = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.selectionButton")))
                     btn.click()
                     time.sleep(1)
-                    try:
-                        WebDriverWait(driver, 30).until(EC.invisibility_of_element_located((By.XPATH, "//loading-table-animation/div[@class='cssload-piano']")))
-
-                        if driver.find_elements(By.XPATH, '//img[@class="downloadIcon"]'):
-                            requested_at = time.time()
-                            driver.find_elements(By.XPATH, '//img[@class="downloadIcon"]')[-1].click()
-                            checkDownloads(11)
-                            time.sleep(3)
-                            recordObservedDownload(
-                                "DSW_DAILY_SERVICE",
-                                "DSW",
-                                requested_at,
+                    WebDriverWait(driver, 30).until(
+                        EC.invisibility_of_element_located(
+                            (
+                                By.XPATH,
+                                "//loading-table-animation/"
+                                "div[@class='cssload-piano']",
                             )
-                    except:
-                        pass
+                        )
+                    )
+                    collect_dsw_daily_service(
+                        driver,
+                        download_folder=DOWNLOAD_FOLDER,
+                        facility_identity=facility_identity,
+                    )
+                    required_download_count += 1
+
+                    collect_dsw_package_status(
+                        driver,
+                        dsw_window_handle=daily_service_week_page_handle,
+                        download_folder=DOWNLOAD_FOLDER,
+                        facility_identity=facility_identity,
+                        service_date=current_date.strftime("%Y-%m-%d"),
+                    )
                 except Exception as ee:
-                    logging.info(ee)
+                    logging.exception(
+                        "DSW facility option %s failed: %s",
+                        i,
+                        ee,
+                    )
+                    facility_errors.append(
+                        f"option {i}: {type(ee).__name__}: {ee}"
+                    )
+            if required_download_count == 0:
+                raise RuntimeError(
+                    "No DSW Daily Service workbook was downloaded. "
+                    + " | ".join(facility_errors[:3])
+                )
+
+        # Capture the latest sliding-session cookies after all requested
+        # sections have completed so the next success-chained cycle can reuse
+        # the session established by this cycle.
+        driver.switch_to.window(home_page_handle or customer_connection_page_handle)
+        driver.switch_to.default_content()
+        persistSessionCookies(driver)
     except Exception as e:
-        logging.info(e)
-        driver.quit()
+        logging.exception(
+            "Unhandled %s in section %s option %s: %s",
+            type(e).__name__,
+            ACTIVE_SECTION or "UNKNOWN",
+            ACTIVE_SECTION_OPTION,
+            e,
+        )
+        emit_runtime_event(
+            "COLLECTION_FAILED",
+            "SOURCE",
+            lane_key=ACTIVE_SECTION or None,
+            metadata={
+                "exception_type": type(e).__name__,
+                "message": str(e)[:500] or "No exception message was provided.",
+                "option": ACTIVE_SECTION_OPTION,
+            },
+        )
+        browser_retained = False
+        if PERSIST_BROWSER and home_page_handle and ACTIVE_SECTION:
+            try:
+                driver.switch_to.window(home_page_handle)
+                driver.switch_to.default_content()
+                persistSessionCookies(driver)
+                releasePersistentDriver(driver)
+                browser_retained = True
+                logging.info("FedEx browser session retained after section failure")
+            except Exception as retain_error:
+                logging.info(
+                    "FedEx browser session could not be retained: %s",
+                    retain_error,
+                )
+        if not browser_retained:
+            driver.quit()
         logging.info("Crashed On: " + str(ACTIVE_SECTION) + ' and ' + str(ACTIVE_SECTION_OPTION))
         writeError(formatted_date, f"Crashed On:{ACTIVE_SECTION} and {ACTIVE_SECTION_OPTION}", "Daily scrape", START_TIME)
         time.sleep(3)
@@ -835,7 +1502,11 @@ def main(section_='', option_=0, retry=1):
             logging.info(f'{retry} retries attempted; max_retries={max_retries}. exiting one-shot run.')
             sys.exit(1)
 
-    driver.quit()
+    if PERSIST_BROWSER:
+        releasePersistentDriver(driver)
+        logging.info("FedEx browser session retained for the next cycle")
+    else:
+        driver.quit()
     time.sleep(5)
     success = renameFolder(DOWNLOAD_FOLDER)
 

@@ -2,7 +2,7 @@
 
 import os, requests, json, sys
 from bs4 import BeautifulSoup
-import csv, re, time
+import csv, re, socket, time
 from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -21,6 +21,11 @@ from webdriver_manager.chrome import ChromeDriverManager
 from rename_files import renameFolder
 from runtime_events import emit_runtime_event
 from extract_data import extractDataFromFolder
+from dsw_package_status import (
+    collect_dsw_daily_service,
+    collect_dsw_package_status,
+    purge_expired_local_package_artifacts,
+)
 
 from connections import getConnection, closeConnection, getScrapingConfig, getMainFolder, writeError, isPlatformLinux, getDailyServiceOptions
 
@@ -48,7 +53,12 @@ START_TIME = time.time()
 runtime_service_date = os.environ.get("FCMS_SERVICE_DATE", "").strip()
 INSIGHT_HISTORICAL_MODE = bool(runtime_service_date)
 
-logging.info(SCRAP_INFO)
+logging.info(
+    "Scraping configuration loaded: can_scrape=%s source=%s username_present=%s",
+    bool(SCRAP_INFO.get("can_scrape")),
+    SCRAP_INFO.get("source", "configured"),
+    bool(SCRAP_INFO.get("username")),
+)
 
 if INSIGHT_HISTORICAL_MODE:
     try:
@@ -86,6 +96,20 @@ closeConnection(CONNECTION)
 formatted_date = current_date.strftime("%m-%d-%Y")
 
 DOWNLOAD_FOLDER = os.path.join(MAIN_FOLDER, formatted_date)
+SESSION_COOKIE_FILE = os.environ.get(
+    "FCMS_SESSION_COOKIE_FILE",
+    "/tmp/teamoptix-fedex-session.json",
+)
+PERSIST_BROWSER = os.environ.get(
+    "FCMS_PERSIST_BROWSER",
+    "0",
+).strip().lower() in {"1", "true", "yes", "on"}
+CHROME_DEBUGGER_ADDRESS = os.environ.get(
+    "FCMS_CHROME_DEBUGGER_ADDRESS",
+    "127.0.0.1:9222",
+)
+PERSIST_ORIGINAL_WINDOW_HANDLES = set()
+PERSIST_DSW_WINDOW_HANDLE = None
 
 logging.info(f"{current_date} {formatted_date} {DOWNLOAD_FOLDER}")
 
@@ -169,6 +193,66 @@ def recordObservedDownload(artifact_key, lane_key, requested_at):
     )
 
 def getDriver():
+    global PERSIST_DSW_WINDOW_HANDLE, PERSIST_ORIGINAL_WINDOW_HANDLES
+    if isPlatformLinux() and PERSIST_BROWSER:
+        try:
+            debugger_host, debugger_port = CHROME_DEBUGGER_ADDRESS.rsplit(":", 1)
+            with socket.create_connection(
+                (debugger_host, int(debugger_port)),
+                timeout=1,
+            ):
+                pass
+            attach_options = webdriver.ChromeOptions()
+            attach_options.binary_location = '/usr/bin/google-chrome-stable'
+            attach_options.add_experimental_option(
+                "debuggerAddress",
+                CHROME_DEBUGGER_ADDRESS,
+            )
+            attached_driver = webdriver.Chrome(options=attach_options)
+            attached_driver.execute_cdp_cmd(
+                "Page.setDownloadBehavior",
+                {
+                    "behavior": "allow",
+                    "downloadPath": DOWNLOAD_FOLDER,
+                },
+            )
+            PERSIST_ORIGINAL_WINDOW_HANDLES = set(
+                attached_driver.window_handles
+            )
+            for handle in attached_driver.window_handles:
+                attached_driver.switch_to.window(handle)
+                current_url = attached_driver.current_url
+                if (
+                    attached_driver.title == "AutoDSW"
+                    or "/mgba/dsw" in current_url
+                ):
+                    PERSIST_DSW_WINDOW_HANDLE = handle
+                    logging.info(
+                        "Reusing existing AutoDSW window for historical collection"
+                    )
+                    return attached_driver
+            attached_driver.switch_to.new_window("tab")
+            logging.info(
+                "Attached historical collection to persistent FedEx browser session"
+            )
+            return attached_driver
+        except Exception as error:
+            logging.exception(
+                "Persistent FedEx browser attach unavailable: %s",
+                error,
+            )
+            emit_runtime_event(
+                "COLLECTION_FAILED",
+                "BROWSER_STARTUP",
+                lane_key="DSW",
+                metadata={
+                    "exception_type": type(error).__name__,
+                    "message": str(error)[:500]
+                    or "Persistent browser attachment failed.",
+                },
+            )
+            raise
+
     options = webdriver.ChromeOptions()
     options.add_argument("start-maximized")
     # options.binary_location = '/usr/bin/google-chrome'
@@ -197,6 +281,192 @@ def getDriver():
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     # driver = webdriver.Chrome(options=options)
     return driver
+
+
+def restoreSessionCookies(driver):
+    if not os.path.exists(SESSION_COOKIE_FILE):
+        return 0
+
+    try:
+        with open(SESSION_COOKIE_FILE, "r", encoding="utf-8") as cookie_file:
+            cookies = json.load(cookie_file)
+        if not isinstance(cookies, list) or not cookies:
+            return 0
+        driver.execute_cdp_cmd("Network.setCookies", {"cookies": cookies})
+        return len(cookies)
+    except Exception as error:
+        logging.info("FedEx session cookie restore skipped: %s", error)
+        return 0
+
+
+def persistSessionCookies(driver):
+    try:
+        raw_cookies = driver.execute_cdp_cmd(
+            "Network.getAllCookies",
+            {},
+        ).get("cookies", [])
+        cookies = []
+        for cookie in raw_cookies:
+            if not isinstance(cookie, dict):
+                continue
+            allowed = {
+                key: cookie[key]
+                for key in (
+                    "name",
+                    "value",
+                    "domain",
+                    "path",
+                    "secure",
+                    "httpOnly",
+                    "sameSite",
+                    "expires",
+                )
+                if key in cookie
+            }
+            if not allowed.get("name") or "value" not in allowed:
+                continue
+            if allowed.get("sameSite") not in (
+                None,
+                "Strict",
+                "Lax",
+                "None",
+            ):
+                allowed.pop("sameSite", None)
+            if float(allowed.get("expires", 0) or 0) <= 0:
+                allowed.pop("expires", None)
+            cookies.append(allowed)
+        temporary = f"{SESSION_COOKIE_FILE}.{os.getpid()}.tmp"
+        with open(temporary, "w", encoding="utf-8") as cookie_file:
+            json.dump(cookies, cookie_file)
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, SESSION_COOKIE_FILE)
+    except Exception as error:
+        logging.info("FedEx session cookie persistence skipped: %s", error)
+
+
+def authenticateDriver(driver):
+    init_url = "https://mybizaccount.fedex.com/my.policy"
+    restored_cookie_count = restoreSessionCookies(driver)
+    driver.get(init_url)
+    logging.info("Visiting https://mybizaccount.fedex.com/my.policy")
+
+    def authentication_entry_ready(current_driver):
+        return (
+            current_driver.find_elements(By.XPATH, "//a[@id='PT_HOME']")
+            or current_driver.find_elements(
+                By.XPATH,
+                "//input[@class='credentials_input_submit']",
+            )
+            or current_driver.find_elements(
+                By.XPATH,
+                '//input[@name="identifier"]',
+            )
+        )
+
+    WebDriverWait(driver, 30).until(authentication_entry_ready)
+    if driver.find_elements(By.XPATH, "//a[@id='PT_HOME']"):
+        logging.info("FedEx session reused for historical collection")
+        persistSessionCookies(driver)
+        emit_runtime_event(
+            "SESSION_REUSED",
+            "AUTHENTICATION",
+            metadata={
+                "restored_cookie_count": restored_cookie_count,
+                "historical": True,
+            },
+        )
+        return
+
+    if not driver.find_elements(By.XPATH, '//input[@name="identifier"]'):
+        btn = WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located(
+                (By.XPATH, "//input[@class='credentials_input_submit']")
+            )
+        )
+        btn.click()
+
+    username = WebDriverWait(driver, 20).until(
+        EC.presence_of_element_located(
+            (By.XPATH, '//input[@name="identifier"]')
+        )
+    )
+    logging.info("On login page....")
+    emit_runtime_event("AUTH_ATTEMPTED", "AUTHENTICATION")
+    username.send_keys(SCRAP_INFO['username'])
+
+    continue_candidates = [
+        "//input[@type='submit']",
+        "//button[@type='submit']",
+        "//input[contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'next')]",
+        "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'next')]",
+        "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue')]",
+    ]
+    for candidate in continue_candidates:
+        try:
+            driver.find_element(By.XPATH, candidate).click()
+            break
+        except Exception:
+            pass
+
+    password = WebDriverWait(driver, 25).until(
+        EC.presence_of_element_located(
+            (
+                By.XPATH,
+                '//input[@name="credentials.passcode"]'
+                ' | //input[@name="password"]'
+                ' | //input[@type="password"]',
+            )
+        )
+    )
+    password.send_keys(SCRAP_INFO['password'])
+    password.send_keys(Keys.ENTER)
+    WebDriverWait(driver, 30).until(
+        EC.presence_of_element_located((By.XPATH, "//a[@id='PT_HOME']"))
+    )
+    logging.info("Login successful!")
+    persistSessionCookies(driver)
+    emit_runtime_event("AUTH_COMPLETED", "AUTHENTICATION")
+
+
+def releaseDriver(driver):
+    if not PERSIST_BROWSER:
+        driver.quit()
+        return
+
+    try:
+        for handle in list(driver.window_handles):
+            if handle in PERSIST_ORIGINAL_WINDOW_HANDLES:
+                continue
+            try:
+                driver.switch_to.window(handle)
+                driver.close()
+            except Exception as error:
+                logging.info(
+                    "Historical collection window cleanup skipped: %s",
+                    error,
+                )
+        remaining_handles = list(driver.window_handles)
+        if remaining_handles:
+            preferred_handle = next(
+                (
+                    handle
+                    for handle in remaining_handles
+                    if handle in PERSIST_ORIGINAL_WINDOW_HANDLES
+                ),
+                remaining_handles[0],
+            )
+            driver.switch_to.window(preferred_handle)
+        service = getattr(driver, "service", None)
+        if service is not None:
+            service.stop()
+        logging.info(
+            "Detached historical WebDriver; persistent Chrome remains available"
+        )
+    except Exception as error:
+        logging.info(
+            "Persistent historical WebDriver detach failed: %s",
+            error,
+        )
 
 def element_opacity_exists(el_ID):
     def _predicate(driver):
@@ -243,73 +513,29 @@ def scrollTo(el, driver):
 
 def main(section_='', option_=0, retry=1):
     global SECTION_LIST, ACTIVE_SECTION, ACTIVE_SECTION_OPTION
-    driver = getDriver()
-    logging.info("Driver loaded...")
-    init_url = "https://mybizaccount.fedex.com/my.policy"
-
-    driver.get(init_url)
-    logging.info("Visiting https://mybizaccount.fedex.com/my.policy")
+    purge_expired_local_package_artifacts(MAIN_FOLDER)
     try:
-        btn = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.XPATH, "//input[@class='credentials_input_submit']")))
-        btn.click()
-
-        username = WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located(
-                (By.XPATH, '//input[@name="identifier"]')
+        driver = getDriver()
+    except Exception:
+        logging.exception("Historical collection browser startup failed")
+        raise
+    logging.info("Driver loaded...")
+    try:
+        if PERSIST_DSW_WINDOW_HANDLE:
+            driver.switch_to.window(PERSIST_DSW_WINDOW_HANDLE)
+            logging.info(
+                "FedEx AutoDSW session reused for historical collection"
             )
-        )
-
-        logging.info("On login page....")
-        time.sleep(1)
-
-        username.send_keys(SCRAP_INFO['username'])
-        time.sleep(1)
-
-        continue_candidates = [
-            "//input[@type='submit']",
-            "//button[@type='submit']",
-            "//input[contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'next')]",
-            "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'next')]",
-            "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue')]",
-        ]
-
-        for candidate in continue_candidates:
-            try:
-                element = driver.find_element(By.XPATH, candidate)
-                element.click()
-                logging.info("Clicked username continue...")
-                break
-            except Exception:
-                pass
-
-        password = WebDriverWait(driver, 25).until(
-            EC.presence_of_element_located(
-                (
-                    By.XPATH,
-                    '//input[@name="credentials.passcode"]'
-                    ' | //input[@name="password"]'
-                    ' | //input[@type="password"]'
-                )
+            emit_runtime_event(
+                "SESSION_REUSED",
+                "AUTHENTICATION",
+                metadata={
+                    "historical": True,
+                    "persistent_dsw_window": True,
+                },
             )
-        )
-
-        time.sleep(1)
-        password.send_keys(SCRAP_INFO['password'])
-        time.sleep(1)
-        password.send_keys(Keys.ENTER)
-
-        WebDriverWait(driver, 30).until(
-            EC.presence_of_element_located(
-                (By.XPATH, "//a[@id='PT_HOME']")
-            )
-        )
-        # WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//div[@class='gf_header-welcometext']")))
-
-        # //div[@class='gf_header-welcometext']
-        # //div[@class='gf_header-UserDtl']
-
-        logging.info("Login successfull!")
-        emit_runtime_event("AUTH_COMPLETED", "AUTHENTICATION")
+        else:
+            authenticateDriver(driver)
 
         # headers = driver.execute_script("var req = new XMLHttpRequest();req.open('GET', document.location, false);req.send(null);return req.getAllResponseHeaders()")
         # headers = headers.splitlines()
@@ -530,21 +756,31 @@ def main(section_='', option_=0, retry=1):
         if secion_index <= 4:
             ACTIVE_SECTION = 'Daily Service'
             logging.info("Pickup Daily Service")
-            iframe = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//iframe[@title='FCC Links']")))
+            if PERSIST_DSW_WINDOW_HANDLE:
+                daily_service_week_page_handle = PERSIST_DSW_WINDOW_HANDLE
+                driver.switch_to.window(daily_service_week_page_handle)
+            else:
+                iframe = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//iframe[@title='FCC Links']")))
 
-            driver.switch_to.frame(iframe)
+                driver.switch_to.frame(iframe)
 
-            daily_service_week = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//a[contains(text(), 'Daily Service Wk & Vision IBPR')]")))
+                daily_service_week = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//a[contains(text(), 'Daily Service Wk & Vision IBPR')]")))
 
-            daily_service_week.click()
+                existing_window_handles = set(driver.window_handles)
+                daily_service_week.click()
 
-            driver.switch_to.default_content()
+                driver.switch_to.default_content()
 
-            WebDriverWait(driver, 30).until(EC.number_of_windows_to_be(2))
-
-            window_handles = driver.window_handles
-            daily_service_week_page_handle = window_handles[-1]
-            driver.switch_to.window(daily_service_week_page_handle)
+                WebDriverWait(driver, 30).until(
+                    lambda current_driver:
+                        len(set(current_driver.window_handles) - existing_window_handles) > 0
+                )
+                daily_service_week_page_handle = next(
+                    handle
+                    for handle in driver.window_handles
+                    if handle not in existing_window_handles
+                )
+                driver.switch_to.window(daily_service_week_page_handle)
 
             daily_service_week_page_title = driver.title
             logging.info("Title of the daily_service_week page: " + daily_service_week_page_title)
@@ -591,7 +827,9 @@ def main(section_='', option_=0, retry=1):
 
             # time.sleep(1000)
 
-            for i in range(option_, getDailyServiceOptions()):
+            required_download_count = 0
+            facility_errors = []
+            for i in range(option_, total_select_options):
                 try:
                     logging.info(f'Selecting option {i}')
                     ACTIVE_SECTION_OPTION = i
@@ -600,40 +838,71 @@ def main(section_='', option_=0, retry=1):
                     select = Select(select_element)
 
                     select.select_by_index(i)
+                    selected_facility = select.first_selected_option
+                    facility_identity = (
+                        selected_facility.get_attribute("value")
+                        or selected_facility.text
+                        or f"option-{i}"
+                    ).strip()
                     time.sleep(1)
 
                     driver.find_element(By.XPATH, '//button[@class="selectionButton"]').click()
                     time.sleep(1)
 
-                    try:
-                        WebDriverWait(driver, 30).until(EC.invisibility_of_element_located((By.XPATH, "//loading-table-animation/div[@class='cssload-piano']")))
-
-                        if driver.find_elements(By.XPATH, '//img[@class="downloadIcon"]'):
-                            requested_at = time.time()
-                            driver.find_elements(By.XPATH, '//img[@class="downloadIcon"]')[-1].click()
-                            checkDownloads(11)
-                            time.sleep(3)
-                            recordObservedDownload(
-                                "DSW_DAILY_SERVICE",
-                                "DSW",
-                                requested_at,
+                    WebDriverWait(driver, 30).until(
+                        EC.invisibility_of_element_located(
+                            (
+                                By.XPATH,
+                                "//loading-table-animation/"
+                                "div[@class='cssload-piano']",
                             )
-                    except:
-                        pass
+                        )
+                    )
+                    collect_dsw_daily_service(
+                        driver,
+                        download_folder=DOWNLOAD_FOLDER,
+                        facility_identity=facility_identity,
+                    )
+                    required_download_count += 1
+
+                    collect_dsw_package_status(
+                        driver,
+                        dsw_window_handle=daily_service_week_page_handle,
+                        download_folder=DOWNLOAD_FOLDER,
+                        facility_identity=facility_identity,
+                        service_date=current_date.strftime("%Y-%m-%d"),
+                    )
                 except Exception as ee:
-                    logging.info(ee)
+                    logging.exception(
+                        "DSW facility option %s failed: %s",
+                        i,
+                        ee,
+                    )
+                    facility_errors.append(
+                        f"option {i}: {type(ee).__name__}: {ee}"
+                    )
+            if required_download_count == 0:
+                raise RuntimeError(
+                    "No DSW Daily Service workbook was downloaded. "
+                    + " | ".join(facility_errors[:3])
+                )
     except Exception as e:
         logging.info(e)
-        driver.quit()
+        releaseDriver(driver)
         logging.info("Crashed On: " + str(ACTIVE_SECTION) + ' and ' + str(ACTIVE_SECTION_OPTION))
         writeError(formatted_date, f"Crashed On:{ACTIVE_SECTION} and {ACTIVE_SECTION_OPTION}", "Specific scrape", START_TIME)
         time.sleep(3)
-        if retry < 75:
+        max_retries = int(os.environ.get("FCMS_MAX_RETRIES", "0"))
+        if retry < max_retries:
             return main(ACTIVE_SECTION, ACTIVE_SECTION_OPTION, retry+1)
         else:
-            logging.info(f'{retry} time retried...')
+            logging.info(
+                "%s retries attempted; max_retries=%s. exiting one-shot run.",
+                retry,
+                max_retries,
+            )
             try:
-                driver.quit()
+                releaseDriver(driver)
                 closeConnection(CONNECTION)
             except Exception as ee:
                 logging.info(ee)
@@ -651,17 +920,29 @@ def main(section_='', option_=0, retry=1):
 
             success = renameFolder(DOWNLOAD_FOLDER)
 
-            extractDataFromFolder(os.path.basename(DOWNLOAD_FOLDER))
+            if not INSIGHT_HISTORICAL_MODE:
+                extractDataFromFolder(os.path.basename(DOWNLOAD_FOLDER))
+            else:
+                logging.info(
+                    "Skipping legacy MySQL extraction for Insight historical "
+                    "collection; Supabase artifact ingestion is authoritative."
+                )
 
             closeConnection(CONNECTION)
 
             return False
 
-    driver.quit()
+    releaseDriver(driver)
     time.sleep(5)
     success = renameFolder(DOWNLOAD_FOLDER)
 
-    extractDataFromFolder(os.path.basename(DOWNLOAD_FOLDER))
+    if not INSIGHT_HISTORICAL_MODE:
+        extractDataFromFolder(os.path.basename(DOWNLOAD_FOLDER))
+    else:
+        logging.info(
+            "Skipping legacy MySQL extraction for Insight historical "
+            "collection; Supabase artifact ingestion is authoritative."
+        )
 
     if not INSIGHT_HISTORICAL_MODE:
         CONNECTION, CURSOR = getConnection()
@@ -689,5 +970,7 @@ def scrapeAll(CONNECTION, CURSOR, S_INFO):
     main(S_INFO['continue_on_selection'], S_INFO['continue_on_selection_option'])
 
 if __name__ == "__main__":
-    main("Daily Service" if INSIGHT_HISTORICAL_MODE else "")
+    outcome = main("Daily Service" if INSIGHT_HISTORICAL_MODE else "")
+    if outcome is False:
+        sys.exit(1)
     # main('SCH')

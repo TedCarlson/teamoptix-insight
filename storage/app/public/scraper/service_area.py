@@ -50,7 +50,12 @@ if not os.path.exists(DOWNLOAD_FOLDER):
 CONNECTION, CURSOR = getConnection()
 
 SCRAP_INFO = getScrapingConfig(CONNECTION, CURSOR)
-logging.info(SCRAP_INFO)
+logging.info(
+    "Scraping configuration loaded: can_scrape=%s source=%s username_present=%s",
+    bool(SCRAP_INFO.get("can_scrape")),
+    SCRAP_INFO.get("source", "configured"),
+    bool(SCRAP_INFO.get("username")),
+)
 
 if not SCRAP_INFO['can_scrape'] or len(SCRAP_INFO['username']) == 0 or len(SCRAP_INFO['password']) == 0:
     logging.info("No permission to scrape as per admin panel or username and/or password not configured on admin panel")

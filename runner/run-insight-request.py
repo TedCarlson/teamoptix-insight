@@ -21,6 +21,10 @@ INSIGHT_ENV_FILE = Path(os.environ.get(
 RUNNER_KEY = os.environ.get("RUNNER_KEY", "vps-laravel-runner-001")
 PROVIDER_KEY = "FEDEX"
 DONOR_RUNNER = APP_DIR / "runner" / "run-donor-once.sh"
+DONOR_LOCK_FILE = APP_DIR / "runtime" / "locks" / "report-runner.lock"
+DONOR_RESERVATION_FILE = (
+    APP_DIR / "runtime" / "locks" / "report-runner.reservation"
+)
 SCRAPER_HOME = APP_DIR / "storage" / "app" / "public" / "scraper"
 RUNTIME_LEDGER_DIR = Path(os.environ.get(
     "INSIGHT_RUNTIME_LEDGER_DIR",
@@ -110,6 +114,14 @@ def infer_report_identity(filename: str) -> dict:
     name = filename.lower()
     compact_name = re.sub(r"[^a-z0-9]+", "", name)
 
+    if "packageleveldetails" in compact_name:
+        return {
+            "artifact_key": "DSW_ALL_STATUS_CODE_PACKAGES",
+            "report_family_key": "DSW",
+            "report_shape_key": "DSW_ALL_STATUS_CODE_PACKAGES",
+            "report_frame": None,
+            "display_filename": "All Status Code Packages.xls",
+        }
     if "daily service worksheet" in name:
         return {"artifact_key": "DSW_DAILY_SERVICE", "report_family_key": "DSW", "report_shape_key": "DSW_DAILY_SERVICE_WORKSHEET", "report_frame": None, "display_filename": "Daily Service Worksheet.xlsx"}
     if "serviceareasummary" in name or "sasummary" in name:
@@ -285,7 +297,7 @@ def load_runner_artifact_metadata(file: Path) -> dict:
     if not isinstance(metadata, dict):
         return {}
 
-    return {
+    result = {
         "header_identity": {
             "page": metadata.get("page"),
             "manifest_type": metadata.get("manifest_type"),
@@ -306,7 +318,24 @@ def load_runner_artifact_metadata(file: Path) -> dict:
         ),
         "canonical_filename": metadata.get("canonical_filename"),
         "download_source_hash": metadata.get("source_hash"),
+        "contract_number": metadata.get("contract_number"),
+        "expected_package_count": metadata.get(
+            "expected_package_count"
+        ),
+        "facility_identity": metadata.get("facility_identity"),
+        "discovery_status": metadata.get("discovery_status"),
     }
+
+    for key in (
+        "artifact_key",
+        "report_family_key",
+        "report_shape_key",
+    ):
+        value = metadata.get(key)
+        if value:
+            result[key] = value
+
+    return result
 
 
 def collect_artifacts(request: dict, run_started_at: float) -> list[dict]:
@@ -668,6 +697,86 @@ def one(row_or_rows):
         return row_or_rows[0] if row_or_rows else None
     return row_or_rows
 
+
+def donor_run_active() -> bool:
+    try:
+        pid = int(DONOR_LOCK_FILE.read_text(encoding="utf-8").strip())
+        if pid <= 0:
+            return False
+        os.kill(pid, 0)
+        return True
+    except (FileNotFoundError, ValueError, ProcessLookupError):
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+
+
+def reserve_donor_slot(request: dict) -> None:
+    request_id = str(request.get("id") or "").strip()
+    if not request_id:
+        raise RuntimeError("Cannot reserve the donor slot without a request ID.")
+    DONOR_RESERVATION_FILE.parent.mkdir(parents=True, exist_ok=True)
+    existing = ""
+    try:
+        existing = DONOR_RESERVATION_FILE.read_text(
+            encoding="utf-8"
+        ).strip()
+    except FileNotFoundError:
+        pass
+    if existing and existing != request_id:
+        raise RuntimeError(
+            f"Donor slot is already reserved for governed request {existing}."
+        )
+    DONOR_RESERVATION_FILE.write_text(request_id, encoding="utf-8")
+
+
+def release_donor_reservation(request_id: str) -> None:
+    try:
+        existing = DONOR_RESERVATION_FILE.read_text(
+            encoding="utf-8"
+        ).strip()
+        if existing == request_id:
+            DONOR_RESERVATION_FILE.unlink()
+    except FileNotFoundError:
+        pass
+
+
+def wait_for_donor_slot(request: dict) -> None:
+    timeout_seconds = int(
+        os.environ.get("INSIGHT_DONOR_WAIT_SECONDS", "3600")
+    )
+    deadline = time.monotonic() + timeout_seconds
+    next_heartbeat = 0.0
+    announced = False
+
+    while donor_run_active():
+        now = time.monotonic()
+        if now >= deadline:
+            raise RuntimeError(
+                "Timed out waiting for the serial donor slot."
+            )
+        if not announced:
+            print(
+                "[insight-runner] queued behind active donor; "
+                "waiting for serial slot"
+            )
+            announced = True
+        if now >= next_heartbeat:
+            record_runtime_event(
+                request,
+                "WAITING_FOR_DONOR",
+                "CLAIM",
+                metadata={"serial_slot": "report-runner"},
+            )
+            next_heartbeat = now + 30
+        time.sleep(0.25)
+
+    if announced:
+        print("[insight-runner] serial donor slot available")
+
+
 def update_status(request_id: str, status: str, error_message: str | None = None):
     return rpc("update_operations_collection_request_status", {
         "p_request_id": request_id,
@@ -718,6 +827,7 @@ def main() -> int:
         "runner_sections": target_runner_sections(request),
     }, indent=2))
 
+    reservation_owned = False
     try:
         credential_started = time.time()
         profile = get_profile(request["company_id"])
@@ -738,7 +848,10 @@ def main() -> int:
             duration_ms=int((time.time() - credential_started) * 1000),
             metadata={"profile_id": profile.get("id")},
         )
+        reserve_donor_slot(request)
+        reservation_owned = True
         update_status(request_id, "RUNNING")
+        wait_for_donor_slot(request)
 
         run_started_at = time.time()
 
@@ -760,6 +873,19 @@ def main() -> int:
         child_env["FCMS_TARGET_ARTIFACT_KEYS"] = ",".join(sorted(target_artifact_keys(request)))
         child_env["FCMS_MANIFEST_TYPES"] = ",".join(manifest_options["manifest_types"])
         child_env["FCMS_SKIP_COMBINED"] = "1" if manifest_options["skip_combined"] else "0"
+        child_env["FCMS_SINGLE_SESSION"] = "1"
+        child_env["FCMS_PERSIST_BROWSER"] = "1"
+        child_env["FCMS_CHROME_DEBUGGER_ADDRESS"] = "127.0.0.1:9222"
+        continuous_runtime_dir = APP_DIR / "runtime" / "continuous-runner"
+        continuous_runtime_dir.mkdir(parents=True, exist_ok=True)
+        continuous_runtime_dir.chmod(0o700)
+        chrome_profile_dir = continuous_runtime_dir / "chrome-profile"
+        chrome_profile_dir.mkdir(parents=True, exist_ok=True)
+        chrome_profile_dir.chmod(0o700)
+        child_env["FCMS_CHROME_PROFILE_DIR"] = str(chrome_profile_dir)
+        child_env["FCMS_SESSION_COOKIE_FILE"] = str(
+            continuous_runtime_dir / "fedex-session.json"
+        )
 
         print("[insight-runner] ready to execute donor runner")
         if os.environ.get("INSIGHT_RUNNER_DRY_RUN", "1") == "1":
@@ -994,6 +1120,9 @@ def main() -> int:
         except Exception as update_exc:
             print(f"[insight-runner] failed to mark request failed: {update_exc}", file=sys.stderr)
         return 1
+    finally:
+        if reservation_owned:
+            release_donor_reservation(request_id)
 
 if __name__ == "__main__":
     raise SystemExit(main())
