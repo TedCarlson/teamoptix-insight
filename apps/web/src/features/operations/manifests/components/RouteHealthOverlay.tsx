@@ -344,24 +344,6 @@ function sequenceValue(valueToParse: unknown, fallback: number) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-const MANIFEST_FALLBACK_LAG_MS = 30 * 60 * 1000;
-
-function timestamp(valueToParse: unknown) {
-  const parsed = new Date(String(valueToParse ?? "")).getTime();
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function latestManifestTimestamp(detail: RouteDetailPayload | null) {
-  if (!detail) return null;
-  const timestamps = [
-    ...detail.delivery_stops,
-    ...detail.packages,
-  ]
-    .map((row) => timestamp(row.created_at))
-    .filter((entry): entry is number => entry !== null);
-  return timestamps.length ? Math.max(...timestamps) : null;
-}
-
 function buildCombinedManifest(detail: RouteDetailPayload) {
   const packagesByStop = new Map<string, Array<Record<string, unknown>>>();
   detail.packages.forEach((packageRow) => {
@@ -549,23 +531,11 @@ function RouteManifestDetail(props: {
     () => (props.detail ? buildCombinedManifest(props.detail) : []),
     [props.detail]
   );
-  const manifestLatestAt = useMemo(
-    () => latestManifestTimestamp(props.detail),
-    [props.detail]
-  );
-  const dswGeneratedAt = timestamp(props.dsw?.generated_at_text);
-  const useDswFallback = Boolean(
-    props.dsw &&
-      dswGeneratedAt !== null &&
-      (manifestLatestAt === null ||
-        dswGeneratedAt - manifestLatestAt > MANIFEST_FALLBACK_LAG_MS)
-  );
-
   if (props.loading) return <div style={{ padding: 12, color: "#64748b" }}>Loading manifest rows…</div>;
   if (props.error) return <div style={{ padding: 12, color: "#991b1b" }}>{props.error}</div>;
   if (!props.detail) return null;
 
-  const evidenceItems = useDswFallback ? [] : items;
+  const evidenceItems = items;
   const visibleItems = evidenceItems.filter((item) => {
     const completionMatches =
       completionFilter === "all" ||
@@ -591,32 +561,12 @@ function RouteManifestDetail(props: {
   const manifestAttentionCount = evidenceItems.filter(
     (item) => item.attention
   ).length;
-  const fallbackAllCount = props.dsw
-    ? Math.max(
-        props.dsw.planned_delivery_stops,
-        props.dsw.actual_delivery_stops
-      )
-    : 0;
-  const fallbackOpenCount = props.dsw
-    ? Math.max(
-        props.dsw.planned_delivery_stops -
-          props.dsw.actual_delivery_stops,
-        0
-      )
-    : 0;
-  const fallbackCompletedCount = props.dsw
-    ? Math.max(props.dsw.actual_delivery_stops, 0)
-    : 0;
-  const allCount = useDswFallback ? fallbackAllCount : items.length;
-  const openCount = useDswFallback ? fallbackOpenCount : manifestOpenCount;
-  const codedCount = useDswFallback ? 0 : manifestCodedCount;
-  const closedCount = useDswFallback
-    ? fallbackCompletedCount
-    : manifestClosedCount;
-  const attentionCount = useDswFallback ? 0 : manifestAttentionCount;
-  const packageCount = useDswFallback
-    ? Math.max(props.dsw?.vscan_packages ?? 0, 0)
-    : props.detail.packages.length;
+  const allCount = items.length;
+  const openCount = manifestOpenCount;
+  const codedCount = manifestCodedCount;
+  const closedCount = manifestClosedCount;
+  const attentionCount = manifestAttentionCount;
+  const packageCount = props.detail.packages.length;
   const remainingStops = props.dsw
     ? Math.max(
         props.dsw.planned_delivery_stops -
@@ -657,7 +607,7 @@ function RouteManifestDetail(props: {
         </div>
       </div>
 
-      {useDswFallback ? (
+      {props.dsw ? (
         <div
           style={{
             border: "1px solid #93c5fd",
@@ -672,16 +622,8 @@ function RouteManifestDetail(props: {
           }}
         >
           <span>
-            DSW fallback active · {closedCount} completed · {openCount} open
-          </span>
-          <span style={{ color: "#64748b" }}>
-            DSW is newer than the available manifest detail. Stale item rows are
-            withheld until the runner refreshes this route.
-            {manifestLatestAt !== null
-              ? ` Last manifest refresh ${formatAsOf(
-                  new Date(manifestLatestAt).toISOString()
-                )}.`
-              : ""}
+            DSW totals may differ from the combined manifest; displaying
+            complete manifest detail with the latest matched execution status.
           </span>
         </div>
       ) : remainingStops !== null && remainingPackages !== null ? (
@@ -737,13 +679,7 @@ function RouteManifestDetail(props: {
       </div>
 
       <div style={{ display: "grid", gap: 8 }}>
-        {useDswFallback ? (
-          <div style={{ border: "1px solid #bfdbfe", borderRadius: 14, background: "#fff", padding: 14, color: "#475569", fontSize: 13 }}>
-            Current route totals are supplied by DSW. Item-level manifest
-            evidence will return automatically after this route receives a
-            newer manifest refresh.
-          </div>
-        ) : visibleItems.length === 0 ? (
+        {visibleItems.length === 0 ? (
           <div style={{ border: "1px solid #e5ecf6", borderRadius: 14, background: "#fff", padding: 14, color: "#64748b", fontSize: 13 }}>No combined-manifest stops match this view.</div>
         ) : visibleItems.map((item) => {
           const itemColor = item.unmanifested ? "#b91c1c" : item.hazmat ? "#dc2626" : item.kind === "combined" ? "#7c3aed" : item.kind === "pickup" ? "#2563eb" : item.express ? "#f97316" : item.collection ? "#0284c7" : "#16a34a";
