@@ -117,7 +117,7 @@ def _open_package_detail_report(driver) -> None:
             )
         )
     )
-    report.click()
+    driver.execute_script("arguments[0].click();", report)
 
     package_detail = WebDriverWait(driver, 45).until(
         EC.element_to_be_clickable(
@@ -130,7 +130,7 @@ def _open_package_detail_report(driver) -> None:
             )
         )
     )
-    package_detail.click()
+    driver.execute_script("arguments[0].click();", package_detail)
 
 
 def _click_csv_export(driver) -> None:
@@ -159,7 +159,7 @@ def _click_csv_export(driver) -> None:
         "arguments[0].scrollIntoView({block: 'center'});",
         export,
     )
-    export.click()
+    driver.execute_script("arguments[0].click();", export)
 
 
 def _download_snapshot(download_folder: str) -> set[str]:
