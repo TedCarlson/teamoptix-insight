@@ -75,7 +75,7 @@ export function buildDispatchWorkspaceModel(params: DispatchWorkspaceModelParams
     serviceDate,
   });
   const calloutIds = new Set(callouts.map((person) => person.roster_member_id));
-  const assignedIds = buildAssignedIds(dispatchRoutes, hydratedRoutes);
+  const assignedIds = buildAssignedIds(dispatchRoutes);
   const workforce = buildWorkforce({
     allPeople,
     assignedIds,

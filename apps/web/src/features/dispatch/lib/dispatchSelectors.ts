@@ -220,19 +220,12 @@ export function buildCallouts(params: {
 }
 
 export function buildAssignedIds(
-  dispatchRoutes: DispatchRoute[],
-  hydratedRoutes: DispatchRoute[]
+  dispatchRoutes: DispatchRoute[]
 ) {
   const ids = new Set<string>();
 
-  const visibleRouteKeys = new Set(
-    hydratedRoutes
-      .filter((route) => route.route_key !== "UNASSIGNED")
-      .map((route) => route.route_key)
-  );
-
   for (const route of dispatchRoutes) {
-    if (!visibleRouteKeys.has(route.route_key)) continue;
+    if (route.route_key === "UNASSIGNED") continue;
 
     if (route.driver) ids.add(route.driver.roster_member_id);
     for (const person of route.helpers) ids.add(person.roster_member_id);
