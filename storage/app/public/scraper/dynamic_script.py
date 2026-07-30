@@ -30,6 +30,7 @@ from dsw_package_status import (
     collect_dsw_daily_service,
     collect_dsw_package_status,
     purge_expired_local_package_artifacts,
+    returned_route_wa_numbers,
 )
 from dro_collection import collect_dro_package_detail
 
@@ -50,6 +51,10 @@ log_file = f"daily_scraper_{datetime.fromtimestamp(time.time()).strftime('%Y-%m-
 logging.basicConfig(filename=os.path.join(log_folder, log_file), level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 #
 MAIN_FOLDER = os.path.join(getMainFolder(), 'Excels')
+MANIFEST_FINAL_STATE_FILE = os.path.join(
+    MAIN_FOLDER,
+    ".manifest-finalization.json",
+)
 
 if not os.path.exists(MAIN_FOLDER):
     os.mkdir(MAIN_FOLDER)
@@ -625,6 +630,97 @@ REQUESTED_MANIFEST_TYPES = requested_manifest_types()
 def should_download_manifest(manifest_type):
     return manifest_type in REQUESTED_MANIFEST_TYPES
 
+
+def load_returned_dsw_routes():
+    candidates = [
+        os.path.join(DOWNLOAD_FOLDER, filename)
+        for filename in os.listdir(DOWNLOAD_FOLDER)
+        if filename.lower() in {
+            "daily service worksheet.xls",
+            "daily service worksheet.xlsx",
+        }
+    ]
+    if not candidates:
+        emit_runtime_event(
+            "NEEDS_ATTENTION",
+            "SOURCE_DISCOVERY",
+            lane_key="FCC_P_AND_D",
+            metadata={
+                "reason": "FRESH_DSW_NOT_AVAILABLE",
+                "fallback": "COLLECT_ALL_MANIFESTS",
+            },
+        )
+        return set(), False
+
+    workbook_path = max(candidates, key=os.path.getmtime)
+    try:
+        return returned_route_wa_numbers(workbook_path), True
+    except Exception as error:
+        logging.info("Fresh DSW eligibility read failed: %s", error)
+        emit_runtime_event(
+            "NEEDS_ATTENTION",
+            "SOURCE_DISCOVERY",
+            lane_key="FCC_P_AND_D",
+            metadata={
+                "reason": "FRESH_DSW_READ_FAILED",
+                "error_type": type(error).__name__,
+                "fallback": "COLLECT_ALL_MANIFESTS",
+            },
+        )
+        return set(), False
+
+
+def load_manifest_final_state():
+    empty_state = {
+        "service_date": current_date.strftime("%Y-%m-%d"),
+        "routes": {},
+    }
+    try:
+        with open(
+            MANIFEST_FINAL_STATE_FILE,
+            "r",
+            encoding="utf-8",
+        ) as state_file:
+            state = json.load(state_file)
+        if state.get("service_date") != empty_state["service_date"]:
+            return empty_state
+        if not isinstance(state.get("routes"), dict):
+            return empty_state
+        return state
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return empty_state
+
+
+def write_manifest_final_state(state):
+    temporary = f"{MANIFEST_FINAL_STATE_FILE}.{os.getpid()}.tmp"
+    with open(temporary, "w", encoding="utf-8") as state_file:
+        json.dump(state, state_file, sort_keys=True)
+    os.chmod(temporary, 0o600)
+    os.replace(temporary, MANIFEST_FINAL_STATE_FILE)
+
+
+def completed_manifest_types(state, wa_number, route_returned):
+    routes = state["routes"]
+    if not route_returned:
+        if wa_number in routes:
+            routes.pop(wa_number, None)
+            write_manifest_final_state(state)
+        return set()
+    return set(routes.get(wa_number, []))
+
+
+def record_final_manifest_success(state, wa_number, manifest_type):
+    completed = set(state["routes"].get(wa_number, []))
+    completed.add(manifest_type)
+    state["routes"][wa_number] = sorted(completed)
+    write_manifest_final_state(state)
+
+
+def work_area_wa_number(work_area):
+    match = re.match(r"\s*(\d{3,4})\b", str(work_area or ""))
+    return match.group(1) if match else ""
+
+
 def should_run_section(section_name):
     # SCH PU Mgmt is intentionally excluded from Insight Last Look / normal sweeps.
     # It is an internal operational workflow and not currently useful for Insight ingestion.
@@ -1167,9 +1263,58 @@ def main(section_='', option_=0, retry=1):
             select_element = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//select[@id='manifestForm:workAreas']")))
 
             total_select_options = len(select_element.find_elements(By.XPATH, 'option'))
+            returned_routes, fresh_dsw_available = load_returned_dsw_routes()
+            manifest_final_state = load_manifest_final_state()
 
             for i in range(option_, total_select_options):
                 if i == 0: continue
+                select_element = WebDriverWait(driver, 30).until(
+                    EC.presence_of_element_located(
+                        (By.XPATH, "//select[@id='manifestForm:workAreas']")
+                    )
+                )
+                option = Select(select_element).options[i]
+                work_area_hint = (
+                    option.text
+                    or option.get_attribute("value")
+                    or f"option-{i}"
+                ).strip()
+                wa_number = work_area_wa_number(work_area_hint)
+                route_returned = (
+                    fresh_dsw_available
+                    and wa_number in returned_routes
+                )
+                completed_types = completed_manifest_types(
+                    manifest_final_state,
+                    wa_number,
+                    route_returned,
+                )
+                due_manifest_types = (
+                    REQUESTED_MANIFEST_TYPES - completed_types
+                    if route_returned
+                    else set(REQUESTED_MANIFEST_TYPES)
+                )
+
+                if not due_manifest_types:
+                    logging.info(
+                        "Skipping finalized route manifests for %s",
+                        work_area_hint,
+                    )
+                    emit_runtime_event(
+                        "SOURCE_SKIPPED",
+                        "SOURCE_DISCOVERY",
+                        lane_key="FCC_P_AND_D",
+                        route_identity=work_area_hint,
+                        metadata={
+                            "reason": "FINAL_MANIFEST_ALREADY_COLLECTED",
+                            "dsw_returned": True,
+                            "completed_manifest_types": sorted(
+                                completed_types
+                            ),
+                        },
+                    )
+                    continue
+
                 logging.info(f'Selecting option {i}')
                 ACTIVE_SECTION_OPTION = i
                 time.sleep(1)
@@ -1193,7 +1338,10 @@ def main(section_='', option_=0, retry=1):
                 time.sleep(1)
 
                 # Combined Manifest
-                if should_download_manifest("combined"):
+                if (
+                    should_download_manifest("combined")
+                    and "combined" in due_manifest_types
+                ):
                     time.sleep(1)
                     clickManifestTab(
                         driver,
@@ -1203,17 +1351,26 @@ def main(section_='', option_=0, retry=1):
                     logging.info("Clicked the tab Combined Manifest...")
                     time.sleep(1)
                     logging.info("Waiting for loading...")
-                    collectOptionalManifest(
+                    combined_path = collectOptionalManifest(
                         driver,
                         button_xpath="//input[@id='manifestForm:buttonCombinedGenerateExcel']",
                         expected_type="combined",
                         route_identity=selected_work_area,
                     )
+                    if route_returned and combined_path:
+                        record_final_manifest_success(
+                            manifest_final_state,
+                            wa_number,
+                            "combined",
+                        )
                 else:
-                    logging.info("Skipping Combined Manifest by request payload")
+                    logging.info("Skipping Combined Manifest")
 
                 # Delivery Manifest
-                if should_download_manifest("delivery"):
+                if (
+                    should_download_manifest("delivery")
+                    and "delivery" in due_manifest_types
+                ):
                     time.sleep(1)
                     clickManifestTab(
                         driver,
@@ -1224,17 +1381,26 @@ def main(section_='', option_=0, retry=1):
                     time.sleep(1)
                     logging.info("Waiting for loading...")
 
-                    collectOptionalManifest(
+                    delivery_path = collectOptionalManifest(
                         driver,
                         button_xpath="//input[@id='manifestForm:buttonDeliveryGenerateExcel']",
                         expected_type="delivery",
                         route_identity=selected_work_area,
                     )
+                    if route_returned and delivery_path:
+                        record_final_manifest_success(
+                            manifest_final_state,
+                            wa_number,
+                            "delivery",
+                        )
                 else:
-                    logging.info("Skipping Delivery Manifest by request payload")
+                    logging.info("Skipping Delivery Manifest")
 
                 # Pickup manifest
-                if should_download_manifest("pickup"):
+                if (
+                    should_download_manifest("pickup")
+                    and "pickup" in due_manifest_types
+                ):
                     time.sleep(1)
                     clickManifestTab(
                         driver,
@@ -1245,14 +1411,20 @@ def main(section_='', option_=0, retry=1):
                     time.sleep(1)
                     logging.info("Waiting for loading...")
 
-                    collectOptionalManifest(
+                    pickup_path = collectOptionalManifest(
                         driver,
                         button_xpath="//input[@id='manifestForm:buttonGenerateExcel']",
                         expected_type="pickup",
                         route_identity=selected_work_area,
                     )
+                    if route_returned and pickup_path:
+                        record_final_manifest_success(
+                            manifest_final_state,
+                            wa_number,
+                            "pickup",
+                        )
                 else:
-                    logging.info("Skipping Pickup Manifest by request payload")
+                    logging.info("Skipping Pickup Manifest")
             ACTIVE_SECTION_OPTION = 0
         if secion_index <= 1 and should_run_section('Service'):
             ACTIVE_SECTION = 'Service'

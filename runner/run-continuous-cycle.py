@@ -238,7 +238,10 @@ def child_environment(
         .lower()
         in {"1", "true", "yes", "on"}
     )
-    environment["FCMS_SINGLE_SESSION"] = "1"
+    # Run each requested section in contract order while reusing the same
+    # persistent Chrome authentication. DSW must finish before P&D so the
+    # fresh retained workbook can govern route-level manifest collection.
+    environment["FCMS_SINGLE_SESSION"] = "0"
     environment["FCMS_PERSIST_BROWSER"] = (
         "0" if force_fresh_browser else "1"
     )

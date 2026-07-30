@@ -8,6 +8,7 @@ import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+import pandas as pd
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -19,6 +20,103 @@ ARTIFACT_KEY = "DSW_ALL_STATUS_CODE_PACKAGES"
 LANE_KEY = "DSW_PACKAGE_STATUS"
 DAILY_SERVICE_ARTIFACT_KEY = "DSW_DAILY_SERVICE"
 DAILY_SERVICE_LANE_KEY = "DSW"
+
+
+def retain_latest_daily_service_workbook(
+    downloaded_path,
+    download_folder,
+):
+    """Keep one canonical DSW workbook for the current service date."""
+
+    source = Path(downloaded_path)
+    folder = Path(download_folder)
+    target = folder / f"daily service worksheet{source.suffix.lower()}"
+    daily_service_pattern = re.compile(
+        r"^daily service worksheet(?: \(\d+\))?\.(?:xls|xlsx)$",
+        re.IGNORECASE,
+    )
+
+    for candidate in folder.iterdir():
+        if (
+            not candidate.is_file()
+            or not daily_service_pattern.fullmatch(candidate.name)
+            or candidate.resolve() == source.resolve()
+        ):
+            continue
+        candidate.unlink()
+        sidecar = Path(f"{candidate}.runner.json")
+        if sidecar.exists():
+            sidecar.unlink()
+
+    if source.resolve() != target.resolve():
+        if target.exists():
+            target.unlink()
+        os.replace(source, target)
+
+    return str(target)
+
+
+def returned_route_wa_numbers(workbook_path):
+    """Return WA numbers whose DSW DOT hours-and-miles fields are loaded."""
+
+    worksheet = pd.read_excel(
+        workbook_path,
+        sheet_name=0,
+        header=None,
+        dtype=object,
+    )
+    header_index = None
+    headers = []
+
+    for index, row in worksheet.iterrows():
+        values = [
+            "" if pd.isna(value) else str(value).strip()
+            for value in row.tolist()
+        ]
+        if "WA#" in values and "On Duty Hours" in values:
+            header_index = index
+            headers = values
+            break
+
+    if header_index is None:
+        raise RuntimeError("Fresh DSW workbook has no route header row.")
+
+    column_index = {name: index for index, name in enumerate(headers)}
+    required = ("WA#", "Miles", "On Road Hours", "On Duty Hours")
+    missing = [name for name in required if name not in column_index]
+    if missing:
+        raise RuntimeError(
+            "Fresh DSW workbook is missing required columns: "
+            + ", ".join(missing)
+        )
+
+    returned_routes = set()
+    for _, row in worksheet.iloc[header_index + 1:].iterrows():
+        values = row.tolist()
+        first_value = (
+            ""
+            if not values or pd.isna(values[0])
+            else str(values[0]).strip()
+        )
+        if "contract" in first_value.lower():
+            break
+
+        def cell(column_name):
+            value = values[column_index[column_name]]
+            if pd.isna(value):
+                return ""
+            return str(value).strip()
+
+        wa_number = re.sub(r"\.0$", "", cell("WA#"))
+        if (
+            wa_number
+            and cell("Miles")
+            and cell("On Road Hours")
+            and cell("On Duty Hours")
+        ):
+            returned_routes.add(wa_number)
+
+    return returned_routes
 
 
 def purge_expired_local_package_artifacts(
@@ -315,6 +413,10 @@ def collect_dsw_daily_service(
     downloaded_path, source_ready_at = wait_for_completed_download(
         download_folder,
         before_download,
+    )
+    downloaded_path = retain_latest_daily_service_workbook(
+        downloaded_path,
+        download_folder,
     )
     filename = os.path.basename(downloaded_path)
     event_common = {

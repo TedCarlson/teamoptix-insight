@@ -264,9 +264,9 @@ def target_runner_sections(request: dict) -> list[str]:
 
     section_order = {
         "DRO": 5,
-        "Service": 10,
-        "Daily Service": 20,
-        "P&D": 30,
+        "Daily Service": 10,
+        "P&D": 20,
+        "Service": 30,
     }
     return sorted(sections, key=lambda section: section_order.get(section, 999))
 

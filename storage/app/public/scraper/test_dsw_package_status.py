@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import dsw_package_status
+import pandas as pd
 
 
 class FakeDriver:
@@ -30,6 +31,58 @@ class BrokenDriver:
 
 
 class DswPackageStatusTests(unittest.TestCase):
+    def test_fresh_dsw_replaces_prior_same_day_copies(self):
+        with tempfile.TemporaryDirectory() as download_folder:
+            folder = Path(download_folder)
+            canonical = folder / "daily service worksheet.xls"
+            duplicate = folder / "daily service worksheet (1).xls"
+            downloaded = folder / "daily service worksheet (2).xls"
+            canonical.write_bytes(b"old-canonical")
+            duplicate.write_bytes(b"old-duplicate")
+            downloaded.write_bytes(b"fresh")
+
+            retained = (
+                dsw_package_status.retain_latest_daily_service_workbook(
+                    downloaded,
+                    folder,
+                )
+            )
+
+            self.assertEqual(
+                Path(retained),
+                canonical,
+            )
+            self.assertEqual(canonical.read_bytes(), b"fresh")
+            self.assertFalse(duplicate.exists())
+            self.assertFalse(downloaded.exists())
+
+    @patch.object(dsw_package_status.pd, "read_excel")
+    def test_returned_routes_require_all_dot_fields(self, read_excel):
+        read_excel.return_value = pd.DataFrame(
+            [
+                ["Daily Service Worksheet"],
+                [""],
+                ["DOT Hours and Miles"],
+                [
+                    "Svc Area #",
+                    "WA Name",
+                    "WA#",
+                    "Miles",
+                    "On Road Hours",
+                    "On Duty Hours",
+                ],
+                ["309747", "BPV 02", "477", "138", "07:13", "08:02"],
+                ["309747", "BPV 03", "426", "", "10:06", "10:42"],
+                ["Contract Totals", "", "", "", "", ""],
+            ]
+        )
+
+        returned = dsw_package_status.returned_route_wa_numbers(
+            "synthetic.xls"
+        )
+
+        self.assertEqual(returned, {"477"})
+
     @patch.object(dsw_package_status, "emit_runtime_event")
     def test_local_retention_removes_only_expired_package_files(
         self,
