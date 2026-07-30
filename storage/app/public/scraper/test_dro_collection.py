@@ -7,6 +7,22 @@ from unittest.mock import patch
 import dro_collection
 
 
+class StateDriver:
+    def __init__(self, states):
+        self.states = iter(states)
+        self.state = None
+
+    def find_elements(self, _by, xpath):
+        if "login-service-providers-button" in xpath:
+            self.state = next(self.states, self.state)
+            return [object()] if self.state == "LOGIN" else []
+        if "Select Service Area" in xpath:
+            return [object()] if self.state == "SELECTION" else []
+        if "normalize-space()='REPORT'" in xpath:
+            return [object()] if self.state == "DASHBOARD" else []
+        return []
+
+
 class DroCollectionTests(unittest.TestCase):
     def test_xpath_literal_handles_apostrophe(self):
         self.assertEqual(
@@ -24,6 +40,17 @@ class DroCollectionTests(unittest.TestCase):
                 dro_collection._download_snapshot(folder),
                 {str(csv_path.resolve())},
             )
+
+    def test_post_login_wait_ignores_still_visible_login_state(self):
+        driver = StateDriver(["LOGIN", "SELECTION"])
+        self.assertEqual(
+            dro_collection._wait_for_dro_entry(
+                driver,
+                timeout_seconds=1,
+                accepted_states={"SELECTION", "DASHBOARD"},
+            ),
+            "SELECTION",
+        )
 
     @patch.object(dro_collection, "DRO_SERVICE_AREA", "")
     @patch.object(dro_collection, "DRO_BUSINESS_NAME", "")

@@ -34,27 +34,37 @@ def _page_has(driver, xpath: str) -> bool:
     return bool(driver.find_elements(By.XPATH, xpath))
 
 
-def _wait_for_dro_entry(driver, timeout_seconds: int = 90) -> str:
+def _wait_for_dro_entry(
+    driver,
+    timeout_seconds: int = 90,
+    accepted_states: set[str] | None = None,
+) -> str:
     """Wait until DRO exposes login, entity selection, or its dashboard."""
 
     def state(current_driver):
+        observed = None
         if _page_has(
             current_driver,
             "//*[@id='login-service-providers-button']"
             " | //button[normalize-space()='SERVICE PROVIDERS']",
         ):
-            return "LOGIN"
-        if _page_has(
+            observed = "LOGIN"
+        elif _page_has(
             current_driver,
             "//*[normalize-space()='Select Service Area']",
         ):
-            return "SELECTION"
-        if _page_has(
+            observed = "SELECTION"
+        elif _page_has(
             current_driver,
             "//*[normalize-space()='REPORT']"
             " | //*[normalize-space()='Report']",
         ):
-            return "DASHBOARD"
+            observed = "DASHBOARD"
+
+        if observed and (
+            accepted_states is None or observed in accepted_states
+        ):
+            return observed
         return False
 
     return WebDriverWait(driver, timeout_seconds).until(state)
@@ -210,7 +220,10 @@ def collect_dro_package_detail(driver, download_folder: str) -> str:
     state = _wait_for_dro_entry(driver)
     if state == "LOGIN":
         _select_service_provider(driver)
-        state = _wait_for_dro_entry(driver)
+        state = _wait_for_dro_entry(
+            driver,
+            accepted_states={"SELECTION", "DASHBOARD"},
+        )
     if state == "SELECTION":
         _select_entity(driver)
         state = _wait_for_dro_entry(driver)
