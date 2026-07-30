@@ -47,6 +47,11 @@ CONTROL_SECRET = os.environ.get("RUNNER_CONTROL_SECRET", "")
 RUNNER_VERSION = os.environ.get(
     "TEAMOPTIX_RUNNER_VERSION", "continuous-runner-v1"
 )
+DRO_AM_ENABLED = (
+    os.environ.get("DRO_AM_ENABLED", "0").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
+DRO_AM_TIME = os.environ.get("DRO_AM_TIME", "04:00").strip()
 
 
 class CredentialConfigurationError(RuntimeError):
@@ -362,6 +367,17 @@ class ContinuousController:
             and completed_date != now.date().isoformat()
         )
 
+    def dro_am_due(self, now: datetime) -> bool:
+        if not DRO_AM_ENABLED:
+            return False
+        hour, minute = self.parse_clock(DRO_AM_TIME)
+        completed_date = str(self.journal.get("dro_am_date") or "")
+        return (
+            now.hour == hour
+            and now.minute == minute
+            and completed_date != now.date().isoformat()
+        )
+
     def start_allowed(self) -> bool:
         return bool(self.schedule.get("collection_enabled"))
 
@@ -549,6 +565,36 @@ class ContinuousController:
                     # Defer rather than creating an overlapping pulse request
                     # that can only fail the runner lock.
                     if self.donor_run_active():
+                        self.stop_event.wait(1)
+                        continue
+
+                    if (
+                        self.dro_am_due(now)
+                        and self.credential_attempt_allowed()
+                    ):
+                        if SHADOW_MODE:
+                            self.shadow_observation(
+                                "DRO_AM",
+                                now.date().isoformat(),
+                                ["DRO"],
+                            )
+                        else:
+                            status = self.run_cycle(
+                                "DRO_AM",
+                                now.date().isoformat(),
+                                ["DRO"],
+                            )
+                            if status == 0:
+                                self.journal["dro_am_date"] = (
+                                    now.date().isoformat()
+                                )
+                                self.failure_count = 0
+                                self.next_retry_at = 0
+                                self.save_journal()
+                            elif status == 40:
+                                self.mark_auth_failure()
+                            else:
+                                self.mark_transient_failure()
                         self.stop_event.wait(1)
                         continue
 

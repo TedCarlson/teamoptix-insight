@@ -31,6 +31,7 @@ from dsw_package_status import (
     collect_dsw_package_status,
     purge_expired_local_package_artifacts,
 )
+from dro_collection import collect_dro_package_detail
 
 from connections import getConnection, closeConnection, getScrapingConfig, getMainFolder, writeError, isPlatformLinux, getDailyServiceOptions
 # if platform == "linux" or platform == "linux2":
@@ -599,7 +600,7 @@ def element_opacity_exists(el_ID):
             return False
     return _predicate
 
-SECTION_LIST = ["P&D", "Service", "Pickup", "SCH", "Daily Service"]
+SECTION_LIST = ["P&D", "Service", "Pickup", "SCH", "Daily Service", "DRO"]
 ACTIVE_SECTION = ''
 ACTIVE_SECTION_OPTION = 0
 
@@ -1451,6 +1452,15 @@ def main(section_='', option_=0, retry=1):
                     "No DSW Daily Service workbook was downloaded. "
                     + " | ".join(facility_errors[:3])
                 )
+
+        if secion_index <= 5 and should_run_section('DRO'):
+            ACTIVE_SECTION = 'DRO'
+            logging.info("Accessing DRO Package Detail")
+            collect_dro_package_detail(
+                driver,
+                download_folder=DOWNLOAD_FOLDER,
+            )
+            ACTIVE_SECTION_OPTION = 0
 
         # Capture the latest sliding-session cookies after all requested
         # sections have completed so the next success-chained cycle can reuse

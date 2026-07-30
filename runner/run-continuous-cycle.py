@@ -40,6 +40,25 @@ def load_legacy_runner():
 RUNNER = load_legacy_runner()
 
 REPORT_TARGETS: dict[str, dict[str, Any]] = {
+    "DRO": {
+        "key": "DRO_PACKAGE_DETAIL",
+        "label": "DRO · Package Detail",
+        "artifact_key": "DRO_PACKAGE_DETAIL",
+        "report_family_key": "DRO",
+        "report_shape_key": "DRO_PACKAGE_DETAIL",
+        "runner_section": "DRO",
+        "service_area": os.environ.get(
+            "FCMS_DRO_SERVICE_AREA", ""
+        ).strip(),
+        "business_name": os.environ.get(
+            "FCMS_DRO_BUSINESS_NAME", ""
+        ).strip(),
+        "expected_filename_match": [
+            "package_detail",
+            "package detail",
+            "packagedetail",
+        ],
+    },
     "DSW": {
         "key": "DSW_DAILY_SERVICE",
         "label": "DSW · Daily Service Worksheet",
@@ -124,7 +143,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--request-type",
         required=True,
-        choices=["PREVIOUS_DAY_CLOSE", "OPERATIONS_PULSE"],
+        choices=["DRO_AM", "PREVIOUS_DAY_CLOSE", "OPERATIONS_PULSE"],
     )
     parser.add_argument("--service-date")
     parser.add_argument("--reports-json", required=True)
@@ -188,6 +207,20 @@ def child_environment(
     environment["FCMS_TARGET_ARTIFACT_KEYS"] = ",".join(
         sorted(RUNNER.target_artifact_keys(request))
     )
+    dro_target = next(
+        (
+            target
+            for target in request["request_payload"]["targets"]
+            if str(target.get("runner_section") or "").upper() == "DRO"
+        ),
+        {},
+    )
+    environment["FCMS_DRO_SERVICE_AREA"] = str(
+        dro_target.get("service_area") or ""
+    ).strip()
+    environment["FCMS_DRO_BUSINESS_NAME"] = str(
+        dro_target.get("business_name") or ""
+    ).strip()
     manifest_options = RUNNER.manifest_runtime_options(request)
     environment["FCMS_MANIFEST_TYPES"] = ",".join(
         manifest_options["manifest_types"]

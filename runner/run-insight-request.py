@@ -55,6 +55,8 @@ def lane_key_for_artifact(artifact: dict) -> str:
     key = str(artifact.get("artifact_key") or "").upper()
     if key == "DSW_DAILY_SERVICE":
         return "DSW"
+    if key == "DRO_PACKAGE_DETAIL":
+        return "DRO_PACKAGE_DETAIL"
     if key.startswith("FCC_SERVICE_AREA"):
         return "FCC_WORK_AREA_SUMMARY"
     if key == "PICKUP_MANIFEST":
@@ -122,6 +124,14 @@ def infer_report_identity(filename: str) -> dict:
             "report_frame": None,
             "display_filename": "All Status Code Packages.xls",
         }
+    if "packagedetail" in compact_name and name.endswith(".csv"):
+        return {
+            "artifact_key": "DRO_PACKAGE_DETAIL",
+            "report_family_key": "DRO",
+            "report_shape_key": "DRO_PACKAGE_DETAIL",
+            "report_frame": None,
+            "display_filename": "package_detail.csv",
+        }
     if "daily service worksheet" in name:
         return {"artifact_key": "DSW_DAILY_SERVICE", "report_family_key": "DSW", "report_shape_key": "DSW_DAILY_SERVICE_WORKSHEET", "report_frame": None, "display_filename": "Daily Service Worksheet.xlsx"}
     if "serviceareasummary" in name or "sasummary" in name:
@@ -146,6 +156,8 @@ def artifact_priority(artifact: dict) -> int:
     family = str(artifact.get("report_family_key") or "").upper()
     if family == "DSW":
         return 10
+    if family == "DRO":
+        return 15
     if key.startswith("FCC_SERVICE_AREA"):
         return 20
     if key == "PICKUP_MANIFEST":
@@ -242,13 +254,20 @@ def target_runner_sections(request: dict) -> list[str]:
             section = "Service"
         elif runner_section == "DAILY_SERVICE":
             section = "Daily Service"
+        elif runner_section == "DRO":
+            section = "DRO"
         else:
             continue
 
         if section not in sections:
             sections.append(section)
 
-    section_order = {"Service": 10, "Daily Service": 20, "P&D": 30}
+    section_order = {
+        "DRO": 5,
+        "Service": 10,
+        "Daily Service": 20,
+        "P&D": 30,
+    }
     return sorted(sections, key=lambda section: section_order.get(section, 999))
 
 def artifact_matches_targets(request: dict, artifact: dict) -> bool:
@@ -264,6 +283,15 @@ def artifact_matches_targets(request: dict, artifact: dict) -> bool:
     for target in targets:
         if not isinstance(target, dict):
             continue
+
+        target_artifact_key = str(
+            target.get("artifact_key") or ""
+        ).strip().upper()
+        artifact_key = str(
+            artifact.get("artifact_key") or ""
+        ).strip().upper()
+        if target_artifact_key and target_artifact_key == artifact_key:
+            return True
 
         patterns = target.get("expected_filename_match")
         if not isinstance(patterns, list):
@@ -375,7 +403,13 @@ def collect_artifacts(request: dict, run_started_at: float) -> list[dict]:
                 "path": str(file),
                 "filename": file.name,
                 "size_bytes": file.stat().st_size,
-                "content_type": "application/vnd.ms-excel" if file.suffix.lower() == ".xls" else "application/octet-stream",
+                "content_type": (
+                    "text/csv"
+                    if file.suffix.lower() == ".csv"
+                    else "application/vnd.ms-excel"
+                    if file.suffix.lower() == ".xls"
+                    else "application/octet-stream"
+                ),
                 **identity,
                 **runner_metadata,
             }
@@ -871,6 +905,27 @@ def main() -> int:
 
         child_env["FCMS_TARGET_SECTIONS"] = ",".join(target_runner_sections(request))
         child_env["FCMS_TARGET_ARTIFACT_KEYS"] = ",".join(sorted(target_artifact_keys(request)))
+        dro_target = next(
+            (
+                target
+                for target in request_targets(request)
+                if isinstance(target, dict)
+                and str(target.get("runner_section") or "").strip().upper()
+                == "DRO"
+            ),
+            {},
+        )
+        payload = request.get("request_payload") or {}
+        child_env["FCMS_DRO_SERVICE_AREA"] = str(
+            dro_target.get("service_area")
+            or payload.get("dro_service_area")
+            or ""
+        ).strip()
+        child_env["FCMS_DRO_BUSINESS_NAME"] = str(
+            dro_target.get("business_name")
+            or payload.get("dro_business_name")
+            or ""
+        ).strip()
         child_env["FCMS_MANIFEST_TYPES"] = ",".join(manifest_options["manifest_types"])
         child_env["FCMS_SKIP_COMBINED"] = "1" if manifest_options["skip_combined"] else "0"
         child_env["FCMS_SINGLE_SESSION"] = "1"
