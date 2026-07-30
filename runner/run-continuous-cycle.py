@@ -232,36 +232,14 @@ def child_environment(
     continuous_runtime_dir.mkdir(parents=True, exist_ok=True)
     continuous_runtime_dir.chmod(0o700)
 
-    force_fresh_browser = (
-        os.environ.get("FCMS_FORCE_FRESH_BROWSER", "0")
-        .strip()
-        .lower()
-        in {"1", "true", "yes", "on"}
-    )
-    # Run each requested section in contract order while reusing the same
-    # persistent Chrome authentication. DSW must finish before P&D so the
-    # fresh retained workbook can govern route-level manifest collection.
+    # Preserve the original donor contract: every section starts a clean
+    # browser, authenticates with the governed credential, opens its own
+    # FedEx application window, collects, and quits. Only downloaded files
+    # carry state between DSW, P&D, and Service.
     environment["FCMS_SINGLE_SESSION"] = "0"
-    environment["FCMS_PERSIST_BROWSER"] = (
-        "0" if force_fresh_browser else "1"
-    )
-    environment["FCMS_CHROME_DEBUGGER_ADDRESS"] = "127.0.0.1:9222"
-    chrome_profile_dir = (
-        continuous_runtime_dir / f"chrome-profile-{request['id']}"
-        if force_fresh_browser
-        else continuous_runtime_dir / "chrome-profile"
-    )
-    chrome_profile_dir.mkdir(parents=True, exist_ok=True)
-    chrome_profile_dir.chmod(0o700)
-    environment["FCMS_CHROME_PROFILE_DIR"] = str(chrome_profile_dir)
-    environment["FCMS_SESSION_COOKIE_FILE"] = str(
-        (
-            continuous_runtime_dir
-            / f"fedex-session-{request['id']}.json"
-        )
-        if force_fresh_browser
-        else continuous_runtime_dir / "fedex-session.json"
-    )
+    environment["FCMS_PERSIST_BROWSER"] = "0"
+    environment["FCMS_FRESH_BROWSER"] = "1"
+    environment["FCMS_FORCE_CREDENTIAL_AUTH"] = "1"
     return environment
 
 

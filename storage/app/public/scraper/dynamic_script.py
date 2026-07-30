@@ -1,5 +1,6 @@
 #!/root/Script/myenv/bin/python
 
+import atexit
 import os, requests, json, sys
 from bs4 import BeautifulSoup
 import csv, re, time
@@ -18,6 +19,7 @@ from selenium.common.exceptions import (
 from sys import platform
 import shutil
 import socket
+import tempfile
 import threading
 from datetime import datetime, timezone
 
@@ -72,10 +74,19 @@ PERSIST_BROWSER = os.environ.get(
     "FCMS_PERSIST_BROWSER",
     "0",
 ).strip().lower() in {"1", "true", "yes", "on"}
+FRESH_BROWSER = os.environ.get(
+    "FCMS_FRESH_BROWSER",
+    "0",
+).strip().lower() in {"1", "true", "yes", "on"}
+FORCE_CREDENTIAL_AUTH = os.environ.get(
+    "FCMS_FORCE_CREDENTIAL_AUTH",
+    "0",
+).strip().lower() in {"1", "true", "yes", "on"}
 CHROME_DEBUGGER_ADDRESS = os.environ.get(
     "FCMS_CHROME_DEBUGGER_ADDRESS",
     "127.0.0.1:9222",
 )
+FRESH_CHROME_PROFILE_DIR = None
 
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.mkdir(DOWNLOAD_FOLDER)
@@ -505,8 +516,25 @@ def recordObservedDownload(
     )
 
 
+def cleanupFreshChromeProfile():
+    global FRESH_CHROME_PROFILE_DIR
+    if not FRESH_CHROME_PROFILE_DIR:
+        return
+    profile_path = os.path.realpath(FRESH_CHROME_PROFILE_DIR)
+    temporary_root = os.path.realpath(tempfile.gettempdir())
+    if (
+        os.path.dirname(profile_path) == temporary_root
+        and os.path.basename(profile_path).startswith(
+            "teamoptix-fedex-chrome-"
+        )
+    ):
+        shutil.rmtree(profile_path, ignore_errors=True)
+    FRESH_CHROME_PROFILE_DIR = None
+
+
 def getDriver():
-    if isPlatformLinux() and PERSIST_BROWSER:
+    global FRESH_CHROME_PROFILE_DIR
+    if isPlatformLinux() and PERSIST_BROWSER and not FRESH_BROWSER:
         try:
             debugger_host, debugger_port = CHROME_DEBUGGER_ADDRESS.rsplit(":", 1)
             with socket.create_connection(
@@ -545,10 +573,17 @@ def getDriver():
             if PERSIST_BROWSER
             else '--remote-debugging-port=0'
         )
-        chrome_profile_dir = os.environ.get(
-            "FCMS_CHROME_PROFILE_DIR",
-            "/tmp/teamoptix-selenium-chrome",
-        )
+        if FRESH_BROWSER:
+            chrome_profile_dir = tempfile.mkdtemp(
+                prefix="teamoptix-fedex-chrome-",
+            )
+            FRESH_CHROME_PROFILE_DIR = chrome_profile_dir
+            atexit.register(cleanupFreshChromeProfile)
+        else:
+            chrome_profile_dir = os.environ.get(
+                "FCMS_CHROME_PROFILE_DIR",
+                "/tmp/teamoptix-selenium-chrome",
+            )
         options.add_argument(f'--user-data-dir={chrome_profile_dir}')
         if PERSIST_BROWSER:
             options.add_experimental_option('detach', True)
@@ -746,6 +781,8 @@ def scrollTo(el, driver):
     driver.execute_script("window.scrollBy(0, arguments[0]);", scroll_y_by)
 
 def restoreSessionCookies(driver):
+    if FORCE_CREDENTIAL_AUTH:
+        return 0
     if not os.path.exists(SESSION_COOKIE_FILE):
         return 0
 
@@ -765,6 +802,8 @@ def restoreSessionCookies(driver):
         return 0
 
 def persistSessionCookies(driver):
+    if FORCE_CREDENTIAL_AUTH:
+        return
     try:
         raw_cookies = driver.execute_cdp_cmd(
             "Network.getAllCookies",
@@ -820,9 +859,6 @@ def authenticateDriver(driver):
             )
         )
 
-    # Chrome uses a durable runner profile. A successful Operations Pulse
-    # session is therefore reused across completion-driven cycles instead of
-    # submitting the username and password again for every report lane.
     try:
         WebDriverWait(driver, 20).until(authentication_entry_ready)
     except TimeoutException:
@@ -842,7 +878,10 @@ def authenticateDriver(driver):
         driver.get(init_url)
         WebDriverWait(driver, 30).until(authentication_entry_ready)
 
-    if driver.find_elements(By.XPATH, "//a[@id='PT_HOME']"):
+    if (
+        not FORCE_CREDENTIAL_AUTH
+        and driver.find_elements(By.XPATH, "//a[@id='PT_HOME']")
+    ):
         logging.info("FedEx session reused")
         persistSessionCookies(driver)
         emit_runtime_event(
@@ -1337,19 +1376,24 @@ def main(section_='', option_=0, retry=1):
                 )
                 time.sleep(1)
 
-                # Combined Manifest
+                # The original FCC runner always activated Combined Manifest
+                # first. That request initializes the route's manifest panels
+                # before Delivery and Pickup are opened. Keep that navigation
+                # contract even when the Combined file itself is not requested.
+                time.sleep(1)
+                clickManifestTab(
+                    driver,
+                    "Combined Manifest",
+                    i,
+                )
+                logging.info("Initialized the Combined Manifest tab...")
+                time.sleep(1)
+
+                # Combined Manifest download remains optional.
                 if (
                     should_download_manifest("combined")
                     and "combined" in due_manifest_types
                 ):
-                    time.sleep(1)
-                    clickManifestTab(
-                        driver,
-                        "Combined Manifest",
-                        i,
-                    )
-                    logging.info("Clicked the tab Combined Manifest...")
-                    time.sleep(1)
                     logging.info("Waiting for loading...")
                     combined_path = collectOptionalManifest(
                         driver,
@@ -1364,7 +1408,9 @@ def main(section_='', option_=0, retry=1):
                             "combined",
                         )
                 else:
-                    logging.info("Skipping Combined Manifest")
+                    logging.info(
+                        "Skipping Combined Manifest download after initialization"
+                    )
 
                 # Delivery Manifest
                 if (
