@@ -24,7 +24,8 @@ const primaryLinks: NavItem[] = [
 
 const secondaryLinksByDomain: Record<string, NavItem[]> = {
   platform: [
-    { href: "/teamoptix/platform", label: "Platform Configuration" },
+    { href: "/teamoptix/platform", label: "Switchboard" },
+    { href: "/teamoptix/platform/intake", label: "Customer Intake" },
   ],
   business: [
     { href: "/teamoptix/business", label: "Overview" },

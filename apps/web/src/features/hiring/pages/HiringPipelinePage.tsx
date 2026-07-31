@@ -284,6 +284,7 @@ export default function HiringPipelinePage() {
   const [rows, setRows] = useState<PipelineCandidateRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [candidateOverlayOpen, setCandidateOverlayOpen] = useState(false);
+  const [candidateOverlaySession, setCandidateOverlaySession] = useState(0);
   const [savingCandidate, setSavingCandidate] = useState(false);
   const [candidateError, setCandidateError] = useState<string | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState<RosterRow | null>(null);
@@ -488,6 +489,7 @@ export default function HiringPipelinePage() {
               type="button"
               onClick={() => {
                 setCandidateError(null);
+                setCandidateOverlaySession((session) => session + 1);
                 setCandidateOverlayOpen(true);
               }}
             >
@@ -622,6 +624,7 @@ export default function HiringPipelinePage() {
         />
 
         <AddCandidateOverlay
+          key={candidateOverlaySession}
           open={candidateOverlayOpen}
           saving={savingCandidate}
           error={candidateError}
