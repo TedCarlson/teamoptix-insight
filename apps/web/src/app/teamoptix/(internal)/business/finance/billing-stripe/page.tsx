@@ -16,14 +16,23 @@ type BillingCatalogItem = {
   status: string;
 };
 
+type StripeMode = "Live" | "Sandbox" | "Unknown";
+
 async function loadStripeBillingStatus() {
   const secretKey = process.env.STRIPE_SECRET_KEY;
   const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
+  const mode: StripeMode = secretKey?.startsWith("sk_live_")
+    ? "Live"
+    : secretKey?.startsWith("sk_test_")
+      ? "Sandbox"
+      : "Unknown";
+
   if (!secretKey || !publishableKey) {
     return {
       connected: false,
+      mode,
       error: "Stripe API keys are not configured.",
       metrics: [] as BillingMetric[],
       catalog: [] as BillingCatalogItem[],
@@ -64,6 +73,7 @@ async function loadStripeBillingStatus() {
 
     return {
       connected: true,
+      mode,
       error: null,
       webhookConfigured: Boolean(webhookSecret),
       metrics: [
@@ -78,6 +88,7 @@ async function loadStripeBillingStatus() {
   } catch (error) {
     return {
       connected: false,
+      mode,
       error: error instanceof Error ? error.message : "Stripe connection failed.",
       webhookConfigured: Boolean(webhookSecret),
       metrics: [] as BillingMetric[],
@@ -117,7 +128,11 @@ export default async function Page() {
           <WorkspaceSection
             eyebrow="Provider"
             title="Stripe"
-            description={status.connected ? "Stripe sandbox is connected." : "Stripe is not connected."}
+            description={
+              status.connected
+                ? `Stripe ${status.mode.toLowerCase()} mode is connected.`
+                : "Stripe is not connected."
+            }
           >
             <div
               style={{
@@ -127,7 +142,7 @@ export default async function Page() {
               }}
             >
               <BillingStatusCard label="API" value={status.connected ? "Connected" : "Not connected"} />
-              <BillingStatusCard label="Mode" value="Sandbox" />
+              <BillingStatusCard label="Mode" value={status.mode} />
               <BillingStatusCard
                 label="Webhook Secret"
                 value={status.webhookConfigured ? "Configured" : "Missing"}
@@ -141,8 +156,8 @@ export default async function Page() {
 
           <WorkspaceSection
             eyebrow="Stripe Objects"
-            title="Sandbox Counts"
-            description="Current Stripe sandbox object counts available to Insight."
+            title={`${status.mode} Counts`}
+            description={`Current Stripe ${status.mode.toLowerCase()} object counts available to Insight.`}
           >
             <div
               style={{
@@ -160,7 +175,7 @@ export default async function Page() {
           <WorkspaceSection
             eyebrow="Catalog"
             title="Stripe Commercial Catalog"
-            description="Active Stripe sandbox products and prices available for Insight billing workflows."
+            description={`Active Stripe ${status.mode.toLowerCase()} products and prices available for Insight billing workflows.`}
           >
             <div style={{ display: "grid", gap: 10 }}>
               {status.catalog.map((item) => (
