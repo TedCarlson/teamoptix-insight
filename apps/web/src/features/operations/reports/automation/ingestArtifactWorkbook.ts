@@ -1,5 +1,6 @@
 import { ingestDswWorkbook } from "@/features/operations/reports/dsw/dsw.ingest";
 import { ingestDswPackageStatusWorkbook } from "@/features/operations/reports/dsw/packageStatus/packageStatus.ingest";
+import { ingestDroPackageDetailWorkbook } from "@/features/operations/reports/dro/dro.ingest";
 import { ingestFccWorkbook } from "@/features/operations/reports/fcc/fcc.ingest";
 
 type ArtifactRow = {
@@ -99,6 +100,20 @@ export async function ingestArtifactWorkbook(params: {
       fileSize: artifact.size_bytes ?? buffer.length,
       serviceDate: artifact.service_date ?? undefined,
       uploadedByAuthUserId,
+      uploadedByProfileId,
+    });
+  }
+
+  if (artifact.report_family_key === "DRO") {
+    if (artifactKey !== "DRO_PACKAGE_DETAIL") {
+      throw new Error(`Unsupported DRO artifact ${artifactKey || "UNKNOWN"}.`);
+    }
+    return ingestDroPackageDetailWorkbook({
+      supabase,
+      slug,
+      buffer,
+      filename,
+      artifact,
       uploadedByProfileId,
     });
   }
