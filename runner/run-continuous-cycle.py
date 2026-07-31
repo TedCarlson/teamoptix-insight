@@ -854,22 +854,30 @@ def main() -> int:
             "evidence": failure or exception_evidence,
         }
 
+    terminal_rpc = (
+        "record_operations_dro_runner_cycle_terminal"
+        if args.request_type == "DRO_AM"
+        else "record_operations_runner_cycle_terminal"
+    )
+    terminal_params = {
+        "p_runner_key": args.runner_key,
+        "p_cycle_id": cycle_id,
+        "p_service_date": args.service_date,
+        "p_started_at": utc_iso(started_at),
+        "p_completed_at": utc_iso(completed_at),
+        "p_outcome": outcome,
+        "p_requested_reports": reports,
+        "p_request_payload": payload,
+        "p_receipt_json": receipt,
+        "p_artifacts_json": artifacts,
+        "p_error_message": error_message,
+    }
+    if args.request_type != "DRO_AM":
+        terminal_params["p_request_type"] = args.request_type
+
     terminal = RUNNER.rpc(
-        "record_operations_runner_cycle_terminal",
-        {
-            "p_runner_key": args.runner_key,
-            "p_cycle_id": cycle_id,
-            "p_request_type": args.request_type,
-            "p_service_date": args.service_date,
-            "p_started_at": utc_iso(started_at),
-            "p_completed_at": utc_iso(completed_at),
-            "p_outcome": outcome,
-            "p_requested_reports": reports,
-            "p_request_payload": payload,
-            "p_receipt_json": receipt,
-            "p_artifacts_json": artifacts,
-            "p_error_message": error_message,
-        },
+        terminal_rpc,
+        terminal_params,
         timeout_seconds=60,
     )
     print(
