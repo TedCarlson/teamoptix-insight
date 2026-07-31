@@ -1,4 +1,4 @@
-import MileageAuditPage from "@/features/operations/mileage-audit/pages/MileageAuditPage";
+import { redirect } from "next/navigation";
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -6,5 +6,5 @@ type Props = {
 
 export default async function Page({ params }: Props) {
   const { slug } = await params;
-  return <MileageAuditPage slug={slug} />;
+  redirect(`/company/${slug}/operations`);
 }

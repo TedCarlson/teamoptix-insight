@@ -228,7 +228,6 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     { label: "Dispatch", href: `${operationsBase}/dispatch`, match: (path) => path.startsWith(`${operationsBase}/dispatch`) || path.startsWith(`${base}/dispatch`) },
     { label: "Service", href: `${operationsBase}/service`, match: (path) => path.startsWith(`${operationsBase}/service`) || path.startsWith(`${operationsBase}/delivery-window`) },
     { label: "Planning", href: `${operationsBase}/planning`, match: (path) => path.startsWith(`${operationsBase}/planning`) || path.startsWith(`${operationsBase}/intelligence`) },
-    { label: "Mileage Audit", href: `${operationsBase}/mileage-audit`, match: (path) => path.startsWith(`${operationsBase}/mileage-audit`) },
     { label: "Ops Reports", href: `${base}/prior-day`, match: (path) => path === `${base}/prior-day` },
   ];
 
@@ -389,9 +388,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
                 style={
                   item.label.startsWith("Signature Required")
                     ? { background: "#fee2e2", borderColor: "#ef4444", color: "#991b1b" }
-                    : item.label === "Mileage Audit"
-                      ? { marginLeft: 18 }
-                      : undefined
+                    : undefined
                 }
               >
                 {item.label}
