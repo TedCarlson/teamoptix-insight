@@ -6,6 +6,18 @@ declare
   v_company_id constant uuid := '0385bc8f-eb13-490b-92c8-f34bad2507df';
   v_invoice_id uuid;
 begin
+  if exists (
+    select 1
+    from billing.payment payment
+    where payment.company_id = v_company_id
+      and (
+        payment.provider_livemode is false
+        or payment.provider_checkout_session_id like 'cs_test_%'
+      )
+  ) then
+    raise exception 'Beacon Point contains sandbox payment evidence';
+  end if;
+
   select invoice.id
   into strict v_invoice_id
   from billing.invoice invoice
