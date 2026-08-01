@@ -278,7 +278,7 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
           </section>
 
           <section style={bucketStyle}>
-            <p className="workspace-eyebrow" style={{ margin: 0 }}>Optional profile details</p>
+            <p className="workspace-eyebrow" style={{ margin: 0 }}>Company roster details</p>
             <Field label="Address Line 1" value={addressLine1} onChange={setAddressLine1} />
             <Field label="Address Line 2" value={addressLine2} onChange={setAddressLine2} />
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 10 }}>

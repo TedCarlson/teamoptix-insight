@@ -164,48 +164,53 @@ export async function GET(
     }
 
     let opsByRosterId = new Map<string, any>();
+    let personalByRosterId = new Map<string, any>();
+    let licenseByRosterId = new Map<string, any>();
 
     if (rosterIds.length > 0) {
-      const { data: opsRows } = await supabase
-        .from("company_roster_operations_fact_v")
-        .select("*")
-        .in("roster_id", rosterIds);
+      const [opsResult, personalResult, licenseResult] = await Promise.all([
+        supabase
+          .from("company_roster_operations_fact_v")
+          .select("*")
+          .in("roster_id", rosterIds),
+        supabase
+          .from("company_roster_personal_fact_v")
+          .select(
+            "roster_id, date_of_birth, address_line_1, address_line_2, city, state_region, postal_code",
+          )
+          .eq("company_id", company.id)
+          .in("roster_id", rosterIds),
+        supabase
+          .from("company_roster_license_fact_v")
+          .select(
+            "roster_id, license_number, issuing_state, issue_date, expiration_date",
+          )
+          .eq("company_id", company.id)
+          .in("roster_id", rosterIds),
+      ]);
+
+      const factReadError =
+        opsResult.error ?? personalResult.error ?? licenseResult.error;
+
+      if (factReadError) {
+        return NextResponse.json(
+          { error: factReadError.message, stages, candidates: [] },
+          { status: 500 },
+        );
+      }
 
       opsByRosterId = new Map(
-        (opsRows ?? []).map((ops: any) => [ops.roster_id, ops])
+        (opsResult.data ?? []).map((ops: any) => [ops.roster_id, ops]),
       );
-    }
-
-    const profileIds = (rosterRows ?? [])
-      .map((row: any) => row.profile_id)
-      .filter(Boolean);
-
-    let privateFactByProfileId = new Map<string, any>();
-    let licenseByProfileId = new Map<string, any>();
-
-    if (profileIds.length > 0) {
-      const { data: privateRows } = await supabase
-        .schema("core")
-        .from("profile_private_fact")
-        .select("profile_id, date_of_birth, address_line_1, address_line_2, city, state_region, postal_code")
-        .in("profile_id", profileIds);
-
-      privateFactByProfileId = new Map(
-        (privateRows ?? []).map((fact: any) => [fact.profile_id, fact])
+      personalByRosterId = new Map(
+        (personalResult.data ?? []).map((fact: any) => [fact.roster_id, fact]),
       );
-
-      const { data: licenseRows } = await supabase
-        .schema("core")
-        .from("profile_driver_license")
-        .select("profile_id, license_number, issuing_state, issue_date, expiration_date, created_at")
-        .in("profile_id", profileIds)
-        .order("created_at", { ascending: false });
-
-      for (const license of licenseRows ?? []) {
-        if (!licenseByProfileId.has(license.profile_id)) {
-          licenseByProfileId.set(license.profile_id, license);
-        }
-      }
+      licenseByRosterId = new Map(
+        (licenseResult.data ?? []).map((license: any) => [
+          license.roster_id,
+          license,
+        ]),
+      );
     }
 
     let factRows: any[] = [];
@@ -227,12 +232,8 @@ export async function GET(
     const candidates = (rosterRows ?? []).map((row) => {
       const fact = factByRosterId.get(row.roster_member_id);
       const ops = opsByRosterId.get(row.roster_member_id);
-      const privateFact = row.profile_id
-        ? privateFactByProfileId.get(row.profile_id)
-        : null;
-      const license = row.profile_id
-        ? licenseByProfileId.get(row.profile_id)
-        : null;
+      const personal = personalByRosterId.get(row.roster_member_id);
+      const license = licenseByRosterId.get(row.roster_member_id);
       const stageKey = fact?.stage_key ?? fallbackStageKey(row);
       const stage = stageByKey.get(stageKey);
 
@@ -251,16 +252,16 @@ export async function GET(
         notes: row.notes ?? null,
         profile_id: row.profile_id ?? null,
         person_id: row.person_id ?? null,
-        date_of_birth: privateFact?.date_of_birth ?? row.date_of_birth ?? null,
-        address_line_1: privateFact?.address_line_1 ?? row.address_line_1 ?? null,
-        address_line_2: privateFact?.address_line_2 ?? row.address_line_2 ?? null,
-        city: privateFact?.city ?? row.city ?? null,
-        state_region: privateFact?.state_region ?? row.state_region ?? null,
-        postal_code: privateFact?.postal_code ?? row.postal_code ?? null,
-        license_number: license?.license_number ?? row.license_number ?? null,
-        issuing_state: license?.issuing_state ?? row.issuing_state ?? null,
-        license_issue_date: license?.issue_date ?? row.license_issue_date ?? null,
-        license_expiration_date: license?.expiration_date ?? row.license_expiration_date ?? null,
+        date_of_birth: personal?.date_of_birth ?? null,
+        address_line_1: personal?.address_line_1 ?? null,
+        address_line_2: personal?.address_line_2 ?? null,
+        city: personal?.city ?? null,
+        state_region: personal?.state_region ?? null,
+        postal_code: personal?.postal_code ?? null,
+        license_number: license?.license_number ?? null,
+        issuing_state: license?.issuing_state ?? null,
+        license_issue_date: license?.issue_date ?? null,
+        license_expiration_date: license?.expiration_date ?? null,
         stage_key: stageKey,
         stage_label:
           stage?.label ?? fact?.default_label ?? "New",
@@ -287,8 +288,6 @@ export async function GET(
         ),
       };
     });
-
-    console.log("HIRING DEMETRIUS HYDRATION", candidates.find((c: any) => c.full_name === "Demetrius Chestnut"));
 
     return NextResponse.json({
       company_id: company.id,

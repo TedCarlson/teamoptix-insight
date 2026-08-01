@@ -64,10 +64,11 @@ type Props = {
   inviting?: boolean;
   inviteError?: string | null;
   inviteMessage?: string | null;
+  error?: string | null;
   timelineEvents: TimelineEvent[];
   loadingTimeline: boolean;
   onClose: () => void;
-  onSaveDetails: (draft: CoreDraft) => Promise<void>;
+  onSaveDetails: (draft: Partial<CoreDraft>) => Promise<boolean>;
   onSaveOperations: (draft: OperationsDraft) => Promise<void>;
   onRefreshPerson: () => Promise<void>;
   onSaveStatus: (draft: StatusDraft) => Promise<void>;
@@ -84,6 +85,7 @@ export default function ManagePersonDrawer({
   inviting = false,
   inviteError = null,
   inviteMessage = null,
+  error = null,
   timelineEvents,
   loadingTimeline,
   onClose,
@@ -148,6 +150,12 @@ export default function ManagePersonDrawer({
             Close
           </button>
         </header>
+
+        {error ? (
+          <p style={{ margin: 0, color: "#c62828", fontWeight: 800 }}>
+            {error}
+          </p>
+        ) : null}
 
         <PersonLifecycleSection
           person={person}

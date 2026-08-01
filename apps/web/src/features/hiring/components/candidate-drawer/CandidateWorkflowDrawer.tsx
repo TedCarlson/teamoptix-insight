@@ -16,6 +16,7 @@ type CoreDraft = {
   worker_type: string;
   market_code: string;
   notes: string;
+  hire_date: string;
 
   date_of_birth: string;
   address_line_1: string;
@@ -363,8 +364,8 @@ export default function CandidateWorkflowDrawer({
     }
   }
 
-  async function saveDetails(draft: CoreDraft) {
-    if (!person) return;
+  async function saveDetails(draft: Partial<CoreDraft>) {
+    if (!person) return false;
 
     setSavingDetails(true);
     setError(null);
@@ -383,36 +384,55 @@ export default function CandidateWorkflowDrawer({
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data?.error ?? "Failed to save candidate details.");
-        return;
+        setError(
+          data?.detail ?? data?.error ?? "Failed to save candidate details.",
+        );
+        return false;
       }
 
       const saved = data?.roster ?? {};
 
       onSaved?.({
         ...person,
-        full_name: saved.full_name ?? draft.full_name,
-        email: saved.email ?? draft.email,
-        phone: saved.phone ?? draft.phone,
-        worker_type: saved.worker_type ?? draft.worker_type,
-        market_code: saved.market_code ?? draft.market_code,
-        notes: saved.notes ?? draft.notes,
-        date_of_birth: saved.date_of_birth ?? draft.date_of_birth,
-        address_line_1: saved.address_line_1 ?? draft.address_line_1,
-        address_line_2: saved.address_line_2 ?? draft.address_line_2,
-        city: saved.city ?? draft.city,
-        state_region: saved.state_region ?? draft.state_region,
-        postal_code: saved.postal_code ?? draft.postal_code,
-        license_number: saved.license_number ?? draft.license_number,
-        issuing_state: saved.issuing_state ?? draft.issuing_state,
-        license_issue_date: saved.license_issue_date ?? draft.license_issue_date,
+        full_name: saved.full_name ?? draft.full_name ?? person.full_name,
+        email: saved.email ?? draft.email ?? person.email,
+        phone: saved.phone ?? draft.phone ?? person.phone,
+        worker_type:
+          saved.worker_type ?? draft.worker_type ?? person.worker_type,
+        market_code:
+          saved.market_code ?? draft.market_code ?? person.market_code,
+        notes: saved.notes ?? draft.notes ?? person.notes,
+        hire_date: saved.hire_date ?? draft.hire_date ?? person.hire_date,
+        date_of_birth:
+          saved.date_of_birth ?? draft.date_of_birth ?? person.date_of_birth,
+        address_line_1:
+          saved.address_line_1 ?? draft.address_line_1 ?? person.address_line_1,
+        address_line_2:
+          saved.address_line_2 ?? draft.address_line_2 ?? person.address_line_2,
+        city: saved.city ?? draft.city ?? person.city,
+        state_region:
+          saved.state_region ?? draft.state_region ?? person.state_region,
+        postal_code:
+          saved.postal_code ?? draft.postal_code ?? person.postal_code,
+        license_number:
+          saved.license_number ?? draft.license_number ?? person.license_number,
+        issuing_state:
+          saved.issuing_state ?? draft.issuing_state ?? person.issuing_state,
+        license_issue_date:
+          saved.license_issue_date ??
+          draft.license_issue_date ??
+          person.license_issue_date,
         license_expiration_date:
-          saved.license_expiration_date ?? draft.license_expiration_date,
+          saved.license_expiration_date ??
+          draft.license_expiration_date ??
+          person.license_expiration_date,
       });
 
       await onRefresh?.();
+      return true;
     } catch {
       setError("Failed to save candidate details.");
+      return false;
     } finally {
       setSavingDetails(false);
     }

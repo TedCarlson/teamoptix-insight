@@ -29,7 +29,7 @@ export type CoreDraft = {
 type Props = {
   person: RosterRow;
   saving: boolean;
-  onSave: (draft: CoreDraft) => Promise<void>;
+  onSave: (draft: Partial<CoreDraft>) => Promise<boolean>;
 };
 
 function toInputDate(value: string | null | undefined) {
@@ -85,9 +85,11 @@ function TextInput(props: {
 export default function PersonCoreSection({ person, saving, onSave }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<CoreDraft>(() => buildDraft(person));
+  const [saveFailed, setSaveFailed] = useState(false);
 
   function beginEdit() {
     setDraft(buildDraft(person));
+    setSaveFailed(false);
     setEditing(true);
   }
 
@@ -99,7 +101,14 @@ export default function PersonCoreSection({ person, saving, onSave }: Props) {
       )
     ) as Partial<CoreDraft>;
 
-    await onSave(dirty as CoreDraft);
+    setSaveFailed(false);
+    const saved = await onSave(dirty);
+
+    if (!saved) {
+      setSaveFailed(true);
+      return;
+    }
+
     setEditing(false);
   }
 
@@ -295,6 +304,12 @@ export default function PersonCoreSection({ person, saving, onSave }: Props) {
           >
             {saving ? "Saving..." : "Save details"}
           </button>
+
+          {saveFailed ? (
+            <p style={{ margin: 0, color: "#c62828", fontWeight: 800 }}>
+              Details were not saved. Review the error and retry.
+            </p>
+          ) : null}
         </div>
       )}
     </DrawerSection>

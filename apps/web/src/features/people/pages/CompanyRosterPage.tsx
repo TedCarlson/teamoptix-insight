@@ -304,6 +304,8 @@ export default function CompanyRosterPage() {
   }
 
   function openWorkflowDrawer(row: RosterRow) {
+    setError(null);
+
     if (row.employment_status === "Candidate") {
       setCandidateWorkflowPerson(row);
       setManagedPerson(null);
@@ -338,7 +340,7 @@ export default function CompanyRosterPage() {
     }
   }
 
-  async function savePersonDetails(draft: {
+  async function savePersonDetails(draft: Partial<{
     full_name: string;
     email: string;
     phone: string;
@@ -358,8 +360,8 @@ export default function CompanyRosterPage() {
     issuing_state: string;
     license_issue_date: string;
     license_expiration_date: string;
-  }) {
-    if (!managedPerson) return;
+  }>) {
+    if (!managedPerson) return false;
 
     setSavingDetails(true);
     setError(null);
@@ -378,8 +380,8 @@ export default function CompanyRosterPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data?.error ?? "Failed to save person details.");
-        return;
+        setError(data?.detail ?? data?.error ?? "Failed to save person details.");
+        return false;
       }
 
       const nextPerson = data?.roster
@@ -397,8 +399,10 @@ export default function CompanyRosterPage() {
         )
       );
       setManagedPerson(nextPerson);
+      return true;
     } catch {
       setError("Failed to save person details.");
+      return false;
     } finally {
       setSavingDetails(false);
     }
@@ -678,6 +682,7 @@ export default function CompanyRosterPage() {
           inviting={invitingPerson}
           inviteError={inviteError}
           inviteMessage={inviteMessage}
+          error={error}
           onSaveDetails={savePersonDetails}
           onSaveOperations={saveOperations}
           onRefreshPerson={async () => {

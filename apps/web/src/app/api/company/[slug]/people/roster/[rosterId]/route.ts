@@ -146,6 +146,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
         p_issuing_state: current.issuing_state,
         p_license_issue_date: current.license_issue_date,
         p_license_expiration_date: current.license_expiration_date,
+        p_replace_blank_values: true,
       },
     );
 

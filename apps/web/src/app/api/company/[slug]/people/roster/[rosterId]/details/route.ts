@@ -25,13 +25,13 @@ export async function PATCH(
     const supabase = await getSupabaseServerClient();
     const body = await req.json().catch(() => ({}));
 
-    const { data: current, error: currentError } = await supabase
+    const { data: membership, error: currentError } = await supabase
       .from("company_roster_view")
-      .select("*")
+      .select("company_id")
       .eq("roster_member_id", rosterId)
       .maybeSingle();
 
-    if (currentError || !current) {
+    if (currentError || !membership) {
       return NextResponse.json(
         {
           error: "Failed to load current person record.",
@@ -42,15 +42,29 @@ export async function PATCH(
       );
     }
 
+    const current = await loadRosterAuthoritativeDto({
+      supabase,
+      companySlug: slug,
+      companyId: String(membership.company_id),
+      rosterId,
+    });
+
+    if (!current) {
+      return NextResponse.json(
+        { error: "Current person record not found." },
+        { status: 404 },
+      );
+    }
+
     const pickText = (key: string) =>
       Object.prototype.hasOwnProperty.call(body, key)
         ? textOrNull(body[key])
-        : (current[key] ?? null);
+        : (current[key as keyof typeof current] ?? null);
 
     const pickDate = (key: string) =>
       Object.prototype.hasOwnProperty.call(body, key)
         ? dateOrNull(body[key])
-        : (current[key] ?? null);
+        : (current[key as keyof typeof current] ?? null);
 
     const { data, error } = await supabase.rpc(
       "update_company_roster_details",
@@ -76,6 +90,10 @@ export async function PATCH(
         p_license_expiration_date: pickDate(
           "license_expiration_date",
         ),
+        // Select the roster-authoritative overload explicitly. Without this
+        // argument Postgres prefers the legacy exact-arity overload, which
+        // writes license data to the profile warehouse instead.
+        p_replace_blank_values: true,
       },
     );
 
@@ -93,7 +111,7 @@ export async function PATCH(
     const roster = await loadRosterAuthoritativeDto({
       supabase,
       companySlug: slug,
-      companyId: String(current.company_id),
+      companyId: String(membership.company_id),
       rosterId,
     });
 
