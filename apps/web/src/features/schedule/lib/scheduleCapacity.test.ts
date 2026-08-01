@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   resolveBaselineScheduledOffDrivers,
+  resolveOverrideOffRows,
   type ScheduleCapacityPerson,
 } from "./scheduleCapacity";
 
@@ -34,6 +35,37 @@ describe("resolveBaselineScheduledOffDrivers", () => {
 
     expect(scheduledOff.map((row) => row.roster_member_id)).toEqual([
       "driver-off",
+    ]);
+  });
+});
+
+describe("resolveOverrideOffRows", () => {
+  it("keeps override-off rows separate from scheduled off and add-ins", () => {
+    const overrideOff = resolveOverrideOffRows([
+      person({ roster_member_id: "scheduled-off" }),
+      person({
+        roster_member_id: "time-off",
+        override_type: "TIME_OFF",
+      }),
+      person({
+        roster_member_id: "call-out",
+        override_type: "CALL_OUT",
+      }),
+      person({
+        roster_member_id: "admin-off",
+        override_type: "ADMIN_OFF",
+      }),
+      person({
+        roster_member_id: "add-in",
+        planned_on: true,
+        override_type: "ADD_IN",
+      }),
+    ]);
+
+    expect(overrideOff.map((row) => row.roster_member_id)).toEqual([
+      "time-off",
+      "call-out",
+      "admin-off",
     ]);
   });
 });

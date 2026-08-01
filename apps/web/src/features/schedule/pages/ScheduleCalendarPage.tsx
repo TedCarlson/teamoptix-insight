@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import {
   resolveBaselineScheduledOffDrivers,
   resolveDailyScheduleCapacity,
+  resolveOverrideOffRows,
   scheduleRouteLabel,
   type ScheduleCapacityRoute,
 } from "@/features/schedule/lib/scheduleCapacity";
@@ -448,9 +449,7 @@ export default function ScheduleCalendarPage() {
 
             const scheduledOffRows =
               resolveBaselineScheduledOffDrivers(selectedRows);
-            const overrideRows = selectedRows.filter(
-              (row) => Boolean(row.override_type)
-            );
+            const overrideOffRows = resolveOverrideOffRows(selectedRows);
 
             return (
               <div
@@ -680,19 +679,19 @@ export default function ScheduleCalendarPage() {
                           }}
                         >
                           <strong style={{ color: "#475569" }}>
-                            Off / Override
+                            Override Off
                           </strong>
                           <span style={{ color: "#64748b" }}>
-                            {overrideRows.length}
+                            {overrideOffRows.length}
                           </span>
                         </div>
 
-                        {overrideRows.length === 0 ? (
+                        {overrideOffRows.length === 0 ? (
                           <div style={{ color: "#64748b" }}>
                             None
                           </div>
                         ) : (
-                          overrideRows.map((row) => (
+                          overrideOffRows.map((row) => (
                             <div
                               key={scheduleRowKey(row)}
                               style={{

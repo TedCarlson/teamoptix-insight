@@ -87,6 +87,14 @@ export function resolveBaselineScheduledOffDrivers<
   );
 }
 
+export function resolveOverrideOffRows<T extends ScheduleCapacityPerson>(
+  scheduleRows: T[]
+) {
+  return scheduleRows.filter(
+    (row) => !row.planned_on && Boolean(row.override_type)
+  );
+}
+
 export function resolveDailyScheduleCapacity(params: {
   serviceDate: string;
   routes: ScheduleCapacityRoute[];
