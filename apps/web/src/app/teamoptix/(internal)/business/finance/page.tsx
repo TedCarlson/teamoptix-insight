@@ -1,6 +1,7 @@
 import Link from "next/link";
 import TeamOptixShell from "@/features/teamoptix/navigation/TeamOptixShell";
-import { WorkspaceHeader, WorkspaceSection } from "@/features/ui/workspace";
+import { getFinanceBillingSnapshot } from "@/features/teamoptix/finance/financeBilling.server";
+import { WorkspaceSection } from "@/features/ui/workspace";
 
 const financeAreas = [
   {
@@ -48,15 +49,26 @@ const financeAreas = [
   },
 ];
 
-export default function FinancePage() {
+const money = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+});
+
+export default async function FinancePage() {
+  const billing = await getFinanceBillingSnapshot();
+
   return (
     <TeamOptixShell>
       <main className="workspace-shell">
         <section className="workspace-main">
 
           <section className="summary-grid">
-            <WorkspaceSection eyebrow="Pulse" title="Billing" description="Stripe foundation not connected yet.">
-              <div />
+            <WorkspaceSection
+              eyebrow="Pulse"
+              title="Billing"
+              description={`${billing.metrics.paidInvoices} paid invoice${billing.metrics.paidInvoices === 1 ? "" : "s"} · ${money.format(billing.metrics.collected)} collected · ${money.format(billing.metrics.outstanding)} outstanding.`}
+            >
+              <Link href="/teamoptix/business/finance/billing">Open billing ledger</Link>
             </WorkspaceSection>
             <WorkspaceSection eyebrow="Pulse" title="Accounting" description="Ledger workflow not connected yet.">
               <div />

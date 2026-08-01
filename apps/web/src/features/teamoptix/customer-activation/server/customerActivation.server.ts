@@ -84,6 +84,8 @@ type ImplementationPaymentRecord = {
   payment_status: string;
   paid_at: string | null;
   provider_event_id: string | null;
+  provider_invoice_id: string | null;
+  provider_livemode: boolean | null;
 };
 
 type ActiveContractRecord = {
@@ -597,11 +599,12 @@ async function syncComputedActivationReadiness(
       .schema("billing")
       .from("payment")
       .select(
-        "id, amount, currency, payment_status, paid_at, provider_event_id"
+        "id, amount, currency, payment_status, paid_at, provider_event_id, provider_invoice_id, provider_livemode"
       )
       .eq("company_id", companyId)
       .eq("payment_purpose", "implementation")
       .eq("payment_status", "paid")
+      .eq("provider_livemode", true)
       .order("paid_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
@@ -857,6 +860,10 @@ async function syncComputedActivationReadiness(
         payment_id: typedImplementationPayment?.id ?? null,
         provider_event_id:
           typedImplementationPayment?.provider_event_id ?? null,
+        provider_invoice_id:
+          typedImplementationPayment?.provider_invoice_id ?? null,
+        provider_livemode:
+          typedImplementationPayment?.provider_livemode ?? null,
         amount: typedImplementationPayment?.amount ?? null,
         currency: typedImplementationPayment?.currency ?? null,
       },

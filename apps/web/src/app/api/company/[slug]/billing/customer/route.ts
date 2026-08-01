@@ -125,7 +125,7 @@ export async function POST(
     const { data: existingBillingCustomer, error: existingError } = await admin
       .schema("billing")
       .from("customer")
-      .select("id, provider_customer_id")
+      .select("id, provider_customer_id, provider_livemode")
       .eq("company_id", company.id)
       .eq("provider", "stripe")
       .maybeSingle();
@@ -138,6 +138,41 @@ export async function POST(
     }
 
     if (existingBillingCustomer?.provider_customer_id) {
+      let existingStripeCustomer;
+
+      try {
+        existingStripeCustomer = await stripe.customers.retrieve(
+          existingBillingCustomer.provider_customer_id
+        );
+      } catch (error) {
+        return NextResponse.json(
+          {
+            error:
+              `Stored Stripe customer ${existingBillingCustomer.provider_customer_id} ` +
+              "does not exist in the configured Stripe account.",
+            detail: error instanceof Error ? error.message : null,
+          },
+          { status: 409 }
+        );
+      }
+
+      if (existingStripeCustomer.deleted) {
+        return NextResponse.json(
+          { error: "The stored Stripe customer has been deleted." },
+          { status: 409 }
+        );
+      }
+
+      if (
+        existingBillingCustomer.provider_livemode != null &&
+        existingBillingCustomer.provider_livemode !== existingStripeCustomer.livemode
+      ) {
+        return NextResponse.json(
+          { error: "The stored Stripe customer environment does not match the configured Stripe account." },
+          { status: 409 }
+        );
+      }
+
       if (commercialProfile.commercial_status !== "stripe_customer_created") {
         const { error: stageError } = await admin
           .schema("commercial")
@@ -186,6 +221,7 @@ export async function POST(
           company_id: company.id,
           provider: "stripe",
           provider_customer_id: stripeCustomer.id,
+          provider_livemode: stripeCustomer.livemode,
           billing_email: commercialProfile.billing_email.trim(),
           billing_name:
             commercialProfile.billing_contact_name?.trim() ||

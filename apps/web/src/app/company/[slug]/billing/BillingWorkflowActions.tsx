@@ -9,6 +9,7 @@ type Props = {
   slug: string;
   commercialStatus: string;
   stripeCustomerId: string | null;
+  stripeLivemode: boolean | null;
 };
 
 export default function BillingWorkflowActions(props: Props) {
@@ -192,7 +193,7 @@ export default function BillingWorkflowActions(props: Props) {
 
       {props.stripeCustomerId ? (
         <p style={successText}>
-          Stripe customer: {props.stripeCustomerId}
+          Stripe customer: {props.stripeCustomerId} · {props.stripeLivemode ? "Live" : "Sandbox"}
         </p>
       ) : null}
 

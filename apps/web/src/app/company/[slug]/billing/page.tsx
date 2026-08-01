@@ -99,6 +99,7 @@ export default async function CompanyBillingPage(props: PageProps) {
               slug={slug}
               commercialStatus={commercialProfile?.commercial_status ?? "draft"}
               stripeCustomerId={billingCustomer?.provider_customer_id ?? null}
+              stripeLivemode={billingCustomer?.provider_livemode ?? null}
             />
           </section>
         </div>

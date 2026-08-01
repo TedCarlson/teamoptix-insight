@@ -8,6 +8,8 @@ export const runtime = "nodejs";
 
 type OperatorTierStripeMapping = {
   tier_key: string;
+  implementation_fee: number | string | null;
+  stripe_setup_product_id: string | null;
   stripe_setup_price_id: string | null;
   stripe_subscription_price_id: string | null;
 };
@@ -120,7 +122,7 @@ export async function POST(
       .schema("commercial")
       .from("operator_tier")
       .select(
-        "tier_key, stripe_setup_price_id, stripe_subscription_price_id"
+        "tier_key, implementation_fee, stripe_setup_product_id, stripe_setup_price_id, stripe_subscription_price_id"
       )
       .eq("tier_key", profile.operator_tier_key)
       .eq("active", true)
@@ -139,6 +141,30 @@ export async function POST(
       );
     }
 
+    const setupPrice = await stripe.prices.retrieve(tier.stripe_setup_price_id);
+    const setupProductId =
+      typeof setupPrice.product === "string"
+        ? setupPrice.product
+        : setupPrice.product.id;
+    const expectedSetupAmount =
+      tier.implementation_fee == null
+        ? null
+        : Math.round(Number(tier.implementation_fee) * 100);
+
+    if (
+      !setupPrice.active ||
+      !setupPrice.livemode ||
+      setupPrice.recurring != null ||
+      setupPrice.currency !== "usd" ||
+      setupPrice.unit_amount !== expectedSetupAmount ||
+      setupProductId !== tier.stripe_setup_product_id
+    ) {
+      return NextResponse.json(
+        { error: "The selected operator tier is not aligned with the active live Stripe implementation price." },
+        { status: 409 }
+      );
+    }
+
     const origin = request.nextUrl.origin;
     const billingUrl = `${origin}/company/${slug}/billing`;
 
@@ -151,6 +177,28 @@ export async function POST(
           quantity: 1,
         },
       ],
+      invoice_creation: {
+        enabled: true,
+        invoice_data: {
+          metadata: {
+            company_id: company.id,
+            company_slug: company.company_slug,
+            operator_tier_key: tier.tier_key,
+            payment_purpose: "implementation",
+            source: "insight",
+          },
+        },
+      },
+      payment_intent_data: {
+        setup_future_usage: "off_session",
+        metadata: {
+          company_id: company.id,
+          company_slug: company.company_slug,
+          operator_tier_key: tier.tier_key,
+          payment_purpose: "implementation",
+          source: "insight",
+        },
+      },
       client_reference_id: company.id,
       success_url:
         `${billingUrl}?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
