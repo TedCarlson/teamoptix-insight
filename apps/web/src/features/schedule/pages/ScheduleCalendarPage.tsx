@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
+  resolveBaselineScheduledOffDrivers,
   resolveDailyScheduleCapacity,
   scheduleRouteLabel,
   type ScheduleCapacityRoute,
 } from "@/features/schedule/lib/scheduleCapacity";
 
 type GeneratedScheduleRow = {
-  id: string;
+  id: string | null;
   service_date: string;
   roster_member_id: string;
   full_name: string | null;
@@ -18,6 +19,10 @@ type GeneratedScheduleRow = {
   route_name: string | null;
   override_type: string | null;
 };
+
+function scheduleRowKey(row: GeneratedScheduleRow) {
+  return row.id ?? `${row.service_date}:${row.roster_member_id}`;
+}
 
 const DAYS = ["Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"];
 
@@ -258,6 +263,13 @@ export default function ScheduleCalendarPage() {
               scheduleRows: dayRows,
             });
 
+            const scheduledOffRows =
+              resolveBaselineScheduledOffDrivers(dayRows);
+            const scheduledOffCount = scheduledOffRows.length;
+            const scheduledOffNames = scheduledOffRows
+              .map((row) => row.full_name ?? "Unknown")
+              .join(", ");
+
             const overrides = dayRows.filter(
               (row) => row.override_type
             ).length;
@@ -276,7 +288,7 @@ export default function ScheduleCalendarPage() {
                 onClick={() => setSelectedDate(iso)}
                 style={{
                   cursor: "pointer",
-                  minHeight: 120,
+                  minHeight: 132,
                   border: `1px solid ${
                     isToday
                       ? "#818cf8"
@@ -342,33 +354,64 @@ export default function ScheduleCalendarPage() {
                   </div>
 
                   <div
+                    title={
+                      scheduledOffCount > 0
+                        ? `Scheduled off: ${scheduledOffNames}`
+                        : undefined
+                    }
                     style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      alignItems: "center",
                       marginTop: 10,
-                      display: "inline-flex",
-                      padding: "3px 8px",
-                      borderRadius: 999,
-                      fontWeight: 700,
                       fontSize: 12,
-                      background: deltaSignal.background,
-                      border: `1px solid ${deltaSignal.border}`,
-                      color: deltaSignal.color,
+                      color: "#64748b",
+                      cursor: scheduledOffCount > 0 ? "help" : "default",
                     }}
                   >
-                    {delta >= 0 ? "+" : ""}
-                    {delta} · {deltaSignal.label}
+                    <span>
+                      <strong>{scheduledOffCount}</strong> Sch Off
+                    </span>
+                    <span>
+                      {overrides} change{overrides === 1 ? "" : "s"}
+                    </span>
                   </div>
 
-                  {overrides > 0 ? (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
                     <div
                       style={{
-                        marginTop: 8,
-                        fontSize: 12,
-                        color: "#64748b",
+                        display: "inline-flex",
+                        padding: "3px 10px",
+                        borderRadius: 999,
+                        fontWeight: 700,
+                        fontSize: 14,
+                        background: deltaSignal.background,
+                        border: `1px solid ${deltaSignal.border}`,
+                        color: deltaSignal.color,
                       }}
                     >
-                      {overrides} change{overrides === 1 ? "" : "s"}
+                      {delta >= 0 ? "+" : ""}
+                      {delta}
                     </div>
-                  ) : null}
+
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: deltaSignal.color,
+                      }}
+                    >
+                      {deltaSignal.label}
+                    </div>
+                  </div>
                 </div>
               </div>
             );
@@ -404,8 +447,10 @@ export default function ScheduleCalendarPage() {
               capacity.routeDemand
             );
 
-            const offOrOverrides = selectedRows.filter(
-              (row) => !row.planned_on || row.override_type
+            const scheduledOffRows =
+              resolveBaselineScheduledOffDrivers(selectedRows);
+            const overrideRows = selectedRows.filter(
+              (row) => Boolean(row.override_type)
             );
 
             return (
@@ -513,7 +558,7 @@ export default function ScheduleCalendarPage() {
 
                         {assignedDrivers.map((row) => (
                           <div
-                            key={row.id}
+                            key={scheduleRowKey(row)}
                             style={{
                               display: "flex",
                               justifyContent: "space-between",
@@ -546,47 +591,6 @@ export default function ScheduleCalendarPage() {
                             marginBottom: 8,
                           }}
                         >
-                          <strong style={{ color: "#b91c1c" }}>
-                            Routes Without Drivers
-                          </strong>
-                          <span style={{ color: "#64748b" }}>
-                            {capacity.openRoutes.length}
-                          </span>
-                        </div>
-
-                        {capacity.openRoutes.length === 0 ? (
-                          <div style={{ color: "#64748b" }}>None</div>
-                        ) : (
-                          capacity.openRoutes.map((route) => (
-                            <div
-                              key={route.id}
-                              style={{
-                                padding: "6px 0",
-                                borderBottom: "1px solid #e2e8f0",
-                                fontSize: 14,
-                                fontWeight: 600,
-                              }}
-                            >
-                              {scheduleRouteLabel(route)}
-                            </div>
-                          ))
-                        )}
-                      </section>
-
-                      <section
-                        style={{
-                          border: "1px solid #e2e8f0",
-                          borderRadius: 10,
-                          padding: 12,
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            marginBottom: 8,
-                          }}
-                        >
                           <strong style={{ color: "#92400e" }}>
                             Stand By
                           </strong>
@@ -602,7 +606,7 @@ export default function ScheduleCalendarPage() {
                         ) : (
                           unassignedDrivers.map((row) => (
                             <div
-                              key={row.id}
+                              key={row.id ?? row.roster_member_id}
                               style={{
                                 padding: "6px 0",
                                 borderBottom: "1px solid #e2e8f0",
@@ -631,21 +635,21 @@ export default function ScheduleCalendarPage() {
                           }}
                         >
                           <strong style={{ color: "#475569" }}>
-                            Off / Overrides
+                            Off / Override
                           </strong>
                           <span style={{ color: "#64748b" }}>
-                            {offOrOverrides.length}
+                            {overrideRows.length}
                           </span>
                         </div>
 
-                        {offOrOverrides.length === 0 ? (
+                        {overrideRows.length === 0 ? (
                           <div style={{ color: "#64748b" }}>
                             None
                           </div>
                         ) : (
-                          offOrOverrides.map((row) => (
+                          overrideRows.map((row) => (
                             <div
-                              key={row.id}
+                              key={scheduleRowKey(row)}
                               style={{
                                 display: "flex",
                                 justifyContent: "space-between",
@@ -660,6 +664,97 @@ export default function ScheduleCalendarPage() {
                               <span style={{ color: "#64748b" }}>
                                 {row.override_type ?? ""}
                               </span>
+                            </div>
+                          ))
+                        )}
+                      </section>
+
+                      <section
+                        style={{
+                          border: "1px solid #e2e8f0",
+                          borderRadius: 10,
+                          padding: 12,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            marginBottom: 8,
+                          }}
+                        >
+                          <strong style={{ color: "#475569" }}>
+                            Scheduled Off
+                          </strong>
+                          <span style={{ color: "#64748b" }}>
+                            {scheduledOffRows.length}
+                          </span>
+                        </div>
+
+                        {scheduledOffRows.length === 0 ? (
+                          <div style={{ color: "#64748b" }}>
+                            None
+                          </div>
+                        ) : (
+                          scheduledOffRows.map((row) => (
+                            <div
+                              key={scheduleRowKey(row)}
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                padding: "6px 0",
+                                borderBottom: "1px solid #e2e8f0",
+                                fontSize: 14,
+                              }}
+                            >
+                              <span style={{ fontWeight: 600 }}>
+                                {row.full_name ?? "Unknown"}
+                              </span>
+                              <span style={{ color: "#64748b" }}>
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </section>
+
+                      <section
+                        style={{
+                          border: "1px solid #e2e8f0",
+                          borderRadius: 10,
+                          padding: 12,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            marginBottom: 8,
+                          }}
+                        >
+                          <strong style={{ color: "#b91c1c" }}>
+                            Routes Without Drivers
+                          </strong>
+                          <span style={{ color: "#64748b" }}>
+                            {capacity.openRoutes.length}
+                          </span>
+                        </div>
+
+                        {capacity.openRoutes.length === 0 ? (
+                          <div style={{ color: "#64748b" }}>
+                            None
+                          </div>
+                        ) : (
+                          capacity.openRoutes.map((route) => (
+                            <div
+                              key={route.id}
+                              style={{
+                                padding: "6px 0",
+                                borderBottom: "1px solid #e2e8f0",
+                                fontSize: 14,
+                                fontWeight: 600,
+                              }}
+                            >
+                              {scheduleRouteLabel(route)}
                             </div>
                           ))
                         )}

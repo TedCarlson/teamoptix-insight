@@ -12,12 +12,13 @@ export type ScheduleCapacityRoute = {
 };
 
 export type ScheduleCapacityPerson = {
-  id?: string;
+  id?: string | null;
   roster_member_id: string;
   full_name: string | null;
   worker_type: string | null;
   planned_on: boolean;
   route_name: string | null;
+  override_type?: string | null;
 };
 
 export type DailyScheduleCapacity = {
@@ -67,12 +68,23 @@ function routeAliases(route: ScheduleCapacityRoute) {
   );
 }
 
-function isDriverSeatWorker(workerType: string | null) {
+export function isDriverSeatWorker(workerType: string | null) {
   const normalized = String(workerType ?? "").trim().toLowerCase();
 
   return !normalized.includes("helper") &&
     !normalized.includes("jumper") &&
     !normalized.includes("trainee");
+}
+
+export function resolveBaselineScheduledOffDrivers<
+  T extends ScheduleCapacityPerson,
+>(scheduleRows: T[]) {
+  return scheduleRows.filter(
+    (row) =>
+      !row.planned_on &&
+      !row.override_type &&
+      isDriverSeatWorker(row.worker_type)
+  );
 }
 
 export function resolveDailyScheduleCapacity(params: {
@@ -318,4 +330,3 @@ export function resolveScheduleOverrideImpact(params: {
     unchangedDayCount: days.filter((day) => !day.affectsSchedule).length,
   };
 }
-
