@@ -267,8 +267,7 @@ export default function ScheduleCalendarPage() {
               resolveBaselineScheduledOffDrivers(dayRows);
             const scheduledOffCount = scheduledOffRows.length;
             const scheduledOffNames = scheduledOffRows
-              .map((row) => row.full_name ?? "Unknown")
-              .join(", ");
+              .map((row) => row.full_name ?? "Unknown");
 
             const overrides = dayRows.filter(
               (row) => row.override_type
@@ -356,7 +355,7 @@ export default function ScheduleCalendarPage() {
                   <div
                     title={
                       scheduledOffCount > 0
-                        ? `Scheduled off: ${scheduledOffNames}`
+                        ? ["Scheduled off:", ...scheduledOffNames].join("\n")
                         : undefined
                     }
                     style={{
@@ -635,6 +634,52 @@ export default function ScheduleCalendarPage() {
                           }}
                         >
                           <strong style={{ color: "#475569" }}>
+                            Scheduled Off
+                          </strong>
+                          <span style={{ color: "#64748b" }}>
+                            {scheduledOffRows.length}
+                          </span>
+                        </div>
+
+                        {scheduledOffRows.length === 0 ? (
+                          <div style={{ color: "#64748b" }}>
+                            None
+                          </div>
+                        ) : (
+                          scheduledOffRows.map((row) => (
+                            <div
+                              key={scheduleRowKey(row)}
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                padding: "6px 0",
+                                borderBottom: "1px solid #e2e8f0",
+                                fontSize: 14,
+                              }}
+                            >
+                              <span style={{ fontWeight: 600 }}>
+                                {row.full_name ?? "Unknown"}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </section>
+
+                      <section
+                        style={{
+                          border: "1px solid #e2e8f0",
+                          borderRadius: 10,
+                          padding: 12,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            marginBottom: 8,
+                          }}
+                        >
+                          <strong style={{ color: "#475569" }}>
                             Off / Override
                           </strong>
                           <span style={{ color: "#64748b" }}>
@@ -663,54 +708,6 @@ export default function ScheduleCalendarPage() {
                               </span>
                               <span style={{ color: "#64748b" }}>
                                 {row.override_type ?? ""}
-                              </span>
-                            </div>
-                          ))
-                        )}
-                      </section>
-
-                      <section
-                        style={{
-                          border: "1px solid #e2e8f0",
-                          borderRadius: 10,
-                          padding: 12,
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            marginBottom: 8,
-                          }}
-                        >
-                          <strong style={{ color: "#475569" }}>
-                            Scheduled Off
-                          </strong>
-                          <span style={{ color: "#64748b" }}>
-                            {scheduledOffRows.length}
-                          </span>
-                        </div>
-
-                        {scheduledOffRows.length === 0 ? (
-                          <div style={{ color: "#64748b" }}>
-                            None
-                          </div>
-                        ) : (
-                          scheduledOffRows.map((row) => (
-                            <div
-                              key={scheduleRowKey(row)}
-                              style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                padding: "6px 0",
-                                borderBottom: "1px solid #e2e8f0",
-                                fontSize: 14,
-                              }}
-                            >
-                              <span style={{ fontWeight: 600 }}>
-                                {row.full_name ?? "Unknown"}
-                              </span>
-                              <span style={{ color: "#64748b" }}>
                               </span>
                             </div>
                           ))
