@@ -1,6 +1,18 @@
+import type Stripe from "stripe";
+
 import type {
   ActivationStepDefinition,
 } from "@/features/teamoptix/customer-activation/executor/activationExecutor";
+import {
+  calculateFirstFridayAfterGoLive,
+  newYorkBillingDateToStripeAnchor,
+} from "@/features/teamoptix/customer-activation/lib/billingCalendar";
+import { buildInitialStripeSubscriptionRequest } from "@/features/teamoptix/customer-activation/lib/stripeSubscriptionPlan";
+import { getStripeServerClient } from "@/lib/stripe/server";
+import {
+  resolveStripeId,
+  stripeSubscriptionRecord,
+} from "@/lib/stripe/webhooks/stripeFinanceRecords";
 
 type CommercialProfileRow = {
   company_id: string;
@@ -15,6 +27,7 @@ type BillingCustomerRow = {
   company_id: string;
   provider: string;
   provider_customer_id: string;
+  provider_livemode: boolean | null;
 };
 
 type BillingSubscriptionRow = {
@@ -33,6 +46,13 @@ type BillingSubscriptionRow = {
   activated_at?: string | null;
   activated_by?: string | null;
   metadata?: Record<string, unknown> | null;
+};
+
+type OperatorTierRow = {
+  tier_key: string;
+  weekly_subscription: number | string | null;
+  stripe_subscription_product_id: string | null;
+  stripe_subscription_price_id: string | null;
 };
 
 async function loadCommercialProfile(context: {
@@ -64,7 +84,7 @@ async function loadBillingCustomer(context: {
   const { data, error } = await context.admin
     .schema("billing")
     .from("customer")
-    .select("id, company_id, provider, provider_customer_id")
+    .select("id, company_id, provider, provider_customer_id, provider_livemode")
     .eq("company_id", context.company_id)
     .eq("provider", "stripe")
     .maybeSingle();
@@ -76,6 +96,49 @@ async function loadBillingCustomer(context: {
   }
 
   return data as BillingCustomerRow | null;
+}
+
+async function loadOperatorTier(context: { admin: any }, tierKey: string) {
+  const { data, error } = await context.admin
+    .schema("commercial")
+    .from("operator_tier")
+    .select(
+      "tier_key, weekly_subscription, stripe_subscription_product_id, stripe_subscription_price_id"
+    )
+    .eq("tier_key", tierKey)
+    .eq("active", true)
+    .maybeSingle();
+
+  if (error) throw new Error(`Unable to load operator tier: ${error.message}`);
+  return data as OperatorTierRow | null;
+}
+
+async function loadImplementationPayment(context: {
+  admin: any;
+  company_id: string;
+}) {
+  const { data, error } = await context.admin
+    .schema("billing")
+    .from("payment")
+    .select("id, provider_payment_intent_id, paid_at")
+    .eq("company_id", context.company_id)
+    .eq("provider", "stripe")
+    .eq("payment_purpose", "implementation")
+    .eq("payment_status", "paid")
+    .eq("provider_livemode", true)
+    .order("paid_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Unable to load implementation payment: ${error.message}`);
+  }
+
+  return data as {
+    id: string;
+    provider_payment_intent_id: string | null;
+    paid_at: string | null;
+  } | null;
 }
 
 async function loadActivation(context: {
@@ -246,11 +309,6 @@ export const initialActivationSteps: ActivationStepDefinition[] = [
     key: "calculate_first_billing_date",
     order: 3,
     async execute(context) {
-      const { calculateFirstFridayAfterGoLive } =
-        await import(
-          "@/features/teamoptix/customer-activation/server/customerActivation.server"
-        );
-
       const firstBillingDate =
         calculateFirstFridayAfterGoLive(new Date());
 
@@ -285,18 +343,20 @@ export const initialActivationSteps: ActivationStepDefinition[] = [
     key: "create_stripe_subscription",
     order: 4,
     async execute(context) {
-      const [profile, billingCustomer, activation] =
+      const [profile, billingCustomer, activation, existingSubscription, payment] =
         await Promise.all([
           loadCommercialProfile(context),
           loadBillingCustomer(context),
           loadActivation(context),
+          loadExistingBillingSubscription(context),
+          loadImplementationPayment(context),
         ]);
 
       if (!profile) {
         return {
           status: "failed",
           message:
-            "Unable to queue Stripe subscription because the commercial profile is missing.",
+            "Unable to create Stripe subscription because the commercial profile is missing.",
         };
       }
 
@@ -304,7 +364,7 @@ export const initialActivationSteps: ActivationStepDefinition[] = [
         return {
           status: "failed",
           message:
-            "Unable to queue Stripe subscription because the Stripe billing customer is missing.",
+            "Unable to create Stripe subscription because the Stripe billing customer is missing.",
         };
       }
 
@@ -312,7 +372,7 @@ export const initialActivationSteps: ActivationStepDefinition[] = [
         return {
           status: "failed",
           message:
-            "Unable to queue Stripe subscription because tier or weekly subscription is missing.",
+            "Unable to create Stripe subscription because tier or weekly subscription is missing.",
           metadata: {
             operator_tier_key: profile.operator_tier_key,
             weekly_subscription: profile.weekly_subscription,
@@ -324,7 +384,210 @@ export const initialActivationSteps: ActivationStepDefinition[] = [
         return {
           status: "failed",
           message:
-            "Unable to queue Stripe subscription because first billing date is missing.",
+            "Unable to create Stripe subscription because first billing date is missing.",
+        };
+      }
+
+      if (billingCustomer.provider_livemode !== true) {
+        return {
+          status: "failed",
+          message: "Stripe subscription creation requires a verified live-mode billing customer.",
+        };
+      }
+
+      if (!payment?.provider_payment_intent_id || !payment.paid_at) {
+        return {
+          status: "failed",
+          message: "A paid live-mode implementation Payment Intent is required before subscription creation.",
+        };
+      }
+
+      const tier = await loadOperatorTier(context, profile.operator_tier_key);
+      if (
+        !tier?.stripe_subscription_price_id ||
+        !tier.stripe_subscription_product_id
+      ) {
+        return {
+          status: "failed",
+          message: "The approved operator tier is not mapped to a recurring Stripe product and price.",
+        };
+      }
+
+      const stripe = getStripeServerClient();
+      const [price, implementationIntent] = await Promise.all([
+        stripe.prices.retrieve(tier.stripe_subscription_price_id),
+        stripe.paymentIntents.retrieve(payment.provider_payment_intent_id),
+      ]);
+      const priceProductId = resolveStripeId(price.product);
+      const expectedWeeklyAmount = Math.round(Number(profile.weekly_subscription) * 100);
+
+      if (
+        !price.active ||
+        !price.livemode ||
+        price.currency !== "usd" ||
+        price.unit_amount !== expectedWeeklyAmount ||
+        price.recurring?.interval !== "week" ||
+        price.recurring.interval_count !== 1 ||
+        priceProductId !== tier.stripe_subscription_product_id ||
+        Number(tier.weekly_subscription) !== Number(profile.weekly_subscription)
+      ) {
+        return {
+          status: "failed",
+          message: "The recurring Stripe price does not match the approved live weekly commercial terms.",
+        };
+      }
+
+      const paymentMethodId = resolveStripeId(implementationIntent.payment_method);
+      if (
+        !paymentMethodId ||
+        resolveStripeId(implementationIntent.customer) !== billingCustomer.provider_customer_id
+      ) {
+        return {
+          status: "failed",
+          message: "The implementation payment did not retain an attributable Stripe payment method for weekly billing.",
+        };
+      }
+
+      const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+      if (
+        resolveStripeId(paymentMethod.customer) !== billingCustomer.provider_customer_id
+      ) {
+        return {
+          status: "failed",
+          message: "The retained Stripe payment method is not attached to the approved billing customer.",
+        };
+      }
+
+      let stripeSubscription: Stripe.Subscription | null = existingSubscription?.provider_subscription_id
+        ? await stripe.subscriptions.retrieve(existingSubscription.provider_subscription_id)
+        : null;
+
+      if (!stripeSubscription) {
+        const providerSubscriptions = await stripe.subscriptions.list({
+          customer: billingCustomer.provider_customer_id,
+          status: "all",
+          limit: 100,
+        });
+        stripeSubscription =
+          providerSubscriptions.data.find(
+            (subscription) =>
+              subscription.metadata?.source === "insight" &&
+              subscription.metadata?.company_id === context.company_id &&
+              subscription.status !== "canceled"
+          ) ?? null;
+      }
+
+      const billingAnchor = newYorkBillingDateToStripeAnchor(
+        activation.first_billing_date
+      );
+
+      if (!stripeSubscription && billingAnchor <= Math.floor(Date.now() / 1000)) {
+        return {
+          status: "failed",
+          message: "The persisted first billing date is no longer in the future; Team Optix review is required before creating a subscription.",
+        };
+      }
+
+      if (!stripeSubscription) {
+        const request = buildInitialStripeSubscriptionRequest({
+          companyId: context.company_id,
+          companySlug: context.company_slug,
+          customerId: billingCustomer.provider_customer_id,
+          priceId: tier.stripe_subscription_price_id,
+          paymentMethodId,
+          operatorTierKey: profile.operator_tier_key,
+          firstBillingDate: activation.first_billing_date,
+          implementationPaymentId: payment.id,
+        });
+        stripeSubscription = await stripe.subscriptions.create(
+          request.params,
+          request.options
+        );
+      }
+
+      const mapped = stripeSubscriptionRecord(stripeSubscription);
+      const subscriptionPriceId = mapped.provider_price_id;
+
+      if (
+        !stripeSubscription.livemode ||
+        resolveStripeId(stripeSubscription.customer) !== billingCustomer.provider_customer_id ||
+        subscriptionPriceId !== tier.stripe_subscription_price_id ||
+        !["active", "trialing"].includes(stripeSubscription.status)
+      ) {
+        return {
+          status: "failed",
+          message: "Stripe returned a subscription that does not match the approved customer, price, mode, or activation status.",
+          metadata: {
+            provider_subscription_id: stripeSubscription.id,
+            provider_status: stripeSubscription.status,
+          },
+        };
+      }
+
+      const activatedAt = new Date().toISOString();
+      const { error: subscriptionError } = await context.admin
+        .schema("billing")
+        .from("subscription")
+        .upsert(
+          {
+            ...mapped,
+            customer_id: billingCustomer.id,
+            company_id: context.company_id,
+            operator_tier_key: profile.operator_tier_key,
+            weekly_amount: Number(profile.weekly_subscription),
+            currency: "usd",
+            billing_start_date: activation.first_billing_date,
+            activated_at: activatedAt,
+            activated_by: context.actor_user_id,
+          },
+          { onConflict: "provider,provider_subscription_id" }
+        );
+
+      if (subscriptionError) {
+        return {
+          status: "failed",
+          message: `Stripe subscription ${stripeSubscription.id} exists but Insight persistence failed: ${subscriptionError.message}`,
+          metadata: {
+            provider_subscription_id: stripeSubscription.id,
+            reconciliation_required: true,
+          },
+        };
+      }
+
+      const { error: activationError } = await context.admin
+        .schema("commercial")
+        .from("company_activation")
+        .update({
+          subscription_activation_status: "complete",
+          subscription_activated_at: activatedAt,
+        })
+        .eq("company_id", context.company_id);
+
+      if (activationError) {
+        return {
+          status: "failed",
+          message: `Stripe and Insight subscription records exist but activation synchronization failed: ${activationError.message}`,
+          metadata: {
+            provider_subscription_id: stripeSubscription.id,
+            reconciliation_required: true,
+          },
+        };
+      }
+
+      const { error: customerStatusError } = await context.admin
+        .schema("billing")
+        .from("customer")
+        .update({ billing_status: "active" })
+        .eq("id", billingCustomer.id);
+
+      if (customerStatusError) {
+        return {
+          status: "failed",
+          message: `Subscription exists but billing customer status synchronization failed: ${customerStatusError.message}`,
+          metadata: {
+            provider_subscription_id: stripeSubscription.id,
+            reconciliation_required: true,
+          },
         };
       }
 
@@ -333,13 +596,15 @@ export const initialActivationSteps: ActivationStepDefinition[] = [
         metadata: {
           provider: "stripe",
           provider_customer_id: billingCustomer.provider_customer_id,
+          provider_subscription_id: stripeSubscription.id,
+          provider_price_id: tier.stripe_subscription_price_id,
+          provider_status: stripeSubscription.status,
           operator_tier_key: profile.operator_tier_key,
           weekly_subscription: profile.weekly_subscription,
           first_billing_date: activation.first_billing_date,
-          execution_mode:
-            "verified_queue_only_until_subscription_creation_sprint",
-          note:
-            "Stripe subscription creation is intentionally not executed here yet; production/live subscription execution remains a later Track B step.",
+          billing_cycle_anchor: billingAnchor,
+          proration_behavior: "none",
+          execution_mode: "live_provider_and_insight_persisted",
         },
       };
     },
@@ -370,11 +635,23 @@ export const initialActivationSteps: ActivationStepDefinition[] = [
         };
       }
 
+      if (
+        !subscription?.provider_subscription_id ||
+        !["active", "trialing"].includes(subscription.subscription_status ?? "")
+      ) {
+        return {
+          status: "failed",
+          message: "The live Stripe subscription has not been persisted in an active or trialing state.",
+        };
+      }
+
+      const activatedAt = subscription.activated_at ?? new Date().toISOString();
       const { error } = await context.admin
         .schema("commercial")
         .from("company_activation")
         .update({
-          subscription_activation_status: "pending",
+          subscription_activation_status: "complete",
+          subscription_activated_at: activatedAt,
         })
         .eq("company_id", context.company_id);
 
@@ -387,7 +664,7 @@ export const initialActivationSteps: ActivationStepDefinition[] = [
       }
 
       return {
-        status: subscription ? "complete" : "skipped",
+        status: "complete",
         metadata: {
           subscription_record_id: subscription?.id ?? null,
           billing_customer_id: billingCustomer.id,
@@ -395,10 +672,8 @@ export const initialActivationSteps: ActivationStepDefinition[] = [
           operator_tier_key: profile.operator_tier_key,
           weekly_subscription: profile.weekly_subscription,
           billing_start_date: activation.first_billing_date,
-          subscription_activation_status: "pending",
-          note: subscription
-            ? "Existing billing.subscription record confirmed."
-            : "billing.subscription persistence is deferred until provider subscription creation is implemented.",
+          subscription_activation_status: "complete",
+          note: "Live Stripe subscription and Insight billing.subscription record confirmed.",
         },
       };
     },
@@ -542,6 +817,17 @@ export const initialActivationSteps: ActivationStepDefinition[] = [
     order: 9,
     async execute(context) {
       const now = new Date().toISOString();
+      const subscription = await loadExistingBillingSubscription(context);
+
+      if (
+        !subscription?.provider_subscription_id ||
+        !["active", "trialing"].includes(subscription.subscription_status ?? "")
+      ) {
+        return {
+          status: "failed",
+          message: "Customer activation cannot finalize without a persisted live Stripe subscription.",
+        };
+      }
 
       const { error: activationError } = await context.admin
         .schema("commercial")
@@ -550,8 +836,8 @@ export const initialActivationSteps: ActivationStepDefinition[] = [
           lifecycle_status: "active",
           go_live_at: now,
           go_live_by: context.actor_user_id,
-          subscription_activation_status: "pending",
-          subscription_activated_at: null,
+          subscription_activation_status: "complete",
+          subscription_activated_at: subscription.activated_at ?? now,
           last_transition: "go_live_finalized",
           last_transition_at: now,
           last_transition_by: context.actor_user_id,
@@ -589,9 +875,9 @@ export const initialActivationSteps: ActivationStepDefinition[] = [
           commercial_status: "subscription_active",
           go_live_at: now,
           go_live_by: context.actor_user_id,
-          subscription_activation_status: "pending",
-          note:
-            "Customer lifecycle is active. Provider subscription execution remains pending until Stripe subscription creation is implemented.",
+          subscription_activation_status: "complete",
+          provider_subscription_id: subscription.provider_subscription_id,
+          note: "Customer lifecycle and live Stripe weekly subscription are active.",
         },
       };
     },

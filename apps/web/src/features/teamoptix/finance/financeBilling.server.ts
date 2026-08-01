@@ -19,6 +19,21 @@ export type FinanceCustomer = {
   billing_email: string | null;
   billing_status: string;
   updated_at: string;
+  lifecycle_status: string | null;
+  operator_tier_key: string | null;
+  weekly_subscription: number | null;
+  first_billing_date: string | null;
+};
+
+export type FinanceInvoiceLine = {
+  id: string;
+  description: string | null;
+  quantity: number | null;
+  unit_amount: number | null;
+  line_amount: number;
+  provider_price_id: string | null;
+  service_period_start: string | null;
+  service_period_end: string | null;
 };
 
 export type FinanceInvoice = {
@@ -38,6 +53,7 @@ export type FinanceInvoice = {
   hosted_invoice_url: string | null;
   invoice_pdf_url: string | null;
   provider_livemode: boolean;
+  lines: FinanceInvoiceLine[];
 };
 
 export type FinancePayment = {
@@ -70,6 +86,10 @@ export type FinanceSubscription = {
   current_period_end: string | null;
   cancel_at_period_end: boolean;
   provider_livemode: boolean | null;
+  operator_tier_key: string | null;
+  weekly_amount: number | null;
+  currency: string;
+  billing_start_date: string | null;
 };
 
 export type FinanceProviderEvent = {
@@ -110,7 +130,7 @@ function numberValue(value: number | string | null | undefined) {
 export async function getFinanceBillingSnapshot(): Promise<FinanceBillingSnapshot> {
   const db = createSupabaseServiceRoleClient();
 
-  const [customersResult, invoicesResult, paymentsResult, subscriptionsResult, eventsResult] =
+  const [customersResult, invoicesResult, invoiceLinesResult, paymentsResult, subscriptionsResult, eventsResult] =
     await Promise.all([
       db
         .schema("billing")
@@ -129,6 +149,14 @@ export async function getFinanceBillingSnapshot(): Promise<FinanceBillingSnapsho
         .limit(250),
       db
         .schema("billing")
+        .from("invoice_line")
+        .select(
+          "id, invoice_id, description, quantity, unit_amount, line_amount, provider_price_id, service_period_start, service_period_end"
+        )
+        .order("created_at", { ascending: true })
+        .limit(1000),
+      db
+        .schema("billing")
         .from("payment")
         .select(
           "id, company_id, payment_purpose, payment_status, amount, amount_refunded, currency, paid_at, provider_invoice_id, provider_payment_intent_id, provider_charge_id, receipt_url, provider_livemode, failure_message"
@@ -139,7 +167,7 @@ export async function getFinanceBillingSnapshot(): Promise<FinanceBillingSnapsho
         .schema("billing")
         .from("subscription")
         .select(
-          "id, company_id, provider_subscription_id, provider_price_id, subscription_status, billing_interval, current_period_start, current_period_end, cancel_at_period_end, provider_livemode"
+          "id, company_id, provider_subscription_id, provider_price_id, subscription_status, billing_interval, current_period_start, current_period_end, cancel_at_period_end, provider_livemode, operator_tier_key, weekly_amount, currency, billing_start_date"
         )
         .order("updated_at", { ascending: false })
         .limit(250),
@@ -156,6 +184,7 @@ export async function getFinanceBillingSnapshot(): Promise<FinanceBillingSnapsho
   for (const result of [
     customersResult,
     invoicesResult,
+    invoiceLinesResult,
     paymentsResult,
     subscriptionsResult,
     eventsResult,
@@ -177,26 +206,73 @@ export async function getFinanceBillingSnapshot(): Promise<FinanceBillingSnapsho
     )
   );
 
-  const { data: companies, error: companiesError } = companyIds.length
-    ? await db
-        .from("companies")
-        .select("id, company_name, company_slug")
-        .in("id", companyIds)
-    : { data: [] as Company[], error: null };
+  const [companiesResult, activationsResult, profilesResult] = companyIds.length
+    ? await Promise.all([
+        db
+          .from("companies")
+          .select("id, company_name, company_slug")
+          .in("id", companyIds),
+        db
+          .schema("commercial")
+          .from("company_activation")
+          .select("company_id, lifecycle_status, first_billing_date")
+          .in("company_id", companyIds),
+        db
+          .schema("commercial")
+          .from("profile")
+          .select("company_id, operator_tier_key, weekly_subscription")
+          .in("company_id", companyIds),
+      ])
+    : [
+        { data: [] as Company[], error: null },
+        { data: [], error: null },
+        { data: [], error: null },
+      ];
 
-  if (companiesError) throw new Error(companiesError.message);
+  for (const result of [companiesResult, activationsResult, profilesResult]) {
+    if (result.error) throw new Error(result.error.message);
+  }
 
   const companyById = new Map(
-    ((companies ?? []) as Company[]).map((company) => [company.id, company])
+    ((companiesResult.data ?? []) as Company[]).map((company) => [company.id, company])
+  );
+  const activationByCompany = new Map(
+    (activationsResult.data ?? []).map((row) => [row.company_id, row])
+  );
+  const profileByCompany = new Map(
+    (profilesResult.data ?? []).map((row) => [row.company_id, row])
   );
   const companyName = (companyId: string | null) =>
     (companyId && companyById.get(companyId)?.company_name) || "Unmapped";
 
-  const customers: FinanceCustomer[] = (customersResult.data ?? []).map((row) => ({
-    ...row,
-    company_name: companyName(row.company_id),
-    company_slug: companyById.get(row.company_id)?.company_slug ?? "",
-  }));
+  const customers: FinanceCustomer[] = (customersResult.data ?? []).map((row) => {
+    const activation = activationByCompany.get(row.company_id);
+    const profile = profileByCompany.get(row.company_id);
+    return {
+      ...row,
+      company_name: companyName(row.company_id),
+      company_slug: companyById.get(row.company_id)?.company_slug ?? "",
+      lifecycle_status: activation?.lifecycle_status ?? null,
+      operator_tier_key: profile?.operator_tier_key ?? null,
+      weekly_subscription:
+        profile?.weekly_subscription == null
+          ? null
+          : numberValue(profile.weekly_subscription),
+      first_billing_date: activation?.first_billing_date ?? null,
+    };
+  });
+
+  const invoiceLinesByInvoice = new Map<string, FinanceInvoiceLine[]>();
+  for (const row of invoiceLinesResult.data ?? []) {
+    const lines = invoiceLinesByInvoice.get(row.invoice_id) ?? [];
+    lines.push({
+      ...row,
+      quantity: row.quantity == null ? null : numberValue(row.quantity),
+      unit_amount: row.unit_amount == null ? null : numberValue(row.unit_amount),
+      line_amount: numberValue(row.line_amount),
+    });
+    invoiceLinesByInvoice.set(row.invoice_id, lines);
+  }
 
   const invoices: FinanceInvoice[] = (invoicesResult.data ?? []).map((row) => ({
     ...row,
@@ -204,6 +280,7 @@ export async function getFinanceBillingSnapshot(): Promise<FinanceBillingSnapsho
     amount_due: numberValue(row.amount_due),
     amount_paid: numberValue(row.amount_paid),
     amount_remaining: numberValue(row.amount_remaining),
+    lines: invoiceLinesByInvoice.get(row.id) ?? [],
   }));
 
   const payments: FinancePayment[] = (paymentsResult.data ?? []).map((row) => ({
@@ -214,7 +291,12 @@ export async function getFinanceBillingSnapshot(): Promise<FinanceBillingSnapsho
   }));
 
   const subscriptions: FinanceSubscription[] = (subscriptionsResult.data ?? []).map(
-    (row) => ({ ...row, company_name: companyName(row.company_id) })
+    (row) => ({
+      ...row,
+      company_name: companyName(row.company_id),
+      weekly_amount:
+        row.weekly_amount == null ? null : numberValue(row.weekly_amount),
+    })
   );
 
   const events: FinanceProviderEvent[] = (eventsResult.data ?? []).map((row) => ({

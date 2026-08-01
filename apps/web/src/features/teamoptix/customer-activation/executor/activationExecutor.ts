@@ -75,6 +75,40 @@ async function updateStep(
   }
 }
 
+async function markActivationFailed(
+  context: ActivationExecutionContext,
+  stepKey: string,
+  message: string
+) {
+  const now = new Date().toISOString();
+  const subscriptionStep = [
+    "create_stripe_subscription",
+    "persist_billing_subscription",
+  ].includes(stepKey);
+  const update: Record<string, unknown> = {
+    lifecycle_status: "activation_failed",
+    last_transition: `activation_failed:${stepKey}`,
+    last_transition_at: now,
+    last_transition_by: context.actor_user_id,
+  };
+
+  if (subscriptionStep) {
+    update.subscription_activation_status = "failed";
+  }
+
+  const { error } = await context.admin
+    .schema("commercial")
+    .from("company_activation")
+    .update(update)
+    .eq("company_id", context.company_id);
+
+  if (error) {
+    throw new Error(
+      `${message} Activation failure posture could not be persisted: ${error.message}`
+    );
+  }
+}
+
 export async function executeActivationRun(
   context: ActivationExecutionContext,
   definitions: ActivationStepDefinition[]
@@ -162,6 +196,8 @@ export async function executeActivationRun(
           failure_summary: message,
         });
 
+        await markActivationFailed(context, step.step_key, message);
+
         return {
           run_status: "failed",
           stopped_at_step: step.step_key,
@@ -194,6 +230,8 @@ export async function executeActivationRun(
         completed_at: new Date().toISOString(),
         failure_summary: message,
       });
+
+      await markActivationFailed(context, step.step_key, message);
 
       return {
         run_status: "failed",

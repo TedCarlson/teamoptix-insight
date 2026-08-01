@@ -6,6 +6,9 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import { executeActivationRun } from "@/features/teamoptix/customer-activation/executor/activationExecutor";
 import { initialActivationSteps } from "@/features/teamoptix/customer-activation/executor/defaultActivationSteps";
+import { calculateFirstFridayAfterGoLive } from "@/features/teamoptix/customer-activation/lib/billingCalendar";
+
+export { calculateFirstFridayAfterGoLive };
 
 export type ActivationLifecycleStatus =
   | "implementation"
@@ -1174,86 +1177,6 @@ const GO_LIVE_STEP_DEFINITIONS = [
     step_order: 9,
   },
 ] as const;
-
-function getNewYorkDateParts(value: Date): {
-  year: number;
-  month: number;
-  day: number;
-  weekday: number;
-} {
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    weekday: "short",
-  });
-
-  const parts = formatter.formatToParts(value);
-
-  const values = Object.fromEntries(
-    parts
-      .filter((part) => part.type !== "literal")
-      .map((part) => [part.type, part.value])
-  );
-
-  const weekdayMap: Record<string, number> = {
-    Sun: 0,
-    Mon: 1,
-    Tue: 2,
-    Wed: 3,
-    Thu: 4,
-    Fri: 5,
-    Sat: 6,
-  };
-
-  const weekday = weekdayMap[values.weekday];
-
-  if (
-    !values.year ||
-    !values.month ||
-    !values.day ||
-    weekday === undefined
-  ) {
-    throw new CustomerActivationError(
-      "Unable to calculate the New York billing date.",
-      {
-        status: 500,
-        code: "billing_date_calculation_failed",
-      }
-    );
-  }
-
-  return {
-    year: Number(values.year),
-    month: Number(values.month),
-    day: Number(values.day),
-    weekday,
-  };
-}
-
-export function calculateFirstFridayAfterGoLive(
-  value: Date = new Date()
-): string {
-  const parts = getNewYorkDateParts(value);
-
-  let daysUntilFriday = (5 - parts.weekday + 7) % 7;
-
-  // "Following Go Live" always means a later Friday.
-  if (daysUntilFriday === 0) {
-    daysUntilFriday = 7;
-  }
-
-  const date = new Date(
-    Date.UTC(
-      parts.year,
-      parts.month - 1,
-      parts.day + daysUntilFriday
-    )
-  );
-
-  return date.toISOString().slice(0, 10);
-}
 
 export async function beginCompanyGoLive(
   slug: string

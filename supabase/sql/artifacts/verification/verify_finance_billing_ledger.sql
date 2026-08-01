@@ -36,6 +36,20 @@ begin
     raise exception 'Verified Beacon Point payment evidence is incomplete';
   end if;
 
+  if not exists (
+    select 1
+    from billing.invoice_line line
+    where line.invoice_id = v_invoice_id
+      and line.provider_line_item_id = 'il_1TzdqDJeXupVRq0VGxEmpXFc'
+      and line.description = 'Implementation 16-25 route Operators'
+      and line.quantity = 1
+      and line.unit_amount = 398.00
+      and line.line_amount = 398.00
+      and line.provider_price_id = 'price_1TzKemJeXupVRq0VJrmXFoo7'
+  ) then
+    raise exception 'Verified Beacon Point invoice line detail is incomplete';
+  end if;
+
   if (
     select count(*)
     from billing.provider_event event

@@ -7,6 +7,7 @@ import {
   resolveInvoicePurpose,
   resolveStripeId,
   stripeAmount,
+  stripeInvoiceLineRecord,
   stripeInvoiceRecord,
   stripeSubscriptionRecord,
   stripeTimestamp,
@@ -159,6 +160,18 @@ async function processInvoiceEvent(
 
   if (invoiceError || !savedInvoice) {
     throw new Error(invoiceError?.message ?? "Unable to sync Stripe invoice.");
+  }
+
+  if (invoice.lines.data.length > 0) {
+    const lineRows = invoice.lines.data.map((line) =>
+      stripeInvoiceLineRecord(line, invoice, savedInvoice.id, customer.company_id)
+    );
+    const { error: lineError } = await admin
+      .schema("billing")
+      .from("invoice_line")
+      .upsert(lineRows, { onConflict: "provider,provider_line_item_id" });
+
+    if (lineError) throw new Error(lineError.message);
   }
 
   const purpose = resolveInvoicePurpose(invoice);

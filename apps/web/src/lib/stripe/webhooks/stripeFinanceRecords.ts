@@ -54,6 +54,18 @@ export function stripeInvoiceRecord(
   eventId: string
 ) {
   const paidAt = stripeTimestamp(invoice.status_transitions.paid_at);
+  const purpose = resolveInvoicePurpose(invoice);
+  const discountAmount = (invoice.total_discount_amounts ?? []).reduce(
+    (total, discount) => total + discount.amount,
+    0
+  );
+  const invoiceWithTaxes = invoice as Stripe.Invoice & {
+    total_taxes?: Array<{ amount: number }> | null;
+  };
+  const taxAmount = (invoiceWithTaxes.total_taxes ?? []).reduce(
+    (total, tax) => total + tax.amount,
+    0
+  );
 
   return {
     provider: "stripe",
@@ -70,6 +82,16 @@ export function stripeInvoiceRecord(
     amount_due: stripeAmount(invoice.amount_due),
     amount_paid: stripeAmount(invoice.amount_paid),
     amount_remaining: stripeAmount(invoice.amount_remaining),
+    invoice_type:
+      purpose === "implementation"
+        ? "implementation"
+        : purpose === "subscription"
+          ? "subscription"
+          : "adjustment",
+    subtotal_amount: stripeAmount(invoice.subtotal),
+    discount_amount: stripeAmount(discountAmount),
+    tax_amount: stripeAmount(taxAmount),
+    total_amount: stripeAmount(invoice.total),
     invoice_status: invoice.status ?? "draft",
     hosted_invoice_url: invoice.hosted_invoice_url,
     invoice_pdf_url: invoice.invoice_pdf,
@@ -79,6 +101,43 @@ export function stripeInvoiceRecord(
     period_start: stripeTimestamp(invoice.period_start),
     period_end: stripeTimestamp(invoice.period_end),
     provider_metadata: invoice.metadata ?? {},
+  };
+}
+
+export function stripeInvoiceLineRecord(
+  line: Stripe.InvoiceLineItem,
+  invoice: Stripe.Invoice,
+  invoiceId: string,
+  companyId: string
+) {
+  const priceDetails =
+    line.pricing?.type === "price_details"
+      ? line.pricing.price_details
+      : null;
+  const priceId = resolveStripeId(priceDetails?.price);
+  const purpose = resolveInvoicePurpose(invoice);
+  const tierKey = invoice.metadata?.operator_tier_key?.trim() || null;
+
+  return {
+    invoice_id: invoiceId,
+    company_id: companyId,
+    provider: "stripe",
+    provider_line_item_id: line.id,
+    line_type: line.parent?.type ?? "invoice_item",
+    description: line.description,
+    quantity: line.quantity,
+    unit_amount:
+      line.quantity == null || Number(line.quantity) === 0
+        ? null
+        : stripeAmount(line.amount) / Number(line.quantity),
+    line_amount: stripeAmount(line.amount),
+    internal_price_key:
+      tierKey && purpose ? `${tierKey}_${purpose}` : tierKey,
+    provider_price_id: priceId,
+    currency: line.currency.toLowerCase(),
+    service_period_start: stripeTimestamp(line.period.start),
+    service_period_end: stripeTimestamp(line.period.end),
+    provider_metadata: line.metadata ?? {},
   };
 }
 
@@ -100,6 +159,10 @@ export function stripeSubscriptionRecord(subscription: Stripe.Subscription) {
     provider_subscription_id: subscription.id,
     provider_price_id: price?.id ?? null,
     price_key: operatorTierKey ?? price?.id ?? "unmapped",
+    operator_tier_key: operatorTierKey,
+    weekly_amount: stripeAmount(price?.unit_amount),
+    currency: price?.currency?.toLowerCase() ?? "usd",
+    billing_start_date: subscription.metadata?.first_billing_date ?? null,
     billing_interval: price?.recurring?.interval ?? "week",
     subscription_status: stripeSubscriptionStatus(subscription.status),
     current_period_start: stripeTimestamp(firstItem?.current_period_start),

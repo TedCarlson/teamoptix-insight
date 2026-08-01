@@ -81,7 +81,7 @@ export default async function Page() {
                 <tbody>
                   {snapshot.invoices.map((invoice) => (
                     <tr key={invoice.id}>
-                      <td style={cellStyle}><strong>{invoice.invoice_number ?? invoice.provider_invoice_id}</strong><br /><small>{invoice.provider_invoice_id}</small></td>
+                      <td style={cellStyle}><strong>{invoice.invoice_number ?? invoice.provider_invoice_id}</strong><br /><small>{invoice.provider_invoice_id}</small>{invoice.lines.map((line) => <small key={line.id} style={{ display: "block", marginTop: 4 }}>{line.description ?? "Invoice line"} · {money.format(line.line_amount)}</small>)}</td>
                       <td style={cellStyle}>{invoice.company_name}</td>
                       <td style={cellStyle}>{showDate(invoice.issued_at)}</td>
                       <td style={cellStyle}>{money.format(invoice.amount_due)}</td>
@@ -131,8 +131,8 @@ export default async function Page() {
             <div className="signal-list">
               {snapshot.customers.map((customer) => (
                 <Link key={customer.id} className="signal-list__row" href={`/company/${customer.company_slug}/billing`} style={{ color: "inherit", textDecoration: "none" }}>
-                  <div><strong>{customer.company_name}</strong><span>{customer.billing_name ?? "No billing contact"} · {customer.billing_email ?? "No billing email"}<br />{customer.provider_customer_id ?? "Stripe customer not connected"}</span></div>
-                  <em style={{ color: statusColor(customer.billing_status) }}>{customer.provider_livemode === true ? "Live" : customer.provider_livemode === false ? "Sandbox" : "Unassigned"} · {customer.billing_status}</em>
+                  <div><strong>{customer.company_name}</strong><span>{customer.billing_name ?? "No billing contact"} · {customer.billing_email ?? "No billing email"}<br />{customer.operator_tier_key ?? "Tier pending"} · {customer.weekly_subscription == null ? "Weekly amount pending" : `${money.format(customer.weekly_subscription)}/week`} · First billing {customer.first_billing_date ?? "not scheduled"}<br />{customer.provider_customer_id ?? "Stripe customer not connected"}</span></div>
+                  <em style={{ color: statusColor(customer.billing_status) }}>{customer.provider_livemode === true ? "Live" : customer.provider_livemode === false ? "Sandbox" : "Unassigned"} · {customer.lifecycle_status ?? customer.billing_status}</em>
                 </Link>
               ))}
             </div>
@@ -142,7 +142,7 @@ export default async function Page() {
             <div className="signal-list">
               {snapshot.subscriptions.map((subscription) => (
                 <div key={subscription.id} className="signal-list__row">
-                  <div><strong>{subscription.company_name}</strong><span>{subscription.provider_subscription_id ?? "Provider subscription pending"} · {subscription.provider_price_id ?? "Price not recorded"}</span></div>
+                  <div><strong>{subscription.company_name}</strong><span>{subscription.provider_subscription_id ?? "Provider subscription pending"} · {subscription.provider_price_id ?? "Price not recorded"}<br />{subscription.operator_tier_key ?? "Tier pending"} · {subscription.weekly_amount == null ? "Amount pending" : `${money.format(subscription.weekly_amount)}/week`} · Starts {subscription.billing_start_date ?? "pending"}</span></div>
                   <em style={{ color: statusColor(subscription.subscription_status) }}>{subscription.subscription_status}</em>
                 </div>
               ))}
