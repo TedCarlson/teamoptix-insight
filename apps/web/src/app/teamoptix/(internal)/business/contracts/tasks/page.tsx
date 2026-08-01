@@ -63,37 +63,22 @@ async function finalizeLegalTask(formData: FormData) {
 
   const db = createSupabaseServiceRoleClient();
 
-  const { data: task, error: taskError } = await db
-    .from("legal_customer_legal_task_v")
-    .select("id, status")
-    .eq("id", taskId)
-    .single();
+  const { data: result, error: finalizeError } = await db.rpc(
+    "legal_finalize_customer_task",
+    {
+      p_task_id: taskId,
+      p_executed_by: session.user.id,
+    },
+  );
 
-  if (taskError) {
-    throw new Error(taskError.message);
+  if (finalizeError) {
+    throw new Error(finalizeError.message);
   }
 
-  const status = typeof task?.status === "string" ? task.status : null;
+  const finalization = result as { ok?: boolean; error?: string } | null;
 
-  if (status !== "CUSTOMER_ACCEPTED") {
-    throw new Error("Legal task is not ready for Team Optix finalization.");
-  }
-
-  const { error: updateError } = await db
-    .schema("legal")
-    .from("customer_legal_task")
-    .update({
-      status: "EXECUTED_AND_VAULTED",
-      teamoptix_executed_at: new Date().toISOString(),
-      teamoptix_executed_by: session.user.id,
-      completed_at: new Date().toISOString(),
-      blocking_reason: "Legal execution complete and vault evidence recorded.",
-    })
-    .eq("id", taskId)
-    .eq("status", "CUSTOMER_ACCEPTED");
-
-  if (updateError) {
-    throw new Error(updateError.message);
+  if (!finalization?.ok) {
+    throw new Error(finalization?.error ?? "Legal task finalization failed.");
   }
 
   revalidatePath("/teamoptix/business/contracts");
