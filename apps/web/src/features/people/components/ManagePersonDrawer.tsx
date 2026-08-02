@@ -168,6 +168,15 @@ export default function ManagePersonDrawer({
           onSendInvite={onSendInvite}
         />
 
+        <section className="app-card" style={{ padding: 14, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <p className="workspace-eyebrow">Coaching & documentation</p>
+            <strong>Corrective Action Notice</strong>
+            <p className="workspace-card-body" style={{ marginBottom: 0 }}>Prepare a company-scoped coaching or disciplinary record for this person.</p>
+          </div>
+          <a className="button" href={`/company/${companySlug}/people/corrective-actions?rosterId=${person.roster_member_id}`}>Prepare CAN</a>
+        </section>
+
         <PersonCoreSection
           person={person}
           saving={savingDetails}

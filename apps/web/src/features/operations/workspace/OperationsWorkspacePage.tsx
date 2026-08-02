@@ -504,7 +504,6 @@ function AttendanceOverlay(props: {
   arrivedPersonIds: Set<string>;
   assignmentByPersonId: Map<string, { route: DispatchRoute; seat: Seat }>;
   routeSortKey: "route_name" | "current_wa_num";
-  locked: boolean;
   savingPersonId: string | null;
   onClose: () => void;
   onToggle: (
@@ -559,10 +558,7 @@ function AttendanceOverlay(props: {
                 <button
                   type="button"
                   className={present ? "is-present" : ""}
-                  disabled={
-                    props.locked ||
-                    props.savingPersonId === person.roster_member_id
-                  }
+                  disabled={props.savingPersonId === person.roster_member_id}
                   onClick={() => props.onToggle(person, assignment)}
                 >
                   {props.savingPersonId === person.roster_member_id
@@ -1126,10 +1122,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
     person: DispatchPerson,
     assignment?: { route: DispatchRoute; seat: Seat }
   ) {
-    if (
-      savingPresencePersonId ||
-      dispatchDay?.status === "LOCKED"
-    ) {
+    if (savingPresencePersonId) {
       return;
     }
     const present = arrivedPersonIds.has(person.roster_member_id);
@@ -1192,11 +1185,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
     eventLabel: string,
     person: DispatchPerson | null
   ) {
-    if (
-      !selectedRoute ||
-      savingSeat ||
-      dispatchDay?.status === "LOCKED"
-    ) {
+    if (!selectedRoute || savingSeat) {
       return;
     }
 
@@ -1568,7 +1557,6 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
             type="button"
             className="ou-attendance-action"
             onClick={() => setAttendanceOpen(true)}
-            disabled={dispatchDay?.status === "LOCKED"}
           >
             Attendance
           </button>
@@ -1711,10 +1699,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
                       type="button"
                       className={`ou-presence ${selectedPersonPresent ? "is-present" : ""}`}
                       onClick={toggleSelectedPersonPresence}
-                      disabled={
-                        Boolean(savingPresencePersonId) ||
-                        dispatchDay?.status === "LOCKED"
-                      }
+                      disabled={Boolean(savingPresencePersonId)}
                     >
                       <span>
                         <small>Work posture</small>
@@ -1725,13 +1710,11 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
                         </strong>
                       </span>
                       <span>
-                        {dispatchDay?.status === "LOCKED"
-                          ? "Dispatch locked"
-                          : savingPresencePersonId
-                            ? "Saving…"
-                            : selectedPersonPresent
-                              ? "Undo"
-                              : "Mark present"}
+                        {savingPresencePersonId
+                          ? "Saving…"
+                          : selectedPersonPresent
+                            ? "Undo"
+                            : "Mark present"}
                       </span>
                     </button>
                   ) : null}
@@ -1765,7 +1748,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
                     <select
                       value={seatCandidateId}
                       onChange={(event) => setSeatCandidateId(event.target.value)}
-                      disabled={savingSeat || dispatchDay?.status === "LOCKED"}
+                      disabled={savingSeat}
                       aria-label={`Choose ${selectedSeat}`}
                     >
                       <option value="">
@@ -1793,8 +1776,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
                       onClick={assignSelectedSeat}
                       disabled={
                         !seatCandidateId ||
-                        savingSeat ||
-                        dispatchDay?.status === "LOCKED"
+                        savingSeat
                       }
                     >
                       {savingSeat ? "Saving…" : `Assign ${selectedSeat}`}
@@ -1804,9 +1786,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
                         type="button"
                         className="is-destructive"
                         onClick={unassignSelectedSeat}
-                        disabled={
-                          savingSeat || dispatchDay?.status === "LOCKED"
-                        }
+                        disabled={savingSeat}
                       >
                         Unassign {selectedSeat}
                       </button>
@@ -1907,6 +1887,9 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         onReturnToDispatch={
           dispatchDay?.status === "LOCKED" ? returnToDispatch : undefined
         }
+        onPrepareCorrectiveAction={() => {
+          window.location.href = `/company/${slug}/people/corrective-actions?source=${dispatchDay?.status === "LOCKED" ? "delivery" : "dispatch"}&incidentDate=${serviceDate}`;
+        }}
         onClose={() => setEventOverlayOpen(false)}
         onSubmit={addManualDispatchEvent}
       />
@@ -1916,7 +1899,6 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         arrivedPersonIds={arrivedPersonIds}
         assignmentByPersonId={assignmentByPersonId}
         routeSortKey={routeSortKey}
-        locked={dispatchDay?.status === "LOCKED"}
         savingPersonId={savingPresencePersonId}
         onClose={() => setAttendanceOpen(false)}
         onToggle={(person, assignment) => {

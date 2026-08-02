@@ -31,6 +31,7 @@ type DispatchEventOverlayProps = {
   handoffSaving?: boolean;
   onHandoffToDelivery?: () => Promise<void> | void;
   onReturnToDispatch?: () => Promise<void> | void;
+  onPrepareCorrectiveAction?: () => void;
   onClose: () => void;
   onSubmit: (payload: {
     event_code: string;
@@ -41,6 +42,10 @@ type DispatchEventOverlayProps = {
     person_name: string | null;
     route_key?: string | null;
     route_label?: string | null;
+    from_route_key?: string | null;
+    from_route_label?: string | null;
+    to_route_key?: string | null;
+    to_route_label?: string | null;
     event_payload?: Record<string, unknown>;
     walk_on_full_name?: string | null;
   }) => Promise<void>;
@@ -117,6 +122,7 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
     handoffSaving = false,
     onHandoffToDelivery,
     onReturnToDispatch,
+    onPrepareCorrectiveAction,
     onClose,
     onSubmit,
   } = props;
@@ -173,6 +179,7 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
     () =>
       manualEventActions.filter(
         (action) =>
+          action.event_category !== "DELIVERY" &&
           action.event_category !== "WORKFORCE" &&
           action.event_category !== "OPERATIONS" &&
           action.event_category !== "COVERAGE" &&
@@ -190,6 +197,10 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
   const [selectedTargetId, setSelectedTargetId] = useState("");
   const [walkOnName, setWalkOnName] = useState("");
   const [note, setNote] = useState("");
+  const [deliveryActionCode, setDeliveryActionCode] = useState("DELIVERY_NOTE");
+  const [assistingRouteId, setAssistingRouteId] = useState("");
+  const [receivingRouteId, setReceivingRouteId] = useState("");
+  const [assistStopCount, setAssistStopCount] = useState("");
 
   const selected = useMemo(() => {
     return allActions.find((option) => option.event_code === eventCode) ?? allActions[0] ?? null;
@@ -281,6 +292,68 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
     setSelectedTargetId("");
     setWalkOnName("");
     setNote("");
+  }
+
+  async function handleDeliverySubmit(e: React.FormEvent) {
+    e.preventDefault();
+
+    if (deliveryActionCode === "DELIVERY_NOTE") {
+      if (!note.trim()) return;
+
+      await onSubmit({
+        event_code: "DELIVERY_NOTE",
+        event_label: "Delivery note",
+        event_category: "DELIVERY",
+        note: note.trim(),
+        person_roster_member_id: null,
+        person_name: null,
+        event_payload: {
+          phase: "delivery",
+          source: "delivery_action_overlay",
+        },
+      });
+      setNote("");
+      return;
+    }
+
+    const assistingRoute = activeRoutes.find(
+      (route) => route.route_key === assistingRouteId
+    );
+    const receivingRoute = activeRoutes.find(
+      (route) => route.route_key === receivingRouteId
+    );
+    const stopCount = Number(assistStopCount);
+
+    if (
+      !assistingRoute ||
+      !receivingRoute ||
+      assistingRoute.route_key === receivingRoute.route_key ||
+      !Number.isInteger(stopCount) ||
+      stopCount < 1
+    ) {
+      return;
+    }
+
+    await onSubmit({
+      event_code: "DRIVER_ASSIST",
+      event_label: "Driver assist",
+      event_category: "DELIVERY",
+      note: "",
+      person_roster_member_id: null,
+      person_name: null,
+      from_route_key: assistingRoute.route_key,
+      from_route_label: routeDropdownLabel(assistingRoute),
+      to_route_key: receivingRoute.route_key,
+      to_route_label: routeDropdownLabel(receivingRoute),
+      event_payload: {
+        phase: "delivery",
+        source: "delivery_action_overlay",
+        stop_count: stopCount,
+      },
+    });
+    setAssistingRouteId("");
+    setReceivingRouteId("");
+    setAssistStopCount("");
   }
 
   function renderActionColumn(title: string, actions: DispatchActionOption[]) {
@@ -508,7 +581,7 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
                 <div>
                   <strong>Return to Dispatch</strong>
                   <p className="app-card__body" style={{ marginBottom: 0 }}>
-                    Reopen assignment controls. The acting user is recorded automatically.
+                    Change the working frame back to Dispatch. Existing events and adjustments remain intact.
                   </p>
                 </div>
                 <button
@@ -522,58 +595,146 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
               </div>
             ) : null}
 
-            <div
-              style={{
-                border: "1px solid #d6dfeb",
-                borderRadius: 14,
-                background: "#f8fafc",
-                padding: 14,
-              }}
+            <form
+              onSubmit={handleDeliverySubmit}
+              style={{ display: "grid", gap: 16 }}
             >
-              <p className="eyebrow" style={{ marginBottom: 4 }}>Delivery catalog stub</p>
-              <strong>Delivery actions are not yet governed</strong>
-              <p className="app-card__body" style={{ marginBottom: 0 }}>
-                This overlay remains available after handoff without reusing or mutating the Dispatch action catalog.
-              </p>
-            </div>
+              <section style={{ display: "grid", gap: 10 }}>
+                <p className="eyebrow">Step 1 · Choose action type</p>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {[
+                    ["DELIVERY_NOTE", "Delivery note"],
+                    ["DRIVER_ASSIST", "Driver assist"],
+                  ].map(([code, label]) => (
+                    <button
+                      key={code}
+                      type="button"
+                      style={
+                        deliveryActionCode === code
+                          ? selectedButton
+                          : compactButton
+                      }
+                      onClick={() => {
+                        setDeliveryActionCode(code);
+                        setNote("");
+                        setAssistingRouteId("");
+                        setReceivingRouteId("");
+                        setAssistStopCount("");
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </section>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                gap: 10,
-              }}
-            >
-              {[
-                ["Route exception", "Record a delivery issue against a Route Unit."],
-                ["Driver support", "Record assistance, recovery, or a field escalation."],
-                ["Service note", "Attach governed delivery context and evidence."],
-                ["End-of-day review", "Resolve completion and recovery exceptions."],
-              ].map(([label, description]) => (
-                <button
-                  key={label}
-                  type="button"
-                  disabled
+              {deliveryActionCode === "DELIVERY_NOTE" ? (
+                <section style={{ display: "grid", gap: 8 }}>
+                  <label style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>
+                    Delivery note
+                  </label>
+                  <textarea
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Enter delivery context"
+                    required
+                    rows={5}
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 14,
+                      border: "1px solid #d6dfeb",
+                      font: "inherit",
+                      resize: "vertical",
+                    }}
+                  />
+                </section>
+              ) : (
+                <section
                   style={{
-                    border: "1px solid #d6dfeb",
-                    borderRadius: 12,
-                    background: "#fff",
-                    padding: 12,
-                    color: "#334155",
-                    textAlign: "left",
-                    opacity: 0.72,
+                    display: "grid",
+                    gap: 12,
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
                   }}
                 >
-                  <strong>{label}</strong>
-                  <span style={{ display: "block", marginTop: 5, color: "#64748b", fontSize: 12, lineHeight: 1.4 }}>
-                    {description}
-                  </span>
-                  <span style={{ display: "block", marginTop: 8, color: "#7c8aa0", fontSize: 10, fontWeight: 900, textTransform: "uppercase" }}>
-                    In design
-                  </span>
+                  <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: "#64748b" }}>
+                    Route assisting
+                    <select
+                      value={assistingRouteId}
+                      onChange={(e) => setAssistingRouteId(e.target.value)}
+                      required
+                      style={{ height: 42, padding: "0 12px", borderRadius: 12, border: "1px solid #d6dfeb", background: "#fff" }}
+                    >
+                      <option value="">Select assisting route</option>
+                      {activeRoutes.map((route, index) => (
+                        <option key={`assist:${route.route_key}:${index}`} value={route.route_key}>
+                          {routeDropdownLabel(route) || route.route_key}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: "#64748b" }}>
+                    Route receiving assistance
+                    <select
+                      value={receivingRouteId}
+                      onChange={(e) => setReceivingRouteId(e.target.value)}
+                      required
+                      style={{ height: 42, padding: "0 12px", borderRadius: 12, border: "1px solid #d6dfeb", background: "#fff" }}
+                    >
+                      <option value="">Select receiving route</option>
+                      {activeRoutes.map((route, index) => (
+                        <option key={`receive:${route.route_key}:${index}`} value={route.route_key}>
+                          {routeDropdownLabel(route) || route.route_key}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 900, color: "#64748b" }}>
+                    Stop count
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={assistStopCount}
+                      onChange={(e) => setAssistStopCount(e.target.value)}
+                      required
+                      placeholder="Stops transferred"
+                      style={{ height: 42, padding: "0 12px", borderRadius: 12, border: "1px solid #d6dfeb", background: "#fff" }}
+                    />
+                  </label>
+
+                  {assistingRouteId && assistingRouteId === receivingRouteId ? (
+                    <p style={{ margin: 0, color: "#b45309", fontSize: 12 }}>
+                      Assisting and receiving routes must be different.
+                    </p>
+                  ) : null}
+                </section>
+              )}
+
+              <div className="cta-row" style={{ marginTop: 0 }}>
+                <button
+                  type="submit"
+                  className="button button-primary"
+                  disabled={
+                    saving ||
+                    (deliveryActionCode === "DELIVERY_NOTE"
+                      ? !note.trim()
+                      : !assistingRouteId ||
+                        !receivingRouteId ||
+                        assistingRouteId === receivingRouteId ||
+                        !Number.isInteger(Number(assistStopCount)) ||
+                        Number(assistStopCount) < 1)
+                  }
+                >
+                  {saving ? "Saving..." : "Save delivery action"}
                 </button>
-              ))}
-            </div>
+                <button type="button" className="button" onClick={onClose}>
+                  Cancel
+                </button>
+              </div>
+            </form>
           </section>
         )}
 
@@ -594,7 +755,7 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
               <p className="eyebrow" style={{ marginBottom: 4 }}>Operational handoff</p>
               <strong>Move today’s operation into Delivery</strong>
               <p className="app-card__body" style={{ marginBottom: 0 }}>
-                Locks sort and assignment actions while preserving the event history.
+                Sets the operation’s working phase to Delivery while preserving the event history.
               </p>
             </div>
             <button
@@ -605,6 +766,17 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
             >
               {handoffSaving ? "Handing off…" : "Handoff to delivery"}
             </button>
+          </section>
+        ) : null}
+
+        {onPrepareCorrectiveAction ? (
+          <section style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #e6edf5", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div>
+              <p className="eyebrow" style={{ marginBottom: 4 }}>People follow-up</p>
+              <strong>Prepare Corrective Action Notice</strong>
+              <p className="app-card__body" style={{ marginBottom: 0 }}>Open a separate evidence-ready record without blocking dispatch or delivery adjustments.</p>
+            </div>
+            <button type="button" className="button" onClick={onPrepareCorrectiveAction}>Prepare CAN</button>
           </section>
         ) : null}
       </section>

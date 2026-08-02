@@ -27,10 +27,8 @@ type DispatchRightRailProps = {
   dispatchRoutes: DispatchRoute[];
   dispatchDay: DispatchDayRow | null;
   events: DispatchEventRow[];
-  locking: boolean;
   onAddEvent: () => void;
   onUndoEvent: (event: DispatchEventRow) => void;
-  onLockDispatch: () => void;
 };
 
 function formatTime(value: string) {
@@ -54,13 +52,11 @@ export function DispatchRightRail(props: DispatchRightRailProps) {
     dispatchRoutes,
     dispatchDay,
     events,
-    locking,
     onAddEvent,
     onUndoEvent,
-    onLockDispatch,
   } = props;
 
-  const locked = dispatchDay?.status === "LOCKED";
+  const deliveryPhase = dispatchDay?.status === "LOCKED";
   const reversedEventIds = getReversedDispatchEventIds(events);
 
   return (
@@ -68,7 +64,7 @@ export function DispatchRightRail(props: DispatchRightRailProps) {
       <div style={panelHeader}>
         <div>
           <p style={eyebrow}>Dispatch</p>
-          <strong>{locked ? "Locked snapshot" : "Active workspace"}</strong>
+          <strong>{deliveryPhase ? "Delivery phase" : "Dispatch phase"}</strong>
         </div>
       </div>
 
@@ -78,32 +74,18 @@ export function DispatchRightRail(props: DispatchRightRailProps) {
         <Stat label="Needs Driver" value={summary.withoutDriver} warn={summary.withoutDriver > 0} />
 
         <div style={{ border: "1px solid #e6edf5", borderRadius: 12, padding: 10, display: "grid", gap: 8 }}>
-          <p style={eyebrow}>Lifecycle</p>
-          <strong>{locked ? "LOCKED" : "ACTIVE"}</strong>
+          <p style={eyebrow}>Working phase</p>
+          <strong>{deliveryPhase ? "DELIVERY" : "DISPATCH"}</strong>
 
           {dispatchDay?.locked_at ? (
             <span style={{ color: "#64748b", fontSize: 12 }}>
-              Locked {formatTime(dispatchDay.locked_at)}
+              Handed off {formatTime(dispatchDay.locked_at)}
             </span>
           ) : null}
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" style={compactButton} onClick={onAddEvent} disabled={locked}>
-              Dispatch Action
-            </button>
-
-            <button
-              type="button"
-              style={{
-                ...compactButton,
-                borderColor: locked ? "#bbf7d0" : "#2563eb",
-                background: locked ? "#f0fdf4" : "#eff6ff",
-                color: locked ? "#166534" : "#1d4ed8",
-              }}
-              onClick={onLockDispatch}
-              disabled={locked || locking}
-            >
-              {locked ? "Locked" : locking ? "Locking..." : "Lock Dispatch"}
+            <button type="button" style={compactButton} onClick={onAddEvent}>
+              {deliveryPhase ? "Delivery Action" : "Dispatch Action"}
             </button>
           </div>
         </div>
@@ -144,7 +126,6 @@ export function DispatchRightRail(props: DispatchRightRailProps) {
                           <button
                             type="button"
                             onClick={() => onUndoEvent(event)}
-                            disabled={locked}
                             style={{
                               minHeight: 18,
                               padding: "0 6px",
@@ -155,7 +136,7 @@ export function DispatchRightRail(props: DispatchRightRailProps) {
                               fontSize: 10,
                               fontWeight: 900,
                               lineHeight: 1,
-                              cursor: locked ? "not-allowed" : "pointer",
+                              cursor: "pointer",
                             }}
                           >
                             Undo

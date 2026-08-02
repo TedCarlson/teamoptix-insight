@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { buildAssignedIds, buildWorkforce } from "./dispatchSelectors";
-import type { DispatchPerson, DispatchRoute } from "./dispatchSupport";
+import {
+  buildAssignedIds,
+  buildScheduledRosterIds,
+  buildUnscheduledDrivers,
+  buildWorkforce,
+} from "./dispatchSelectors";
+import type {
+  DispatchPerson,
+  DispatchRosterRow,
+  DispatchRoute,
+  GeneratedScheduleRow,
+} from "./dispatchSupport";
 
 const ricky: DispatchPerson = {
   roster_member_id: "ricky-brown",
@@ -41,5 +51,71 @@ describe("dispatch workforce availability", () => {
     const assignedIds = buildAssignedIds([route("UNASSIGNED", ricky)]);
 
     expect(assignedIds).not.toContain(ricky.roster_member_id);
+  });
+
+  it("only treats people planned on as scheduled", () => {
+    const scheduleRows: GeneratedScheduleRow[] = [
+      {
+        id: "off-row",
+        service_date: "2026-08-02",
+        roster_member_id: "off-driver",
+        full_name: "Off Driver",
+        worker_type: "Driver",
+        planned_on: false,
+        route_name: null,
+        source_kind: "GENERATED_SCHEDULE",
+        override_type: null,
+      },
+      {
+        id: "on-row",
+        service_date: "2026-08-02",
+        roster_member_id: "on-driver",
+        full_name: "On Driver",
+        worker_type: "Driver",
+        planned_on: true,
+        route_name: "101",
+        source_kind: "GENERATED_SCHEDULE",
+        override_type: null,
+      },
+      {
+        id: "callout-row",
+        service_date: "2026-08-02",
+        roster_member_id: "callout-driver",
+        full_name: "Callout Driver",
+        worker_type: "Driver",
+        planned_on: false,
+        route_name: null,
+        source_kind: "SCHEDULE_OVERRIDE",
+        override_type: "CALL_OUT",
+      },
+    ];
+
+    expect(buildScheduledRosterIds(scheduleRows, "2026-08-02")).toEqual(
+      new Set(["on-driver", "callout-driver"])
+    );
+  });
+
+  it("offers every active, unscheduled roster role", () => {
+    const rosterRows: DispatchRosterRow[] = [
+      { roster_member_id: "driver", full_name: "A Driver", worker_type: "Driver", employment_status: "Active" },
+      { roster_member_id: "lead", full_name: "B Lead", worker_type: "Lead Driver", employment_status: "Active" },
+      { roster_member_id: "mechanic", full_name: "C Mechanic", worker_type: "Mechanic", employment_status: "Active" },
+      { roster_member_id: "fleet", full_name: "D Fleet", worker_type: "Fleet Manager", employment_status: "Active" },
+      { roster_member_id: "candidate", full_name: "E Candidate", worker_type: "Driver", employment_status: "Candidate" },
+      { roster_member_id: "scheduled", full_name: "F Scheduled", worker_type: "Driver", employment_status: "Active" },
+    ];
+
+    const result = buildUnscheduledDrivers({
+      allPeople: [],
+      rosterRows,
+      scheduledRosterIds: new Set(["scheduled"]),
+    });
+
+    expect(result.map((person) => person.roster_member_id)).toEqual([
+      "driver",
+      "lead",
+      "mechanic",
+      "fleet",
+    ]);
   });
 });

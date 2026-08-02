@@ -214,6 +214,8 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     { label: "Import", href: `${peopleBase}/import`, match: (path) => path.startsWith(`${peopleBase}/import`) },
     { label: "Hiring", href: `${base}/hiring`, match: (path) => path.startsWith(`${base}/hiring`) },
     { label: "Compliance", href: `${peopleBase}/compliance`, match: (path) => path.startsWith(`${peopleBase}/compliance`) },
+    { label: "Policies", href: `${peopleBase}/policies`, match: (path) => path.startsWith(`${peopleBase}/policies`) },
+    { label: "Corrective Actions", href: `${peopleBase}/corrective-actions`, match: (path) => path.startsWith(`${peopleBase}/corrective-actions`) },
     { label: "Reports", href: `${peopleBase}/reports`, match: (path) => path.startsWith(`${peopleBase}/reports`) },
   ];
 

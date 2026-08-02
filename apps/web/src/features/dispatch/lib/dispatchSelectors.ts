@@ -145,10 +145,16 @@ export function buildScheduledRosterIds(
 
   for (const row of scheduleRows) {
     if (row.service_date !== serviceDate) continue;
+    if (!row.planned_on && !row.override_type) continue;
     ids.add(row.roster_member_id);
   }
 
   return ids;
+}
+
+function isActiveRosterRow(row: DispatchRosterRow) {
+  const status = (row.employment_status ?? "").trim().toLowerCase();
+  return status === "active";
 }
 
 export function buildAllPeople(params: {
@@ -277,13 +283,7 @@ export function buildUnscheduledDrivers(params: {
   return rosterRows
     .filter((row) => !scheduledRosterIds.has(row.roster_member_id))
     .filter((row) => !scheduledOrAdded.has(row.roster_member_id))
-    .filter((row) => {
-      const status = (row.employment_status ?? "").toLowerCase();
-      if (status && status !== "active" && status !== "candidate") return false;
-
-      const worker = `${row.worker_type ?? ""} ${row.full_name ?? ""}`.toLowerCase();
-      return !worker.includes("helper") && !worker.includes("trainee");
-    })
+    .filter(isActiveRosterRow)
     .map(
       (row): DispatchPerson => ({
         roster_member_id: row.roster_member_id,
@@ -413,13 +413,7 @@ export function findUnscheduledDriverCandidates(params: {
   return rosterRows
     .filter((row) => !scheduledRosterIds.has(row.roster_member_id))
     .filter((row) => !scheduledOrAdded.has(row.roster_member_id))
-    .filter((row) => {
-      const status = (row.employment_status ?? "").toLowerCase();
-      if (status && status !== "active" && status !== "candidate") return false;
-
-      const worker = `${row.worker_type ?? ""} ${row.full_name ?? ""}`.toLowerCase();
-      return !worker.includes("helper") && !worker.includes("trainee");
-    })
+    .filter(isActiveRosterRow)
     .sort((a, b) =>
       (a.full_name ?? "").localeCompare(b.full_name ?? "", undefined, {
         numeric: true,

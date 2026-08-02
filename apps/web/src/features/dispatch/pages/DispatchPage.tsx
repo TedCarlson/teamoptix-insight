@@ -17,6 +17,7 @@ import { addDaysIso } from "../lib/dispatchDates";
 import {
   lockDispatchDay,
   recordDispatchEvent,
+  reopenDispatchDay,
 } from "../lib/dispatchApi";
 import {
   buildAssignmentMapFromRoutesAndEvents,
@@ -89,7 +90,7 @@ export default function DispatchPage() {
     setDispatchEvents,
     setError,
   } = useDispatchWorkspaceData(slug, serviceDate);
-  const dispatchLocked = dispatchDay?.status === "LOCKED";
+  const deliveryPhase = dispatchDay?.status === "LOCKED";
 
   useEffect(() => {
     let active = true;
@@ -230,8 +231,6 @@ export default function DispatchPage() {
 
 
   function openSeat(route: DispatchRoute, seat: Seat) {
-    if (dispatchLocked) return;
-
     setIntent({
       route_key: route.route_key,
       route_label: orderedRouteLabelForSort(route),
@@ -286,7 +285,7 @@ export default function DispatchPage() {
   }
 
   function assignPerson(person: DispatchPerson) {
-    if (!intent || dispatchLocked) return;
+    if (!intent) return;
 
     setAssignments((current) => {
       const target = current[intent.route_key];
@@ -343,8 +342,6 @@ export default function DispatchPage() {
   }
 
   function clearSeat(routeKey: string, seat: Seat) {
-    if (dispatchLocked) return;
-
     setAssignments((current) => {
       const target = current[routeKey];
       if (!target) return current;
@@ -435,8 +432,6 @@ export default function DispatchPage() {
   }
 
   async function handleAddRoute() {
-    if (dispatchLocked) return;
-
     const rawRoute = window.prompt("Route / WA number to add");
     const routeName = rawRoute?.trim();
 
@@ -475,8 +470,6 @@ export default function DispatchPage() {
   }
 
   async function handleAddDriver() {
-    if (dispatchLocked) return;
-
     const candidates = findUnscheduledDriverCandidates({
       allPeople,
       rosterRows,
@@ -624,8 +617,6 @@ export default function DispatchPage() {
   }, [serviceDate, setDispatchDay, setDispatchEvents, setError, slug]);
 
   async function toggleArrived(person: DispatchPerson) {
-    if (dispatchLocked) return;
-
     const arrived = arrivedPersonIds.has(person.roster_member_id);
 
     await addManualDispatchEvent({
@@ -643,7 +634,7 @@ export default function DispatchPage() {
   }
 
   useEffect(() => {
-    if (!slug || dispatchLocked || callouts.length === 0) return;
+    if (!slug || callouts.length === 0) return;
 
     const existingCalloutIds = new Set(
       dispatchEvents
@@ -668,12 +659,10 @@ export default function DispatchPage() {
         person_name: person.full_name,
       });
     }
-  }, [addManualDispatchEvent, callouts, dispatchEvents, dispatchLocked, serviceDate, slug]);
+  }, [addManualDispatchEvent, callouts, dispatchEvents, serviceDate, slug]);
 
 
   async function undoDispatchEvent(event: DispatchEventRow) {
-    if (dispatchLocked) return;
-
     try {
       setSavingEvent(true);
       setError(null);
@@ -713,7 +702,7 @@ export default function DispatchPage() {
         routes: dispatchRoutes,
         event_count: dispatchEvents.length,
         report: {
-          title: "Dispatch Lock Report",
+          title: "Dispatch Handoff Report",
           routes_total: summary.total,
           routes_covered: summary.withDriver,
           routes_needing_driver: summary.withoutDriver,
@@ -730,7 +719,7 @@ export default function DispatchPage() {
       });
 
       if (!ok) {
-        setError(data?.error ?? "Failed to lock dispatch.");
+        setError(data?.error ?? "Failed to hand the operation to Delivery.");
         return;
       }
 
@@ -738,7 +727,41 @@ export default function DispatchPage() {
         setDispatchDay(data.dispatch_day as DispatchDayRow);
       }
     } catch {
-      setError("Failed to lock dispatch.");
+      setError("Failed to hand the operation to Delivery.");
+    } finally {
+      setLocking(false);
+    }
+  }
+
+  async function returnToDispatch() {
+    if (locking || dispatchDay?.status !== "LOCKED") return;
+
+    try {
+      setLocking(true);
+      setError(null);
+
+      const { ok, data } = await reopenDispatchDay({
+        slug,
+        dispatchDate: serviceDate,
+      });
+
+      if (!ok) {
+        setError(data?.error ?? "Failed to return the operation to Dispatch.");
+        return;
+      }
+
+      if (data?.dispatch_day) {
+        setDispatchDay(data.dispatch_day as DispatchDayRow);
+      }
+      if (data?.event) {
+        setDispatchEvents((current) => [
+          ...current,
+          data.event as DispatchEventRow,
+        ]);
+      }
+      setEventOverlayOpen(false);
+    } catch {
+      setError("Failed to return the operation to Dispatch.");
     } finally {
       setLocking(false);
     }
@@ -811,26 +834,22 @@ export default function DispatchPage() {
             />
 
             <div className="dispatch-right-column" style={{ display: "grid", gap: 12 }}>
-              {!dispatchLocked ? (
-                <OperationsUploadCard onUpload={() => setUploadOverlayOpen(true)} />
-              ) : null}
+              <OperationsUploadCard onUpload={() => setUploadOverlayOpen(true)} />
 
               <OperationsIntelligenceFeed
-                key={`dispatch-feed-${refreshKey}-${dispatchLocked ? "locked" : "open"}`}
+                key={`dispatch-feed-${refreshKey}-${deliveryPhase ? "delivery" : "dispatch"}`}
                 slug={slug}
                 serviceDate={serviceDate}
                 surface="dispatch"
-                frozen={dispatchLocked}
+                frozen={false}
               />
               <DispatchRightRail
                 summary={summary}
                 dispatchRoutes={dispatchRoutes}
                 dispatchDay={dispatchDay}
                 events={dispatchEvents}
-                locking={locking}
                 onAddEvent={() => setEventOverlayOpen(true)}
                 onUndoEvent={undoDispatchEvent}
-                onLockDispatch={lockDispatch}
               />
             </div>
           </section>
@@ -862,6 +881,13 @@ export default function DispatchPage() {
         unscheduledDrivers={unscheduledDrivers}
         availableRoutes={availableRoutes}
         activeRoutes={dispatchRoutes}
+        phase={deliveryPhase ? "delivery" : "dispatch"}
+        handoffSaving={locking}
+        onHandoffToDelivery={lockDispatch}
+        onReturnToDispatch={deliveryPhase ? returnToDispatch : undefined}
+        onPrepareCorrectiveAction={() => {
+          window.location.href = `/company/${slug}/people/corrective-actions?source=${deliveryPhase ? "delivery" : "dispatch"}&incidentDate=${serviceDate}`;
+        }}
         onClose={() => setEventOverlayOpen(false)}
         onSubmit={addManualDispatchEvent}
       />

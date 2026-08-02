@@ -46,13 +46,13 @@ export async function POST(
       );
     }
 
-    const { error: activateError } = await supabase
-      .schema("core")
-      .from("company_roster")
-      .update({
-        employment_status: "Active",
-      })
-      .eq("id", rosterId);
+    const { error: activateError } = await supabase.rpc("roster_set_employment_status", {
+      p_company_slug: slug,
+      p_roster_id: rosterId,
+      p_status: "Active",
+      p_effective_date: new Date().toISOString().slice(0, 10),
+      p_note: "Candidate activated after onboarding completion.",
+    });
 
     if (activateError) {
       return NextResponse.json(
