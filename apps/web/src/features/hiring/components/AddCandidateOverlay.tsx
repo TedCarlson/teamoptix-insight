@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  DEFAULT_FEDEX_ROLE,
+  FEDEX_ROLE_OPTIONS,
+} from "@/features/platform/roles/fedexRoleOptions";
 
 export type AddCandidatePayload = {
   full_name: string;
@@ -89,13 +93,35 @@ function Field(props: {
   );
 }
 
+function RoleField(props: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label style={{ display: "grid", gap: 5 }}>
+      <span className="hero-stat__label">Role</span>
+      <select
+        value={props.value}
+        onChange={(event) => props.onChange(event.target.value)}
+        style={inputStyle}
+      >
+        {FEDEX_ROLE_OPTIONS.map((option) => (
+          <option key={option.key} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
   const { open, saving, error, onClose, onSubmit } = props;
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [workerType, setWorkerType] = useState("Driver");
+  const [workerType, setWorkerType] = useState(DEFAULT_FEDEX_ROLE);
   const [marketCode, setMarketCode] = useState("");
   const [note, setNote] = useState("");
 
@@ -127,7 +153,7 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
     setFullName("");
     setEmail("");
     setPhone("");
-    setWorkerType("Driver");
+    setWorkerType(DEFAULT_FEDEX_ROLE);
     setMarketCode("");
     setNote("");
 
@@ -262,7 +288,7 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
               <Field label="Email" value={email} onChange={setEmail} type="email" />
               <Field label="Phone" value={phone} onChange={setPhone} />
               <Field label="DOB" value={dateOfBirth} onChange={setDateOfBirth} type="date" />
-              <Field label="Role / worker type" value={workerType} onChange={setWorkerType} />
+              <RoleField value={workerType} onChange={setWorkerType} />
               <Field label="Market / terminal code" value={marketCode} onChange={setMarketCode} />
             </div>
           </section>

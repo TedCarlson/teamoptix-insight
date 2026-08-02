@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { RosterRow } from "@/features/people/types/roster.types";
 import CandidateChecklistPanel from "@/features/hiring/components/candidate-detail/CandidateChecklistPanel";
 import PersonCoreSection from "@/features/people/components/person-drawer/PersonCoreSection";
+import PersonCompensationSection from "@/features/people/components/person-drawer/PersonCompensationSection";
 import PersonOperationsSection from "@/features/people/components/person-drawer/PersonOperationsSection";
 import PersonLifecycleSection from "@/features/people/components/person-drawer/PersonLifecycleSection";
 import PersonTimelineSection from "@/features/people/components/person-drawer/PersonTimelineSection";
@@ -708,6 +709,8 @@ export default function CandidateWorkflowDrawer({
           saving={savingDetails}
           onSave={saveDetails}
         />
+
+        <PersonCompensationSection companySlug={slug} person={person} />
 
         <PersonOperationsSection
           person={person}
