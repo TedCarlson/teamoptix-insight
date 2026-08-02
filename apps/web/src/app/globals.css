@@ -7933,7 +7933,8 @@ body {
 .compliance-status--warning { background: #fffbea; color: #8a6100; }
 .report-readiness.is-ready { background: #ecfdf3; color: #087f5b; }
 .people-reports-toolbar { align-items: end; justify-content: flex-start; }
-.people-reports-toolbar label { display: grid; gap: 5px; min-width: 230px; color: #64748b; font-size: 10px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+.people-reports-toolbar label { display: grid; gap: 5px; min-width: 170px; color: #64748b; font-size: 10px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+.people-reports-toolbar label:first-child { min-width: 230px; }
 .people-reports-toolbar .people-workspace-search { margin-left: auto; }
 .people-reports-stats { grid-template-columns: repeat(3,minmax(160px,1fr)); }
 @media (max-width: 900px) {

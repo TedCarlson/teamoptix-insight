@@ -73,6 +73,9 @@ export default function PeopleReportsPage() {
   const { rows, loading, error } = usePeopleWorkspaceRoster(slug);
   const [report, setReport] = useState<ReportKey>("workforce_readiness");
   const [search, setSearch] = useState("");
+  const [employmentStatus, setEmploymentStatus] = useState("all");
+  const [complianceCondition, setComplianceCondition] = useState("all");
+  const [complianceDocument, setComplianceDocument] = useState("all");
   const [asOfMs] = useState(() => Date.now());
   const [candidates, setCandidates] = useState<PipelineCandidate[]>([]);
   const [funnel, setFunnel] = useState<LifecycleFunnel>({ introduced: 0, checkpoints: [], failures: [] });
@@ -99,6 +102,8 @@ export default function PeopleReportsPage() {
   }, [slug]);
 
   const currentPeople = useMemo(() => rows.filter((row) => row.employment_status !== "Former"), [rows]);
+  const employmentStatuses = useMemo(() => Array.from(new Set(currentPeople.map((person) => person.employment_status))).sort(), [currentPeople]);
+  const complianceDocumentTypes = useMemo(() => Array.from(new Set(currentPeople.flatMap((person) => (person.compliance_signals ?? []).map((signal) => signal.label)))).sort(), [currentPeople]);
   const activeHeadcount = useMemo(() => rows.filter((row) => row.employment_status === "Active").length, [rows]);
   const traineeCount = useMemo(() => rows.filter((row) => row.employment_status === "Trainee").length, [rows]);
   const activeDrivers = useMemo(() => rows.filter((row) => row.employment_status === "Active"), [rows]);
@@ -136,7 +141,12 @@ export default function PeopleReportsPage() {
       Phone: person.phone || "—",
     }));
 
-    if (report === "compliance_expirations") return currentPeople.flatMap((person) => (person.compliance_signals ?? []).map((signal) => ({
+    if (report === "compliance_expirations") return currentPeople
+      .filter((person) => employmentStatus === "all" || person.employment_status === employmentStatus)
+      .flatMap((person) => (person.compliance_signals ?? [])
+      .filter((signal) => complianceCondition === "all" || signal.status === complianceCondition)
+      .filter((signal) => complianceDocument === "all" || signal.label === complianceDocument)
+      .map((signal) => ({
       Person: person.full_name,
       Status: person.employment_status,
       Role: person.worker_type || "—",
@@ -157,7 +167,7 @@ export default function PeopleReportsPage() {
         "Separation date": displayDate(person.separation_date),
         Tenure: person.hire_date ? `${Math.max(0, Math.floor((asOfMs - new Date(`${person.hire_date.slice(0, 10)}T00:00:00Z`).getTime()) / 86_400_000))} days` : "—",
       }));
-  }, [activationForecast, activeDrivers, asOfMs, currentPeople, funnel, report, rows, trainees]);
+  }, [activationForecast, activeDrivers, asOfMs, complianceCondition, complianceDocument, currentPeople, employmentStatus, funnel, report, rows, trainees]);
 
   const visibleRows = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -180,6 +190,7 @@ export default function PeopleReportsPage() {
     <section className="workspace-main people-reports-workspace">
       <div className="people-workspace-toolbar people-reports-toolbar">
         <label><span>Report</span><select value={report} onChange={(event) => { setReport(event.target.value as ReportKey); setSearch(""); }}>{(Object.keys(reportLabels) as ReportKey[]).map((key) => <option key={key} value={key}>{reportLabels[key]}</option>)}</select></label>
+        {report === "compliance_expirations" ? <><label><span>Status</span><select value={employmentStatus} onChange={(event) => setEmploymentStatus(event.target.value)}><option value="all">All statuses</option>{employmentStatuses.map((status) => <option key={status} value={status}>{status}</option>)}</select></label><label><span>Condition</span><select value={complianceCondition} onChange={(event) => setComplianceCondition(event.target.value)}><option value="all">All conditions</option><option value="missing">Missing</option><option value="expired">Expired</option><option value="urgent">Due within 30 days</option><option value="warning">Due within 60 days</option></select></label><label><span>Document</span><select value={complianceDocument} onChange={(event) => setComplianceDocument(event.target.value)}><option value="all">All document types</option>{complianceDocumentTypes.map((label) => <option key={label} value={label}>{label}</option>)}</select></label></> : null}
         <input className="people-workspace-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search this report" aria-label="Search report" />
         <button className="button button-primary" type="button" disabled={!visibleRows.length} onClick={downloadCsv}>Download CSV</button>
       </div>
