@@ -1,6 +1,7 @@
 "use client";
 
-import ComplianceSignal from "@/features/compliance/components/ComplianceSignal";
+import RosterComplianceIndicators from "@/features/compliance/components/RosterComplianceIndicators";
+import type { RosterComplianceSignal } from "@/features/compliance/lib/rosterCompliance";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import AddCandidateOverlay from "@/features/hiring/components/AddCandidateOverlay";
@@ -47,7 +48,7 @@ type PipelineCandidateRow = {
   stage_sort_order: number;
   invite_status: string;
   progress?: CandidateProgress | null;
-  compliance: string;
+  compliance_signals: RosterComplianceSignal[];
   reports_to_name?: string | null;
   hire_date?: string | null;
   separation_date?: string | null;
@@ -236,7 +237,7 @@ function ReadinessBlocks(props: { progress?: CandidateProgress | null }) {
 
 function toRosterRow(row: PipelineCandidateRow): RosterRow {
   return {
-    compliance_signals: [],
+    compliance_signals: row.compliance_signals,
     roster_member_id: row.id,
     profile_id: row.profile_id ?? null,
     person_id: row.person_id ?? null,
@@ -249,7 +250,6 @@ function toRosterRow(row: PipelineCandidateRow): RosterRow {
     reports_to_name: row.reports_to_name ?? "—",
     hire_date: row.hire_date ?? "—",
     invite_status: row.invite_status,
-    compliance_summary: row.compliance,
     fx_id: row.fx_id ?? null,
     dswid: row.dswid ?? null,
     dot_expiration_date: row.dot_expiration_date ?? null,
@@ -407,7 +407,9 @@ export default function HiringPipelinePage() {
           row.market,
           row.stage_label,
           row.invite_status,
-          row.compliance,
+          ...row.compliance_signals.map(
+            (signal) => `${signal.label} ${signal.status}`
+          ),
         ]
           .join(" ")
           .toLowerCase()
@@ -599,7 +601,9 @@ export default function HiringPipelinePage() {
                       <td style={cellStyle}>
                         <ReadinessBlocks progress={row.progress} />
                       </td>
-                      <td style={cellStyle}><ComplianceSignal value={row.compliance} compact /></td>
+                      <td style={cellStyle}>
+                        <RosterComplianceIndicators signals={row.compliance_signals} />
+                      </td>
                     </tr>
                   ))}
                 </tbody>

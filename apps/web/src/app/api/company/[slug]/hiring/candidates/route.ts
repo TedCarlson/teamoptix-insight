@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { deriveRosterComplianceSignals } from "@/features/compliance/lib/rosterCompliance";
 
 export const runtime = "nodejs";
 
@@ -269,7 +270,11 @@ export async function GET(
           stage?.sort_order ?? fact?.stage_sort_order ?? 100,
         stage_is_terminal: Boolean(stage?.is_terminal ?? fact?.is_terminal ?? false),
         invite_status: row.invite_status ?? "Not Invited",
-        compliance: row.compliance_summary ?? "Missing",
+        compliance_signals: deriveRosterComplianceSignals({
+          licenseExpirationDate: license?.expiration_date ?? null,
+          dotExpirationDate: ops?.dot_exp ?? null,
+          qualificationExpirationDate: ops?.qual_cert_exp ?? null,
+        }),
         onboarding_completed_at: row.onboarding_completed_at ?? null,
         fx_id: row.fx_id ?? null,
         dswid: row.dswid ?? null,

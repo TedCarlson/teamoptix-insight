@@ -15,7 +15,7 @@ type ChecklistItem = {
   note: string | null;
 };
 
-type Progress = {
+export type CandidateChecklistProgress = {
   required_total: number;
   required_complete: number;
   percent: number;
@@ -25,15 +25,25 @@ type Props = {
   slug: string;
   rosterId: string;
   onChanged?: () => void | Promise<void>;
+  onProgressChange?: (progress: CandidateChecklistProgress) => void;
+  embedded?: boolean;
 };
 
-export default function CandidateChecklistPanel({ slug, rosterId, onChanged }: Props) {
+const EMPTY_PROGRESS: CandidateChecklistProgress = {
+  required_total: 0,
+  required_complete: 0,
+  percent: 0,
+};
+
+export default function CandidateChecklistPanel({
+  slug,
+  rosterId,
+  onChanged,
+  onProgressChange,
+  embedded = false,
+}: Props) {
   const [items, setItems] = useState<ChecklistItem[]>([]);
-  const [progress, setProgress] = useState<Progress>({
-    required_total: 0,
-    required_complete: 0,
-    percent: 0,
-  });
+  const [progress, setProgress] = useState<CandidateChecklistProgress>(EMPTY_PROGRESS);
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -57,13 +67,9 @@ export default function CandidateChecklistPanel({ slug, rosterId, onChanged }: P
       }
 
       setItems((data?.checklist ?? []) as ChecklistItem[]);
-      setProgress(
-        data?.progress ?? {
-          required_total: 0,
-          required_complete: 0,
-          percent: 0,
-        }
-      );
+      const nextProgress = (data?.progress ?? EMPTY_PROGRESS) as CandidateChecklistProgress;
+      setProgress(nextProgress);
+      onProgressChange?.(nextProgress);
     } catch {
       setError("Checklist request failed.");
       setItems([]);
@@ -96,13 +102,9 @@ export default function CandidateChecklistPanel({ slug, rosterId, onChanged }: P
         }
 
         setItems((data?.checklist ?? []) as ChecklistItem[]);
-        setProgress(
-          data?.progress ?? {
-            required_total: 0,
-            required_complete: 0,
-            percent: 0,
-          }
-        );
+        const nextProgress = (data?.progress ?? EMPTY_PROGRESS) as CandidateChecklistProgress;
+        setProgress(nextProgress);
+        onProgressChange?.(nextProgress);
       } catch {
         if (!active) return;
         setError("Checklist request failed.");
@@ -117,7 +119,7 @@ export default function CandidateChecklistPanel({ slug, rosterId, onChanged }: P
     return () => {
       active = false;
     };
-  }, [slug, rosterId]);
+  }, [slug, rosterId, onProgressChange]);
 
   async function toggleItem(item: ChecklistItem) {
     setBusyKey(item.item_key);
@@ -154,7 +156,10 @@ export default function CandidateChecklistPanel({ slug, rosterId, onChanged }: P
   }
 
   return (
-    <article className="value-card" style={{ gridColumn: "1 / span 2" }}>
+    <article
+      className={embedded ? undefined : "value-card"}
+      style={embedded ? { minWidth: 0 } : { gridColumn: "1 / span 2" }}
+    >
       <div
         style={{
           display: "flex",
