@@ -3,7 +3,11 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { CalendarDays, ChevronLeft, ChevronRight, Clock3 } from "lucide-react";
+import { CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, Clock3 } from "lucide-react";
+import ManualInterviewOverlay, {
+  type InterviewCandidate,
+  type ManualInterviewDraft,
+} from "../components/ManualInterviewOverlay";
 import styles from "../hiring-workspace.module.css";
 
 type Slot = {
@@ -13,15 +17,22 @@ type Slot = {
   timezone: string;
   slot_status: string;
   meeting_provider: string;
+  meeting_url?: string | null;
   interviewer_name?: string | null;
 };
 
 type Interview = Slot & {
+  application_id?: string | null;
+  slot_id?: string | null;
   first_name: string;
-  last_name: string;
-  email: string;
+  last_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
   role_interest?: string | null;
+  location_interest?: string | null;
   interview_status: string;
+  meeting_url?: string | null;
+  manual_name?: string | null;
   bypass_reason?: string | null;
   next_step?: string | null;
 };
@@ -70,6 +81,23 @@ function timeLabel(value: string) {
   return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(value));
 }
 
+function dateTimeInputValue(value: Date | string) {
+  const date = new Date(value);
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function suggestedStart(day: Date) {
+  const now = new Date();
+  const start = new Date(day);
+  if (sameDay(start, now)) {
+    start.setTime(Math.ceil((now.getTime() + 5 * 60_000) / (30 * 60_000)) * 30 * 60_000);
+  } else {
+    start.setHours(10, 0, 0, 0);
+  }
+  return start;
+}
+
 function ownerInitials(name?: string | null) {
   return (name || "HR").split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 }
@@ -78,6 +106,7 @@ export default function HiringInterviewsPage() {
   const slug = String(useParams()?.slug ?? "");
   const [slots, setSlots] = useState<Slot[]>([]);
   const [interviews, setInterviews] = useState<Interview[]>([]);
+  const [candidates, setCandidates] = useState<InterviewCandidate[]>([]);
   const [roles, setRoles] = useState<LeadershipRole[]>([]);
   const [responsible, setResponsible] = useState<InterviewOwner | null>(null);
   const [error, setError] = useState("");
@@ -90,6 +119,8 @@ export default function HiringInterviewsPage() {
   const [endTime, setEndTime] = useState("12:00");
   const [duration, setDuration] = useState(30);
   const [weeks, setWeeks] = useState(4);
+  const [manualDraft, setManualDraft] = useState<ManualInterviewDraft | null>(null);
+  const [manualError, setManualError] = useState("");
 
   const load = useCallback(async () => {
     const response = await fetch(`/api/company/${slug}/people/interviews`, {
@@ -100,6 +131,7 @@ export default function HiringInterviewsPage() {
     if (!response.ok) throw new Error(body.error || "Unable to load interview agenda.");
     setSlots(body.slots || []);
     setInterviews(body.interviews || []);
+    setCandidates((body.applications || []).filter((item: InterviewCandidate) => !["declined", "withdrawn"].includes(item.application_status)));
     setRoles(body.leadership?.roles || []);
     setResponsible(body.owner || null);
   }, [slug]);
@@ -128,8 +160,78 @@ export default function HiringInterviewsPage() {
       body: JSON.stringify(payload),
     });
     const body = await response.json();
-    if (!response.ok) throw new Error(body.error || "Unable to publish interview availability.");
+    if (!response.ok) throw new Error(body.error || "Unable to update the interview agenda.");
     return body;
+  }
+
+  function openDay(day: Date) {
+    setManualError("");
+    setManualDraft({
+      entryMode: "manual",
+      applicationId: "",
+      intervieweeName: "",
+      intervieweeEmail: "",
+      intervieweePhone: "",
+      startsAt: dateTimeInputValue(suggestedStart(day)),
+      durationMinutes: 30,
+      meetingProvider: "insight",
+      meetingUrl: "",
+      slotId: null,
+      interviewId: null,
+    });
+  }
+
+  function openSlot(slot: Slot) {
+    setManualError("");
+    setManualDraft({
+      entryMode: "manual",
+      applicationId: "",
+      intervieweeName: "",
+      intervieweeEmail: "",
+      intervieweePhone: "",
+      startsAt: dateTimeInputValue(slot.starts_at),
+      durationMinutes: Math.max(15, Math.round((new Date(slot.ends_at).getTime() - new Date(slot.starts_at).getTime()) / 60_000)),
+      meetingProvider: slot.meeting_provider,
+      meetingUrl: slot.meeting_url || "",
+      slotId: slot.id,
+      interviewId: null,
+    });
+  }
+
+  function openInterview(interview: Interview) {
+    setManualError("");
+    setManualDraft({
+      entryMode: interview.application_id ? "existing" : "manual",
+      applicationId: interview.application_id || "",
+      intervieweeName: interview.manual_name || [interview.first_name, interview.last_name].filter(Boolean).join(" "),
+      intervieweeEmail: interview.email || "",
+      intervieweePhone: interview.phone || "",
+      startsAt: dateTimeInputValue(interview.starts_at),
+      durationMinutes: Math.max(15, Math.round((new Date(interview.ends_at).getTime() - new Date(interview.starts_at).getTime()) / 60_000)),
+      meetingProvider: interview.meeting_provider,
+      meetingUrl: interview.meeting_url || "",
+      slotId: interview.slot_id ?? null,
+      interviewId: interview.id,
+    });
+  }
+
+  async function saveManualInterview(draft: ManualInterviewDraft) {
+    setBusy(true);
+    setManualError("");
+    try {
+      await post({
+        mode: "manual",
+        ...draft,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      });
+      await load();
+      setManualDraft(null);
+      setMessage(draft.interviewId ? "Interview appointment updated." : "Interview added to the team agenda.");
+    } catch (reason) {
+      setManualError(reason instanceof Error ? reason.message : "Unable to save the interview appointment.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function createSingle(event: FormEvent<HTMLFormElement>) {
@@ -303,6 +405,7 @@ export default function HiringInterviewsPage() {
               <h2>{view === "week" ? `Week of ${weekStart.toLocaleDateString(undefined, { month: "long", day: "numeric" })}` : cursor.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</h2>
             </div>
             <div className={styles.agendaControls}>
+              <button className="button button-primary" type="button" onClick={() => openDay(cursor)}><CalendarPlus size={16} /> Add interview</button>
               <button className="button" type="button" aria-label="Previous" onClick={() => move(-1)}><ChevronLeft size={16} /></button>
               <button className="button" type="button" onClick={() => setCursor(new Date())}>Today</button>
               <button className="button" type="button" aria-label="Next" onClick={() => move(1)}><ChevronRight size={16} /></button>
@@ -318,31 +421,45 @@ export default function HiringInterviewsPage() {
               const daySlots = openSlots.filter((item) => sameDay(item.starts_at, day));
               return (
                 <section className={styles.agendaColumn} key={day.toISOString()}>
-                  <header className={sameDay(day, new Date()) ? styles.agendaDateToday : styles.agendaDate}>
+                  <button className={sameDay(day, new Date()) ? styles.agendaDateToday : styles.agendaDate} type="button" title="Add an interview on this day" onClick={() => openDay(day)}>
                     <span>{day.toLocaleDateString(undefined, { weekday: "short" })}</span>
                     <strong>{day.getDate()}</strong>
-                  </header>
+                  </button>
                   <div className={styles.agendaEvents}>
                     {dayInterviews.map((item) => (
-                      <article className={styles.agendaInterview} key={item.id}>
+                      <button className={styles.agendaInterview} key={item.id} type="button" onClick={() => openInterview(item)}>
                         <span><Clock3 size={12} /> {timeLabel(item.starts_at)}</span>
                         <strong>{item.first_name} {item.last_name}</strong>
                         <small>{item.role_interest || "Introductory interview"}</small>
-                      </article>
+                        <small>{item.phone || item.email}</small>
+                      </button>
                     ))}
                     {daySlots.map((slot) => (
-                      <article className={styles.agendaOpen} key={slot.id}>
+                      <button className={styles.agendaOpen} key={slot.id} type="button" onClick={() => openSlot(slot)}>
                         <span><CalendarDays size={12} /> {timeLabel(slot.starts_at)}</span>
                         <strong>Available</strong>
-                      </article>
+                        <small>Assign candidate</small>
+                      </button>
                     ))}
                     {!dayInterviews.length && !daySlots.length ? <p className={styles.agendaEmpty}>No interviews</p> : null}
+                    <button className={styles.agendaAdd} type="button" onClick={() => openDay(day)}><CalendarPlus size={13} /> Schedule</button>
                   </div>
                 </section>
               );
             })}
           </div>
         </section>
+
+        {manualDraft ? (
+          <ManualInterviewOverlay
+            candidates={candidates}
+            error={manualError}
+            initial={manualDraft}
+            onClose={() => { setManualDraft(null); setManualError(""); }}
+            onSubmit={saveManualInterview}
+            saving={busy}
+          />
+        ) : null}
       </section>
     </main>
   );
