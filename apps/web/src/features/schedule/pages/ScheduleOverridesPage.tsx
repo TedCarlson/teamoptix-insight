@@ -9,8 +9,9 @@ import {
   type TimeOffImpactScheduleRow,
   type TimeOffRequestImpact,
 } from "@/features/schedule/lib/scheduleCapacity";
+import { resignationImpactWindow } from "@/features/schedule/lib/resignationWorkflow";
 
-type OverrideType = "CALL_OUT" | "TIME_OFF" | "ADD_IN" | "ADMIN_OFF";
+type OverrideType = "CALL_OUT" | "TIME_OFF" | "ADD_IN" | "ADMIN_OFF" | "RESIGNATION_NOTICE";
 
 type WorkerRow = {
   roster_member_id: string;
@@ -34,6 +35,9 @@ type OverrideRow = {
   manager_note: string | null;
   is_active: boolean;
   created_at: string;
+  workflow_status: string | null;
+  separation_effective_date: string | null;
+  repaint_evidence: Record<string, unknown> | null;
   full_name: string | null;
   worker_type: string | null;
 };
@@ -226,6 +230,8 @@ export default function ScheduleOverridesPage() {
   const [endDate, setEndDate] = useState(todayIso());
   const [search, setSearch] = useState("");
   const [managerNote, setManagerNote] = useState("");
+  const [editingResignationId, setEditingResignationId] = useState<string | null>(null);
+  const [editedLastDay, setEditedLastDay] = useState("");
 
   async function loadWorkers() {
     const res = await fetch(`/api/company/${slug}/schedule`, {
@@ -410,7 +416,9 @@ export default function ScheduleOverridesPage() {
       const commit = (data?.commit ?? {}) as CommitResult;
 
       setMessage(
-        `Override saved. Generated ${commit.generated_count ?? 0} rows, applied ${commit.override_count ?? 0} overrides, inserted ${commit.add_in_insert_count ?? 0} add-ins.`
+        overrideType === "RESIGNATION_NOTICE"
+          ? `Resignation submitted. The loaded schedule repainted immediately, ${Number((data?.commit ?? {})?.future_rows_removed ?? 0)} future rows were removed, and the ${data?.separation_effective_date ?? "LD+1"} separation cascade is scheduled.`
+          : `Override saved. Generated ${commit.generated_count ?? 0} rows, applied ${commit.override_count ?? 0} overrides, inserted ${commit.add_in_insert_count ?? 0} add-ins.`
       );
 
       clearOverrideDraft();
@@ -462,14 +470,49 @@ export default function ScheduleOverridesPage() {
     }
   }
 
-  async function handleRemoveOverride(overrideId: string) {
+  async function handleUpdateResignation(overrideId: string) {
+    try {
+      setBusy(true);
+      setError(null);
+      setMessage(null);
+      const res = await fetch(
+        `/api/company/${slug}/schedule/overrides/${overrideId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ end_date: editedLastDay }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data?.error ?? "Failed to change the last scheduled day.");
+        return;
+      }
+      setEditingResignationId(null);
+      setEditedLastDay("");
+      setMessage(
+        `Last scheduled day changed to ${data?.last_scheduled_date ?? editedLastDay}. The schedule and countdown were updated immediately.`
+      );
+      await refreshAll();
+    } catch {
+      setError("Failed to change the last scheduled day.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRemoveOverride(
+    overrideId: string,
+    disposition?: "CANCELLED" | "RESCINDED"
+  ) {
     try {
       setBusy(true);
       setError(null);
       setMessage(null);
 
       const res = await fetch(
-        `/api/company/${slug}/schedule/overrides/${overrideId}`,
+        `/api/company/${slug}/schedule/overrides/${overrideId}${disposition ? `?disposition=${disposition}` : ""}`,
         {
           method: "DELETE",
           credentials: "include",
@@ -486,7 +529,9 @@ export default function ScheduleOverridesPage() {
       const commit = (data?.commit ?? {}) as CommitResult;
 
       setMessage(
-        `Override removed. Generated ${commit.generated_count ?? 0} rows, applied ${commit.override_count ?? 0} overrides, inserted ${commit.add_in_insert_count ?? 0} add-ins.`
+        disposition
+          ? `Resignation notice ${disposition.toLowerCase()}. The loaded schedule was restored immediately.`
+          : `Override removed. Generated ${commit.generated_count ?? 0} rows, applied ${commit.override_count ?? 0} overrides, inserted ${commit.add_in_insert_count ?? 0} add-ins.`
       );
 
       await refreshAll();
@@ -566,9 +611,20 @@ export default function ScheduleOverridesPage() {
     [rosterMemberId, workers]
   );
 
+  const overrideImpactWindow = useMemo(() => {
+    if (overrideType !== "RESIGNATION_NOTICE") {
+      return { startDate, endDate };
+    }
+    try {
+      return resignationImpactWindow(endDate);
+    } catch {
+      return { startDate: "", endDate: "" };
+    }
+  }, [endDate, overrideType, startDate]);
+
   const stagedOverrideDates = useMemo(
-    () => isoDatesBetween(startDate, endDate),
-    [endDate, startDate]
+    () => isoDatesBetween(overrideImpactWindow.startDate, overrideImpactWindow.endDate),
+    [overrideImpactWindow]
   );
 
   const hasCompleteOverrideDraft =
@@ -597,7 +653,7 @@ export default function ScheduleOverridesPage() {
             cache: "no-store",
           }),
           fetch(
-            `/api/company/${slug}/schedule/generated?start_date=${startDate}&end_date=${endDate}`,
+            `/api/company/${slug}/schedule/generated?start_date=${overrideImpactWindow.startDate}&end_date=${overrideImpactWindow.endDate}`,
             {
               credentials: "include",
               cache: "no-store",
@@ -661,6 +717,7 @@ export default function ScheduleOverridesPage() {
     rosterMemberId,
     slug,
     startDate,
+    overrideImpactWindow,
   ]);
 
   const stagedOverrideImpact = useMemo(() => {
@@ -959,11 +1016,14 @@ export default function ScheduleOverridesPage() {
 
                     <select
                       value={overrideType}
-                      onChange={(event) =>
-                        setOverrideType(
-                          event.target.value as OverrideType
-                        )
-                      }
+                      onChange={(event) => {
+                        const nextType = event.target.value as OverrideType;
+                        setOverrideType(nextType);
+                        if (nextType === "RESIGNATION_NOTICE") {
+                          setStartDate(todayIso());
+                          setEndDate((current) => current < todayIso() ? todayIso() : current);
+                        }
+                      }}
                       style={{ ...inputStyle, width: "100%", minWidth: 0 }}
                       disabled={busy}
                     >
@@ -971,6 +1031,7 @@ export default function ScheduleOverridesPage() {
                       <option value="TIME_OFF">TIME_OFF</option>
                       <option value="ADMIN_OFF">ADMIN_OFF</option>
                       <option value="ADD_IN">ADD_IN</option>
+                      <option value="RESIGNATION_NOTICE">RESIGNATION_NOTICE</option>
                     </select>
 
                     <input
@@ -980,7 +1041,8 @@ export default function ScheduleOverridesPage() {
                         setStartDate(event.target.value)
                       }
                       style={{ ...inputStyle, width: "100%", minWidth: 0 }}
-                      disabled={busy}
+                      disabled={busy || overrideType === "RESIGNATION_NOTICE"}
+                      aria-label={overrideType === "RESIGNATION_NOTICE" ? "Notice date" : "Start date"}
                     />
 
                     <input
@@ -991,6 +1053,8 @@ export default function ScheduleOverridesPage() {
                       }
                       style={{ ...inputStyle, width: "100%", minWidth: 0 }}
                       disabled={busy}
+                      min={overrideType === "RESIGNATION_NOTICE" ? todayIso() : undefined}
+                      aria-label={overrideType === "RESIGNATION_NOTICE" ? "Last day on schedule" : "End date"}
                     />
                   </div>
 
@@ -1028,7 +1092,11 @@ export default function ScheduleOverridesPage() {
                       className="button button-primary"
                       disabled={busy || loading || !rosterMemberId}
                     >
-                      {busy ? "Saving..." : "Save Override + Repaint"}
+                      {busy
+                        ? "Submitting..."
+                        : overrideType === "RESIGNATION_NOTICE"
+                          ? "Submit Resignation + Repaint"
+                          : "Save Override + Repaint"}
                     </button>
 
                     <button
@@ -1150,7 +1218,9 @@ export default function ScheduleOverridesPage() {
                       }}
                     >
                       {activeImpactSource === "OVERRIDE_DRAFT"
-                        ? `${startDate} → ${endDate}`
+                        ? overrideType === "RESIGNATION_NOTICE"
+                          ? `Notice ${startDate} · last scheduled day ${endDate} · schedule removed beginning ${overrideImpactWindow.startDate}`
+                          : `${startDate} → ${endDate}`
                         : `${selectedRequest?.start_date ?? "—"} → ${
                             selectedRequest?.end_date ?? "—"
                           }`}
@@ -1253,6 +1323,7 @@ export default function ScheduleOverridesPage() {
                         "Type",
                         "Start",
                         "End",
+                        "Status",
                         "Note",
                         "Created",
                         "Actions",
@@ -1289,19 +1360,82 @@ export default function ScheduleOverridesPage() {
                         <td style={cellStyle}>{row.override_type}</td>
                         <td style={cellStyle}>{row.start_date}</td>
                         <td style={cellStyle}>{row.end_date}</td>
+                        <td style={cellStyle}>{row.workflow_status ?? "Active"}</td>
                         <td style={cellStyle}>{row.manager_note ?? "—"}</td>
                         <td style={cellStyle}>
                           {new Date(row.created_at).toLocaleString()}
                         </td>
                         <td style={cellStyle}>
-                          <button
-                            type="button"
-                            className="button"
-                            disabled={busy}
-                            onClick={() => handleRemoveOverride(row.id)}
-                          >
-                            Remove
-                          </button>
+                          {row.override_type === "RESIGNATION_NOTICE" &&
+                          row.workflow_status === "COUNTDOWN_ACTIVE" ? (
+                            <div style={{ display: "grid", gap: 8, minWidth: 180 }}>
+                              {editingResignationId === row.id ? (
+                                <div style={{ display: "flex", gap: 6 }}>
+                                  <input
+                                    type="date"
+                                    min={todayIso()}
+                                    value={editedLastDay}
+                                    onChange={(event) => setEditedLastDay(event.target.value)}
+                                    aria-label="Revised last day on schedule"
+                                    style={{ ...inputStyle, minWidth: 130, width: 150 }}
+                                  />
+                                  <button
+                                    type="button"
+                                    className="button button-primary"
+                                    disabled={busy || !editedLastDay}
+                                    onClick={() => void handleUpdateResignation(row.id)}
+                                  >
+                                    Apply
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="button"
+                                  disabled={busy}
+                                  onClick={() => {
+                                    setEditingResignationId(row.id);
+                                    setEditedLastDay(row.end_date);
+                                  }}
+                                >
+                                  Change last day
+                                </button>
+                              )}
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button
+                                  type="button"
+                                  className="button"
+                                  disabled={busy}
+                                  onClick={() => void handleRemoveOverride(row.id, "RESCINDED")}
+                                >
+                                  Rescinded
+                                </button>
+                                <button
+                                  type="button"
+                                  className="button"
+                                  disabled={busy}
+                                  onClick={() => void handleRemoveOverride(row.id, "CANCELLED")}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : row.override_type === "RESIGNATION_NOTICE" ? (
+                            <span style={{ color: "#64748b", fontSize: 12 }}>
+                              {row.workflow_status === "COMPLETED"
+                                ? "Workflow complete"
+                                : "Automated processing"}
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="button"
+                              disabled={busy}
+                              onClick={() => void handleRemoveOverride(row.id)}
+                            >
+                              Remove
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}

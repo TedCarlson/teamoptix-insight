@@ -9,7 +9,7 @@ type RouteContext = {
 
 type OverridePayload = {
   roster_member_id?: string | null;
-  override_type?: "CALL_OUT" | "TIME_OFF" | "ADD_IN" | "ADMIN_OFF" | null;
+  override_type?: "CALL_OUT" | "TIME_OFF" | "ADD_IN" | "ADMIN_OFF" | "RESIGNATION_NOTICE" | null;
   start_date?: string | null;
   end_date?: string | null;
   manager_note?: string | null;
@@ -42,7 +42,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     const { data: overrides, error: overrideErr } = await sb
       .from("schedule_override")
       .select(
-        "id, company_id, roster_member_id, override_type, start_date, end_date, manager_note, is_active, created_at"
+        "id, company_id, roster_member_id, override_type, start_date, end_date, manager_note, is_active, created_at, workflow_status, separation_effective_date, repaint_evidence"
       )
       .eq("company_id", company.id)
       .eq("is_active", true)
@@ -134,11 +134,32 @@ export async function POST(req: NextRequest, context: RouteContext) {
       );
     }
 
-    if (!["CALL_OUT", "TIME_OFF", "ADD_IN", "ADMIN_OFF"].includes(overrideType)) {
+    if (!["CALL_OUT", "TIME_OFF", "ADD_IN", "ADMIN_OFF", "RESIGNATION_NOTICE"].includes(overrideType)) {
       return NextResponse.json(
         { error: "Unsupported override_type." },
         { status: 400 }
       );
+    }
+
+    if (overrideType === "RESIGNATION_NOTICE") {
+      const { data: workflowData, error: workflowError } = await sb.rpc(
+        "submit_company_resignation_notice",
+        {
+          p_company_slug: slug,
+          p_roster_member_id: rosterMemberId,
+          p_last_scheduled_date: endDate,
+          p_manager_note: managerNote,
+        }
+      );
+
+      if (workflowError) {
+        return NextResponse.json(
+          { error: workflowError.message, step: "submit_resignation_notice" },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json(workflowData ?? { ok: true });
     }
 
     const { error: insertErr } = await sb.from("schedule_override").insert({

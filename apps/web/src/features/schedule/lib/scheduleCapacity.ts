@@ -248,7 +248,8 @@ export type ScheduleOverrideImpactType =
   | "TIME_OFF"
   | "CALL_OUT"
   | "ADMIN_OFF"
-  | "ADD_IN";
+  | "ADD_IN"
+  | "RESIGNATION_NOTICE";
 
 export function resolveScheduleOverrideImpact(params: {
   requestedDates: string[];

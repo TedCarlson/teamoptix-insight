@@ -56,6 +56,10 @@ describe("resolveOverrideOffRows", () => {
         override_type: "ADMIN_OFF",
       }),
       person({
+        roster_member_id: "resignation",
+        override_type: "RESIGNATION_NOTICE",
+      }),
+      person({
         roster_member_id: "add-in",
         planned_on: true,
         override_type: "ADD_IN",
@@ -66,6 +70,7 @@ describe("resolveOverrideOffRows", () => {
       "time-off",
       "call-out",
       "admin-off",
+      "resignation",
     ]);
   });
 });

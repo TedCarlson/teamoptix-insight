@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/engineering/platform-telemetry",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/people/process-resignations",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

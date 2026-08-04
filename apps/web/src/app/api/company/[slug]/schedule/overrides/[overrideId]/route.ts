@@ -7,6 +7,58 @@ type RouteContext = {
   params: Promise<{ slug: string; overrideId: string }>;
 };
 
+type UpdatePayload = {
+  end_date?: string | null;
+  manager_note?: string | null;
+  disposition?: "CANCELLED" | "RESCINDED" | null;
+};
+
+function cleanText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export async function PATCH(req: NextRequest, context: RouteContext) {
+  try {
+    const { slug, overrideId } = await context.params;
+    const body = (await req.json().catch(() => ({}))) as UpdatePayload;
+    const endDate = cleanText(body.end_date);
+    const sb = await getSupabaseServerClient();
+
+    if (!endDate) {
+      return NextResponse.json(
+        { error: "end_date is required." },
+        { status: 400 }
+      );
+    }
+
+    const { data, error } = await sb.rpc("update_company_resignation_notice", {
+      p_company_slug: slug,
+      p_override_id: overrideId,
+      p_last_scheduled_date: endDate,
+      p_manager_note: cleanText(body.manager_note),
+    });
+
+    if (error) {
+      return NextResponse.json(
+        { error: error.message, step: "update_resignation_notice" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(data ?? { ok: true });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to update resignation notice.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
 export async function DELETE(_req: NextRequest, context: RouteContext) {
   try {
     const { slug, overrideId } = await context.params;
@@ -27,7 +79,7 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
 
     const { data: overrideRow, error: overrideLookupErr } = await sb
       .from("schedule_override")
-      .select("id, start_date")
+      .select("id, start_date, override_type")
       .eq("company_id", company.id)
       .eq("id", overrideId)
       .maybeSingle();
@@ -37,6 +89,26 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
         { error: "Override not found" },
         { status: 404 }
       );
+    }
+
+    if (overrideRow.override_type === "RESIGNATION_NOTICE") {
+      const disposition = cleanText(
+        new URL(_req.url).searchParams.get("disposition")
+      ) === "RESCINDED" ? "RESCINDED" : "CANCELLED";
+      const { data, error } = await sb.rpc("cancel_company_resignation_notice", {
+        p_company_slug: slug,
+        p_override_id: overrideId,
+        p_disposition: disposition,
+      });
+
+      if (error) {
+        return NextResponse.json(
+          { error: error.message, step: "cancel_resignation_notice" },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json(data ?? { ok: true });
     }
 
     const { error: updateErr } = await sb
