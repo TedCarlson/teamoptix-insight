@@ -7,6 +7,9 @@ type Props = {
   setTab: (tab: RosterTab) => void;
   search: string;
   setSearch: (value: string) => void;
+  driversOnly: boolean;
+  setDriversOnly: (value: boolean) => void;
+  driverCount: number;
   counts?: {
     active: number;
     trainee: number;
@@ -28,8 +31,15 @@ const inputStyle: React.CSSProperties = {
 };
 
 export default function RosterControlsBar(props: Props) {
-  const { tab, setTab, search, setSearch, counts } = props;
-  const dirty = search.trim().length > 0;
+  const { tab, setTab, search, setSearch, driversOnly, setDriversOnly, driverCount, counts } = props;
+  const dirty = search.trim().length > 0 || driversOnly;
+  const tabLabel = {
+    active: "Active",
+    trainee: "Trainee",
+    candidates: "Candidates",
+    former: "Former",
+    all: "All workforce",
+  }[tab];
 
   return (
     <>
@@ -99,10 +109,45 @@ export default function RosterControlsBar(props: Props) {
           type="button"
           className={dirty ? "button button-primary" : "button"}
           onClick={() => {
-            if (dirty) setSearch("");
+            if (dirty) {
+              setSearch("");
+              setDriversOnly(false);
+            }
           }}
         >
-          {dirty ? "Clear" : "Filters"}
+          {dirty ? "Clear filters" : "Filters"}
+        </button>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: 7,
+          alignItems: "center",
+          flexWrap: "wrap",
+          marginTop: 8,
+          paddingTop: 8,
+          borderTop: "1px solid #e6edf5",
+        }}
+      >
+        <span className="hero-stat__label" style={{ fontSize: 10 }}>Within {tabLabel}</span>
+        <button
+          type="button"
+          className="button"
+          aria-pressed={!driversOnly}
+          onClick={() => setDriversOnly(false)}
+          style={{ minHeight: 32, padding: "0 12px", borderRadius: 10, fontSize: 12 }}
+        >
+          All roles
+        </button>
+        <button
+          type="button"
+          className="button"
+          aria-pressed={driversOnly}
+          onClick={() => setDriversOnly(true)}
+          style={{ minHeight: 32, padding: "0 12px", borderRadius: 10, fontSize: 12 }}
+        >
+          Drivers only ({driverCount})
         </button>
       </div>
     </>

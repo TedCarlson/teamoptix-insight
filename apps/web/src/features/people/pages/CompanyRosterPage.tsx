@@ -108,6 +108,22 @@ function normalizeRosterRow(row: ApiRosterRow): RosterRow {
   };
 }
 
+function matchesRosterTab(row: RosterRow, tab: RosterTab) {
+  if (tab === "all") return true;
+  if (tab === "active") return row.employment_status === "Active";
+  if (tab === "trainee") return row.employment_status === "Trainee";
+  if (tab === "candidates") {
+    return row.employment_status === "Candidate" && row.candidate_stage_is_terminal !== true;
+  }
+  if (tab === "former") return row.employment_status === "Former";
+  return true;
+}
+
+function isDriverRole(value?: string | null) {
+  const role = value?.trim().toLowerCase();
+  return role === "driver" || role === "lead driver";
+}
+
 function StatCard(props: { label: string; value: number }) {
 
   
@@ -129,6 +145,7 @@ export default function CompanyRosterPage() {
 
   const [tab, setTab] = useState<RosterTab>("active");
   const [search, setSearch] = useState("");
+  const [driversOnly, setDriversOnly] = useState(false);
   const [rows, setRows] = useState<RosterRow[]>([]);
   const [managedPerson, setManagedPerson] = useState<RosterRow | null>(null);
   const [traineePayPerson, setTraineePayPerson] = useState<RosterRow | null>(null);
@@ -254,27 +271,25 @@ export default function CompanyRosterPage() {
     return hydrated;
   }
 
+  const statusRows = useMemo(
+    () => rows.filter((row) => matchesRosterTab(row, tab)),
+    [rows, tab]
+  );
+
+  const driverCount = useMemo(
+    () => statusRows.filter((row) => isDriverRole(row.worker_type)).length,
+    [statusRows]
+  );
+
   const filteredRows = useMemo(() => {
-    const byTab =
-      tab === "all"
-        ? rows
-        : rows.filter((row) => {
-            if (tab === "active") return row.employment_status === "Active";
-            if (tab === "trainee") return row.employment_status === "Trainee";
-            if (tab === "candidates") {
-              return (
-                row.employment_status === "Candidate" &&
-                row.candidate_stage_is_terminal !== true
-              );
-            }
-            if (tab === "former") return row.employment_status === "Former";
-            return true;
-          });
+    const byRole = driversOnly
+      ? statusRows.filter((row) => isDriverRole(row.worker_type))
+      : statusRows;
 
     const q = search.trim().toLowerCase();
-    if (!q) return byTab;
+    if (!q) return byRole;
 
-    return byTab.filter((row) =>
+    return byRole.filter((row) =>
       [
         row.full_name,
         row.email,
@@ -289,7 +304,7 @@ export default function CompanyRosterPage() {
         .toLowerCase()
         .includes(q)
     );
-  }, [rows, search, tab]);
+  }, [driversOnly, search, statusRows]);
 
   const activeCount = rows.filter((r) => r.employment_status === "Active").length;
   const traineeCount = rows.filter((r) => r.employment_status === "Trainee").length;
@@ -588,10 +603,10 @@ export default function CompanyRosterPage() {
 
 
   return (
-    <main className="landing-page">
+    <main className="workspace-shell">
       <section
         style={{
-          width: "min(1440px, calc(100% - 32px))",
+          width: "var(--app-page)",
           margin: "0 auto",
           padding: "28px 0 32px",
           display: "grid",
@@ -612,6 +627,9 @@ export default function CompanyRosterPage() {
             setTab={setTab}
             search={search}
             setSearch={setSearch}
+            driversOnly={driversOnly}
+            setDriversOnly={setDriversOnly}
+            driverCount={driverCount}
             counts={{
               active: activeCount,
               trainee: traineeCount,

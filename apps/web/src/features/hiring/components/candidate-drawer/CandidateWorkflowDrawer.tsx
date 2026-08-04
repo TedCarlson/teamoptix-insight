@@ -73,6 +73,16 @@ const DEFAULT_STAGE_OPTIONS: CandidateStageOption[] = [
   { stage_key: "dnf", label: "DNF", is_terminal: true },
 ];
 
+const EDITABLE_STAGE_OPTIONS = DEFAULT_STAGE_OPTIONS.filter(
+  (stage) => !["candidate_created", "invited"].includes(stage.stage_key)
+);
+
+function editableStageKey(value?: string | null) {
+  return EDITABLE_STAGE_OPTIONS.some((stage) => stage.stage_key === value)
+    ? String(value)
+    : "onboarding";
+}
+
 const sectionFrameStyle: React.CSSProperties = {
   display: "grid",
   gap: 12,
@@ -253,7 +263,7 @@ export default function CandidateWorkflowDrawer({
   const [savingOperations, setSavingOperations] = useState(false);
   const [savingStatus, setSavingStatus] = useState(false);
   const [savingStage, setSavingStage] = useState(false);
-  const [stageKey, setStageKey] = useState(person?.candidate_stage_key ?? "candidate_created");
+  const [stageKey, setStageKey] = useState(editableStageKey(person?.candidate_stage_key));
   const [stageNote, setStageNote] = useState("");
   const [showChecklist, setShowChecklist] = useState(false);
   const [showStageNote, setShowStageNote] = useState(false);
@@ -264,7 +274,7 @@ export default function CandidateWorkflowDrawer({
   const [traineePayEffectiveDate, setTraineePayEffectiveDate] = useState(new Date().toISOString().slice(0, 10));
 
   const selectedRosterId = person?.roster_member_id ?? null;
-  const selectedStageKey = person?.candidate_stage_key ?? "candidate_created";
+  const selectedStageKey = editableStageKey(person?.candidate_stage_key);
 
   useEffect(() => {
     if (!open || !selectedRosterId) return;
@@ -646,7 +656,7 @@ export default function CandidateWorkflowDrawer({
                       fontWeight: 800,
                     }}
                   >
-                    {DEFAULT_STAGE_OPTIONS.map((stage) => (
+                    {EDITABLE_STAGE_OPTIONS.map((stage) => (
                       <option key={stage.stage_key} value={stage.stage_key}>
                         {stage.label}
                       </option>

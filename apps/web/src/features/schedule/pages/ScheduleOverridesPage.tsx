@@ -768,7 +768,7 @@ export default function ScheduleOverridesPage() {
     <main className="workspace-shell">
       <section
         style={{
-          width: "min(1240px, calc(100% - 32px))",
+          width: "var(--app-page)",
           margin: "0 auto",
           padding: "24px 0 12px",
           display: "grid",

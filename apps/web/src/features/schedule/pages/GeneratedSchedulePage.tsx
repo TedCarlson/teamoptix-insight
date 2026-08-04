@@ -339,7 +339,7 @@ export default function GeneratedSchedulePage() {
     <main className="workspace-shell">
       <section
         style={{
-          width: "min(1440px, calc(100% - 24px))",
+          width: "var(--app-page)",
           margin: "0 auto",
           padding: "18px 0 8px",
           display: "grid",

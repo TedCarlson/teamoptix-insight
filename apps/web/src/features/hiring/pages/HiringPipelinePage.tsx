@@ -419,20 +419,23 @@ export default function HiringPipelinePage() {
       });
   }, [rows, filter, search]);
 
-  const readyCount = rows.filter((row) => (row.progress?.percent ?? 0) === 100).length;
+  const pursuedRows = rows.filter((row) =>
+    ["onboarding", "ready_for_activation"].includes(row.stage_key)
+  );
+  const readyCount = pursuedRows.filter((row) => (row.progress?.percent ?? 0) === 100).length;
   const avgProgress =
-    rows.length === 0
+    pursuedRows.length === 0
       ? 0
       : Math.round(
-          rows.reduce((sum, row) => sum + (row.progress?.percent ?? 0), 0) /
-            rows.length
+          pursuedRows.reduce((sum, row) => sum + (row.progress?.percent ?? 0), 0) /
+            pursuedRows.length
         );
 
   return (
-    <main className="landing-page">
+    <main className="workspace-shell">
       <section
         style={{
-          width: "min(1440px, calc(100% - 32px))",
+          width: "var(--app-page)",
           margin: "0 auto",
           padding: "28px 0 32px",
           display: "grid",
@@ -462,14 +465,8 @@ export default function HiringPipelinePage() {
               marginTop: 14,
             }}
           >
-            <FilterButton
-              label={`All (${rows.length})`}
-              active={filter === "all"}
-              onClick={() => setFilter("all")}
-            />
-
             {stages
-              .filter((stage) => stage.stage_key !== "invited")
+              .filter((stage) => !["candidate_created", "invited"].includes(stage.stage_key))
               .map((stage) => (
                 <FilterButton
                   key={stage.stage_key}
@@ -478,6 +475,12 @@ export default function HiringPipelinePage() {
                   onClick={() => setFilter(stage.stage_key)}
                 />
               ))}
+
+            <FilterButton
+              label={`All (${rows.length})`}
+              active={filter === "all"}
+              onClick={() => setFilter("all")}
+            />
 
             <input
               type="text"
@@ -501,8 +504,7 @@ export default function HiringPipelinePage() {
           </div>
 
           <p className="value-card__body" style={{ marginTop: 12 }}>
-            {rows.length} candidates · {readyCount} ready · {avgProgress}% average readiness ·{" "}
-            {stages.length} configured stages
+            {pursuedRows.length} candidates being pursued · {readyCount} ready · {avgProgress}% average readiness
           </p>
         </article>
 

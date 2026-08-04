@@ -44,7 +44,14 @@ function itemIsInBranch(pathname: string, href: string) {
 }
 
 function itemOrChildIsActive(pathname: string, item: AppMenuItem) {
-  return itemIsInBranch(pathname, item.href) || Boolean(item.children?.some((child) => itemIsInBranch(pathname, child.href)));
+  const itemActive = item.match
+    ? item.match(pathname)
+    : itemIsInBranch(pathname, item.href);
+  const childActive = item.children?.some((child) =>
+    child.match ? child.match(pathname) : itemIsInBranch(pathname, child.href)
+  );
+
+  return itemActive || Boolean(childActive);
 }
 
 function activeSectionKey(pathname: string, sections: AppMenuSection[]) {

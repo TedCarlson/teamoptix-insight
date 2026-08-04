@@ -209,17 +209,29 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     { label: "Time Tracking", href: `${payrollBase}/time-tracking`, match: (path) => path === `${payrollBase}/time-tracking` || path.startsWith(`${payrollBase}/time-tracking/`) },
   ];
 
-  const peopleSubItems: NavItem[] = [
-    { label: "Roster", href: peopleBase, match: (path) => path === peopleBase || path.startsWith(`${peopleBase}/roster`) || path.startsWith(`${peopleBase}/active`) || path.startsWith(`${peopleBase}/former`) || path.startsWith(`${peopleBase}/import`) },
-    { label: "Import", href: `${peopleBase}/import`, match: (path) => path.startsWith(`${peopleBase}/import`) },
-    { label: "Hiring", href: `${base}/hiring`, match: (path) => path.startsWith(`${base}/hiring`) },
-    { label: "Invitations", href: `${peopleBase}/invitations`, match: (path) => path.startsWith(`${peopleBase}/invitations`) },
-    { label: "Interviews", href: `${peopleBase}/interviews`, match: (path) => path.startsWith(`${peopleBase}/interviews`) },
-    { label: "Requirements", href: `${peopleBase}/requirements`, match: (path) => path.startsWith(`${peopleBase}/requirements`) },
-    { label: "Compliance", href: `${peopleBase}/compliance`, match: (path) => path.startsWith(`${peopleBase}/compliance`) },
-    { label: "Policies", href: `${peopleBase}/policies`, match: (path) => path.startsWith(`${peopleBase}/policies`) },
+  const peoplePrimaryItems: NavItem[] = [
+    { label: "Roster", href: `${peopleBase}/roster`, match: (path) => path.startsWith(`${peopleBase}/roster`) || path.startsWith(`${peopleBase}/active`) || path.startsWith(`${peopleBase}/former`) || path.startsWith(`${peopleBase}/import`) },
+    { label: "Hiring", href: `${base}/hiring`, match: (path) => path.startsWith(`${base}/hiring`) || path.startsWith(`${peopleBase}/interviews`) || path.startsWith(`${peopleBase}/invitations`) || path.startsWith(`${peopleBase}/reports`) },
     { label: "Corrective Actions", href: `${peopleBase}/corrective-actions`, match: (path) => path.startsWith(`${peopleBase}/corrective-actions`) },
+    { label: "HR", href: `${peopleBase}/policies`, match: (path) => path.startsWith(`${peopleBase}/policies`) || path.startsWith(`${peopleBase}/compliance`) || path.startsWith(`${peopleBase}/requirements`) },
+  ];
+
+  const rosterSubItems: NavItem[] = [
+    { label: "Roster", href: `${peopleBase}/roster`, match: (path) => path.startsWith(`${peopleBase}/roster`) || path.startsWith(`${peopleBase}/active`) || path.startsWith(`${peopleBase}/former`) },
+    { label: "Import", href: `${peopleBase}/import`, match: (path) => path.startsWith(`${peopleBase}/import`) },
+  ];
+
+  const hiringSubItems: NavItem[] = [
+    { label: "Pipeline", href: `${base}/hiring`, match: (path) => path.startsWith(`${base}/hiring`) },
+    { label: "Interviews", href: `${peopleBase}/interviews`, match: (path) => path.startsWith(`${peopleBase}/interviews`) },
+    { label: "Invitations", href: `${peopleBase}/invitations`, match: (path) => path.startsWith(`${peopleBase}/invitations`) },
     { label: "Reports", href: `${peopleBase}/reports`, match: (path) => path.startsWith(`${peopleBase}/reports`) },
+  ];
+
+  const hrSubItems: NavItem[] = [
+    { label: "Policies", href: `${peopleBase}/policies`, match: (path) => path.startsWith(`${peopleBase}/policies`) },
+    { label: "Compliance", href: `${peopleBase}/compliance`, match: (path) => path.startsWith(`${peopleBase}/compliance`) },
+    { label: "Requirements", href: `${peopleBase}/requirements`, match: (path) => path.startsWith(`${peopleBase}/requirements`) },
   ];
 
   const scheduleSubItems: NavItem[] = [
@@ -271,6 +283,23 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     pathname.startsWith(`${peopleBase}/`) ||
     pathname.startsWith(`${base}/hiring`);
 
+  const inRosterBranch =
+    pathname.startsWith(`${peopleBase}/roster`) ||
+    pathname.startsWith(`${peopleBase}/active`) ||
+    pathname.startsWith(`${peopleBase}/former`) ||
+    pathname.startsWith(`${peopleBase}/import`);
+
+  const inHiringBranch =
+    pathname.startsWith(`${base}/hiring`) ||
+    pathname.startsWith(`${peopleBase}/interviews`) ||
+    pathname.startsWith(`${peopleBase}/invitations`) ||
+    pathname.startsWith(`${peopleBase}/reports`);
+
+  const inHrBranch =
+    pathname.startsWith(`${peopleBase}/policies`) ||
+    pathname.startsWith(`${peopleBase}/compliance`) ||
+    pathname.startsWith(`${peopleBase}/requirements`);
+
   const inScheduleBranch =
     pathname === scheduleBase || pathname.startsWith(`${scheduleBase}/`);
 
@@ -319,7 +348,13 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
               pathname === billingBase
             ? overviewSubItems
             : inPeopleBranch
-              ? peopleSubItems
+              ? inRosterBranch
+                ? rosterSubItems
+                : inHiringBranch
+                  ? hiringSubItems
+                  : inHrBranch
+                    ? hrSubItems
+                    : peoplePrimaryItems
               : inScheduleBranch
                 ? scheduleSubItems
                 : inFleetBranch
