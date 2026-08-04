@@ -98,6 +98,10 @@ function suggestedStart(day: Date) {
   return start;
 }
 
+function supportedInterviewFormat(value?: string | null) {
+  return value === "in_person" ? "in_person" : "phone";
+}
+
 function ownerInitials(name?: string | null) {
   return (name || "HR").split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 }
@@ -174,7 +178,7 @@ export default function HiringInterviewsPage() {
       intervieweePhone: "",
       startsAt: dateTimeInputValue(suggestedStart(day)),
       durationMinutes: 30,
-      meetingProvider: "insight",
+      meetingProvider: "phone",
       meetingUrl: "",
       slotId: null,
       interviewId: null,
@@ -191,7 +195,7 @@ export default function HiringInterviewsPage() {
       intervieweePhone: "",
       startsAt: dateTimeInputValue(slot.starts_at),
       durationMinutes: Math.max(15, Math.round((new Date(slot.ends_at).getTime() - new Date(slot.starts_at).getTime()) / 60_000)),
-      meetingProvider: slot.meeting_provider,
+      meetingProvider: supportedInterviewFormat(slot.meeting_provider),
       meetingUrl: slot.meeting_url || "",
       slotId: slot.id,
       interviewId: null,
@@ -208,7 +212,7 @@ export default function HiringInterviewsPage() {
       intervieweePhone: interview.phone || "",
       startsAt: dateTimeInputValue(interview.starts_at),
       durationMinutes: Math.max(15, Math.round((new Date(interview.ends_at).getTime() - new Date(interview.starts_at).getTime()) / 60_000)),
-      meetingProvider: interview.meeting_provider,
+      meetingProvider: supportedInterviewFormat(interview.meeting_provider),
       meetingUrl: interview.meeting_url || "",
       slotId: interview.slot_id ?? null,
       interviewId: interview.id,
@@ -229,24 +233,6 @@ export default function HiringInterviewsPage() {
       setMessage(draft.interviewId ? "Interview appointment updated." : "Interview added to the team agenda.");
     } catch (reason) {
       setManualError(reason instanceof Error ? reason.message : "Unable to save the interview appointment.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function createSingle(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-    setMessage("");
-    const fields = Object.fromEntries(new FormData(event.currentTarget).entries());
-    try {
-      await post({ ...fields, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
-      await load();
-      setMessage("Interview time published to candidate paths.");
-      event.currentTarget.reset();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to publish availability.");
     } finally {
       setBusy(false);
     }
@@ -345,7 +331,7 @@ export default function HiringInterviewsPage() {
           <Link className="button" href={`/company/${slug}/config/leadership`}>Manage owner</Link>
         </section>
 
-        <section className={styles.contentGrid}>
+        <section>
           <article className={styles.surface}>
             <div className={styles.surfaceHeader}>
               <div>
@@ -372,30 +358,14 @@ export default function HiringInterviewsPage() {
                   <label className={styles.field}><span className={styles.fieldLabel}>Publish ahead</span><select className={styles.control} value={weeks} onChange={(event) => setWeeks(Number(event.target.value))}><option value={2}>2 weeks</option><option value={4}>4 weeks</option><option value={6}>6 weeks</option></select></label>
                 </div>
                 <div className={styles.formGridTwo}>
-                  <label className={styles.field}><span className={styles.fieldLabel}>Interview place</span><select className={styles.control} name="meetingProvider" defaultValue="insight"><option value="insight">Insight interview room</option><option value="phone">Phone</option><option value="google_meet">Google Meet</option><option value="microsoft_teams">Microsoft Teams</option><option value="in_person">In person</option></select></label>
-                  <label className={styles.field}><span className={styles.fieldLabel}>Link or instructions</span><input className={styles.control} name="meetingUrl" placeholder="Optional" /></label>
+                  <label className={styles.field}><span className={styles.fieldLabel}>Interview format</span><select className={styles.control} name="meetingProvider" defaultValue="phone"><option value="phone">Phone</option><option value="in_person">In person</option></select></label>
+                  <label className={styles.field}><span className={styles.fieldLabel}>Phone or arrival instructions</span><input className={styles.control} name="meetingUrl" placeholder="Optional" /></label>
                 </div>
                 <div className={styles.formActions}><button className={`button button-primary ${styles.primaryAction}`} disabled={busy} type="submit">{busy ? "Publishing…" : "Publish interview window"}</button></div>
               </form>
             </div>
           </article>
 
-          <article className={styles.surface}>
-            <div className={styles.surfaceHeader}>
-              <div><p className={styles.eyebrow}>One-off time</p><h2>Add an exception</h2><p>Publish one additional time outside the normal window.</p></div>
-            </div>
-            <div className={styles.surfaceBody}>
-              <form className={styles.formStack} onSubmit={createSingle}>
-                <label className={styles.field}><span className={styles.fieldLabel}>Date and time</span><input className={styles.control} name="startsAt" type="datetime-local" required /></label>
-                <div className={styles.formGridTwo}>
-                  <label className={styles.field}><span className={styles.fieldLabel}>Length</span><select className={styles.control} name="durationMinutes" defaultValue="30"><option value="15">15 min</option><option value="30">30 min</option><option value="45">45 min</option><option value="60">60 min</option></select></label>
-                  <label className={styles.field}><span className={styles.fieldLabel}>Place</span><select className={styles.control} name="meetingProvider" defaultValue="insight"><option value="insight">Insight</option><option value="phone">Phone</option><option value="in_person">In person</option></select></label>
-                </div>
-                <label className={styles.field}><span className={styles.fieldLabel}>Link or instructions</span><input className={styles.control} name="meetingUrl" placeholder="Optional" /></label>
-                <div className={styles.formActions}><button className="button" disabled={busy} type="submit">Add time</button></div>
-              </form>
-            </div>
-          </article>
         </section>
 
         <section className={styles.surface}>

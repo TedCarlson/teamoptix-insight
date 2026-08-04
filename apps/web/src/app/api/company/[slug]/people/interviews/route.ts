@@ -44,7 +44,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
       p_starts_at: startsAt.toISOString(),
       p_ends_at: endsAt.toISOString(),
       p_timezone: body.timezone || "America/New_York",
-      p_meeting_provider: body.meetingProvider || "insight",
+      p_meeting_provider: body.meetingProvider || "phone",
       p_meeting_url: body.meetingUrl || null,
       p_slot_id: body.slotId || null,
       p_interview_id: body.interviewId || null,
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
       p_company_slug: slug,
       p_slots: Array.isArray(body.slots) ? body.slots : [],
       p_timezone: body.timezone || "America/New_York",
-      p_meeting_provider: body.meetingProvider || "insight",
+      p_meeting_provider: body.meetingProvider || "phone",
       p_meeting_url: body.meetingUrl || null,
     });
 
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
     p_starts_at: startsAt.toISOString(),
     p_ends_at: endsAt.toISOString(),
     p_timezone: body.timezone || "America/New_York",
-    p_meeting_provider: body.meetingProvider || "insight",
+    p_meeting_provider: body.meetingProvider || "phone",
     p_meeting_url: body.meetingUrl || null,
   });
   return error ? NextResponse.json({ error: error.message }, { status: 400 }) : NextResponse.json(data);

@@ -187,17 +187,14 @@ export default function ManualInterviewOverlay(props: Props) {
 
           <div className={styles.formGridTwo}>
             <label className={styles.field}>
-              <span className={styles.fieldLabel}>Interview place</span>
+              <span className={styles.fieldLabel}>Interview format</span>
               <select className={styles.control} value={meetingProvider} onChange={(event) => { setMeetingProvider(event.target.value); detachFromPublishedSlot(); }}>
-                <option value="insight">Insight interview room</option>
                 <option value="phone">Phone</option>
-                <option value="google_meet">Google Meet</option>
-                <option value="microsoft_teams">Microsoft Teams</option>
                 <option value="in_person">In person</option>
               </select>
             </label>
             <label className={styles.field}>
-              <span className={styles.fieldLabel}>Link or instructions</span>
+              <span className={styles.fieldLabel}>Phone or arrival instructions</span>
               <input className={styles.control} placeholder="Optional" value={meetingUrl} onChange={(event) => { setMeetingUrl(event.target.value); detachFromPublishedSlot(); }} />
             </label>
           </div>
