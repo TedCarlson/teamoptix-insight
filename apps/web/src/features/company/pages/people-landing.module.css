@@ -294,7 +294,7 @@
 
 .postureRow {
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr) 32px;
+  grid-template-columns: 112px minmax(0, 1fr) 32px;
   gap: 11px;
   align-items: center;
 }

@@ -123,6 +123,13 @@ function isDriverRole(value?: string | null) {
   return role === "driver" || role === "lead driver";
 }
 
+function isLeadershipRole(value?: string | null) {
+  const role = value?.trim().toLowerCase();
+  return role === "business contact" ||
+    role === "assistant bc" ||
+    role === "fleet manager";
+}
+
 function rollingCutoff(today: string, days: number) {
   const cutoff = new Date(`${today}T00:00:00`);
   cutoff.setDate(cutoff.getDate() - (days - 1));
@@ -257,12 +264,26 @@ export default function CompanyPeoplePage() {
     return () => window.clearTimeout(initialLoad);
   }, [load]);
 
-  const posture = useMemo(() => ({
-    active: roster.filter((row) => row.employment_status === "Active").length,
-    trainee: roster.filter((row) => row.employment_status === "Trainee").length,
-    candidates: roster.filter((row) => row.employment_status === "Candidate").length,
-    former: roster.filter((row) => row.employment_status === "Former").length,
-  }), [roster]);
+  const posture = useMemo(() => {
+    const active = roster.filter((row) => row.employment_status === "Active");
+
+    return {
+      drivers: active.filter((row) => isDriverRole(row.worker_type)).length,
+      leadership: active.filter((row) => isLeadershipRole(row.worker_type)).length,
+      support: active.filter(
+        (row) => !isDriverRole(row.worker_type) && !isLeadershipRole(row.worker_type)
+      ).length,
+      trainees: roster.filter(
+        (row) => row.employment_status === "Trainee" && isDriverRole(row.worker_type)
+      ).length,
+      candidates: roster.filter(
+        (row) => row.employment_status === "Candidate" && isDriverRole(row.worker_type)
+      ).length,
+      former: roster.filter(
+        (row) => row.employment_status === "Former" && isDriverRole(row.worker_type)
+      ).length,
+    };
+  }, [roster]);
 
   const todaySchedule = useMemo(
     () => uniqueScheduleRows(scheduleRows.filter((row) => row.service_date === today)),
@@ -295,12 +316,15 @@ export default function CompanyPeoplePage() {
     month: "long",
     day: "numeric",
   }).format(new Date());
-  const postureTotal = posture.active + posture.trainee + posture.candidates + posture.former;
+  const postureTotal = posture.drivers + posture.leadership + posture.support +
+    posture.trainees + posture.candidates + posture.former;
   const postureRows = [
-    { label: "Active", value: posture.active },
-    { label: "Trainee", value: posture.trainee },
-    { label: "Candidates", value: posture.candidates },
-    { label: "Former", value: posture.former },
+    { label: "Active drivers", value: posture.drivers },
+    { label: "Leadership", value: posture.leadership },
+    ...(posture.support > 0 ? [{ label: "Support", value: posture.support }] : []),
+    { label: "Driver trainees", value: posture.trainees },
+    { label: "Driver candidates", value: posture.candidates },
+    { label: "Former drivers", value: posture.former },
   ];
   const retentionWindows = ([30, 60, 90] as const).map((days) =>
     retentionWindow(roster, today, days)
@@ -363,7 +387,7 @@ export default function CompanyPeoplePage() {
             <section className={styles.intelligencePanel}>
               <div className={styles.panelHeading}>
                 <p className="eyebrow">Workforce posture</p>
-                <h2>People by group</h2>
+                <h2>Driver workforce</h2>
               </div>
               <div className={styles.postureList}>
                 {postureRows.map((row) => (
@@ -376,7 +400,10 @@ export default function CompanyPeoplePage() {
               </div>
               <div className={styles.postureSummary}>
                 <Users size={17} />
-                <span><strong>{posture.active + posture.trainee}</strong> people currently active or training</span>
+                <span>
+                  <strong>{posture.drivers}</strong> active drivers
+                  {posture.leadership > 0 ? ` · ${posture.leadership} leadership` : ""}
+                </span>
               </div>
             </section>
 
