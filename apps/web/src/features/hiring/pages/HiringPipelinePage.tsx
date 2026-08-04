@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import AddCandidateOverlay from "@/features/hiring/components/AddCandidateOverlay";
 import type { AddCandidatePayload } from "@/features/hiring/components/AddCandidateOverlay";
 import CandidateWorkflowDrawer from "@/features/hiring/components/candidate-drawer/CandidateWorkflowDrawer";
+import FoyerApplicationInbox from "@/features/hiring/components/FoyerApplicationInbox";
 import type { RosterRow } from "@/features/people/types/roster.types";
 
 type PipelineStage = {
@@ -445,6 +446,8 @@ export default function HiringPipelinePage() {
             </p>
           </article>
         ) : null}
+
+        <FoyerApplicationInbox slug={slug} onAdvanced={() => void loadCandidates()} />
 
         <article className="value-card">
           <p className="value-card__eyebrow">Hiring controls</p>

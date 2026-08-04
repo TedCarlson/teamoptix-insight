@@ -9,6 +9,12 @@ type Payload = { can_manage: boolean; roles: Role[]; roster: RosterPerson[]; ope
 
 function visibleRole(role: Role): Role | null {
   if (role.role_key === "operations_support") return null;
+  if (role.role_key === "hr") {
+    return {
+      ...role,
+      description: "Owner of workforce administration and the default responsible party for candidate interview availability and follow-up.",
+    };
+  }
   if (role.role_key === "dispatch_coordinator") {
     return {
       ...role,
@@ -96,7 +102,7 @@ export default function CompanyLeadershipManager({ slug }: { slug: string }) {
       </div>
 
       <div style={{ border: "1px solid #bfdbfe", background: "#eff6ff", borderRadius: 12, padding: 12, color: "#1e3a8a", fontSize: 13 }}>
-        The Authorized Operator is linked to the owner&apos;s company app profile. Workforce leaders are linked to roster members. Workspace permissions remain separate under Access.
+        The Authorized Operator is linked to the owner&apos;s company app profile. Workforce leaders are linked to roster members. HR is the default interview owner; Business Contact is used when HR is open or not linked to an app profile. Workspace permissions remain separate under Access.
       </div>
 
       <div style={{ display: "grid", gap: 8 }}>
