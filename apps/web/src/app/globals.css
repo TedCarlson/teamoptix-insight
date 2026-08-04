@@ -7804,6 +7804,11 @@ body {
 .can-print-shell { min-height: 100vh; background: #e8edf3; padding: 24px; color: #14213d; }
 .can-workspace { display: grid; gap: 14px; }
 .can-workspace-nav { display: flex; gap: 8px; flex-wrap: wrap; padding: 2px 0; }
+.can-workspace-notice { margin: 0; padding: 10px 13px; border: 1px solid #a9d8c7; border-radius: 12px; background: #f0faf5; color: #087f5b; font-size: 12px; font-weight: 850; }
+.can-record-actions { display: flex; align-items: center; gap: 6px; min-width: max-content; }
+.can-record-actions .button { min-height: 34px; padding: 7px 10px; }
+.can-delete-draft { color: #b42318; }
+.can-signed-count { color: #526477; font-size: 10px; font-weight: 800; }
 .can-template-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .can-template-card { padding: 14px; display: grid; gap: 8px; align-content: start; box-shadow: none; }
 .can-template-card .button { justify-self: start; }
@@ -7895,6 +7900,10 @@ body {
   .can-template-editor__meta { grid-template-columns: 1fr; }
 }
 .can-print-toolbar { width: min(8.5in, 100%); margin: 0 auto 14px; display: flex; justify-content: space-between; gap: 10px; }
+.can-preview-error { width: min(8.5in, 100%); margin: 0 auto 14px; padding: 11px 14px; border: 1px solid #fecaca; border-radius: 12px; background: #fff1f2; color: #b91c1c; font-weight: 800; }
+.can-draft-preview-banner { width: min(8.5in, 100%); margin: 0 auto 14px; padding: 12px 15px; border: 1px solid #f1c75b; border-radius: 14px; background: #fffbea; display: flex; align-items: baseline; gap: 10px; color: #6f4e00; }
+.can-draft-preview-banner strong { font-size: 14px; }
+.can-draft-preview-banner span { font-size: 12px; }
 
 /* People compliance and reporting workspaces */
 .people-compliance-workspace,
@@ -7959,12 +7968,22 @@ body {
 .can-ack-editor-grid label { display: grid; gap: 6px; color: #475569; font-size: 11px; font-weight: 850; }
 .can-ack-editor-grid input, .can-ack-editor-grid textarea { width: 100%; padding: 9px 10px; border: 1px solid #d6dfeb; border-radius: 10px; background: #fff; font: inherit; }
 .can-ack-editor .button { justify-self: start; }
+.can-signed-copy-panel { width: min(8.5in, 100%); margin: 0 auto 14px; padding: 16px; border: 1px solid #d6dfeb; border-radius: 18px; background: #fff; display: grid; gap: 12px; box-shadow: 0 8px 24px rgba(15,23,42,.08); }
+.can-signed-copy-panel h2 { margin: 2px 0; font-size: 18px; }
+.can-signed-copy-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; }
+.can-signed-copy-form label { display: grid; gap: 6px; color: #475569; font-size: 11px; font-weight: 850; }
+.can-signed-copy-form input { width: 100%; min-height: 42px; padding: 8px 10px; border: 1px solid #d6dfeb; border-radius: 10px; background: #fff; font: inherit; }
+.can-signed-copy-list { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding-top: 10px; border-top: 1px solid #e5eaf0; font-size: 11px; }
+.can-signed-copy-list a { color: #0b63ce; font-weight: 800; }
 .can-document { width: min(8.5in, 100%); min-height: 11in; margin: auto; padding: .48in .55in; background: #fff; box-shadow: 0 14px 40px rgba(15,23,42,.15); font-family: Arial, sans-serif; font-size: 11px; line-height: 1.4; }
+.can-document.is-draft { position: relative; }
+.can-document.is-draft::after { content: "DRAFT"; position: absolute; inset: 4.3in 0 auto; color: rgba(180,83,9,.09); font-size: 100px; font-weight: 900; letter-spacing: .12em; text-align: center; transform: rotate(-25deg); pointer-events: none; }
 .can-document__header { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; border-bottom: 3px solid #123c69; padding-bottom: 12px; }
 .can-document__header p { margin: 0; color: #087f5b; font-weight: 900; letter-spacing: .12em; }
 .can-document__header h1 { margin: 4px 0 0; font-size: 23px; }
 .can-number { font-weight: 900; font-size: 15px; text-align: right; }
 .can-number small { display: block; color: #087f5b; margin-top: 3px; }
+.can-reconciliation-id { display: block; margin-top: 5px; color: #526477; font-size: 8px; letter-spacing: .08em; }
 .can-grid { display: grid; gap: 0; margin-top: 12px; border: 1px solid #aab7c5; }
 .can-grid--four { grid-template-columns: repeat(4, 1fr); }
 .can-line { padding: 7px 9px; border-right: 1px solid #d7dee7; border-bottom: 1px solid #d7dee7; min-height: 48px; }
@@ -7995,12 +8014,13 @@ body {
 .can-appendix-table th { background: #f3f7fa; color: #526477; text-transform: uppercase; letter-spacing: .05em; }
 @media print {
   @page { size: Letter portrait; margin: 0; }
-  .app-nav-shell, .can-print-toolbar, .can-ack-editor { display: none !important; }
+  .app-nav-shell, .can-print-toolbar, .can-ack-editor, .can-signed-copy-panel, .can-draft-preview-banner, .can-preview-error { display: none !important; }
   .can-print-shell { padding: 0; background: #fff; }
   .can-document { width: 8.5in; min-height: 11in; box-shadow: none; margin: 0; }
 }
 @media (max-width: 760px) {
   .can-ack-editor-grid { grid-template-columns: 1fr; }
+  .can-signed-copy-form { grid-template-columns: 1fr; }
   .can-paper-checks { grid-template-columns: 1fr; }
   .can-paper-checks span:last-child { grid-column: auto; }
 }

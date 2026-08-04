@@ -34,6 +34,8 @@ export type CorrectiveActionWorkspace = {
     record_date: string;
     prepared_by: string;
     updated_at: string;
+    content_hash: string | null;
+    signed_copy_count: number;
   }>;
 };
 

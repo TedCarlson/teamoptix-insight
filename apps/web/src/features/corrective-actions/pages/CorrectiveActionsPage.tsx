@@ -78,6 +78,16 @@ type EvidenceRoute = {
 };
 
 type AttendanceEvidence = { last_attendance_can_date: string | null; events: Array<{ id: string; date: string; event_code: string; event_label: string; note: string | null; created_at: string }> };
+type DraftRecordResponse = {
+  action: CorrectiveActionDraft & { id: string; workflow_status: string; template_id: string | null };
+  occurrences: Array<{ occurred_at: string; route_label: string | null; stop_references: string[] | null; context_note: string | null; source_kind: string; source_id: string | null }>;
+};
+
+function toLocalDateTime(value: string) {
+  const date = new Date(value);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
 
 export default function CorrectiveActionsPage() {
   const slug = String(useParams()?.slug ?? "");
@@ -87,6 +97,7 @@ export default function CorrectiveActionsPage() {
   const [open, setOpen] = useState(Boolean(search.get("rosterId") || search.get("source")));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
   const [studioOpen, setStudioOpen] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
@@ -103,7 +114,48 @@ export default function CorrectiveActionsPage() {
     setWorkspace(data);
   }, [slug]);
 
+  const openDraft = useCallback(async (actionId: string) => {
+    setError(null); setNotice(null);
+    const response = await fetch(`/api/company/${slug}/people/corrective-actions/${actionId}`, { credentials: "include", cache: "no-store" });
+    const body = await response.json() as DraftRecordResponse & { error?: string };
+    if (!response.ok) throw new Error(body.error || "Unable to load the draft.");
+    if (body.action.workflow_status !== "DRAFT") throw new Error("Only drafts can be edited.");
+    setDraft({
+      roster_id: body.action.roster_id,
+      template_id: body.action.template_id ?? "",
+      category_label: body.action.category_label,
+      title: body.action.title,
+      warning_level: body.action.warning_level,
+      outcome_type: body.action.outcome_type,
+      incident_date: body.action.incident_date,
+      record_date: body.action.record_date,
+      facts_statement: body.action.facts_statement,
+      expectation_statement: body.action.expectation_statement,
+      action_statement: body.action.action_statement,
+      corrective_plan: body.action.corrective_plan ?? "",
+      employee_response: body.action.employee_response ?? "",
+      policy_reference: body.action.policy_reference ?? "",
+      suspension_start: body.action.suspension_start ?? "",
+      suspension_end: body.action.suspension_end ?? "",
+      occurrences: body.occurrences.length ? body.occurrences.map((occurrence) => ({
+        occurred_at: toLocalDateTime(occurrence.occurred_at),
+        route_label: occurrence.route_label ?? "",
+        stop_references: occurrence.stop_references ?? [],
+        context_note: occurrence.context_note ?? "",
+        source_kind: occurrence.source_kind === "DSW" ? "DSW" : "MANUAL",
+        source_id: occurrence.source_id,
+      })) : [{ occurred_at: `${body.action.incident_date}T12:00`, route_label: "", stop_references: [], context_note: "", source_kind: "MANUAL" }],
+    });
+    setSavedId(actionId); setSelectedEvidenceKey(""); setStudioOpen(false); setOpen(true);
+  }, [slug]);
+
   useEffect(() => { if (slug) load().catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to load corrective actions.")); }, [load, slug]);
+
+  useEffect(() => {
+    const draftId = search.get("draft");
+    if (!draftId || savedId === draftId) return;
+    openDraft(draftId).catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to load the draft."));
+  }, [openDraft, savedId, search]);
 
   useEffect(() => {
     const source = search.get("source");
@@ -201,7 +253,7 @@ export default function CorrectiveActionsPage() {
     if (!draft.template_id && evidenceSuggestions.length === 1) chooseTemplate(evidenceSuggestions[0].template);
   }, [draft.template_id, evidenceSuggestions, chooseTemplate]);
 
-  async function save(issue: boolean) {
+  async function saveDraft(preview: boolean) {
     if (!draft.roster_id || !draft.template_id || !draft.facts_statement.trim()) { setError("Select a person and event type, then complete the facts statement."); return; }
     setSaving(true); setError(null);
     try {
@@ -210,14 +262,12 @@ export default function CorrectiveActionsPage() {
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || "Unable to save the CAN.");
       setSavedId(data.id);
-      if (issue) {
-        const issueResponse = await fetch(`/api/company/${slug}/people/corrective-actions/${data.id}/issue`, { method: "POST", credentials: "include" });
-        const issueData = await issueResponse.json();
-        if (!issueResponse.ok) throw new Error(issueData?.error || "Unable to issue the CAN.");
-        window.open(`/company/${slug}/people/corrective-actions/${data.id}/print`, "_blank", "noopener,noreferrer");
-        setOpen(false); setSavedId(null); setDraft(emptyDraft());
-      }
       await load();
+      if (preview) {
+        window.location.assign(`/company/${slug}/people/corrective-actions/${data.id}/print`);
+        return;
+      }
+      setNotice(`Draft CAN #${data.can_number} saved. You can leave and resume it from CAN records.`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to save the CAN."); }
     finally { setSaving(false); }
   }
@@ -230,7 +280,21 @@ export default function CorrectiveActionsPage() {
     setSelectedEvidenceKey("");
     setEvidenceRoutes([]);
     setAttendanceEvidence({ last_attendance_can_date: null, events: [] });
-    setError(null);
+    setError(null); setNotice(null);
+  }
+
+  async function deleteDraft(actionId: string, canNumber: number) {
+    if (!window.confirm(`Delete unissued draft CAN #${canNumber}? This cannot be undone.`)) return;
+    setSaving(true); setError(null); setNotice(null);
+    try {
+      const response = await fetch(`/api/company/${slug}/people/corrective-actions/${actionId}`, { method: "DELETE", credentials: "include" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error || "Unable to delete the draft.");
+      if (savedId === actionId) { setSavedId(null); setDraft(emptyDraft()); setOpen(false); }
+      await load();
+      setNotice(`Draft CAN #${canNumber} deleted.`);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to delete the draft."); }
+    finally { setSaving(false); }
   }
 
   async function saveTemplate() {
@@ -253,6 +317,7 @@ export default function CorrectiveActionsPage() {
       <button className={studioOpen ? "button button-primary" : "button"} type="button" onClick={() => { setOpen(false); setStudioOpen(true); }}>Company responses</button>
     </nav>
 
+    {notice ? <p className="can-workspace-notice">{notice}</p> : null}
     {error && (!open || !workspace) ? <section className="app-card workspace-section" style={{ color: "#b91c1c" }}>{error}</section> : null}
 
     {studioOpen ? <section className="app-card workspace-section can-policy-studio">
@@ -273,7 +338,7 @@ export default function CorrectiveActionsPage() {
     </section> : null}
 
     {!open && !studioOpen ? <section className="app-card workspace-section"><div className="workspace-section__head"><div><p className="eyebrow">Company record</p><h2>Corrective Action Notices</h2><p className="workspace-subtitle">Draft, issued, and finalized coaching or disciplinary records for this company.</p></div></div>
-      {!workspace ? <p className="muted">Loading records…</p> : workspace.actions.length === 0 ? <p className="muted">No corrective action notices have been prepared.</p> : <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["CAN", "Person", "Category", "Level", "Outcome", "Status", "Incident", "Prepared by", ""].map((label) => <th key={label} style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #dbe3ee", fontSize: 12 }}>{label}</th>)}</tr></thead><tbody>{workspace.actions.map((action) => <tr key={action.id}>{[action.can_number, action.employee_name, action.category_label, action.warning_level, action.outcome_type, action.workflow_status, action.incident_date, action.prepared_by].map((value, index) => <td key={index} style={{ padding: 10, borderBottom: "1px solid #edf1f6", fontSize: 13 }}>{String(value).replaceAll("_", " ")}</td>)}<td style={{ padding: 10 }}><a className="button" href={`/company/${slug}/people/corrective-actions/${action.id}/print`} target="_blank">View / print</a></td></tr>)}</tbody></table></div>}
+      {!workspace ? <p className="muted">Loading records…</p> : workspace.actions.length === 0 ? <p className="muted">No corrective action notices have been prepared.</p> : <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["CAN", "Person", "Category", "Level", "Outcome", "Status", "Incident", "Prepared by", ""].map((label) => <th key={label} style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #dbe3ee", fontSize: 12 }}>{label}</th>)}</tr></thead><tbody>{workspace.actions.map((action) => <tr key={action.id}>{[action.can_number, action.employee_name, action.category_label, action.warning_level, action.outcome_type, action.workflow_status, action.incident_date, action.prepared_by].map((value, index) => <td key={index} style={{ padding: 10, borderBottom: "1px solid #edf1f6", fontSize: 13 }}>{String(value).replaceAll("_", " ")}</td>)}<td style={{ padding: 10 }}><div className="can-record-actions">{action.workflow_status === "DRAFT" ? <><button className="button button-primary" type="button" disabled={saving} onClick={() => void openDraft(action.id).catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to load the draft."))}>Edit</button><a className="button" href={`/company/${slug}/people/corrective-actions/${action.id}/print`}>Preview</a><button className="button can-delete-draft" type="button" disabled={saving} onClick={() => void deleteDraft(action.id, action.can_number)}>Delete</button></> : <><a className="button" href={`/company/${slug}/people/corrective-actions/${action.id}/print`}>View / print</a>{action.signed_copy_count ? <span className="can-signed-count">{action.signed_copy_count} signed cop{action.signed_copy_count === 1 ? "y" : "ies"}</span> : null}</>}</div></td></tr>)}</tbody></table></div>}
     </section> : null}
 
     {open && !workspace && !error ? <section className="app-card workspace-section"><p className="eyebrow">Corrective Action Notice</p><h2>Preparing the workspace…</h2></section> : null}
@@ -299,7 +364,7 @@ export default function CorrectiveActionsPage() {
         <Field label="Leadership response"><textarea style={fieldStyle} rows={3} value={draft.action_statement} onChange={(event) => setDraft((current) => ({ ...current, action_statement: event.target.value }))}/></Field>
         <Field label="Corrective plan, training, or follow-up"><textarea style={fieldStyle} rows={3} value={draft.corrective_plan} onChange={(event) => setDraft((current) => ({ ...current, corrective_plan: event.target.value }))} placeholder="Specific support, retraining, measurement, and follow-up date"/></Field>
         <section className="app-card" style={{ padding: 14 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><strong>Occurrences and physical evidence context</strong><button className="button" type="button" onClick={() => setDraft((current) => ({ ...current, occurrences: [...current.occurrences, { occurred_at: `${current.incident_date}T12:00`, route_label: "", stop_references: [], context_note: "", source_kind: "MANUAL" }] }))}>Add occurrence</button></div>{draft.occurrences.map((occurrence, index) => <div key={index} style={{ paddingTop: 10, marginTop: 10, borderTop: index ? "1px solid #dbe3ee" : "none" }}>{occurrence.source_kind === "DSW" ? <div className="can-occurrence-source"><span>Stored DSW route</span><button className="button" type="button" onClick={() => { setSelectedEvidenceKey(""); setDraft((current) => ({ ...current, occurrences: current.occurrences.map((item, itemIndex) => itemIndex === index ? { ...item, source_kind: "MANUAL", source_id: null, context_note: "" } : item) })); }}>Use manual entry instead</button></div> : null}<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 10 }}><Field label={`Occurred at · ${index + 1}`}><input style={fieldStyle} type="datetime-local" value={occurrence.occurred_at} onChange={(event) => setDraft((current) => ({ ...current, occurrences: current.occurrences.map((item, itemIndex) => itemIndex === index ? { ...item, occurred_at: event.target.value } : item) }))}/></Field><Field label="Route"><input style={{ ...fieldStyle, background: occurrence.source_kind === "DSW" ? "#f3f6fa" : "#fff" }} readOnly={occurrence.source_kind === "DSW"} value={occurrence.route_label} onChange={(event) => setDraft((current) => ({ ...current, occurrences: current.occurrences.map((item, itemIndex) => itemIndex === index ? { ...item, route_label: event.target.value } : item) }))} placeholder="Route name or number"/></Field><Field label="Stops / package references"><input style={fieldStyle} value={occurrence.stop_references.join(", ")} onChange={(event) => setDraft((current) => ({ ...current, occurrences: current.occurrences.map((item, itemIndex) => itemIndex === index ? { ...item, stop_references: splitStopReferences(event.target.value) } : item) }))} placeholder="12, 18, 22"/></Field></div><Field label={occurrence.source_kind === "DSW" ? "Manager context or additional evidence" : "Occurrence context"}><textarea style={{ ...fieldStyle, marginTop: 10 }} rows={2} value={occurrence.context_note} onChange={(event) => setDraft((current) => ({ ...current, occurrences: current.occurrences.map((item, itemIndex) => itemIndex === index ? { ...item, context_note: event.target.value } : item) }))} placeholder="Link the event to dispatch, delivery, service, or other evidence"/></Field>{draft.occurrences.length > 1 ? <button className="button" type="button" style={{ marginTop: 8 }} onClick={() => setDraft((current) => ({ ...current, occurrences: current.occurrences.filter((_, itemIndex) => itemIndex !== index) }))}>Remove occurrence</button> : null}</div>)}</section>
-        <div className="cta-row"><button className="button" disabled={saving} onClick={() => void save(false)}>{saving ? "Saving…" : "Save draft"}</button><button className="button button-primary" disabled={saving} onClick={() => void save(true)}>Issue and open print view</button><button className="button" onClick={() => setOpen(false)}>Cancel</button></div>
+        <div className="cta-row"><button className="button" disabled={saving} onClick={() => void saveDraft(false)}>{saving ? "Saving…" : "Save draft"}</button><button className="button button-primary" disabled={saving} onClick={() => void saveDraft(true)}>Preview draft</button><button className="button" onClick={() => setOpen(false)}>Cancel</button></div>
       </div>
     </section> : null}
     </section>
