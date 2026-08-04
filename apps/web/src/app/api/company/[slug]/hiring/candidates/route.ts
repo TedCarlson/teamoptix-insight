@@ -343,7 +343,7 @@ export async function POST(
       );
     }
 
-    const { data, error } = await supabase.rpc("create_company_candidate_from_overlay", {
+    const { data, error } = await supabase.rpc("create_company_onboarding_candidate_from_overlay", {
       p_company_slug: slug,
       p_full_name: fullName,
       p_email: email,
@@ -376,7 +376,7 @@ export async function POST(
     }
 
     return NextResponse.json(
-      { ok: true, roster_id: data?.roster_id },
+      { ok: true, roster_id: data?.roster_id, stage_key: data?.stage_key },
       { status: 201 }
     );
   } catch (error) {

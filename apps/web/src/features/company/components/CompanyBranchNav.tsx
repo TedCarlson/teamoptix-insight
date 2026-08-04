@@ -94,6 +94,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
           match: (path) =>
             path === base ||
             path.startsWith(analyticsBase) ||
+            path.startsWith(opportunitiesBase) ||
             path === `${base}/readiness` ||
             path.startsWith(`${base}/admin/legal`) ||
             path.startsWith(billingBase) ||
@@ -107,9 +108,6 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
         { label: "Schedule", href: scheduleBase, match: (path) => path.startsWith(scheduleBase) },
         { label: "Fleet", href: fleetBase, match: (path) => path.startsWith(fleetBase) },
         { label: "Routes", href: `${base}/routes`, match: (path) => path.startsWith(`${base}/routes`) },
-        ...(canAccessOpportunities
-          ? [{ label: "Opportunities", href: opportunitiesBase, match: (path: string) => path.startsWith(opportunitiesBase) }]
-          : []),
       ]
     : [
         { label: "Home", href: homeBase, match: (path) => path === homeBase || path.startsWith(announcementsBase) },
@@ -139,6 +137,9 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     { label: "Billing", href: billingBase, match: (path) => path.startsWith(billingBase) },
     { label: "Payroll", href: payrollBase, match: (path) => path.startsWith(payrollBase) },
     { label: "Assets", href: `${assetsBase}/scanners`, match: (path) => path.startsWith(assetsBase) },
+    ...(canAccessOpportunities
+      ? [{ label: "Opportunities", href: opportunitiesBase, match: (path: string) => path.startsWith(opportunitiesBase) }]
+      : []),
     { label: "Config", href: configBase, match: (path) => path === configBase || path.startsWith(`${configBase}/`) },
   ];
 

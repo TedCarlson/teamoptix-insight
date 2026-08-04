@@ -371,7 +371,10 @@ export default function HiringPipelinePage() {
         }
       }
 
+      setSelectedCandidate(null);
       setCandidateOverlayOpen(false);
+      setCandidateOverlaySession((session) => session + 1);
+      setFilter("onboarding");
       await loadCandidates();
     } catch {
       setCandidateError("Failed to save candidate.");
@@ -606,6 +609,7 @@ export default function HiringPipelinePage() {
         </article>
 
         <CandidateWorkflowDrawer
+          key={selectedCandidate?.roster_member_id ?? "candidate-workflow-drawer"}
           open={Boolean(selectedCandidate)}
           slug={slug}
           person={selectedCandidate}

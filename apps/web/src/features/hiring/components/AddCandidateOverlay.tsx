@@ -263,7 +263,7 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
             <p className="eyebrow">Hiring</p>
             <h2 className="app-card__title">Add candidate</h2>
             <p className="app-card__body">
-              Minimum save requires a name. Email, phone, license, and operations details can be completed later.
+              Enter the known details once. Saving starts this candidate in onboarding; missing information can be completed later.
             </p>
           </div>
 
@@ -328,7 +328,7 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
           </section>
 
           <section style={bucketStyle}>
-            <p className="workspace-eyebrow" style={{ margin: 0 }}>Invitation decision</p>
+            <p className="workspace-eyebrow" style={{ margin: 0 }}>Onboarding entry</p>
             <select
               value={inviteAction}
               onChange={(event) =>
@@ -336,8 +336,8 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
               }
               style={inputStyle}
             >
-              <option value="SAVE_ONLY">Save only</option>
-              <option value="SEND_INVITE">Save and send invite</option>
+              <option value="SAVE_ONLY">Start onboarding without an invite</option>
+              <option value="SEND_INVITE">Start onboarding and send invite</option>
             </select>
           </section>
 
@@ -355,7 +355,7 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
 
           <div className="cta-row" style={{ marginTop: 4 }}>
             <button className="button button-primary" type="submit" disabled={saving}>
-              {saving ? "Saving..." : inviteAction === "SEND_INVITE" ? "Save + send invite" : "Save candidate"}
+              {saving ? "Starting onboarding..." : inviteAction === "SEND_INVITE" ? "Start onboarding + send invite" : "Start onboarding"}
             </button>
             <button
               className="button"
