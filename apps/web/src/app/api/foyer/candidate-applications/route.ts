@@ -25,8 +25,9 @@ export async function POST(request: Request) {
     let profileId: string | null = null;
     if (auth.user?.id) {
       await session.rpc("ensure_access_context");
-      const { data: profile } = await session.from("profiles").select("id,email").eq("auth_user_id", auth.user.id).maybeSingle();
-      if (profile && clean(body.email).toLowerCase() === String(profile.email).toLowerCase()) profileId = profile.id;
+      const { data: profile } = await session.rpc("current_profile").maybeSingle();
+      const currentProfile = profile as { profile_id?: string | null; email?: string | null } | null;
+      if (currentProfile?.profile_id && clean(body.email).toLowerCase() === String(currentProfile.email).toLowerCase()) profileId = currentProfile.profile_id;
     }
 
     const { data, error } = await createSupabaseServiceRoleClient().rpc("submit_candidate_foyer_application", {

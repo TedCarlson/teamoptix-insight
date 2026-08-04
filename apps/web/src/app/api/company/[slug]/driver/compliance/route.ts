@@ -13,9 +13,10 @@ export async function GET(_request: Request, context: { params: Promise<{ slug: 
   const { data: company } = await supabase.from("companies").select("id").eq("company_slug", slug).maybeSingle();
   if (!company) return NextResponse.json({ error: "Company not found." }, { status: 404 });
 
-  const { data: profile } = await supabase.from("profiles").select("id").eq("auth_user_id", user.id).maybeSingle();
+  const { data: profile } = await supabase.rpc("current_profile").maybeSingle();
+  const currentProfile = profile as { profile_id?: string | null } | null;
   let query = supabase.from("company_roster_view").select("roster_member_id").eq("company_id", company.id);
-  query = profile?.id ? query.eq("profile_id", profile.id) : query.eq("email", user.email ?? "");
+  query = currentProfile?.profile_id ? query.eq("profile_id", currentProfile.profile_id) : query.eq("email", user.email ?? "");
   const { data: roster } = await query.maybeSingle();
   if (!roster) return NextResponse.json({ roster_member_id: null, compliance_signals: [] });
 
