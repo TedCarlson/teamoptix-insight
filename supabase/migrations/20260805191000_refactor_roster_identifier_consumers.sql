@@ -2,6 +2,25 @@
 -- The legacy operations columns deliberately remain in place during the
 -- compatibility and parity-verification window.
 
+-- Never choose arbitrarily between conflicting authoritative values. Exact
+-- duplicate rows are safe to collapse; conflicting values require review.
+do $$
+begin
+  if exists (
+    select 1
+    from core.company_roster_identifier
+    where roster_id is not null
+      and identifier_type in ('fx_id', 'dswid')
+    group by roster_id, identifier_type
+    having count(distinct nullif(trim(identifier_value), '')) > 1
+  ) then
+    raise exception using
+      message = 'Roster identifier refactor blocked: conflicting authoritative identifier values exist.',
+      hint = 'Resolve duplicate FX ID or DSWID values for the same roster member before retrying.';
+  end if;
+end;
+$$;
+
 -- Remove historical duplicate identifier rows before enforcing one value per
 -- roster member and identifier type.
 delete from core.company_roster_identifier duplicate
@@ -12,6 +31,68 @@ where duplicate.roster_id = keeper.roster_id
 
 create unique index if not exists company_roster_identifier_roster_type_uq
   on core.company_roster_identifier (roster_id, identifier_type);
+
+-- Preserve coverage for records that still exist only in the legacy columns.
+-- Existing normalized values remain authoritative when the two sources differ.
+insert into core.company_roster_identifier (
+  roster_id,
+  identifier_type,
+  identifier_value
+)
+select
+  operations.roster_id,
+  'fx_id',
+  trim(operations.fx_id)
+from core.company_roster_operations_fact operations
+where nullif(trim(operations.fx_id), '') is not null
+on conflict (roster_id, identifier_type) do nothing;
+
+insert into core.company_roster_identifier (
+  roster_id,
+  identifier_type,
+  identifier_value
+)
+select
+  operations.roster_id,
+  'dswid',
+  trim(operations.dswid)
+from core.company_roster_operations_fact operations
+where nullif(trim(operations.dswid), '') is not null
+on conflict (roster_id, identifier_type) do nothing;
+
+-- This assertion executes before any consumer is redirected. A missing
+-- normalized counterpart aborts and rolls back the entire migration.
+do $$
+begin
+  if exists (
+    select 1
+    from core.company_roster_operations_fact operations
+    where nullif(trim(operations.fx_id), '') is not null
+      and not exists (
+        select 1
+        from core.company_roster_identifier identifier
+        where identifier.roster_id = operations.roster_id
+          and identifier.identifier_type = 'fx_id'
+          and nullif(trim(identifier.identifier_value), '') is not null
+      )
+  ) or exists (
+    select 1
+    from core.company_roster_operations_fact operations
+    where nullif(trim(operations.dswid), '') is not null
+      and not exists (
+        select 1
+        from core.company_roster_identifier identifier
+        where identifier.roster_id = operations.roster_id
+          and identifier.identifier_type = 'dswid'
+          and nullif(trim(identifier.identifier_value), '') is not null
+      )
+  ) then
+    raise exception using
+      message = 'Roster identifier refactor blocked: normalized identifier coverage is incomplete.',
+      hint = 'No consumer definitions were changed because this migration was rolled back.';
+  end if;
+end;
+$$;
 
 create or replace view core.company_roster_identity_v as
 select
