@@ -58,6 +58,32 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       );
     }
 
+    const { data: rosterMember, error: rosterMemberErr } = await sb
+      .from("company_roster_view")
+      .select("roster_member_id, employment_status")
+      .eq("company_id", company.id)
+      .eq("roster_member_id", rosterMemberId)
+      .in("employment_status", ["Active", "Trainee"])
+      .maybeSingle();
+
+    if (rosterMemberErr) {
+      return NextResponse.json(
+        {
+          error: rosterMemberErr.message,
+          detail: rosterMemberErr,
+          step: "roster_eligibility",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!rosterMember) {
+      return NextResponse.json(
+        { error: "Only Active or Trainee roster members can receive a schedule baseline." },
+        { status: 400 }
+      );
+    }
+
     const { data: existing, error: existingErr } = await sb
       .from("schedule_baseline")
       .select("id, anchor_date, effective_start")

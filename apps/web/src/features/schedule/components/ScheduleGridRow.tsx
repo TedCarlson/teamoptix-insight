@@ -17,6 +17,7 @@ type ScheduleGridRowModel = {
 
   role_label: string | null;
   role_bucket: "DRIVER_HELPER" | "OTHER";
+  employment_status: string | null;
 
   preset_id: string | null;
   preset_code: string | null;
@@ -129,6 +130,30 @@ function roleChip(roleLabel: string | null) {
       }}
     >
       {label}
+    </span>
+  );
+}
+
+function traineeChip(employmentStatus: string | null) {
+  if (employmentStatus !== "Trainee") return null;
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        height: 20,
+        padding: "0 8px",
+        borderRadius: 999,
+        background: "#fff7ed",
+        border: "1px solid #fdba74",
+        color: "#b45309",
+        fontSize: 11,
+        fontWeight: 800,
+        lineHeight: 1,
+      }}
+    >
+      Trainee
     </span>
   );
 }
@@ -273,6 +298,7 @@ export default function ScheduleGridRow(props: Props) {
             >
               <span>{row.full_name}</span>
               {roleChip(row.role_label)}
+              {traineeChip(row.employment_status)}
             </div>
 
             <span

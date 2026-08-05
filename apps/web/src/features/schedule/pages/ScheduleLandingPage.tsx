@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import ScheduleFilters from "@/features/schedule/components/ScheduleFilters";
+import ScheduleFilters, {
+  type PeopleFilter,
+} from "@/features/schedule/components/ScheduleFilters";
 import ScheduleGrid from "@/features/schedule/components/ScheduleGrid";
 import SchedulePostureBand from "@/features/schedule/components/SchedulePostureBand";
 import type {
@@ -18,6 +20,7 @@ type ScheduleGridRow = {
 
   role_label: string | null;
   role_bucket: "DRIVER_HELPER" | "OTHER";
+  employment_status: string | null;
 
   preset_id: string | null;
   preset_code: string | null;
@@ -90,8 +93,6 @@ type CommitResult = {
   override_count?: number;
   terminal_id_used?: string;
 };
-
-type PeopleFilter = "drivers_helpers" | "others";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -282,10 +283,12 @@ export default function ScheduleLandingPage() {
             ? !row.rotation_mode
             : row.rotation_mode === rotationFilter;
 
-      const matchesPeople =
-        peopleFilter === "drivers_helpers"
-          ? row.role_bucket === "DRIVER_HELPER"
-          : row.role_bucket === "OTHER";
+      const rowPeopleGroup: PeopleFilter =
+        row.role_bucket === "DRIVER_HELPER"
+          ? "drivers_helpers"
+          : "others";
+
+      const matchesPeople = peopleFilter === rowPeopleGroup;
 
       return (
         matchesSearch &&

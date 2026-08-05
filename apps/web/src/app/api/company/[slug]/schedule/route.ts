@@ -102,7 +102,7 @@ export async function GET(
       .from("company_roster_view")
       .select("*")
       .eq("company_id", company.id)
-      .eq("employment_status", "Active")
+      .in("employment_status", ["Active", "Trainee"])
       .order("full_name");
 
     if (rosterErr) {
@@ -244,6 +244,10 @@ export async function GET(
 
           role_label: roleLabel,
           role_bucket: roleBucket,
+          employment_status:
+            typeof roster.employment_status === "string"
+              ? roster.employment_status
+              : null,
 
           preset_id: baseline?.preset_id ?? null,
           preset_code: preset?.preset_code ?? null,

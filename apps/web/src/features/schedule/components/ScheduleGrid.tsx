@@ -13,6 +13,7 @@ type ScheduleGridRowModel = {
 
   role_label: string | null;
   role_bucket: "DRIVER_HELPER" | "OTHER";
+  employment_status: string | null;
 
   preset_id: string | null;
   preset_code: string | null;
@@ -154,7 +155,7 @@ export default function ScheduleGrid(props: Props) {
               background: "#fff",
             }}
           >
-            <th style={headerStyle}>Driver</th>
+            <th style={headerStyle}>Team member</th>
             <th
               style={headerStyle}
               title="Recurring production-week pattern used to hydrate planning days."
