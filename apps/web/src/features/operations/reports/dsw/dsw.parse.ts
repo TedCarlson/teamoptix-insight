@@ -33,6 +33,53 @@ export function toInteger(value: unknown) {
   return parsed === null ? null : Math.trunc(parsed);
 }
 
+export type EarlyLatePickupCounts = {
+  raw: string | null;
+  early: number | null;
+  late: number | null;
+  total: number | null;
+  valid: boolean;
+};
+
+export function toEarlyLatePickups(
+  value: unknown
+): EarlyLatePickupCounts {
+  const raw = cellText(value);
+
+  if (!raw) {
+    return {
+      raw: null,
+      early: 0,
+      late: 0,
+      total: 0,
+      valid: true,
+    };
+  }
+
+  const match = raw.match(/^(\d+)\s*\/\s*(\d+)$/);
+
+  if (!match) {
+    return {
+      raw,
+      early: null,
+      late: null,
+      total: null,
+      valid: false,
+    };
+  }
+
+  const early = Number(match[1]);
+  const late = Number(match[2]);
+
+  return {
+    raw,
+    early,
+    late,
+    total: early + late,
+    valid: true,
+  };
+}
+
 export function objectRows(rows: unknown[][], headerIndex: number) {
   const headers = (rows[headerIndex] ?? []).map(cellText);
 

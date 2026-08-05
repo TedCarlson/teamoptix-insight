@@ -1,0 +1,199 @@
+.report {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: clamp(20px, 3vw, 38px);
+  border: 1px solid #dbe3ed;
+  background: #fff;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, .06);
+  color: #132039;
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 28px;
+  padding-bottom: 22px;
+  border-bottom: 3px solid #132039;
+}
+
+.hero p,
+.sectionHead p {
+  margin: 0 0 7px;
+  color: #169b69;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.hero h1 { margin: 0; font-size: clamp(36px, 5vw, 54px); line-height: 1; letter-spacing: -.045em; }
+.hero > div:first-child > span { display: block; max-width: 730px; margin-top: 12px; color: #536174; line-height: 1.55; }
+
+.contractContext { min-width: 260px; padding-left: 17px; border-left: 3px solid #169b69; }
+.contractContext span,
+.contractContext strong,
+.contractContext small { display: block; }
+.contractContext span { color: #718096; font-size: 10px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.contractContext strong { margin-top: 5px; font-size: 16px; }
+.contractContext small { margin-top: 3px; color: #667085; }
+
+.state { padding: 60px 0; color: #667085; }
+.state span { display: block; margin-top: 5px; }
+.error { color: #b42318; }
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  padding: 24px 0 18px;
+}
+
+.summary article {
+  min-width: 0;
+  padding: 15px 16px;
+  border: 1px solid #dce3ec;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.summary span,
+.summary small { display: block; color: #697689; font-size: 10px; }
+.summary strong { display: block; margin: 7px 0 5px; font-size: 27px; line-height: 1; }
+.summary .signalCard { border-color: #edc995; background: #fffaf2; }
+
+.coverageNotice {
+  display: flex;
+  gap: 8px 18px;
+  align-items: baseline;
+  margin-bottom: 18px;
+  padding: 11px 14px;
+  border-left: 3px solid #d97706;
+  background: #fff9ec;
+  color: #6d5a3b;
+  font-size: 12px;
+}
+
+.coverageNotice span { color: #776c5b; }
+
+.capacitySection,
+.panel,
+.miniPanel {
+  border: 1px solid #dce3ec;
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.sectionHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 20px;
+  padding: 19px 20px 16px;
+}
+
+.sectionHead h2 { margin: 0; font-size: 22px; letter-spacing: -.025em; }
+.sectionHead > div > span { display: block; max-width: 690px; margin-top: 5px; color: #687487; font-size: 12px; line-height: 1.45; }
+
+.coverageRange { text-align: right; }
+.coverageRange span,
+.coverageRange strong { display: block; }
+.coverageRange span { color: #7a8494; font-size: 9px; font-weight: 850; letter-spacing: .07em; text-transform: uppercase; }
+.coverageRange strong { margin-top: 4px; font-size: 11px; }
+
+.capacityLegend {
+  display: flex;
+  justify-content: flex-end;
+  gap: 15px;
+  padding: 8px 20px;
+  border-top: 1px solid #e7ebf0;
+  border-bottom: 1px solid #e7ebf0;
+  background: #f8fafc;
+  color: #5e6a7b;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.capacityLegend span { display: flex; align-items: center; gap: 5px; }
+.capacityLegend i { width: 14px; height: 5px; border-radius: 99px; }
+.demandMark { background: #334155; }
+.supplyMark { background: #1aa36f; }
+
+.capacityRows { padding: 8px 18px 14px; }
+.capacityRow {
+  display: grid;
+  grid-template-columns: 72px minmax(180px, 1fr) 82px 104px 82px;
+  align-items: center;
+  gap: 10px;
+  min-height: 35px;
+  border-bottom: 1px solid #edf0f4;
+  font-size: 11px;
+}
+
+.capacityRow > strong { font-size: 11px; }
+.capacityRow > span { text-align: right; color: #526075; }
+.capacityRow > b { text-align: right; color: #167044; font-size: 10px; }
+.capacityRow > b.tight { color: #b54708; }
+
+.bars { position: relative; height: 18px; }
+.bars span { position: absolute; left: 0; height: 5px; min-width: 2px; border-radius: 99px; }
+.demandBar { top: 3px; background: #334155; }
+.supplyBar { bottom: 2px; background: #1aa36f; }
+
+.twoColumn { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: 16px; margin-top: 16px; }
+.panel .sectionHead { border-bottom: 1px solid #e5eaf0; }
+
+.movementHead,
+.movementRows > div {
+  display: grid;
+  grid-template-columns: 1fr 70px 60px 60px;
+  align-items: center;
+  gap: 8px;
+}
+
+.movementHead { padding: 8px 16px; background: #f8fafc; color: #7a8494; font-size: 9px; font-weight: 850; letter-spacing: .05em; text-align: right; text-transform: uppercase; }
+.movementHead span:first-child { text-align: left; }
+.movementRows { padding: 4px 16px 12px; }
+.movementRows > div { min-height: 31px; border-bottom: 1px solid #edf0f4; font-size: 11px; text-align: right; }
+.movementRows strong { text-align: left; }
+.movementRows span { color: #445066; }
+.movementRows b { font-size: 11px; }
+.hire { color: #167044; }
+.exit { color: #b42318; }
+
+.funnel { display: grid; gap: 12px; padding: 17px 18px 20px; }
+.funnel > div { display: grid; grid-template-columns: minmax(145px, .9fr) minmax(120px, 1.1fr); align-items: center; gap: 13px; }
+.funnel span strong,
+.funnel span small { display: block; }
+.funnel span strong { font-size: 11px; }
+.funnel span small { margin-top: 3px; color: #788394; font-size: 9px; }
+.funnel i { height: 8px; border-radius: 99px; background: #e9edf2; overflow: hidden; }
+.funnel i b { display: block; height: 100%; border-radius: inherit; background: #5b35b5; }
+
+.threeColumn { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+.miniPanel { padding: 17px 18px; }
+.miniPanel > span { display: block; color: #169b69; font-size: 9px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.miniPanel > strong { display: block; margin: 5px 0 13px; font-size: 18px; }
+.miniPanel > div { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 29px; border-bottom: 1px solid #edf0f4; }
+.miniPanel > div b { font-size: 13px; }
+.miniPanel > div small { color: #687487; font-size: 10px; }
+.miniPanel > p { margin: 11px 0 0; color: #687487; font-size: 10px; }
+
+@media (max-width: 980px) {
+  .summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .twoColumn { grid-template-columns: 1fr; }
+  .threeColumn { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 720px) {
+  .report { padding-inline: 14px; }
+  .hero { align-items: start; flex-direction: column; }
+  .contractContext { width: 100%; }
+  .summary { grid-template-columns: 1fr 1fr; }
+  .coverageNotice { align-items: start; flex-direction: column; }
+  .capacityRows { overflow-x: auto; }
+  .capacityRow { min-width: 650px; }
+  .sectionHead { align-items: start; flex-direction: column; }
+  .coverageRange { text-align: left; }
+}

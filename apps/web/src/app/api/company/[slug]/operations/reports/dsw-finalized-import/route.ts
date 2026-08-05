@@ -3,6 +3,7 @@ import { createHash } from "crypto";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import { resolveAutomationAccess } from "@/features/automation/server/automation.repository";
+import { toEarlyLatePickups } from "@/features/operations/reports/dsw/dsw.parse";
 
 export const runtime = "nodejs";
 
@@ -112,6 +113,8 @@ function normalizeOldDswRow(
   ownership: any,
   routeMatch: { id: string | null; method: string }
 ) {
+  const earlyLatePickups = toEarlyLatePickups(raw["E/L PUs"]);
+
   return {
     station_code: cellText(raw["StationCode"]),
     service_date: cellText(raw["Data Date"]),
@@ -151,7 +154,11 @@ function normalizeOldDswRow(
     potential_dot_hours_violations: toInteger(raw["Pot. DOT Hrs Viols"]),
     next_available_on_duty: cellText(raw["Next Avail On Duty"]) || null,
     potential_missed_pickups: toInteger(raw["Pot. Miss PUs"]),
-    early_late_pickups: toInteger(raw["E/L PUs"]),
+    early_pickups: earlyLatePickups.early,
+    late_pickups: earlyLatePickups.late,
+    early_late_pickups: earlyLatePickups.total,
+    early_late_pickups_raw: earlyLatePickups.raw,
+    early_late_pickups_valid: earlyLatePickups.valid,
     required_signature: toInteger(raw["Req. Sig."]),
     date_certain: toInteger(raw["Date Certain"]),
     evening: toInteger(raw["Evening"]),

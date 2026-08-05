@@ -22,6 +22,15 @@ type HistoryRow = {
   [key: string]: unknown;
 };
 
+type PickupReliabilityRow = {
+  service_date?: string | null;
+  actual_pickup_stops?: number | string | null;
+  early_pickups?: number | string | null;
+  late_pickups?: number | string | null;
+  potential_missed_pickups?: number | string | null;
+  pickup_reliability_complete?: boolean | null;
+};
+
 type MonthRange = {
   start_date: string;
   end_date: string;
@@ -392,10 +401,61 @@ export async function GET(
     const rows =
       deduplicateHistoryRows(collectedRows);
 
+    const {
+      data: pickupReliabilityData,
+      error: pickupReliabilityError,
+    } = await supabase.rpc(
+      "get_company_pickup_reliability_history",
+      {
+        p_company_id: company.id,
+        p_start_date: startDate,
+        p_end_date: endDate,
+      }
+    );
+
+    const pickupReliabilityUnavailable =
+      pickupReliabilityError?.code === "PGRST202" ||
+      pickupReliabilityError?.code === "42883";
+
+    if (
+      pickupReliabilityError &&
+      !pickupReliabilityUnavailable
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Failed to load pickup reliability history: " +
+            pickupReliabilityError.message,
+          available_years: availableContracts,
+          metadata: null,
+          rows: [],
+        },
+        { status: 500 }
+      );
+    }
+
+    const pickupReliabilityByDate = new Map(
+      (
+        Array.isArray(pickupReliabilityData)
+          ? (pickupReliabilityData as PickupReliabilityRow[])
+          : []
+      ).map((row) => [
+        String(row.service_date ?? "").slice(0, 10),
+        row,
+      ])
+    );
+
+    const enrichedRows = rows.map((row) => ({
+      ...row,
+      ...(pickupReliabilityByDate.get(
+        String(row.service_date ?? "").slice(0, 10)
+      ) ?? {}),
+    }));
+
     const throughServiceDate =
-      rows.length > 0
+      enrichedRows.length > 0
         ? String(
-            rows.at(-1)?.service_date ?? ""
+            enrichedRows.at(-1)?.service_date ?? ""
           ).slice(0, 10) || null
         : null;
 
@@ -428,10 +488,12 @@ export async function GET(
           requested_month_count:
             monthBlocks.length,
           finalized_operating_day_count:
-            rows.length,
+            enrichedRows.length,
+          pickup_reliability_available:
+            !pickupReliabilityUnavailable,
           month_blocks: monthBlocks,
         },
-        rows,
+        rows: enrichedRows,
       },
       { status: 200 }
     );

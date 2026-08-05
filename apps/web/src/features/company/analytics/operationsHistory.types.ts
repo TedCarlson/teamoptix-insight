@@ -12,6 +12,7 @@ export type OperationsHistoryMetadata = {
   through_service_date: string | null;
   source_family: "DSW";
   finalized_operating_day_count: number;
+  pickup_reliability_available?: boolean;
   snapshot_kind?: string;
   payload_grain?: string;
   retrieval_strategy?: string;
@@ -41,6 +42,10 @@ export type OperationsHistoryRow = {
   actual_delivery_packages: number | string | null;
   actual_pickup_stops: number | string | null;
   actual_pickup_packages: number | string | null;
+  early_pickups?: number | string | null;
+  late_pickups?: number | string | null;
+  potential_missed_pickups?: number | string | null;
+  pickup_reliability_complete?: boolean | null;
   total_stops: number | string | null;
   total_packages: number | string | null;
   recorded_miles: number | string | null;

@@ -71,7 +71,7 @@ export default function RosterTable(props: Props) {
       >
         <thead>
           <tr>
-            {["Name", "Email", "Phone", "Role", "Status", "Invite", "Compliance"].map(
+            {["Name", "FX ID", "Phone", "Role", "Status", "Invite", "Compliance"].map(
               (label) => (
                 <th
                   key={label}
@@ -112,7 +112,7 @@ export default function RosterTable(props: Props) {
               <td style={cellStyle}>
                 <strong>{row.full_name}</strong>
               </td>
-              <td style={cellStyle}>{row.email ?? "—"}</td>
+              <td style={cellStyle}>{row.fx_id ?? "—"}</td>
               <td style={cellStyle}>{row.phone ?? "—"}</td>
               <td style={cellStyle}>{row.worker_type ?? "—"}</td>
               <td style={cellStyle}>

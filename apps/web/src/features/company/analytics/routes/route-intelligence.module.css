@@ -1,0 +1,190 @@
+.report {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: clamp(20px, 3vw, 38px);
+  border: 1px solid #dbe3ed;
+  background: #fff;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, .06);
+  color: #132039;
+}
+
+.hero { display: flex; justify-content: space-between; align-items: end; gap: 28px; padding-bottom: 22px; border-bottom: 3px solid #132039; }
+.hero p, .sectionHead p { margin: 0 0 7px; color: #169b69; font-size: 11px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.hero h1 { margin: 0; font-size: clamp(36px, 5vw, 54px); line-height: 1; letter-spacing: -.045em; }
+.hero > div:first-child > span { display: block; max-width: 760px; margin-top: 12px; color: #536174; line-height: 1.55; }
+.contractContext { min-width: 260px; padding-left: 17px; border-left: 3px solid #169b69; }
+.contractContext span, .contractContext strong, .contractContext small { display: block; }
+.contractContext span { color: #718096; font-size: 10px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.contractContext strong { margin-top: 5px; font-size: 16px; }
+.contractContext small { margin-top: 3px; color: #667085; }
+.state { padding: 60px 0; color: #667085; }
+.state span { display: block; margin-top: 5px; }
+.error { color: #b42318; }
+
+.summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; padding: 24px 0 18px; }
+.summary article { min-width: 0; padding: 15px 16px; border: 1px solid #dce3ec; border-radius: 12px; background: #fff; }
+.summary span, .summary small { display: block; color: #697689; font-size: 10px; }
+.summary strong { display: block; margin: 7px 0 5px; font-size: 27px; line-height: 1; }
+.summary .signalCard { border-color: #edc995; background: #fffaf2; }
+.summary .cautionCard { border-color: #d9cee8; background: #faf8fd; }
+
+.trendPanel, .routePanel, .detailRail, .recentPanel { border: 1px solid #dce3ec; border-radius: 14px; background: #fff; overflow: hidden; }
+.sectionHead { display: flex; justify-content: space-between; align-items: end; gap: 20px; padding: 18px 20px 15px; }
+.sectionHead h2 { margin: 0; font-size: 22px; letter-spacing: -.025em; }
+.sectionHead > div > span { display: block; max-width: 720px; margin-top: 5px; color: #687487; font-size: 12px; line-height: 1.45; }
+.legend { display: flex; gap: 13px; color: #637084; font-size: 9px; font-weight: 750; white-space: nowrap; }
+.legend span { display: flex; align-items: center; gap: 5px; }
+.legend i { width: 12px; height: 5px; border-radius: 99px; }
+.pressureMark { background: #334155; }
+.supplementalMark { background: #169b69; }
+.months { display: grid; grid-template-columns: repeat(13, minmax(42px, 1fr)); gap: 6px; min-height: 190px; padding: 16px 20px 18px; border-top: 1px solid #e6ebf1; background: linear-gradient(to top, #f8fafc 0, #f8fafc 1px, transparent 1px); overflow-x: auto; }
+.monthColumn { display: grid; grid-template-rows: 118px auto auto auto; gap: 3px; min-width: 42px; text-align: center; }
+.monthPlot { position: relative; display: flex; align-items: end; justify-content: center; gap: 4px; border-bottom: 1px solid #cfd7e2; }
+.monthPlot span { display: block; width: 10px; min-height: 2px; border-radius: 3px 3px 0 0; }
+.pressureBar { background: #334155; }
+.supplementalBar { background: #169b69; }
+.monthColumn strong { color: #39465b; font-size: 9px; white-space: nowrap; }
+.monthColumn > span { color: #132039; font-size: 10px; font-weight: 800; }
+.monthColumn small { color: #9a5b0a; font-size: 8px; }
+
+.generalMonthHead,
+.generalMonthRows > div {
+  display: grid;
+  grid-template-columns: 90px repeat(4, minmax(85px, 1fr));
+  align-items: center;
+  gap: 12px;
+  min-width: 560px;
+}
+.generalMonthHead { min-height: 32px; padding: 0 20px; border-top: 1px solid #e6ebf1; border-bottom: 1px solid #e6ebf1; background: #f7f9fb; color: #788395; font-size: 8px; font-weight: 900; letter-spacing: .04em; text-align: right; text-transform: uppercase; }
+.generalMonthHead span:first-child { text-align: left; }
+.generalMonthRows { padding: 5px 20px 12px; overflow-x: auto; }
+.generalMonthRows > div { min-height: 31px; border-bottom: 1px solid #edf0f4; color: #455267; font-size: 10px; text-align: right; }
+.generalMonthRows strong { color: #132039; text-align: left; }
+
+.routeReviewGrid { display: grid; grid-template-columns: 255px minmax(0, 1fr); gap: 16px; margin-top: 16px; align-items: start; }
+.routeRail, .deepDive { border: 1px solid #dce3ec; border-radius: 14px; background: #fff; overflow: hidden; }
+.routeRail { position: sticky; top: 12px; }
+.routeRail > header { padding: 17px 16px 14px; border-bottom: 1px solid #e5eaf0; }
+.routeRail > header p { margin: 0 0 5px; color: #169b69; font-size: 9px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.routeRail > header h2 { margin: 0; font-size: 18px; letter-spacing: -.025em; }
+.routeRail > header span { display: block; margin-top: 4px; color: #758093; font-size: 9px; }
+.routeRail > input { width: calc(100% - 24px); height: 32px; margin: 12px; padding: 0 10px; border: 1px solid #d8dfe8; border-radius: 8px; outline: none; color: #263247; font: inherit; font-size: 10px; }
+.routeRail > input:focus { border-color: #169b69; box-shadow: 0 0 0 2px rgba(22, 155, 105, .11); }
+.railState { padding: 15px; color: #718096; font-size: 10px; }
+.routeList { max-height: 590px; border-top: 1px solid #edf0f4; overflow-y: auto; }
+.routeList button { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; min-height: 49px; padding: 7px 12px; border: 0; border-bottom: 1px solid #edf0f4; background: #fff; color: #3d4a60; font: inherit; text-align: left; cursor: pointer; }
+.routeList button:hover { background: #f7fbf9; }
+.routeList button.selectedRailRoute { background: #edf8f3; box-shadow: inset 3px 0 #169b69; }
+.routeList button span { min-width: 0; }
+.routeList button span:last-child { flex: 0 0 auto; text-align: right; }
+.routeList strong, .routeList small, .routeList b { display: block; }
+.routeList strong { overflow: hidden; color: #132039; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.routeList small { margin-top: 2px; color: #8993a2; font-size: 8px; }
+.routeList b { color: #5d6a7e; font-size: 8px; text-transform: capitalize; }
+.deepDive { min-height: 470px; }
+.selectPrompt { display: flex; min-height: 468px; padding: 50px; flex-direction: column; justify-content: center; background: radial-gradient(circle at 80% 15%, rgba(22, 155, 105, .08), transparent 38%); }
+.selectPrompt > span { color: #169b69; font-size: 9px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase; }
+.selectPrompt h2 { max-width: 530px; margin: 7px 0 8px; font-size: 30px; letter-spacing: -.035em; }
+.selectPrompt p { max-width: 610px; margin: 0; color: #647186; font-size: 12px; line-height: 1.55; }
+.deepDiveColumns { display: grid; grid-template-columns: 1fr 1fr; }
+.deepDiveColumns > section:nth-child(odd) { border-right: 1px solid #e8edf2; }
+
+.intelligenceGrid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(340px, .72fr); gap: 16px; margin-top: 16px; align-items: start; }
+.routePanel .sectionHead { border-bottom: 1px solid #e5eaf0; }
+.sortControls { display: inline-flex; padding: 3px; border: 1px solid #d5dce6; border-radius: 9px; background: #f5f7fa; }
+.sortControls button { padding: 6px 9px; border: 0; border-radius: 6px; background: transparent; color: #667085; font: inherit; font-size: 9px; font-weight: 800; cursor: pointer; }
+.sortControls button.activeSort { background: #fff; color: #132039; box-shadow: 0 1px 3px rgba(15, 23, 42, .12); }
+.routeTable { overflow-x: auto; }
+.routeTableHead, .routeTableBody > button { display: grid; grid-template-columns: minmax(120px, 1.2fr) 42px 64px 67px 66px 48px 65px 72px; align-items: center; gap: 6px; min-width: 680px; }
+.routeTableHead { min-height: 33px; padding: 0 13px; background: #f7f9fb; color: #788395; font-size: 8px; font-weight: 900; letter-spacing: .04em; text-align: right; text-transform: uppercase; }
+.routeTableHead span:first-child { text-align: left; }
+.routeTableBody { overflow: visible; }
+.routeTableBody > button { width: 100%; min-height: 47px; padding: 5px 13px; border: 0; border-bottom: 1px solid #e8edf2; background: #fff; color: #37445a; font: inherit; font-size: 10px; text-align: right; cursor: pointer; }
+.routeTableBody > button:hover { background: #f8fbfa; }
+.routeTableBody > button.selectedRoute { background: #edf8f3; box-shadow: inset 3px 0 #169b69; }
+.routeIdentity { min-width: 0; text-align: left; }
+.routeIdentity strong, .routeIdentity small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.routeIdentity strong { color: #132039; font-size: 11px; }
+.routeIdentity small { margin-top: 2px; color: #8993a2; font-size: 8px; }
+.warningValue { color: #b54708; font-weight: 850; }
+.confidence { display: inline-block; padding: 3px 6px; border-radius: 99px; font-size: 8px; font-weight: 900; }
+.confidenceHIGH { background: #e7f6ee; color: #15704a; }
+.confidenceMODERATE { background: #fff4dc; color: #99610b; }
+.confidenceLOW { background: #fbe9e7; color: #b42318; }
+
+.detailRail { position: sticky; top: 12px; }
+.routeDetailHead { display: flex; justify-content: space-between; align-items: start; gap: 14px; padding: 18px; border-bottom: 1px solid #e5eaf0; background: #f8fafc; }
+.routeDetailHead span { color: #169b69; font-size: 9px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.routeDetailHead h2 { margin: 4px 0 3px; font-size: 22px; letter-spacing: -.03em; }
+.routeDetailHead small { color: #748093; font-size: 9px; }
+.routeDetailHead > b { padding: 4px 7px; border-radius: 99px; background: #e7f6ee; color: #16704a; font-size: 8px; }
+.detailMetrics { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #e5eaf0; }
+.detailMetrics article { padding: 12px 15px; border-right: 1px solid #edf0f4; border-bottom: 1px solid #edf0f4; }
+.detailMetrics span { display: block; color: #7a8494; font-size: 8px; font-weight: 850; text-transform: uppercase; }
+.detailMetrics strong { display: block; margin-top: 4px; font-size: 17px; }
+.detailMetrics .shift { color: #b54708; }
+.detailSection { padding: 14px 16px; border-bottom: 1px solid #e8edf2; }
+.detailSection header { display: flex; justify-content: space-between; gap: 10px; }
+.detailSection header strong { font-size: 10px; }
+.detailSection header span { color: #7b8696; font-size: 8px; }
+.rangeTrack { position: relative; height: 7px; margin: 21px 4px 6px; border-radius: 99px; background: linear-gradient(90deg, #dbe5f0, #5d6d83); }
+.rangeTrack i, .rangeTrack b { position: absolute; top: 50%; width: 9px; height: 9px; border: 2px solid #fff; border-radius: 50%; background: #169b69; box-shadow: 0 0 0 1px #169b69; transform: translate(-50%, -50%); }
+.rangeTrack b { width: 11px; height: 11px; background: #132039; box-shadow: 0 0 0 1px #132039; }
+.detailSection footer { display: flex; justify-content: space-between; color: #8a94a3; font-size: 8px; }
+.weekdays { display: grid; gap: 7px; margin-top: 12px; }
+.weekdays > div { display: grid; grid-template-columns: 25px 1fr 28px; align-items: center; gap: 7px; font-size: 8px; }
+.weekdays > div > span { color: #667085; }
+.weekdays i { height: 5px; border-radius: 99px; background: #edf1f5; overflow: hidden; }
+.weekdays i b { display: block; height: 100%; border-radius: inherit; background: #5d6d83; }
+.weekdays > div > strong { text-align: right; }
+.bandStack { display: flex; gap: 2px; height: 9px; margin-top: 12px; overflow: hidden; border-radius: 99px; background: #eef1f4; }
+.bandStack span { min-width: 2px; }
+.bandLIGHT { background: #aeb9c7; }
+.bandNORMAL, .bandNORMAL_LOW_CONFIDENCE { background: #4f6077; }
+.bandHEAVY { background: #d68a20; }
+.bandEXTREME { background: #c63b32; }
+.bandLegend { display: flex; justify-content: space-between; margin-top: 7px; color: #7d8796; font-size: 7px; }
+.confidenceNote { padding: 14px 16px 16px; background: #fafbfc; }
+.confidenceNote span, .confidenceNote strong, .confidenceNote small { display: block; }
+.confidenceNote span { color: #7f8998; font-size: 8px; font-weight: 850; text-transform: uppercase; }
+.confidenceNote strong { margin-top: 4px; font-size: 11px; }
+.confidenceNote small { margin-top: 3px; color: #778294; font-size: 8px; line-height: 1.45; }
+.empty { padding: 30px; color: #6b7585; font-size: 11px; }
+
+.recentPanel { margin-top: 16px; }
+.recentPanel .sectionHead { border-bottom: 1px solid #e5eaf0; }
+.recentHead, .recentRows > div { display: grid; grid-template-columns: 62px 90px minmax(100px, 1fr) 55px 55px 65px 55px 67px 105px; align-items: center; gap: 8px; min-width: 790px; }
+.recentHead { min-height: 31px; padding: 0 15px; background: #f7f9fb; color: #7b8696; font-size: 8px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; }
+.recentHead span:nth-child(n+4) { text-align: right; }
+.recentRows { overflow-x: auto; }
+.recentRows > div { min-height: 36px; padding: 0 15px; border-bottom: 1px solid #e8edf2; color: #445066; font-size: 9px; }
+.recentRows > div > span:nth-child(n+4), .recentRows > div > b { text-align: right; }
+.recentRows strong { color: #132039; }
+.recentRows b { font-size: 8px; }
+.bandTextLIGHT { color: #667085; }
+.bandTextNORMAL, .bandTextNORMAL_LOW_CONFIDENCE { color: #334155; }
+.bandTextHEAVY { color: #b56b08; }
+.bandTextEXTREME { color: #b42318; }
+.bandTextSupplemental { color: #16704a; }
+.sourceNote { margin-top: 18px; padding-top: 14px; border-top: 1px solid #dce3ec; color: #748094; font-size: 9px; line-height: 1.5; }
+
+@media (max-width: 1080px) {
+  .summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .intelligenceGrid { grid-template-columns: 1fr; }
+  .detailRail { position: static; }
+  .routeReviewGrid { grid-template-columns: 220px minmax(0, 1fr); }
+  .deepDiveColumns { grid-template-columns: 1fr; }
+  .deepDiveColumns > section:nth-child(odd) { border-right: 0; }
+}
+
+@media (max-width: 720px) {
+  .report { padding-inline: 14px; }
+  .hero { align-items: start; flex-direction: column; }
+  .contractContext { width: 100%; }
+  .summary { grid-template-columns: 1fr 1fr; }
+  .sectionHead { align-items: start; flex-direction: column; }
+  .months { grid-template-columns: repeat(13, 48px); }
+  .routeReviewGrid { grid-template-columns: 1fr; }
+  .routeRail { position: static; }
+  .routeList { max-height: 300px; }
+}

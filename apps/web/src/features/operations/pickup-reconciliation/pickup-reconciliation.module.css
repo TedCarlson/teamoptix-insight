@@ -1,0 +1,351 @@
+.page {
+  min-width: 0;
+  padding: 28px clamp(18px, 3vw, 42px) 48px;
+  color: #152033;
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 28px;
+  max-width: 1440px;
+  margin: 0 auto 24px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid #d8e0ea;
+}
+
+.hero p,
+.queue header p,
+.rail header p {
+  margin: 0 0 7px;
+  color: #5b35b5;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: clamp(34px, 4vw, 52px);
+  line-height: 1;
+  letter-spacing: -.045em;
+}
+
+.hero > div:first-child > span {
+  display: block;
+  max-width: 720px;
+  margin-top: 11px;
+  color: #5d6879;
+  line-height: 1.55;
+}
+
+.contractContext {
+  min-width: 240px;
+  padding-left: 18px;
+  border-left: 3px solid #5b35b5;
+}
+
+.contractContext span,
+.contractContext strong,
+.contractContext small {
+  display: block;
+}
+
+.contractContext span {
+  color: #758094;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.contractContext strong { margin-top: 5px; font-size: 16px; }
+.contractContext small { margin-top: 3px; color: #657184; }
+
+.state {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 48px 0;
+  color: #667085;
+}
+
+.state span { display: block; margin-top: 5px; }
+.error { color: #a61b1b; }
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  max-width: 1440px;
+  margin: 0 auto 18px;
+}
+
+.summary article {
+  min-width: 0;
+  padding: 17px 18px;
+  border: 1px solid #dce3ec;
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(21, 32, 51, .04);
+}
+
+.summary span,
+.summary small,
+.railMetrics span {
+  display: block;
+  color: #6b7688;
+  font-size: 11px;
+}
+
+.summary strong {
+  display: block;
+  margin: 7px 0 5px;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.summary .mutedCard { background: #f7f8fa; box-shadow: none; }
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(320px, .7fr);
+  gap: 18px;
+  align-items: start;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.queue,
+.rail {
+  min-width: 0;
+  border: 1px solid #dce3ec;
+  border-radius: 15px;
+  background: #fff;
+  box-shadow: 0 12px 32px rgba(21, 32, 51, .05);
+  overflow: hidden;
+}
+
+.queue > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 20px;
+  padding: 20px 22px 16px;
+}
+
+.queue h2,
+.rail h2 { margin: 0; font-size: 22px; letter-spacing: -.025em; }
+.queue > header > span { color: #6c7788; font-size: 12px; }
+
+.columnHead,
+.rows button {
+  display: grid;
+  grid-template-columns: minmax(210px, 1.5fr) repeat(4, minmax(90px, .7fr));
+  gap: 12px;
+  align-items: center;
+}
+
+.columnHead {
+  padding: 10px 18px;
+  border-top: 1px solid #e3e8ef;
+  border-bottom: 1px solid #e3e8ef;
+  background: #f7f8fa;
+  color: #727d8e;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.columnHead span:not(:first-child),
+.rows button > span:not(:first-child) { text-align: right; }
+
+.rows { max-height: 650px; overflow-y: auto; }
+
+.rows button {
+  width: 100%;
+  padding: 14px 18px;
+  border: 0;
+  border-bottom: 1px solid #e8ecf2;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: background .16s ease, box-shadow .16s ease;
+}
+
+.rows button:hover { background: #faf9fe; }
+.rows button.activeRow { background: #f3f0fc; box-shadow: inset 3px 0 #5b35b5; }
+.rows button strong,
+.rows button small { display: block; }
+.rows button small { margin-top: 4px; color: #7a8494; font-size: 11px; }
+.rows .potential { color: #b45309; font-weight: 850; }
+.rows .signalCounts { color: #46546a; font-size: 11px; font-weight: 800; white-space: nowrap; }
+.rows .pending { color: #8a5b08; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.rows .attributed { color: #167044; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+
+.rail {
+  position: sticky;
+  top: 18px;
+}
+
+.rail > header { padding: 20px 21px 17px; border-bottom: 1px solid #e3e8ef; }
+.rail > header span { display: block; margin-top: 5px; color: #758094; font-size: 12px; }
+
+.railMetrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: #e3e8ef;
+  border-bottom: 1px solid #e3e8ef;
+}
+
+.railMetrics div { padding: 15px 17px; background: #fff; }
+.railMetrics strong { display: block; margin-top: 6px; font-size: 20px; }
+
+.caseList { padding: 18px 18px 8px; }
+
+.caseListHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+
+.caseListHead span,
+.caseListHead strong { display: block; }
+.caseListHead span { color: #6f5aa3; font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.caseListHead strong { margin-top: 3px; font-size: 13px; }
+.caseListHead b {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  border-radius: 999px;
+  background: #f0ecfa;
+  color: #5b35b5;
+  font-size: 12px;
+}
+
+.evidenceState {
+  margin: 0 0 10px;
+  padding: 13px 14px;
+  border-radius: 10px;
+  background: #f7f8fa;
+  color: #687487;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.evidenceError { background: #fff5f5; color: #a61b1b; }
+
+.routeCase {
+  margin-bottom: 10px;
+  padding: 13px 14px;
+  border: 1px solid #e1e6ed;
+  border-radius: 12px;
+  background: #fbfcfd;
+}
+
+.routeCaseTop,
+.sourceReference {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.routeCaseTop span strong,
+.routeCaseTop span small { display: block; }
+.routeCaseTop span strong { font-size: 12px; }
+.routeCaseTop span small { margin-top: 2px; color: #7a8494; font-size: 10px; }
+.routeSignals { display: flex; align-items: center; gap: 4px; }
+.routeSignals b { padding: 3px 5px; border-radius: 5px; font-size: 9px; }
+.routeSignals .earlySignal { background: #eaf2ff; color: #315f9e; }
+.routeSignals .lateSignal { background: #fff1e7; color: #a94d15; }
+.routeSignals .potentialSignal { background: #fff5dc; color: #956100; }
+
+.personRoute {
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px solid #e9edf2;
+}
+
+.personRoute strong,
+.personRoute span,
+.personRoute small { display: block; }
+.personRoute strong { font-size: 14px; }
+.personRoute span { margin-top: 3px; color: #445066; font-size: 11px; }
+.personRoute small { margin-top: 5px; color: #5b35b5; font-size: 10px; font-weight: 750; }
+
+.evidenceChain {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.evidenceChain span {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #f0ecfa;
+  color: #5b35b5;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.evidenceChain i { color: #9ca5b2; font-size: 10px; font-style: normal; }
+.evidenceChain .chainSource { background: #eaf5ef; color: #167044; }
+.evidenceChain .chainHeld { background: #f0f1f3; color: #848c98; }
+
+.sourceReference {
+  margin-top: 10px;
+  color: #7a8494;
+  font-size: 9px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.sourceReference code {
+  color: #596579;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  letter-spacing: .02em;
+}
+
+.routeCase > p { margin: 10px 0 0; color: #6d7480; font-size: 10px; line-height: 1.45; }
+
+.adjudicationPreview {
+  margin: 0 18px 18px;
+  padding: 15px 16px;
+  border: 1px dashed #b7a7df;
+  border-radius: 11px;
+  background: #f7f5fd;
+}
+.adjudicationPreview span,
+.adjudicationPreview strong { display: block; }
+.adjudicationPreview span { color: #6f5aa3; font-size: 10px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.adjudicationPreview strong { margin-top: 5px; font-size: 13px; }
+.adjudicationPreview p { margin: 7px 0 0; color: #6d7480; font-size: 12px; line-height: 1.5; }
+.empty { padding: 32px 22px; color: #727d8e; }
+
+@media (max-width: 980px) {
+  .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .workspace { grid-template-columns: 1fr; }
+  .rail { position: static; }
+}
+
+@media (max-width: 720px) {
+  .page { padding-inline: 14px; }
+  .hero { align-items: start; flex-direction: column; }
+  .contractContext { width: 100%; }
+  .summary { grid-template-columns: 1fr; }
+  .queue { overflow-x: auto; }
+  .queue > header { min-width: 780px; }
+  .columnHead,
+  .rows { min-width: 780px; }
+}

@@ -112,3 +112,18 @@ export type RouteCapacityPayload = {
   rows: RouteCapacityRow[];
   days: DailyRouteCapacitySummary[];
 };
+
+export type ScopedRouteFact = {
+  service_date: string;
+  weekday_number: number;
+  route_baseline_id: string;
+  route_name: string | null;
+  wa_number: string | null;
+  driver_name: string | null;
+  planned_delivery_stops: number | string | null;
+  actual_delivery_stops: number | string | null;
+  actual_delivery_packages: number | string | null;
+  planned_pickup_stops: number | string | null;
+  actual_pickup_stops: number | string | null;
+  actual_pickup_packages: number | string | null;
+};

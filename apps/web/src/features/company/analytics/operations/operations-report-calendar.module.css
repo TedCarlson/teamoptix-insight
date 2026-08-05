@@ -1,0 +1,395 @@
+.section {
+  position: relative;
+  overflow: hidden;
+  padding: 26px 0;
+  border-top: 1px solid #cbd5e1;
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.title {
+  margin: 5px 0 0;
+  color: #0f172a;
+  font-size: 28px;
+  letter-spacing: -0.03em;
+}
+
+.description {
+  max-width: 680px;
+  margin: 7px 0 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.headerControls {
+  display: flex;
+  align-items: flex-end;
+  gap: 20px;
+  flex: 0 0 auto;
+}
+
+.contractYear span,
+.dayDetail > div:first-child span,
+.weekTotals span,
+.weekReading > span {
+  color: #64748b;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.contractYear {
+  display: grid;
+  gap: 3px;
+  text-align: right;
+}
+
+.contractYear strong {
+  color: #0f172a;
+  font-size: 20px;
+}
+
+.dayDetail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 50px;
+  margin: 14px 0 18px;
+  padding: 9px 12px;
+  border-left: 3px solid #2563eb;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 12px;
+}
+
+.dayDetail > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.dayDetail > div:first-child strong {
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.dayMetrics {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 7px 14px;
+}
+
+.dayMetrics strong {
+  color: #0f172a;
+}
+
+.dayMetrics b {
+  color: #1d4ed8;
+  font-size: 11px;
+}
+
+.months {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  column-gap: clamp(20px, 3vw, 34px);
+  row-gap: 18px;
+}
+
+.month {
+  min-width: 0;
+}
+
+.month h3 {
+  margin: 0 0 8px;
+  color: #1d4ed8;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+}
+
+.calendarGrid {
+  display: grid;
+  grid-template-columns: 20px repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.weekday,
+.weekHeading {
+  padding-bottom: 2px;
+  color: #94a3b8;
+  font-size: 8px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.weekHeading {
+  color: #64748b;
+}
+
+.weekRow {
+  display: contents;
+}
+
+.weekNumber,
+.day,
+.blank {
+  width: 100%;
+  min-width: 0;
+  aspect-ratio: 1;
+  max-height: 27px;
+}
+
+.weekNumber {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 900;
+}
+
+.weekNumber:hover,
+.weekNumber:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}
+
+.day {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.day:hover,
+.day:focus-visible,
+.selected {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+  position: relative;
+  z-index: 1;
+}
+
+.standard {
+  border: 1px solid #475569;
+  background: #64748b;
+  color: #ffffff;
+}
+
+.heavy {
+  border: 1px solid #312e81;
+  background: repeating-linear-gradient(135deg, #312e81 0, #312e81 3px, #4338ca 3px, #4338ca 6px);
+  color: #ffffff;
+}
+
+.supplemental {
+  border: 1px solid #1d4ed8;
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.exceptional {
+  border: 2px solid #dc2626;
+  background: transparent;
+  color: #b91c1c;
+}
+
+.missing {
+  border: 2px dashed #f59e0b;
+  background: transparent;
+  color: #a16207;
+}
+
+.nonOperating {
+  border: 1px solid #e2e8f0;
+  background: repeating-linear-gradient(135deg, #f1f5f9 0, #f1f5f9 3px, #e2e8f0 3px, #e2e8f0 6px);
+  color: #94a3b8;
+}
+
+.peak {
+  box-shadow: inset 0 -2px #f59e0b;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px 16px;
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
+  color: #475569;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legendMark {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.peakMark {
+  border: 1px solid #e2e8f0;
+  border-bottom: 3px solid #f59e0b;
+  background: #ffffff;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border: 0;
+  background: rgba(15, 23, 42, 0.24);
+  cursor: default;
+}
+
+.weekRail {
+  position: absolute;
+  inset: 0 0 0 auto;
+  z-index: 5;
+  width: min(340px, 88%);
+  padding: 22px;
+  border-left: 1px solid #dbe3ed;
+  background: #ffffff;
+  box-shadow: -18px 0 44px rgba(15, 23, 42, 0.16);
+}
+
+.weekRail > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #0f172a;
+}
+
+.weekRail h3 {
+  margin: 5px 0 3px;
+  color: #0f172a;
+  font-size: 23px;
+  letter-spacing: -0.03em;
+}
+
+.weekRail header span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.weekRail header button {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid #dbe3ed;
+  border-radius: 50%;
+  background: transparent;
+  color: #475569;
+  cursor: pointer;
+  font-size: 20px;
+}
+
+.weekTotals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 18px;
+  background: #e2e8f0;
+}
+
+.weekTotals div {
+  display: grid;
+  gap: 5px;
+  min-height: 84px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.weekTotals strong {
+  color: #0f172a;
+  font-size: 20px;
+}
+
+.weekReading {
+  display: grid;
+  gap: 6px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.weekReading strong {
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.weekReading p {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 860px) {
+  .months {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .header,
+  .dayDetail {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .headerControls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .contractYear {
+    text-align: left;
+  }
+
+  .dayMetrics {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 560px) {
+  .months {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 18px;
+  }
+
+  .calendarGrid {
+    grid-template-columns: 18px repeat(7, minmax(0, 1fr));
+    gap: 3px;
+  }
+
+  .weekRail {
+    width: 100%;
+  }
+}

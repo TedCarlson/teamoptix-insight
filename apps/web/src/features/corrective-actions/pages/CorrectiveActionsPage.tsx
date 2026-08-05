@@ -65,6 +65,10 @@ type EvidenceRoute = {
   non_delivered_stops: number;
   all_status_code_packages: number;
   required_signature_count: number;
+  route_baseline_id: string | null;
+  early_late_pickups_raw: string | null;
+  early_pickups: number;
+  late_pickups: number;
   potential_missed_pickups: number;
   early_late_pickups: number;
   miles: number | null;
@@ -237,7 +241,7 @@ export default function CorrectiveActionsPage() {
     const code27 = selectedEvidence?.code_counts["27"] ?? 0;
     if (code85 > 0) add("service_code_85", `${code85} Code 85 package instance${code85 === 1 ? "" : "s"} recorded`);
     if (code27 > 0) add("service_code_27", `${code27} Code 27 package instance${code27 === 1 ? "" : "s"} recorded`);
-    if ((selectedEvidence?.potential_missed_pickups ?? 0) > 0 || (selectedEvidence?.early_late_pickups ?? 0) > 0) add("pickup_window", `${selectedEvidence?.potential_missed_pickups ?? 0} potentially missed and ${selectedEvidence?.early_late_pickups ?? 0} early/late pickup events`);
+    if ((selectedEvidence?.early_pickups ?? 0) > 0 || (selectedEvidence?.late_pickups ?? 0) > 0) add("pickup_window", `${selectedEvidence?.early_pickups ?? 0} early and ${selectedEvidence?.late_pickups ?? 0} late pickup events`);
     if ((selectedEvidence?.required_signature_count ?? 0) > 0) add("delivery_signature_compliance", `${selectedEvidence?.required_signature_count ?? 0} required-signature exception${selectedEvidence?.required_signature_count === 1 ? "" : "s"}`);
     if ((selectedEvidence?.non_delivered_stops ?? 0) > 0) add("performance_incomplete_route", `${selectedEvidence?.non_delivered_stops ?? 0} non-delivered stop${selectedEvidence?.non_delivered_stops === 1 ? "" : "s"}`);
     if (attendanceEvidence.events.length) {

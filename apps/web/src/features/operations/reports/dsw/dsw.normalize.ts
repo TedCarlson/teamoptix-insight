@@ -1,7 +1,14 @@
 import type { DswMeta, DswRouteMatch, ParsedRow } from "./dsw.types";
-import { cellText, toInteger, toNumber } from "./dsw.parse";
+import {
+  cellText,
+  toEarlyLatePickups,
+  toInteger,
+  toNumber,
+} from "./dsw.parse";
 
 export function normalizeDsw(raw: ParsedRow, routeMatch: DswRouteMatch, meta: DswMeta) {
+  const earlyLatePickups = toEarlyLatePickups(raw["E/L PUs"]);
+
   return {
     source_contract: "DSW_DAILY_SERVICE_WORKSHEET",
     terminal_identity: meta.terminal_identity,
@@ -40,7 +47,11 @@ export function normalizeDsw(raw: ParsedRow, routeMatch: DswRouteMatch, meta: Ds
     potential_dot_hours_violations: toInteger(raw["Pot. DOT Hrs Viols"]),
     next_available_on_duty: cellText(raw["Next Avail On Duty"]) || null,
     potential_missed_pickups: toInteger(raw["Pot. Miss PUs"]),
-    early_late_pickups: toInteger(raw["E/L PUs"]),
+    early_pickups: earlyLatePickups.early,
+    late_pickups: earlyLatePickups.late,
+    early_late_pickups: earlyLatePickups.total,
+    early_late_pickups_raw: earlyLatePickups.raw,
+    early_late_pickups_valid: earlyLatePickups.valid,
     required_signature: toInteger(raw["Req. Sig."]),
     date_certain: toInteger(raw["Date Certain"]),
     evening: toInteger(raw["Evening"]),

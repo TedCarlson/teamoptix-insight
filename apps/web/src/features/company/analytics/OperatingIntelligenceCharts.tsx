@@ -288,7 +288,7 @@ export function WeeklyRouteTrend({
     <ChartFrame
       eyebrow="Contract-year trend"
       title="Weekly Route Trend"
-      description="Average dispatched routes per operating day, grouped by Sunday–Saturday operating week."
+      description="Average dispatched routes per operating day, grouped by Saturday–Friday operating week."
     >
       <WeeklyLineChart
         weeks={weeks}

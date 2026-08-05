@@ -83,7 +83,8 @@ function parseDate(value: string): Date {
 
 function startOfOperatingWeek(serviceDate: string): Date {
   const date = parseDate(serviceDate);
-  date.setUTCDate(date.getUTCDate() - date.getUTCDay());
+  const daysSinceSaturday = (date.getUTCDay() + 1) % 7;
+  date.setUTCDate(date.getUTCDate() - daysSinceSaturday);
   return date;
 }
 

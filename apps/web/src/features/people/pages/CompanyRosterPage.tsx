@@ -292,6 +292,7 @@ export default function CompanyRosterPage() {
     return byRole.filter((row) =>
       [
         row.full_name,
+        row.fx_id,
         row.email,
         row.phone,
         row.worker_type,
@@ -691,6 +692,7 @@ export default function CompanyRosterPage() {
         />
 
         <ManagePersonDrawer
+          key={managedPerson?.roster_member_id ?? "closed-roster-drawer"}
           open={Boolean(managedPerson)}
           companySlug={slug}
           person={managedPerson}

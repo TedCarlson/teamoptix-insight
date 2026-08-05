@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { summarizeRouteCapacityByDay } from "@/features/company/analytics/routeCapacity.helpers";
+import { deriveRouteCapacityFromHistory } from "@/features/company/analytics/routes/routeIntelligence";
 import type {
   RouteCapacityPayload,
   RouteCapacityRow,
+  ScopedRouteFact,
 } from "@/features/company/analytics/routeCapacity.types";
 
 export const runtime = "nodejs";
@@ -20,6 +22,13 @@ function dateText(value: string | null): string | null {
   }
 
   return normalized;
+}
+
+function uuidText(value: string | null): string | null {
+  const normalized = String(value ?? "").trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalized)
+    ? normalized
+    : null;
 }
 
 export async function GET(
@@ -55,12 +64,15 @@ export async function GET(
     const endDate = dateText(
       url.searchParams.get("endDate")
     );
+    const routeId = uuidText(
+      url.searchParams.get("routeId")
+    );
 
-    if (!startDate || !endDate) {
+    if (!startDate || !endDate || !routeId) {
       return NextResponse.json(
         {
           error:
-            "startDate and endDate are required in YYYY-MM-DD format.",
+            "routeId, startDate, and endDate are required.",
           rows: [],
           days: [],
         },
@@ -81,9 +93,10 @@ export async function GET(
     }
 
     const { data, error } = await sb.rpc(
-      "get_company_route_capacity_analytics",
+      "get_company_route_intelligence_detail",
       {
         p_company_id: company.id,
+        p_route_baseline_id: routeId,
         p_start_date: startDate,
         p_end_date: endDate,
       }
@@ -91,18 +104,14 @@ export async function GET(
 
     if (error) {
       return NextResponse.json(
-        {
-          error: error.message,
-          rows: [],
-          days: [],
-        },
+        { error: error.message, rows: [], days: [] },
         { status: 500 }
       );
     }
 
-    const rows = Array.isArray(data)
-      ? (data as RouteCapacityRow[])
-      : [];
+    const rows = deriveRouteCapacityFromHistory(
+      Array.isArray(data) ? (data as ScopedRouteFact[]) : []
+    ).filter((row: RouteCapacityRow) => row.service_date >= startDate);
 
     const payload: RouteCapacityPayload = {
       range: {
@@ -113,7 +122,11 @@ export async function GET(
       days: summarizeRouteCapacityByDay(rows),
     };
 
-    return NextResponse.json(payload);
+    return NextResponse.json(payload, {
+      headers: {
+        "Cache-Control": "private, max-age=900",
+      },
+    });
   } catch (error) {
     return NextResponse.json(
       {

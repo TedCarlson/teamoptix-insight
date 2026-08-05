@@ -2,7 +2,8 @@ import type { OperationsHistoryRow } from "../operationsHistory.types";
 
 export type ReportMetric = "routes" | "stops" | "packages" | "stopsPerRoute" | "packagesPerRoute" | "packagesPerStop";
 export type ReportPeriod = { key: "30" | "60" | "90" | "contract"; label: string; days: number; metrics: Record<ReportMetric, number>; change: Record<ReportMetric, number | null> };
-export type ReportWeek = { weekStart: string; weekEnd: string; operatingDays: number; routes: number; stops: number; packages: number; stopsPerRoute: number; packagesPerRoute: number; packagesPerStop: number; stopsChange: number | null };
+export type PriTier = "T1" | "T2" | "T3" | "T4";
+export type ReportWeek = { weekStart: string; weekEnd: string; isInProgress: boolean; operatingDays: number; routes: number; stops: number; packages: number; stopsPerRoute: number; packagesPerRoute: number; packagesPerStop: number; stopsChange: number | null; pickupStops: number; earlyPickups: number; latePickups: number; potentialMissedPickups: number; priComplete: boolean; weeklyPri: number | null; runningPri: number | null; runningTier: PriTier | null };
 export type ReportDay = { date: string; routes: number; stops: number; packages: number; intensity: number };
 export type OperationsReport = { periods: ReportPeriod[]; weeks: ReportWeek[]; days: ReportDay[]; narrative: string[]; throughDate: string | null; operatingDays: number };
 
@@ -12,6 +13,34 @@ const change = (current: number, prior: number) => prior > 0 ? (current - prior)
 const iso = (date: Date) => date.toISOString().slice(0, 10);
 const date = (value: string) => new Date(`${value.slice(0, 10)}T12:00:00Z`);
 const addDays = (value: Date, amount: number) => { const next = new Date(value); next.setUTCDate(next.getUTCDate() + amount); return next; };
+const PRI_WEIGHTS = { early: 225, late: 150, potentialMissed: 400 } as const;
+
+export function priTier(value: number | null): PriTier | null {
+  if (value == null) return null;
+  if (value < 0.17) return "T4";
+  if (value <= 0.72) return "T3";
+  if (value <= 1.1) return "T2";
+  return "T1";
+}
+
+function pickupReliability(rows: OperationsHistoryRow[]) {
+  const pickupStops = rows.reduce((sum, row) => sum + n(row.actual_pickup_stops), 0);
+  const earlyPickups = rows.reduce((sum, row) => sum + n(row.early_pickups), 0);
+  const latePickups = rows.reduce((sum, row) => sum + n(row.late_pickups), 0);
+  const potentialMissedPickups = rows.reduce((sum, row) => sum + n(row.potential_missed_pickups), 0);
+  const complete = rows.length > 0 && rows.every((row) => row.pickup_reliability_complete === true);
+  const numerator = earlyPickups * PRI_WEIGHTS.early + latePickups * PRI_WEIGHTS.late + potentialMissedPickups * PRI_WEIGHTS.potentialMissed;
+
+  return {
+    pickupStops,
+    earlyPickups,
+    latePickups,
+    potentialMissedPickups,
+    complete,
+    numerator,
+    pri: complete && pickupStops > 0 ? numerator / pickupStops : null,
+  };
+}
 
 function summarize(rows: OperationsHistoryRow[]): Record<ReportMetric, number> {
   const routes = rows.reduce((sum, row) => sum + n(row.route_count), 0);
@@ -41,15 +70,36 @@ function contractPeriod(rows: OperationsHistoryRow[]): ReportPeriod {
 
 function buildWeeks(rows: OperationsHistoryRow[]): ReportWeek[] {
   const map = new Map<string, OperationsHistoryRow[]>();
+  const throughDate = rows.at(-1)?.service_date.slice(0, 10) ?? "";
   for (const row of rows) {
-    const start = date(row.service_date); start.setUTCDate(start.getUTCDate() - start.getUTCDay());
+    const start = date(row.service_date); start.setUTCDate(start.getUTCDate() - ((start.getUTCDay() + 1) % 7));
     const key = iso(start); map.set(key, [...(map.get(key) ?? []), row]);
   }
   const weeks = [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([weekStart, weekRows]) => {
     const metrics = summarize(weekRows);
-    return { weekStart, weekEnd: iso(addDays(date(weekStart), 6)), operatingDays: weekRows.length, ...metrics, stopsChange: null };
+    const reliability = pickupReliability(weekRows);
+    const weekEnd = iso(addDays(date(weekStart), 6));
+    return { weekStart, weekEnd, isInProgress: throughDate >= weekStart && throughDate < weekEnd, operatingDays: weekRows.length, ...metrics, stopsChange: null, pickupStops: reliability.pickupStops, earlyPickups: reliability.earlyPickups, latePickups: reliability.latePickups, potentialMissedPickups: reliability.potentialMissedPickups, priComplete: reliability.complete, weeklyPri: reliability.pri, runningPri: null, runningTier: null, priNumerator: reliability.numerator };
   });
-  return weeks.map((week, index) => ({ ...week, stopsChange: index ? change(week.stops, weeks[index - 1].stops) : null }));
+  let runningPickupStops = 0;
+  let runningNumerator = 0;
+  let runningComplete = true;
+
+  return weeks.map((week, index) => {
+    runningPickupStops += week.pickupStops;
+    runningNumerator += week.priNumerator;
+    runningComplete = runningComplete && week.priComplete;
+    const runningPri = runningComplete && runningPickupStops > 0 ? runningNumerator / runningPickupStops : null;
+
+    const { priNumerator, ...reportWeek } = week;
+
+    return {
+      ...reportWeek,
+      stopsChange: index ? change(week.stops, weeks[index - 1].stops) : null,
+      runningPri,
+      runningTier: priTier(runningPri),
+    };
+  });
 }
 
 function pct(value: number | null) { return value == null ? "not yet comparable" : `${Math.abs(value * 100).toFixed(1)}% ${value >= 0 ? "higher" : "lower"}`; }
