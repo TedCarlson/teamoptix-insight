@@ -221,6 +221,28 @@ begin
 end;
 $$;
 
+insert into core.company_roster_trainee_pay_override (
+  company_id,
+  roster_id,
+  trainee_daily_pay_rate,
+  effective_start,
+  is_active
+) values
+  (
+    '00000000-0000-4000-8000-000000000093',
+    '00000000-0000-4000-8000-000000000095',
+    110,
+    current_date - 10,
+    true
+  ),
+  (
+    '00000000-0000-4000-8000-000000000093',
+    '00000000-0000-4000-8000-000000000096',
+    115,
+    current_date - 10,
+    true
+  );
+
 select public.promote_company_candidate(
   'identifier-regression',
   '00000000-0000-4000-8000-000000000095',
@@ -253,6 +275,16 @@ begin
   end if;
 
   if not exists (
+    select 1 from core.company_roster_trainee_pay_override
+    where roster_id = '00000000-0000-4000-8000-000000000095'
+      and trainee_daily_pay_rate = 110
+      and not is_active
+      and effective_end = current_date - 1
+  ) then
+    raise exception 'Promotion regression: prior trainee rate history was not closed correctly.';
+  end if;
+
+  if not exists (
     select 1 from core.company_roster roster
     join core.company_roster_operations_fact operations
       on operations.roster_id = roster.id
@@ -261,6 +293,16 @@ begin
       and operations.daily_pay_rate = 185
   ) then
     raise exception 'Promotion regression: Active status and baseline pay were not atomic.';
+  end if;
+
+  if not exists (
+    select 1 from core.company_roster_trainee_pay_override
+    where roster_id = '00000000-0000-4000-8000-000000000096'
+      and trainee_daily_pay_rate = 115
+      and not is_active
+      and effective_end = current_date - 1
+  ) then
+    raise exception 'Promotion regression: Active promotion did not close trainee pay correctly.';
   end if;
 end;
 $$;
