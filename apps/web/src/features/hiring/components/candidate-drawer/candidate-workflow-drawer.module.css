@@ -177,6 +177,49 @@
   border-bottom: 1px solid #dfe7f1;
 }
 
+.promotionSection {
+  margin: 14px 14px 0;
+  padding: 16px;
+  border: 1px solid #8ed4b5;
+  border-left: 5px solid #159867;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #f2fbf7 0%, #e8f8f0 100%);
+  box-shadow: 0 8px 22px rgba(21, 152, 103, 0.11);
+}
+
+.railSection.promotionSection h3 {
+  color: #0b4f39;
+}
+
+.railSection.promotionSection > p {
+  color: #3d6657;
+}
+
+.promoteButton {
+  width: 100%;
+  border-color: #0f7f57;
+  background: #159867;
+  color: #fff;
+  box-shadow: 0 5px 14px rgba(15, 127, 87, 0.24);
+}
+
+.promoteButton:hover:not(:disabled) {
+  border-color: #0b6848;
+  background: #0f7f57;
+}
+
+.promoteButton:focus-visible {
+  outline: 3px solid rgba(21, 152, 103, 0.24);
+  outline-offset: 2px;
+}
+
+.promoteButton:disabled {
+  border-color: #a7cdbd;
+  background: #9dc7b5;
+  color: #f7fbf9;
+  box-shadow: none;
+}
+
 .railSection h3 {
   margin: 3px 0 0;
   color: #13223b;

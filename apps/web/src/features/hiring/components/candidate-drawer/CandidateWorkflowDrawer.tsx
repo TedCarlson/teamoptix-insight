@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { RosterRow } from "@/features/people/types/roster.types";
 import CandidateChecklistPanel from "@/features/hiring/components/candidate-detail/CandidateChecklistPanel";
 import type { CandidateChecklistProgress } from "@/features/hiring/components/candidate-detail/CandidateChecklistPanel";
@@ -11,6 +12,7 @@ import PersonOperationsSection from "@/features/people/components/person-drawer/
 import PersonLifecycleSection from "@/features/people/components/person-drawer/PersonLifecycleSection";
 import PersonTimelineSection from "@/features/people/components/person-drawer/PersonTimelineSection";
 import TraineePayOverrideOverlay from "@/features/people/components/TraineePayOverrideOverlay";
+import CandidatePromotionOverlay from "./CandidatePromotionOverlay";
 import styles from "./candidate-workflow-drawer.module.css";
 
 type CoreDraft = {
@@ -126,6 +128,7 @@ export default function CandidateWorkflowDrawer({
   onSaved,
   onRefresh,
 }: Props) {
+  const router = useRouter();
   const [savingDetails, setSavingDetails] = useState(false);
   const [savingOperations, setSavingOperations] = useState(false);
   const [savingStatus, setSavingStatus] = useState(false);
@@ -144,6 +147,7 @@ export default function CandidateWorkflowDrawer({
   const [loadingTimeline, setLoadingTimeline] = useState(false);
   const [traineePayPerson, setTraineePayPerson] = useState<RosterRow | null>(null);
   const [traineePayEffectiveDate, setTraineePayEffectiveDate] = useState(new Date().toISOString().slice(0, 10));
+  const [promotionOpen, setPromotionOpen] = useState(false);
 
   const selectedRosterId = person?.roster_member_id ?? null;
   const selectedStageKey = editableStageKey(person?.candidate_stage_key);
@@ -176,6 +180,7 @@ export default function CandidateWorkflowDrawer({
     setShowStageNote(false);
     setInviteMessage(null);
     setActiveTab("readiness");
+    setPromotionOpen(false);
     setError(null);
   }, [open, selectedRosterId, selectedStageKey]);
 
@@ -379,7 +384,7 @@ export default function CandidateWorkflowDrawer({
   }
 
   async function saveOperations(draft: OperationsDraft) {
-    if (!person) return;
+    if (!person) return false;
 
     setSavingOperations(true);
     setError(null);
@@ -398,8 +403,8 @@ export default function CandidateWorkflowDrawer({
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data?.error ?? "Failed to save candidate operations.");
-        return;
+        setError(data?.detail ?? data?.error ?? "Failed to save candidate operations.");
+        return false;
       }
 
       const saved = data?.roster ?? {};
@@ -422,15 +427,17 @@ export default function CandidateWorkflowDrawer({
       });
 
       await onRefresh?.();
+      return true;
     } catch {
       setError("Failed to save candidate operations.");
+      return false;
     } finally {
       setSavingOperations(false);
     }
   }
 
   async function saveStatus(draft: StatusDraft) {
-    if (!person) return;
+    if (!person) return false;
 
     setSavingStatus(true);
     setError(null);
@@ -449,8 +456,8 @@ export default function CandidateWorkflowDrawer({
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data?.error ?? "Failed to update candidate status.");
-        return;
+        setError(data?.detail ?? data?.error ?? "Failed to update candidate status.");
+        return false;
       }
 
       const nextStatus =
@@ -470,8 +477,10 @@ export default function CandidateWorkflowDrawer({
         setTraineePayEffectiveDate(draft.effective_date);
         setTraineePayPerson(updatedPerson);
       }
+      return true;
     } catch {
       setError("Failed to update candidate status.");
+      return false;
     } finally {
       setSavingStatus(false);
     }
@@ -634,6 +643,23 @@ export default function CandidateWorkflowDrawer({
             aria-label="Candidate workflow controls"
             id="candidate-panel-workflow"
           >
+            <section className={`${styles.railSection} ${styles.promotionSection}`}>
+              <div>
+                <p className="workspace-eyebrow">Roster promotion</p>
+                <h3>Put this person to work</h3>
+              </div>
+              <p>
+                Promote directly to Trainee or Active. Incomplete readiness remains visible but never blocks the move.
+              </p>
+              <button
+                className={`button ${styles.promoteButton}`}
+                onClick={() => setPromotionOpen(true)}
+                type="button"
+              >
+                Promote
+              </button>
+            </section>
+
             <section className={styles.railSection}>
               <div>
                 <p className="workspace-eyebrow">Workflow</p>
@@ -744,6 +770,19 @@ export default function CandidateWorkflowDrawer({
         onClose={() => setTraineePayPerson(null)}
         onSaved={async () => {
           await onRefresh?.();
+        }}
+      />
+      <CandidatePromotionOverlay
+        open={promotionOpen}
+        slug={slug}
+        person={person}
+        onClose={() => setPromotionOpen(false)}
+        onPromoted={async (roster) => {
+          onSaved?.(roster);
+          await onRefresh?.();
+          setPromotionOpen(false);
+          onClose();
+          router.push(`/company/${slug}/schedule/generated`);
         }}
       />
     </div>

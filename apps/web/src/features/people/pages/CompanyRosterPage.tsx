@@ -433,7 +433,7 @@ export default function CompanyRosterPage() {
     daily_pay_effective_date: string;
     daily_pay_rate: string;
   }) {
-    if (!managedPerson) return;
+    if (!managedPerson) return false;
 
     setSavingOperations(true);
     setError(null);
@@ -452,8 +452,8 @@ export default function CompanyRosterPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data?.error ?? "Failed to save operations.");
-        return;
+        setError(data?.detail ?? data?.error ?? "Failed to save operations.");
+        return false;
       }
 
       const nextPerson = data?.roster
@@ -471,8 +471,10 @@ export default function CompanyRosterPage() {
         )
       );
       setManagedPerson(nextPerson);
+      return true;
     } catch {
       setError("Failed to save operations.");
+      return false;
     } finally {
       setSavingOperations(false);
     }
@@ -553,8 +555,9 @@ export default function CompanyRosterPage() {
     effective_date: string;
     note: string;
   }) {
-    if (!managedPerson) return;
+    if (!managedPerson) return false;
 
+    setSavingStatus(true);
     setError(null);
 
     try {
@@ -571,8 +574,8 @@ export default function CompanyRosterPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data?.error ?? "Failed to update status.");
-        return;
+        setError(data?.detail ?? data?.error ?? "Failed to update status.");
+        return false;
       }
 
       const nextStatus =
@@ -597,8 +600,12 @@ export default function CompanyRosterPage() {
         setTraineePayEffectiveDate(draft.effective_date);
         setTraineePayPerson(updatedManagedPerson);
       }
+      return true;
     } catch {
       setError("Failed to update status.");
+      return false;
+    } finally {
+      setSavingStatus(false);
     }
   }
 

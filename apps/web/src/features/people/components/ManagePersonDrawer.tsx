@@ -81,9 +81,9 @@ type Props = {
   loadingTimeline: boolean;
   onClose: () => void;
   onSaveDetails: (draft: Partial<CoreDraft>) => Promise<boolean>;
-  onSaveOperations: (draft: OperationsDraft) => Promise<void>;
+  onSaveOperations: (draft: OperationsDraft) => Promise<boolean>;
   onRefreshPerson: () => Promise<void>;
-  onSaveStatus: (draft: StatusDraft) => Promise<void>;
+  onSaveStatus: (draft: StatusDraft) => Promise<boolean>;
   onSendInvite?: () => Promise<void>;
 };
 

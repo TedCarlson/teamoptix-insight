@@ -25,7 +25,7 @@ type Props = {
   inviting?: boolean;
   inviteError?: string | null;
   inviteMessage?: string | null;
-  onSave: (draft: Draft) => Promise<void>;
+  onSave: (draft: Draft) => Promise<boolean>;
   onSendInvite?: () => Promise<void>;
 };
 
@@ -59,8 +59,8 @@ export default function PersonLifecycleSection({
   }
 
   async function save() {
-    await onSave(draft);
-    setEditing(false);
+    const saved = await onSave(draft);
+    if (saved) setEditing(false);
   }
 
   return (

@@ -26,18 +26,29 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     const body = await req.json().catch(() => ({}));
     const supabase = await getSupabaseServerClient();
 
-    const { data: currentOps, error: currentOpsError } =
-      await supabase
+    const [currentOpsResult, currentIdentityResult] = await Promise.all([
+      supabase
         .from("company_roster_operations_fact_v")
         .select("*")
         .eq("roster_id", rosterId)
-        .maybeSingle();
+        .maybeSingle(),
+      supabase
+        .from("company_roster_view")
+        .select("fx_id, dswid")
+        .eq("roster_member_id", rosterId)
+        .maybeSingle(),
+    ]);
 
-    if (currentOpsError) {
+    const { data: currentOps, error: currentOpsError } = currentOpsResult;
+    const { data: currentIdentity, error: currentIdentityError } =
+      currentIdentityResult;
+
+    if (currentOpsError || currentIdentityError) {
       return NextResponse.json(
         {
           error: "Failed to load current operations record.",
-          detail: currentOpsError.message,
+          detail:
+            currentOpsError?.message ?? currentIdentityError?.message,
         },
         { status: 500 },
       );
@@ -68,8 +79,12 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       {
         p_company_slug: slug,
         p_roster_id: rosterId,
-        p_fx_id: pickText("fx_id"),
-        p_dswid: pickText("dswid"),
+        p_fx_id: has("fx_id")
+          ? textOrNull(body.fx_id)
+          : (currentIdentity?.fx_id ?? null),
+        p_dswid: has("dswid")
+          ? textOrNull(body.dswid)
+          : (currentIdentity?.dswid ?? null),
         p_scanner_serial: pickText("scanner_serial"),
         p_dot_exp: pickDate(
           "dot_expiration_date",

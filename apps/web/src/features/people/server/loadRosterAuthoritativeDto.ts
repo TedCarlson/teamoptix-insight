@@ -25,7 +25,7 @@ export async function loadRosterAuthoritativeDto({
     supabase
       .from("company_roster_view")
       .select(
-        "roster_member_id, company_id, profile_id, person_id, full_name, email, phone, worker_type, job_title, employment_status, market_code, reports_to_name, hire_date, separation_date, reports_to_roster_id, invite_status, notes",
+        "roster_member_id, company_id, profile_id, person_id, full_name, email, phone, worker_type, job_title, employment_status, market_code, reports_to_name, hire_date, separation_date, reports_to_roster_id, invite_status, notes, fx_id, dswid",
       )
       .eq("company_id", companyId)
       .eq("roster_member_id", rosterId)
@@ -34,7 +34,7 @@ export async function loadRosterAuthoritativeDto({
     supabase
       .from("company_roster_operations_fact_v")
       .select(
-        "roster_id, fx_id, dswid, scanner_serial, dot_exp, qual_cert_exp, daily_pay_effective_date, daily_pay_rate, fuel_card, pin_id_no",
+        "roster_id, scanner_serial, dot_exp, qual_cert_exp, daily_pay_effective_date, daily_pay_rate, fuel_card, pin_id_no",
       )
       .eq("roster_id", rosterId)
       .maybeSingle(),
@@ -126,8 +126,10 @@ export async function loadRosterAuthoritativeDto({
     fuel_card: assets.fuel_card ?? operations?.fuel_card ?? null,
     pin_id_no: assets.pin_id_no ?? operations?.pin_id_no ?? null,
 
-    fx_id: operations?.fx_id ?? null,
-    dswid: operations?.dswid ?? null,
+    // Identifiers live in company_roster_identifier and are exposed by the
+    // roster view. The legacy operations columns are compatibility mirrors.
+    fx_id: roster.fx_id ?? null,
+    dswid: roster.dswid ?? null,
     dot_expiration_date: operations?.dot_exp ?? null,
     qual_cert_expiration_date: operations?.qual_cert_exp ?? null,
     daily_pay_effective_date:

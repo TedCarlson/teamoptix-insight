@@ -20,7 +20,7 @@ export type OperationsDraft = {
 type Props = {
   person: RosterRow;
   saving: boolean;
-  onSave: (draft: OperationsDraft) => Promise<void>;
+  onSave: (draft: OperationsDraft) => Promise<boolean>;
 };
 
 function toInputDate(value: string | null | undefined) {
@@ -74,8 +74,8 @@ export default function PersonOperationsSection({
       ),
     ) as Partial<OperationsDraft>;
 
-    await onSave(dirty as OperationsDraft);
-    setEditing(false);
+    const saved = await onSave(dirty as OperationsDraft);
+    if (saved) setEditing(false);
   }
 
   return (
