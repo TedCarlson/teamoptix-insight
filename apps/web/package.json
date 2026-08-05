@@ -20,6 +20,7 @@
     "@zxing/browser": "^0.2.1",
     "@zxing/library": "^0.23.0",
     "lucide-react": "^1.22.0",
+    "maplibre-gl": "^6.1.0",
     "next": "16.0.10",
     "playwright": "^1.61.0",
     "playwright-core": "1.61.0",

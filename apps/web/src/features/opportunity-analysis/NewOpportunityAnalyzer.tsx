@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { parseOpportunityListing, type OpportunityListing } from "./parseOpportunityListing";
+import { summarizeResidentialTerritory } from "./zipIntelligence";
 
 function display(value: string | number | null) {
   return value === null || value === "" ? "—" : typeof value === "number" ? value.toLocaleString() : value;
@@ -36,6 +37,7 @@ type ZipAnalysisRow = {
   establishments_per_sqmi: number | null; employees_per_sqmi: number | null;
   ruca_primary_code: number | null; ruca_secondary_code: number | null;
   ruca_category: string | null; rurality_factor: number | null;
+  latitude: number | null; longitude: number | null;
   terminal_distance_miles: number; coordinate_source: string; coordinate_method: string;
 };
 
@@ -61,22 +63,7 @@ export default function NewOpportunityAnalyzer({ companySlug }: { companySlug: s
   } : null, [listing]);
   const territory = useMemo(() => {
     if (!zipAnalysis) return null;
-    const residential = zipAnalysis.rows.filter((row) => row.classification === "STANDARD" && row.population !== null && row.land_area_sqmi !== null);
-    const population = residential.reduce((sum, row) => sum + Number(row.population), 0);
-    const land = residential.reduce((sum, row) => sum + Number(row.land_area_sqmi), 0);
-    const ruralityRows = residential.filter((row) => row.rurality_factor !== null);
-    const ruralityWeight = ruralityRows.reduce((sum, row) => sum + Number(row.population ?? 0), 0);
-    const ruralityFactor = ruralityWeight > 0
-      ? ruralityRows.reduce((sum, row) => sum + Number(row.rurality_factor) * Number(row.population ?? 0), 0) / ruralityWeight
-      : null;
-    return {
-      population,
-      residentialDensity: land > 0 ? population / land : null,
-      establishments: zipAnalysis.rows.reduce((sum, row) => sum + Number(row.business_establishments ?? 0), 0),
-      employment: zipAnalysis.rows.reduce((sum, row) => sum + Number(row.business_employment ?? 0), 0),
-      ruralityFactor,
-      ruralityCoverage: ruralityRows.length,
-    };
+    return summarizeResidentialTerritory(zipAnalysis.rows);
   }, [zipAnalysis]);
   const zipGroups = useMemo(() => {
     const rows = zipAnalysis?.rows ?? [];

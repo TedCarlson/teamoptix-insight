@@ -1,26 +1,6 @@
-import AnalyticsStubSurface from "@/features/company/analytics/AnalyticsStubSurface";
+import TerritoryIntelligenceSurface from "@/features/company/analytics/territory/TerritoryIntelligenceSurface";
 
-export default function Page() {
-  return (
-    <main className="workspace-shell">
-      <section
-        className="workspace-main"
-        style={{ paddingTop: 0, paddingBottom: 24 }}
-      >
-        <AnalyticsStubSurface
-          eyebrow="Analytics · Territory"
-          title="Territory Intelligence"
-          purpose="Model the operating characteristics of the service territory and explain how geography influences contract performance."
-          expected={[
-            "ZIP-code coverage",
-    "Population and household density",
-    "Miles and travel time from terminal",
-    "Territory expansion history",
-    "Urban, suburban, and rural mix",
-    "Stops and packages by geographic density"
-          ]}
-        />
-      </section>
-    </main>
-  );
+export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  return <TerritoryIntelligenceSurface slug={slug} />;
 }
