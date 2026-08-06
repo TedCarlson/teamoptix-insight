@@ -1,7 +1,9 @@
 "use client";
 
 import ComplianceDocumentSignal from "@/features/compliance/components/ComplianceDocumentSignal";
+import type { CandidateWorkflowGroup } from "@/features/hiring/lib/candidateChecklistWorkflow";
 import { useEffect, useState } from "react";
+import styles from "./candidate-checklist.module.css";
 
 type ChecklistItem = {
   item_type_id: string;
@@ -13,6 +15,9 @@ type ChecklistItem = {
   is_complete: boolean;
   completed_at: string | null;
   note: string | null;
+  is_blocked: boolean;
+  blocked_reason: string | null;
+  group?: CandidateWorkflowGroup;
 };
 
 export type CandidateChecklistProgress = {
@@ -155,82 +160,94 @@ export default function CandidateChecklistPanel({
     }
   }
 
+  const numberedItems = items.map((item, index) => ({ item, stepNumber: index + 1 }));
+  const groupOrder = Array.from(
+    new Set(numberedItems.map(({ item }) => item.group ?? "Readiness"))
+  ) as CandidateWorkflowGroup[];
+  const groupedItems = groupOrder.map((group) => ({
+    group,
+    items: numberedItems.filter(({ item }) => (item.group ?? "Readiness") === group),
+  })).filter(({ items: groupItems }) => groupItems.length > 0);
+
   return (
     <article
-      className={embedded ? undefined : "value-card"}
+      className={`${embedded ? "" : "value-card"} ${styles.panel}`.trim()}
       style={embedded ? { minWidth: 0 } : { gridColumn: "1 / span 2" }}
     >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 12,
-          alignItems: "flex-start",
-        }}
-      >
-        <div>
-          <p className="value-card__eyebrow">Onboarding</p>
-          <h3 className="value-card__title">Readiness checklist</h3>
-          <p className="value-card__body" style={{ marginTop: 8 }}>
-            Required progress: {progress.required_complete}/{progress.required_total} ·{" "}
-            {progress.percent}%
-          </p>
+      <div className={styles.header}>
+        <p className={styles.progressCopy}>
+          Required progress: <strong>{progress.required_complete}/{progress.required_total}</strong>
+          {" · "}{progress.percent}%
+        </p>
+        <div className={styles.progressTrack} aria-hidden="true">
+          <span className={styles.progressFill} style={{ width: `${progress.percent}%` }} />
         </div>
-
-        <strong style={{ fontSize: 22 }}>{progress.percent}%</strong>
       </div>
 
       {error ? (
-        <p style={{ color: "#c62828", marginTop: 12 }}>{error}</p>
+        <p className={`${styles.message} ${styles.error}`}>{error}</p>
       ) : null}
 
       {loading ? (
-        <div style={{ paddingTop: 16 }}>Loading checklist...</div>
+        <div className={styles.message}>Loading checklist...</div>
       ) : items.length === 0 ? (
-        <div style={{ paddingTop: 16 }}>No checklist items configured.</div>
+        <div className={styles.message}>No checklist items configured.</div>
       ) : (
-        <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
-          {items.map((item) => (
-            <label
-              key={item.item_key}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "auto 1fr auto",
-                gap: 10,
-                alignItems: "start",
-                padding: "10px 0",
-                borderBottom: "1px solid #e6edf5",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={item.is_complete}
-                disabled={busyKey === item.item_key}
-                onChange={() => toggleItem(item)}
-              />
+        <div className={styles.groups}>
+          {groupedItems.map(({ group, items: groupItems }) => (
+            <section className={styles.group} key={group} aria-labelledby={`${rosterId}-${group}`}>
+              <h4 className={styles.groupLabel} id={`${rosterId}-${group}`}>{group}</h4>
+              <div className={styles.steps}>
+                {groupItems.map(({ item, stepNumber }) => {
+                  const disabled = busyKey === item.item_key || item.is_blocked;
+                  const detail = item.is_blocked && item.blocked_reason
+                    ? `Waiting · ${item.blocked_reason}`
+                    : item.description;
 
-              <span style={{ display: "grid", gap: 5 }}>
-                <ComplianceDocumentSignal
-                  iconKey={item.item_key}
-                  label={item.label}
-                  ready={item.is_complete}
-                  compact
-                />
+                  return (
+                    <div
+                      key={item.item_key}
+                      className={`${styles.step} ${item.is_complete ? styles.complete : ""} ${item.is_blocked ? styles.blocked : ""}`.trim()}
+                    >
+                      <button
+                        type="button"
+                        className={styles.stepControl}
+                        disabled={disabled}
+                        onClick={() => toggleItem(item)}
+                        role="checkbox"
+                        aria-checked={item.is_complete}
+                        aria-label={`${item.is_complete ? "Reopen" : "Complete"} step ${stepNumber}: ${item.label}`}
+                        aria-describedby={detail ? `${item.item_key}-detail` : undefined}
+                      >
+                        {stepNumber}
+                      </button>
 
-                {item.description ? (
-                  <span
-                    className="value-card__body"
-                    style={{ display: "block", marginTop: 2 }}
-                  >
-                    {item.description}
-                  </span>
-                ) : null}
-              </span>
+                      <div className={styles.stepBody}>
+                        <ComplianceDocumentSignal
+                          iconKey={item.item_key}
+                          label={item.label}
+                          ready={item.is_complete}
+                          compact
+                        />
+                        {detail ? (
+                          <span
+                            id={`${item.item_key}-detail`}
+                            className={`${styles.description} ${item.is_blocked ? styles.waiting : ""}`.trim()}
+                            title={detail}
+                          >
+                            {detail}
+                          </span>
+                        ) : null}
+                      </div>
 
-              <span className="hero-stat__label">
-                {item.is_required ? "Required" : "Optional"}
-              </span>
-            </label>
+                      <span className={styles.requirement}>
+                        {item.is_required ? "Required" : "Optional"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
           ))}
         </div>
       )}

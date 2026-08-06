@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  candidateWorkflowGroup,
+  candidateWorkflowStepKind,
+  isTsaStep,
+} from "@/features/hiring/lib/candidateChecklistWorkflow";
 
 export const runtime = "nodejs";
 
@@ -9,6 +14,10 @@ type RouteContext = {
 
 function cleanText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function checklistLabel(row: Record<string, unknown>) {
+  return String(row.display_label ?? row.default_label ?? "the required step");
 }
 
 export async function GET(_req: NextRequest, context: RouteContext) {
@@ -26,6 +35,20 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       return NextResponse.json(
         { error: "Company not found.", checklist: [] },
         { status: 404 }
+      );
+    }
+
+    const { data: rosterRow, error: rosterError } = await supabase
+      .from("company_roster_view")
+      .select("employment_status")
+      .eq("company_id", company.id)
+      .eq("roster_member_id", rosterId)
+      .maybeSingle();
+
+    if (rosterError || !rosterRow) {
+      return NextResponse.json(
+        { error: rosterError?.message ?? "Candidate roster record not found.", checklist: [] },
+        { status: rosterError ? 500 : 404 }
       );
     }
 
@@ -60,8 +83,63 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       (factRows ?? []).map((fact) => [fact.item_type_id, fact])
     );
 
-    const checklist = ((configRows ?? []) as any[]).map((row) => {
+    const rows = (configRows ?? []) as any[];
+    const rowsByKind = new Map<string, any[]>();
+    rows.forEach((row) => {
+      const kind = candidateWorkflowStepKind(row);
+      rowsByKind.set(kind, [...(rowsByKind.get(kind) ?? []), row]);
+    });
+
+    const incompleteRowsForKinds = (kinds: string[]) =>
+      kinds.flatMap((kind) => rowsByKind.get(kind) ?? []).filter((row) => {
+        const fact = factByItemTypeId.get(row.item_type_id);
+        return !Boolean(fact?.is_complete);
+      });
+
+    const incompletePreTsaRows = rows.filter((row) => {
+      if (!Boolean(row.is_required) || isTsaStep(row)) return false;
       const fact = factByItemTypeId.get(row.item_type_id);
+      return !Boolean(fact?.is_complete);
+    });
+
+    const checklist = rows.map((row) => {
+      const fact = factByItemTypeId.get(row.item_type_id);
+      const isComplete = Boolean(fact?.is_complete);
+      const stepKind = candidateWorkflowStepKind(row);
+      const prerequisiteKinds =
+        stepKind === "interview_complete"
+          ? ["interview_scheduled"]
+          : stepKind === "background_submitted"
+            ? ["interview_complete"]
+            : stepKind === "background_complete"
+              ? ["background_submitted"]
+              : stepKind === "drug_sent" || stepKind === "dot_sent"
+                ? ["background_submitted", "background_complete"]
+                : stepKind === "drug_passed"
+                  ? ["drug_sent"]
+                  : stepKind === "dot_passed"
+                    ? ["dot_sent"]
+                    : [];
+      const incompletePrerequisites = isComplete
+        ? []
+        : incompleteRowsForKinds(prerequisiteKinds);
+      const blockedTsaByRoster =
+        !isComplete &&
+        isTsaStep(row) &&
+        !["Active", "Trainee"].includes(String(rosterRow.employment_status));
+      const blockedTsaByReadiness =
+        !isComplete &&
+        isTsaStep(row) &&
+        incompletePreTsaRows.length > 0;
+      const blockedReason = incompletePrerequisites.length > 0
+        ? `Complete ${incompletePrerequisites.map(checklistLabel).join(" and ")} first.`
+        : blockedTsaByRoster
+          ? "Promote the candidate to Trainee or Active before beginning TSA processing."
+          : blockedTsaByReadiness
+            ? `Complete ${incompletePreTsaRows
+                .map(checklistLabel)
+                .join(", ")} before beginning TSA processing.`
+            : null;
 
       return {
         item_type_id: row.item_type_id ?? "",
@@ -70,10 +148,15 @@ export async function GET(_req: NextRequest, context: RouteContext) {
         description: row.description ?? null,
         is_required: Boolean(row.is_required),
         sort_order: row.sort_order ?? 100,
-        is_complete: Boolean(fact?.is_complete),
+        is_complete: isComplete,
         readiness_weight: Number(row.readiness_weight ?? 1),
         completed_at: fact?.completed_at ?? null,
         note: fact?.note ?? null,
+        step_kind: stepKind,
+        group: candidateWorkflowGroup(row),
+        is_blocked:
+          incompletePrerequisites.length > 0 || blockedTsaByRoster || blockedTsaByReadiness,
+        blocked_reason: blockedReason,
       };
     });
 

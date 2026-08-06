@@ -1,0 +1,215 @@
+.panel {
+  min-width: 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 36px;
+  padding: 0 2px 8px;
+  border-bottom: 1px solid #dfe7f1;
+}
+
+.progressCopy {
+  margin: 0;
+  color: #53637d;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.progressCopy strong {
+  color: #10213d;
+}
+
+.progressTrack {
+  width: 132px;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e7edf5;
+}
+
+.progressFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #159b6b;
+  transition: width 180ms ease;
+}
+
+.groups {
+  display: grid;
+  gap: 7px;
+  padding-top: 8px;
+}
+
+.group {
+  min-width: 0;
+}
+
+.groupLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 3px;
+  color: #71809a;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.groupLabel::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #edf1f6;
+}
+
+.steps {
+  display: grid;
+  gap: 2px;
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-height: 39px;
+  padding: 3px 7px 3px 2px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: #fbfcfe;
+  transition: border-color 140ms ease, background 140ms ease, opacity 140ms ease;
+}
+
+.step:hover:not(.blocked) {
+  border-color: #d6e2f1;
+  background: #f7faff;
+}
+
+.complete {
+  background: #f3fbf7;
+}
+
+.blocked {
+  background: #f6f8fb;
+  opacity: 0.66;
+}
+
+.stepControl {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #cbd7e6;
+  border-radius: 9px;
+  background: #fff;
+  color: #40516c;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.stepControl:hover:not(:disabled) {
+  border-color: #2869eb;
+  color: #1f55ca;
+}
+
+.stepControl:focus-visible {
+  outline: 3px solid rgb(44 105 235 / 22%);
+  outline-offset: 2px;
+}
+
+.complete .stepControl {
+  border-color: #159b6b;
+  background: #159b6b;
+  color: #fff;
+}
+
+.blocked .stepControl {
+  border-color: #d9e0e9;
+  background: #eef2f6;
+  color: #8b97a9;
+  cursor: not-allowed;
+}
+
+.stepBody {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.description {
+  min-width: 0;
+  overflow: hidden;
+  color: #738199;
+  font-size: 12px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.waiting {
+  color: #8a6530;
+  font-weight: 700;
+}
+
+.requirement {
+  color: #7a879c;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.message {
+  margin: 10px 2px 0;
+  color: #52627b;
+  font-size: 13px;
+}
+
+.error {
+  color: #b42318;
+  font-weight: 700;
+}
+
+@media (max-width: 720px) {
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #fff;
+  }
+
+  .progressTrack {
+    width: 92px;
+  }
+
+  .step {
+    grid-template-columns: 32px minmax(0, 1fr);
+    min-height: 48px;
+    padding: 5px 7px;
+  }
+
+  .stepBody {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .description {
+    white-space: normal;
+  }
+
+  .requirement {
+    display: none;
+  }
+}

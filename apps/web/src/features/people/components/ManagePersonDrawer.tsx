@@ -8,6 +8,7 @@ import PersonOperationsSection from "@/features/people/components/person-drawer/
 import PersonLifecycleSection from "@/features/people/components/person-drawer/PersonLifecycleSection";
 import PersonTimelineSection from "@/features/people/components/person-drawer/PersonTimelineSection";
 import RosterAssignedResourcesSection from "@/features/company/assets/RosterAssignedResourcesSection";
+import CandidateChecklistPanel from "@/features/hiring/components/candidate-detail/CandidateChecklistPanel";
 import styles from "@/features/hiring/components/candidate-drawer/candidate-workflow-drawer.module.css";
 
 type CoreDraft = {
@@ -55,11 +56,12 @@ type TimelineEvent = {
   created_at: string;
 };
 
-type WorkspaceTab = "record" | "operations" | "compensation" | "resources" | "timeline" | "actions";
+type WorkspaceTab = "record" | "operations" | "readiness" | "compensation" | "resources" | "timeline" | "actions";
 
 const WORKSPACE_TABS: Array<{ key: WorkspaceTab; label: string; mobileOnly?: boolean }> = [
   { key: "record", label: "Person record" },
   { key: "operations", label: "Operations" },
+  { key: "readiness", label: "Readiness" },
   { key: "compensation", label: "Compensation" },
   { key: "resources", label: "Resources" },
   { key: "timeline", label: "Timeline" },
@@ -175,6 +177,26 @@ export default function ManagePersonDrawer({
                 <p>Maintain the authoritative roster record without leaving the workspace.</p>
               </div>
               <PersonCoreSection person={person} saving={savingDetails} onSave={onSaveDetails} />
+            </section>
+
+            <section
+              aria-labelledby="roster-tab-readiness"
+              className={styles.tabPage}
+              hidden={activeTab !== "readiness"}
+              id="roster-panel-readiness"
+              role="tabpanel"
+            >
+              <div className={styles.tabIntro}>
+                <p className="workspace-eyebrow">Readiness</p>
+                <h3>Screening and terminal access</h3>
+                <p>Finish post-promotion requirements. TSA remains locked until every other required item is complete.</p>
+              </div>
+              <CandidateChecklistPanel
+                embedded
+                rosterId={person.roster_member_id}
+                slug={companySlug}
+                onChanged={onRefreshPerson}
+              />
             </section>
 
             <section
