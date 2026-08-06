@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAnalyticsData } from "../AnalyticsDataProvider";
 import {
+  hasPickupExceptionActivity,
   pickupContribution,
   routeDayCost,
   scorecardNumber,
@@ -19,6 +20,7 @@ import type {
   ScorecardMetric,
   ScorecardPeriodKey,
 } from "./driverScorecard.types";
+import { calculatePickupReliability } from "../pickupReliability";
 import styles from "./driver-scorecard.module.css";
 
 type View = "TEAM" | "DRIVER";
@@ -38,6 +40,15 @@ const money = (value: number | null) =>
         currency: "USD",
         maximumFractionDigits: 0,
       }).format(value);
+const preciseMoney = (value: number | null) =>
+  value == null
+    ? "—"
+    : new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(value);
 const percent = (value: unknown) =>
   value == null ? "—" : `${number(value, 2)}%`;
 const date = (value: string | null | undefined, year = true) =>
@@ -51,6 +62,7 @@ const date = (value: string | null | undefined, year = true) =>
     : "—";
 
 const periodLabels: Record<ScorecardPeriodKey, string> = {
+  LAST_5_WEEKS: "Last 5 complete weeks",
   LAST_MONTH: "Last month",
   MTD: "Month to date",
   CONTRACT: "Contract year",
@@ -108,23 +120,34 @@ function MetricValue({
   period,
 }: {
   metric: ScorecardMetric;
-  period: DriverPeriodSummary;
+  period: DriverPeriodSummary | undefined;
 }) {
+  if (!period) return <span className={styles.missingValue}>No sample</span>;
   if (metric.metric_key !== "PICKUPS")
     return <span className={styles.missingValue}>Source needed</span>;
   const result = pickupContribution(period, metric);
-  if (result.status === "UNDER_REVIEW")
-    return <span className={styles.reviewValue}>Review</span>;
+  if (result.status === "INCOMPLETE")
+    return <span className={styles.reviewValue}>PRI incomplete</span>;
   if (result.status === "NO_SAMPLE")
     return <span className={styles.missingValue}>No sample</span>;
   return (
-    <strong
+    <span
       className={
-        result.contribution === 0 ? styles.zeroValue : styles.connectedValue
+        `${styles.metricResult} ${
+          result.contribution === 0
+            ? styles.zeroValue
+            : hasPickupExceptionActivity(period)
+              ? styles.exceptionMetricValue
+              : styles.connectedValue
+        }`
       }
     >
-      {number(result.contribution, 1)} / {number(metric.contribution_weight)}
-    </strong>
+      <strong>
+        {result.tier} · {number(result.contribution, 1)} /{" "}
+        {number(metric.contribution_weight)}
+      </strong>
+      <small>PRI {result.pri?.toFixed(3)}</small>
+    </span>
   );
 }
 
@@ -141,7 +164,8 @@ export default function DriverScorecardSurface({ slug }: { slug: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View>("TEAM");
-  const [periodKey, setPeriodKey] = useState<ScorecardPeriodKey>("LAST_MONTH");
+  const [periodKey, setPeriodKey] =
+    useState<ScorecardPeriodKey>("LAST_5_WEEKS");
   const [selectedRosterId, setSelectedRosterId] = useState<string | null>(null);
   const [detail, setDetail] = useState<DriverScorecardDetailRow[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -200,19 +224,39 @@ export default function DriverScorecardSurface({ slug }: { slug: string }) {
   const selectedDriver =
     payload?.drivers.find((driver) => driver.roster_id === selectedRosterId) ??
     null;
-  const selectedPeriod = selectedDriver?.periods[periodKey] ?? null;
+  const hasFiveWeekFacts = Boolean(
+    payload?.range.last_five_weeks_start &&
+      payload?.range.last_five_weeks_end,
+  );
+  const availablePeriodKeys: ScorecardPeriodKey[] = hasFiveWeekFacts
+    ? ["LAST_5_WEEKS", "LAST_MONTH", "MTD", "CONTRACT"]
+    : ["LAST_MONTH", "MTD", "CONTRACT"];
+  const selectedPeriod =
+    selectedDriver?.periods[periodKey] ??
+    (periodKey === "LAST_5_WEEKS"
+      ? selectedDriver?.periods.LAST_MONTH
+      : undefined) ??
+    null;
+  const selectedHasPickupExceptions = selectedPeriod
+    ? hasPickupExceptionActivity(selectedPeriod)
+    : false;
+
+  const teamPeriod = (driver: DriverScorecardIndexRow) =>
+    driver.periods.LAST_5_WEEKS ?? driver.periods.LAST_MONTH;
 
   const teamRows = [...(payload?.drivers ?? [])].sort((left, right) => {
-    const leftPeriod = left.periods.LAST_MONTH;
-    const rightPeriod = right.periods.LAST_MONTH;
-    const leftContribution =
-      pickupContribution(leftPeriod, pickupMetric).contribution ?? -1;
-    const rightContribution =
-      pickupContribution(rightPeriod, pickupMetric).contribution ?? -1;
+    const leftPeriod = teamPeriod(left);
+    const rightPeriod = teamPeriod(right);
+    const leftContribution = leftPeriod
+      ? (pickupContribution(leftPeriod, pickupMetric).contribution ?? -1)
+      : -1;
+    const rightContribution = rightPeriod
+      ? (pickupContribution(rightPeriod, pickupMetric).contribution ?? -1)
+      : -1;
     return (
       rightContribution - leftContribution ||
-      scorecardNumber(leftPeriod.potential_missed_pickups) -
-        scorecardNumber(rightPeriod.potential_missed_pickups) ||
+      scorecardNumber(leftPeriod?.potential_missed_pickups) -
+        scorecardNumber(rightPeriod?.potential_missed_pickups) ||
       left.full_name.localeCompare(right.full_name)
     );
   });
@@ -262,6 +306,15 @@ export default function DriverScorecardSurface({ slug }: { slug: string }) {
 
   const periodDetail = detail.filter((row) => {
     if (!payload) return false;
+    if (
+      periodKey === "LAST_5_WEEKS" &&
+      payload.range.last_five_weeks_start &&
+      payload.range.last_five_weeks_end
+    )
+      return (
+        row.service_date >= payload.range.last_five_weeks_start &&
+        row.service_date <= payload.range.last_five_weeks_end
+      );
     if (periodKey === "LAST_MONTH")
       return (
         row.service_date >= payload.range.last_month_start &&
@@ -336,7 +389,7 @@ export default function DriverScorecardSurface({ slug }: { slug: string }) {
 
           {payloadLoading || loading ? (
             <div className={styles.state}>
-              Building the driver evidence index from retained warehouse facts…
+              Loading the reconciled driver scorecard facts…
             </div>
           ) : null}
           {contractError || error ? (
@@ -439,9 +492,22 @@ export default function DriverScorecardSurface({ slug }: { slug: string }) {
                         </span>
                       </div>
                       <div className={styles.periodBadge}>
-                        Finalized view ·{" "}
-                        {date(payload.range.last_month_start, false)}–
-                        {date(payload.range.last_month_end)}
+                        {hasFiveWeekFacts
+                          ? "Last 5 complete weeks"
+                          : "Last complete month"}{" "}
+                        ·{" "}
+                        {date(
+                          hasFiveWeekFacts
+                            ? payload.range.last_five_weeks_start
+                            : payload.range.last_month_start,
+                          false,
+                        )}
+                        –
+                        {date(
+                          hasFiveWeekFacts
+                            ? payload.range.last_five_weeks_end
+                            : payload.range.last_month_end,
+                        )}
                       </div>
                     </header>
                     <div className={styles.teamTable}>
@@ -473,7 +539,9 @@ export default function DriverScorecardSurface({ slug }: { slug: string }) {
                                   ? `FX ${driver.fx_id}`
                                   : "FX ID missing"}{" "}
                                 ·{" "}
-                                {number(driver.periods.LAST_MONTH?.route_days)}{" "}
+                                {number(
+                                  teamPeriod(driver)?.route_days,
+                                )}{" "}
                                 route-days
                               </small>
                             </span>
@@ -481,7 +549,7 @@ export default function DriverScorecardSurface({ slug }: { slug: string }) {
                               <MetricValue
                                 key={metric.metric_key}
                                 metric={metric}
-                                period={driver.periods.LAST_MONTH}
+                                period={teamPeriod(driver)}
                               />
                             ))}
                             <span className={styles.incompleteTotal}>
@@ -593,13 +661,7 @@ export default function DriverScorecardSurface({ slug }: { slug: string }) {
                           </div>
                         </header>
                         <div className={styles.periodTabs}>
-                          {(
-                            [
-                              "LAST_MONTH",
-                              "MTD",
-                              "CONTRACT",
-                            ] as ScorecardPeriodKey[]
-                          ).map((key) => (
+                          {availablePeriodKeys.map((key) => (
                             <button
                               className={
                                 periodKey === key ? styles.activePeriod : ""
@@ -616,11 +678,17 @@ export default function DriverScorecardSurface({ slug }: { slug: string }) {
                         <section className={styles.kpiGrid}>
                           {metrics.map((metric) => (
                             <article
-                              className={
+                              className={[
                                 metric.source_mode === "WAREHOUSE"
                                   ? styles.connectedKpi
-                                  : ""
-                              }
+                                  : "",
+                                metric.metric_key === "PICKUPS" &&
+                                selectedHasPickupExceptions
+                                  ? styles.pickupExceptionKpi
+                                  : "",
+                              ]
+                                .filter(Boolean)
+                                .join(" ")}
                               key={metric.metric_key}
                             >
                               <span>
@@ -667,14 +735,32 @@ export default function DriverScorecardSurface({ slug }: { slug: string }) {
                                 {number(selectedPeriod.pickup_stops)}
                               </strong>
                             </article>
-                            <article>
+                            <article
+                              className={
+                                scorecardNumber(
+                                  selectedPeriod.early_pickups,
+                                ) > 0 ||
+                                scorecardNumber(selectedPeriod.late_pickups) >
+                                  0
+                                  ? styles.pickupExceptionField
+                                  : ""
+                              }
+                            >
                               <span>Early / Late</span>
                               <strong>
                                 {number(selectedPeriod.early_pickups)} /{" "}
                                 {number(selectedPeriod.late_pickups)}
                               </strong>
                             </article>
-                            <article>
+                            <article
+                              className={
+                                scorecardNumber(
+                                  selectedPeriod.potential_missed_pickups,
+                                ) > 0
+                                  ? styles.pickupExceptionField
+                                  : ""
+                              }
+                            >
                               <span>Potential missed</span>
                               <strong>
                                 {number(
@@ -725,7 +811,7 @@ export default function DriverScorecardSurface({ slug }: { slug: string }) {
                               <strong>
                                 {cost?.laborPerStop == null
                                   ? "—"
-                                  : money(cost.laborPerStop)}
+                                  : preciseMoney(cost.laborPerStop)}
                               </strong>
                             </article>
                             <article>
@@ -769,7 +855,8 @@ export default function DriverScorecardSurface({ slug }: { slug: string }) {
                                 <span>Stops</span>
                                 <span>Packages</span>
                                 <span>PU</span>
-                                <span>E / L / Pot.</span>
+                                <span>E / L / M</span>
+                                <span>PRI</span>
                                 <span>Exceptions</span>
                                 <span>Miles</span>
                               </div>
@@ -777,10 +864,21 @@ export default function DriverScorecardSurface({ slug }: { slug: string }) {
                                 {[...periodDetail]
                                   .reverse()
                                   .slice(0, 18)
-                                  .map((row, index) => (
-                                    <div
-                                      key={`${row.service_date}:${row.route_name}:${index}`}
-                                    >
+                                  .map((row, index) => {
+                                    const dailyReliability =
+                                      calculatePickupReliability({
+                                        pickupStops: row.pickup_stops,
+                                        earlyPickups: row.early_pickups,
+                                        latePickups: row.late_pickups,
+                                        potentialMissedPickups:
+                                          row.potential_missed_pickups,
+                                        complete:
+                                          scorecardNumber(row.pickup_stops) > 0,
+                                      });
+                                    return (
+                                      <div
+                                        key={`${row.service_date}:${row.route_name}:${index}`}
+                                      >
                                       <strong>
                                         {date(row.service_date, false)}
                                       </strong>
@@ -792,15 +890,44 @@ export default function DriverScorecardSurface({ slug }: { slug: string }) {
                                         {number(row.delivery_packages)}
                                       </span>
                                       <span>{number(row.pickup_stops)}</span>
-                                      <span>
+                                      <span
+                                        className={
+                                          hasPickupExceptionActivity(row)
+                                            ? styles.pickupExceptionValue
+                                            : ""
+                                        }
+                                      >
                                         {number(row.early_pickups)} /{" "}
                                         {number(row.late_pickups)} /{" "}
                                         {number(row.potential_missed_pickups)}
                                       </span>
+                                      <span
+                                        className={`${styles.dailyPri} ${
+                                          dailyReliability.tier === "T1"
+                                            ? styles.zeroValue
+                                            : hasPickupExceptionActivity(row)
+                                              ? styles.exceptionMetricValue
+                                              : styles.connectedValue
+                                        }`}
+                                      >
+                                        {dailyReliability.pri == null ? (
+                                          "—"
+                                        ) : (
+                                          <>
+                                            <strong>
+                                              {dailyReliability.tier}
+                                            </strong>
+                                            <small>
+                                              {dailyReliability.pri.toFixed(3)}
+                                            </small>
+                                          </>
+                                        )}
+                                      </span>
                                       <span>{number(row.exceptions)}</span>
                                       <span>{number(row.miles, 1)}</span>
-                                    </div>
-                                  ))}
+                                      </div>
+                                    );
+                                  })}
                               </div>
                             </div>
                           ) : null}

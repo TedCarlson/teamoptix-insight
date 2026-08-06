@@ -28,7 +28,7 @@
 .summary .signalCard { border-color: #edc995; background: #fffaf2; }
 .summary .cautionCard { border-color: #d9cee8; background: #faf8fd; }
 
-.trendPanel, .routePanel, .detailRail, .recentPanel { border: 1px solid #dce3ec; border-radius: 14px; background: #fff; overflow: hidden; }
+.trendPanel, .routePanel, .detailRail, .recentPanel, .challengePanel, .driverEvidencePanel { border: 1px solid #dce3ec; border-radius: 14px; background: #fff; overflow: hidden; }
 .sectionHead { display: flex; justify-content: space-between; align-items: end; gap: 20px; padding: 18px 20px 15px; }
 .sectionHead h2 { margin: 0; font-size: 22px; letter-spacing: -.025em; }
 .sectionHead > div > span { display: block; max-width: 720px; margin-top: 5px; color: #687487; font-size: 12px; line-height: 1.45; }
@@ -166,6 +166,45 @@
 .bandTextHEAVY { color: #b56b08; }
 .bandTextEXTREME { color: #b42318; }
 .bandTextSupplemental { color: #16704a; }
+.challengePanel { margin-top: 16px; }
+.challengePanel .sectionHead { border-bottom: 1px solid #e5eaf0; }
+.challengePanel .sectionHead > small { color: #667085; font-size: 11px; font-weight: 800; white-space: nowrap; }
+.challengeMetrics { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.challengeMetrics article { min-width: 0; padding: 14px 13px; border-right: 1px solid #e8edf2; }
+.challengeMetrics article:last-child { border-right: 0; }
+.challengeMetrics span, .challengeMetrics small { display: block; color: #6f7b8e; font-size: 9px; }
+.challengeMetrics span { font-weight: 850; letter-spacing: .025em; text-transform: uppercase; }
+.challengeMetrics strong { display: block; margin: 6px 0 4px; color: #132039; font-size: 21px; line-height: 1; }
+.driverEvidencePanel { margin-top: 16px; }
+.driverEvidencePanel .sectionHead { border-bottom: 1px solid #e5eaf0; }
+.driverEvidencePanel .sectionHead > small { color: #667085; font-size: 11px; font-weight: 800; white-space: nowrap; }
+.driverRecommendation { display: grid; grid-template-columns: 64px minmax(190px, .65fr) minmax(0, 1.7fr); align-items: stretch; margin: 16px; border: 1px solid #b9dfcf; border-radius: 12px; background: #f3fbf7; overflow: hidden; }
+.recommendationRank { display: flex; align-items: center; justify-content: center; padding: 13px 8px; flex-direction: column; border-right: 1px solid #cfe8dc; background: #169b69; color: #fff; }
+.recommendationRank span { font-size: 7px; font-weight: 850; letter-spacing: .05em; text-align: center; text-transform: uppercase; }
+.recommendationRank strong { margin-top: 5px; font-size: 27px; line-height: 1; }
+.recommendationIdentity { display: flex; justify-content: center; padding: 14px 18px; flex-direction: column; border-right: 1px solid #cfe8dc; }
+.recommendationIdentity > span { color: #16855d; font-size: 8px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+.recommendationIdentity h3 { margin: 4px 0 3px; color: #132039; font-size: 20px; letter-spacing: -.025em; }
+.recommendationIdentity small { color: #657287; font-size: 9px; }
+.recommendationReasons { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.recommendationReasons article { display: flex; justify-content: center; padding: 13px 15px; flex-direction: column; border-right: 1px solid #dcefe6; }
+.recommendationReasons article:last-child { border-right: 0; }
+.recommendationReasons span, .recommendationReasons small { display: block; color: #697689; font-size: 8px; }
+.recommendationReasons span { font-weight: 850; letter-spacing: .03em; text-transform: uppercase; }
+.recommendationReasons strong { display: block; margin: 5px 0 3px; color: #132039; font-size: 16px; }
+.driverEvidenceTable { overflow-x: auto; }
+.driverEvidenceHead, .driverEvidenceRows > div { display: grid; grid-template-columns: 46px minmax(170px, 1.25fr) 52px 82px 90px 76px 95px 95px 88px 125px 105px 110px; align-items: center; gap: 9px; min-width: 1265px; }
+.driverEvidenceHead { min-height: 40px; padding: 0 16px; border-top: 1px solid #e5eaf0; border-bottom: 1px solid #e5eaf0; background: #f7f9fb; color: #647084; font-size: 10px; font-weight: 900; letter-spacing: .025em; text-align: right; text-transform: uppercase; }
+.driverEvidenceHead span:nth-child(2) { text-align: left; }
+.driverEvidenceRows > div { min-height: 58px; padding: 0 16px; border-bottom: 1px solid #e8edf2; color: #39465b; font-size: 12px; text-align: right; }
+.driverEvidenceRows > div:first-child { background: #fbfefc; }
+.driverEvidenceRows b { color: #586579; font-size: 13px; }
+.driverEvidenceRows .bestRank { display: inline-flex; align-items: center; justify-content: center; width: 29px; height: 29px; margin-left: auto; border-radius: 50%; background: #169b69; color: #fff; }
+.driverEvidenceRows span strong, .driverEvidenceRows span small { display: block; }
+.driverEvidenceRows span small { margin-top: 3px; color: #727e90; font-size: 9px; }
+.driverEvidenceIdentity { min-width: 0; text-align: left; }
+.driverEvidenceIdentity strong { overflow: hidden; color: #132039; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.driverEvidenceNote { padding: 12px 16px 14px; background: #fafbfc; color: #667387; font-size: 10px; line-height: 1.5; }
 .sourceNote { margin-top: 18px; padding-top: 14px; border-top: 1px solid #dce3ec; color: #748094; font-size: 9px; line-height: 1.5; }
 
 @media (max-width: 1080px) {
@@ -175,6 +214,9 @@
   .routeReviewGrid { grid-template-columns: 220px minmax(0, 1fr); }
   .deepDiveColumns { grid-template-columns: 1fr; }
   .deepDiveColumns > section:nth-child(odd) { border-right: 0; }
+  .driverRecommendation { grid-template-columns: 58px minmax(180px, .7fr) minmax(0, 1.4fr); }
+  .challengeMetrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .challengeMetrics article { border-bottom: 1px solid #e8edf2; }
 }
 
 @media (max-width: 720px) {
@@ -187,4 +229,7 @@
   .routeReviewGrid { grid-template-columns: 1fr; }
   .routeRail { position: static; }
   .routeList { max-height: 300px; }
+  .driverRecommendation { grid-template-columns: 54px minmax(0, 1fr); }
+  .recommendationReasons { grid-column: 1 / -1; border-top: 1px solid #cfe8dc; }
+  .challengeMetrics { grid-template-columns: 1fr 1fr; }
 }

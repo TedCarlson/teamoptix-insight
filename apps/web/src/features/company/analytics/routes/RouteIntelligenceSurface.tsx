@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAnalyticsData } from "../AnalyticsDataProvider";
 import type { RouteCapacityPayload, RouteCapacityRow } from "../routeCapacity.types";
 import { routeCapacityNumber } from "../routeCapacity.helpers";
-import { buildRouteProfiles } from "./routeIntelligence";
+import { buildRouteChallengeProfile, buildRouteDriverEvidence, buildRouteProfiles } from "./routeIntelligence";
 import styles from "./route-intelligence.module.css";
 
 type RouteIndexRow = {
@@ -222,6 +222,15 @@ export default function RouteIntelligenceSurface({ slug }: { slug: string }) {
   }, [contract]);
 
   const profile = useMemo(() => buildRouteProfiles(detail?.rows ?? [])[0] ?? null, [detail]);
+  const driverEvidence = useMemo(
+    () => buildRouteDriverEvidence(detail?.drivers ?? []),
+    [detail]
+  );
+  const recommendedDriver = driverEvidence[0] ?? null;
+  const routeChallenge = useMemo(
+    () => buildRouteChallengeProfile(detail?.route_metrics),
+    [detail]
+  );
   const selectedRows = useMemo(() => [...(detail?.rows ?? [])].sort((a, b) => b.service_date.localeCompare(a.service_date)).slice(0, 12), [detail]);
   const maxWeekdayStops = Math.max(1, ...(profile?.weekdays.map((item) => item.averageStops) ?? []));
 
@@ -297,6 +306,85 @@ export default function RouteIntelligenceSurface({ slug }: { slug: string }) {
                 </article>
               </section>
 
+              {profile && routeChallenge ? (
+                <section className={styles.challengePanel}>
+                  <header className={styles.sectionHead}>
+                    <div>
+                      <p>Observed route challenge</p>
+                      <h2>Density, pace, and handling load</h2>
+                      <span>Primary-driver DSW facts only. Mileage ratios use days with recorded mileage; road-hour ratios use days with recorded DOT road time.</span>
+                    </div>
+                    <small>{number(routeChallenge.operatingDays)} primary-driver day{routeChallenge.operatingDays === 1 ? "" : "s"}</small>
+                  </header>
+                  <div className={styles.challengeMetrics}>
+                    <article><span>Stops / mile</span><strong>{routeChallenge.stopsPerMile == null ? "—" : number(routeChallenge.stopsPerMile, 2)}</strong><small>{number(routeChallenge.mileageDays)} mileage days</small></article>
+                    <article><span>Packages / mile</span><strong>{routeChallenge.packagesPerMile == null ? "—" : number(routeChallenge.packagesPerMile, 2)}</strong><small>Geographic handling density</small></article>
+                    <article><span>Stops / road hr</span><strong>{routeChallenge.stopsPerRoadHour == null ? "—" : number(routeChallenge.stopsPerRoadHour, 1)}</strong><small>{number(routeChallenge.roadHourDays)} DOT-time days</small></article>
+                    <article><span>Packages / road hr</span><strong>{routeChallenge.packagesPerRoadHour == null ? "—" : number(routeChallenge.packagesPerRoadHour, 1)}</strong><small>Road-time handling pace</small></article>
+                    <article><span>Stops / duty hr</span><strong>{routeChallenge.stopsPerDutyHour == null ? "—" : number(routeChallenge.stopsPerDutyHour, 1)}</strong><small>Total on-duty pace</small></article>
+                    <article><span>Packages / duty hr</span><strong>{routeChallenge.packagesPerDutyHour == null ? "—" : number(routeChallenge.packagesPerDutyHour, 1)}</strong><small>Total on-duty handling</small></article>
+                    <article><span>Packages / stop</span><strong>{routeChallenge.packagesPerStop == null ? "—" : number(routeChallenge.packagesPerStop, 2)}</strong><small>Stop-level handling depth</small></article>
+                  </div>
+                </section>
+              ) : null}
+
+              {profile && recommendedDriver ? (
+                <section className={styles.driverEvidencePanel}>
+                  <header className={styles.sectionHead}>
+                    <div>
+                      <p>Drivers with evidence on this route</p>
+                      <h2>Route fit and operating record</h2>
+                      <span>Ranks stored DSW facts for this selected route only. PPOD, RYDE, VEDR, and safety sources remain outside this recommendation until their ingestion paths are connected.</span>
+                    </div>
+                    <small>{number(driverEvidence.length)} matched driver{driverEvidence.length === 1 ? "" : "s"}</small>
+                  </header>
+
+                  <div className={styles.driverRecommendation}>
+                    <div className={styles.recommendationRank}><span>Best current fit</span><strong>1</strong></div>
+                    <div className={styles.recommendationIdentity}>
+                      <span>Selected-route recommendation</span>
+                      <h3>{recommendedDriver.driverName}</h3>
+                      <small>{recommendedDriver.fxId ? `FX ${recommendedDriver.fxId}` : "Roster-matched DSW evidence"}</small>
+                    </div>
+                    <div className={styles.recommendationReasons}>
+                      <article><span>Route familiarity</span><strong>{number(recommendedDriver.operatingDays)} days</strong><small>{number(recommendedDriver.deliveryStops)} delivery stops observed</small></article>
+                      <article><span>Pickup reliability</span><strong>{recommendedDriver.priTier ?? "No PU sample"}</strong><small>{recommendedDriver.pri == null ? "No pickup denominator" : `PRI ${number(recommendedDriver.pri, 3)} · ${number(recommendedDriver.pickupStops)} PU stops`}</small></article>
+                      <article><span>Service evidence</span><strong>{recommendedDriver.exceptionsPer100Stops == null ? "—" : number(recommendedDriver.exceptionsPer100Stops, 1)}</strong><small>DSW exceptions per 100 stops</small></article>
+                      <article><span>Demonstrated pace</span><strong>{recommendedDriver.stopsPerDutyHour == null ? "—" : number(recommendedDriver.stopsPerDutyHour, 1)}</strong><small>Stops per duty hour</small></article>
+                    </div>
+                  </div>
+
+                  <div className={styles.driverEvidenceTable}>
+                    <div className={styles.driverEvidenceHead}><span>Rank</span><span>Driver</span><span>Days</span><span>Stops</span><span>Density</span><span>Pkg / stop</span><span>Road pace</span><span>Duty pace</span><span>Pickup PRI</span><span>Codes 85 / DNA / SA</span><span>Exceptions / 100</span><span>DOT road / duty</span></div>
+                    <div className={styles.driverEvidenceRows}>
+                      {driverEvidence.map((driver, index) => (
+                        <div key={driver.rosterMemberId}>
+                          <b className={index === 0 ? styles.bestRank : ""}>{index + 1}</b>
+                          <span className={styles.driverEvidenceIdentity}><strong>{driver.driverName}</strong><small>{driver.fxId ? `FX ${driver.fxId}` : `${date(driver.firstServiceDate, false)} – ${date(driver.lastServiceDate, false)}`}</small></span>
+                          <span>{number(driver.operatingDays)}</span>
+                          <span><strong>{number(driver.deliveryStops)}</strong><small>{number(driver.averageStops, 1)} / day</small></span>
+                          <span><strong>{driver.stopsPerMile == null ? "—" : number(driver.stopsPerMile, 2)}</strong><small>{driver.packagesPerMile == null ? "—" : `${number(driver.packagesPerMile, 2)} pkg / mi`}</small></span>
+                          <span>{driver.packagesPerStop == null ? "—" : number(driver.packagesPerStop, 2)}</span>
+                          <span><strong>{driver.stopsPerRoadHour == null ? "—" : number(driver.stopsPerRoadHour, 1)}</strong><small>{driver.packagesPerRoadHour == null ? "—" : `${number(driver.packagesPerRoadHour, 1)} pkg / hr`}</small></span>
+                          <span><strong>{driver.stopsPerDutyHour == null ? "—" : number(driver.stopsPerDutyHour, 1)}</strong><small>{driver.packagesPerDutyHour == null ? "—" : `${number(driver.packagesPerDutyHour, 1)} pkg / hr`}</small></span>
+                          <span className={driver.priTier === "T1" ? styles.warningValue : ""}><strong>{driver.priTier ?? "—"}</strong><small>{driver.pri == null ? "No sample" : number(driver.pri, 3)}</small></span>
+                          <span>{number(driver.code85)} / {number(driver.dna)} / {number(driver.sendAgain)}</span>
+                          <span>{driver.exceptionsPer100Stops == null ? "—" : number(driver.exceptionsPer100Stops, 1)}</span>
+                          <span><strong>{driver.averageRoadHours == null ? "—" : `${number(driver.averageRoadHours, 1)}h`}</strong><small>{driver.averageDutyHours == null ? "—" : `${number(driver.averageDutyHours, 1)}h duty · ${number(driver.miles / Math.max(1, driver.operatingDays))} mi`}</small></span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <footer className={styles.driverEvidenceNote}>Ordering: at least 3 primary-driver route-days, then pickup tier and PRI, lower DSW exceptions per 100 stops, stronger demonstrated duty-hour pace, and greater route familiarity. Pace never outranks pickup reliability or service quality.</footer>
+                </section>
+              ) : null}
+
+              {profile && detail && driverEvidence.length === 0 ? (
+                <section className={styles.driverEvidencePanel}>
+                  <header className={styles.sectionHead}><div><p>Drivers with evidence on this route</p><h2>No primary-driver evidence</h2><span>The selected route has no roster-matched records with primary-driver duty-hour evidence in this contract block.</span></div></header>
+                </section>
+              ) : null}
+
               {profile ? (
                 <section className={styles.recentPanel}>
                   <header className={styles.sectionHead}><div><p>Selected route record</p><h2>Recent operating days</h2><span>Driver is assignment context only; this is not a Driver Scorecard.</span></div></header>
@@ -305,7 +393,7 @@ export default function RouteIntelligenceSurface({ slug }: { slug: string }) {
                 </section>
               ) : null}
 
-              <footer className={styles.sourceNote}>General analysis: shared FINAL DSW contract-day payload. Deep dive: one selected permanent route ID, with up to 182 prior days used only to establish that route’s comparison history.</footer>
+              <footer className={styles.sourceNote}>General analysis: shared FINAL DSW contract-day payload. Deep dive: one selected permanent route ID, with up to 182 prior days used only to establish that route’s comparison history. Driver fit: typed materialized route/day facts returned inside the same selected-route report.</footer>
             </>
           ) : null}
         </article>

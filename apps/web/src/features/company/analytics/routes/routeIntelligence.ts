@@ -4,9 +4,12 @@ import type {
   RouteCapacityConfidence,
   RouteCapacityRow,
   RouteCapacityThresholdBasis,
+  RouteChallengeFact,
+  RouteDriverEvidenceFact,
   ScopedRouteFact,
 } from "../routeCapacity.types";
 import { routeCapacityNumber } from "../routeCapacity.helpers";
+import { calculatePickupReliability, type PriTier } from "../pickupReliability";
 
 export type RouteSortMode = "workload" | "volatility" | "completion";
 
@@ -73,6 +76,184 @@ export type RouteMonthSummary = {
   supplementalVolumeShare: number | null;
   heavyExtremeRouteDays: number;
 };
+
+export type RouteDriverEvidence = {
+  rosterMemberId: string;
+  driverName: string;
+  fxId: string | null;
+  employmentStatus: string | null;
+  operatingDays: number;
+  deliveryStops: number;
+  deliveryPackages: number;
+  pickupStops: number;
+  earlyPickups: number;
+  latePickups: number;
+  missedPickups: number;
+  exceptions: number;
+  code85: number;
+  dna: number;
+  sendAgain: number;
+  miles: number;
+  roadHours: number;
+  dutyHours: number;
+  observedIls: number | null;
+  firstServiceDate: string;
+  lastServiceDate: string;
+  averageStops: number;
+  packagesPerStop: number | null;
+  stopsPerMile: number | null;
+  packagesPerMile: number | null;
+  stopsPerRoadHour: number | null;
+  packagesPerRoadHour: number | null;
+  stopsPerDutyHour: number | null;
+  packagesPerDutyHour: number | null;
+  exceptionsPer100Stops: number | null;
+  averageRoadHours: number | null;
+  averageDutyHours: number | null;
+  pri: number | null;
+  priTier: PriTier | null;
+  sampleQualified: boolean;
+};
+
+export type RouteChallengeProfile = {
+  operatingDays: number;
+  mileageDays: number;
+  roadHourDays: number;
+  stopsPerMile: number | null;
+  packagesPerMile: number | null;
+  stopsPerRoadHour: number | null;
+  packagesPerRoadHour: number | null;
+  stopsPerDutyHour: number | null;
+  packagesPerDutyHour: number | null;
+  packagesPerStop: number | null;
+};
+
+export function buildRouteChallengeProfile(
+  fact: RouteChallengeFact | null | undefined
+): RouteChallengeProfile | null {
+  if (!fact) return null;
+
+  const operatingDays = routeCapacityNumber(fact.operating_days);
+  const deliveryStops = routeCapacityNumber(fact.delivery_stops);
+  const deliveryPackages = routeCapacityNumber(fact.delivery_packages);
+  const miles = routeCapacityNumber(fact.miles);
+  const mileageStops = routeCapacityNumber(fact.mileage_delivery_stops);
+  const mileagePackages = routeCapacityNumber(fact.mileage_delivery_packages);
+  const roadHours = routeCapacityNumber(fact.road_hours);
+  const roadHourStops = routeCapacityNumber(fact.road_hour_delivery_stops);
+  const roadHourPackages = routeCapacityNumber(fact.road_hour_delivery_packages);
+  const dutyHours = routeCapacityNumber(fact.duty_hours);
+
+  return {
+    operatingDays,
+    mileageDays: routeCapacityNumber(fact.mileage_days),
+    roadHourDays: routeCapacityNumber(fact.road_hour_days),
+    stopsPerMile: miles > 0 ? mileageStops / miles : null,
+    packagesPerMile: miles > 0 ? mileagePackages / miles : null,
+    stopsPerRoadHour: roadHours > 0 ? roadHourStops / roadHours : null,
+    packagesPerRoadHour: roadHours > 0 ? roadHourPackages / roadHours : null,
+    stopsPerDutyHour: dutyHours > 0 ? deliveryStops / dutyHours : null,
+    packagesPerDutyHour: dutyHours > 0 ? deliveryPackages / dutyHours : null,
+    packagesPerStop: deliveryStops > 0 ? deliveryPackages / deliveryStops : null,
+  };
+}
+
+const priTierRank: Record<PriTier, number> = {
+  T1: 1,
+  T2: 2,
+  T3: 3,
+  T4: 4,
+};
+
+export function buildRouteDriverEvidence(
+  facts: RouteDriverEvidenceFact[]
+): RouteDriverEvidence[] {
+  return facts
+    .map((fact) => {
+      const operatingDays = routeCapacityNumber(fact.operating_days);
+      const deliveryStops = routeCapacityNumber(fact.delivery_stops);
+      const deliveryPackages = routeCapacityNumber(fact.delivery_packages);
+      const pickupStops = routeCapacityNumber(fact.pickup_stops);
+      const earlyPickups = routeCapacityNumber(fact.early_pickups);
+      const latePickups = routeCapacityNumber(fact.late_pickups);
+      const missedPickups = routeCapacityNumber(fact.potential_missed_pickups);
+      const exceptions = routeCapacityNumber(fact.exceptions);
+      const roadHours = routeCapacityNumber(fact.road_hours);
+      const dutyHours = routeCapacityNumber(fact.duty_hours);
+      const miles = routeCapacityNumber(fact.miles);
+      const mileageStops = routeCapacityNumber(fact.mileage_delivery_stops);
+      const mileagePackages = routeCapacityNumber(fact.mileage_delivery_packages);
+      const roadHourStops = routeCapacityNumber(fact.road_hour_delivery_stops);
+      const roadHourPackages = routeCapacityNumber(fact.road_hour_delivery_packages);
+      const reliability = calculatePickupReliability({
+        pickupStops,
+        earlyPickups,
+        latePickups,
+        potentialMissedPickups: missedPickups,
+        complete: pickupStops > 0,
+      });
+
+      return {
+        rosterMemberId: fact.roster_member_id,
+        driverName: fact.driver_name,
+        fxId: fact.fx_id,
+        employmentStatus: fact.employment_status ?? null,
+        operatingDays,
+        deliveryStops,
+        deliveryPackages,
+        pickupStops,
+        earlyPickups,
+        latePickups,
+        missedPickups,
+        exceptions,
+        code85: routeCapacityNumber(fact.code_85),
+        dna: routeCapacityNumber(fact.dna),
+        sendAgain: routeCapacityNumber(fact.send_again),
+        miles,
+        roadHours,
+        dutyHours,
+        observedIls: fact.observed_ils == null
+          ? null
+          : routeCapacityNumber(fact.observed_ils),
+        firstServiceDate: fact.first_service_date,
+        lastServiceDate: fact.last_service_date,
+        averageStops: operatingDays > 0 ? deliveryStops / operatingDays : 0,
+        packagesPerStop: deliveryStops > 0 ? deliveryPackages / deliveryStops : null,
+        stopsPerMile: miles > 0 ? mileageStops / miles : null,
+        packagesPerMile: miles > 0 ? mileagePackages / miles : null,
+        stopsPerRoadHour: roadHours > 0 ? roadHourStops / roadHours : null,
+        packagesPerRoadHour: roadHours > 0 ? roadHourPackages / roadHours : null,
+        stopsPerDutyHour: dutyHours > 0 ? deliveryStops / dutyHours : null,
+        packagesPerDutyHour: dutyHours > 0 ? deliveryPackages / dutyHours : null,
+        exceptionsPer100Stops: deliveryStops > 0 ? exceptions / deliveryStops * 100 : null,
+        averageRoadHours: operatingDays > 0 ? roadHours / operatingDays : null,
+        averageDutyHours: operatingDays > 0 ? dutyHours / operatingDays : null,
+        pri: reliability.pri,
+        priTier: reliability.tier,
+        sampleQualified: operatingDays >= 3,
+      } satisfies RouteDriverEvidence;
+    })
+    .filter((driver) => driver.dutyHours > 0 && driver.employmentStatus?.toLowerCase() !== "former")
+    .sort((a, b) => {
+      if (a.sampleQualified !== b.sampleQualified) return a.sampleQualified ? -1 : 1;
+      if (Boolean(a.priTier) !== Boolean(b.priTier)) return a.priTier ? -1 : 1;
+      if (a.priTier && b.priTier && a.priTier !== b.priTier) {
+        return priTierRank[b.priTier] - priTierRank[a.priTier];
+      }
+      if (a.pri != null && b.pri != null && a.pri !== b.pri) return a.pri - b.pri;
+      const aExceptions = a.exceptionsPer100Stops ?? Number.POSITIVE_INFINITY;
+      const bExceptions = b.exceptionsPer100Stops ?? Number.POSITIVE_INFINITY;
+      if (aExceptions !== bExceptions) return aExceptions - bExceptions;
+      const aDutyPace = a.stopsPerDutyHour ?? Number.NEGATIVE_INFINITY;
+      const bDutyPace = b.stopsPerDutyHour ?? Number.NEGATIVE_INFINITY;
+      if (aDutyPace !== bDutyPace) return bDutyPace - aDutyPace;
+      const aPackagePace = a.packagesPerDutyHour ?? Number.NEGATIVE_INFINITY;
+      const bPackagePace = b.packagesPerDutyHour ?? Number.NEGATIVE_INFINITY;
+      if (aPackagePace !== bPackagePace) return bPackagePace - aPackagePace;
+      if (a.operatingDays !== b.operatingDays) return b.operatingDays - a.operatingDays;
+      return a.driverName.localeCompare(b.driverName);
+    });
+}
 
 const percentile = (values: number[], fraction: number) => {
   if (!values.length) return 0;

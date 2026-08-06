@@ -1,8 +1,12 @@
 import type { OperationsHistoryRow } from "../operationsHistory.types";
+import {
+  calculatePickupReliability,
+  priTier,
+  type PriTier,
+} from "../pickupReliability";
 
 export type ReportMetric = "routes" | "stops" | "packages" | "stopsPerRoute" | "packagesPerRoute" | "packagesPerStop";
 export type ReportPeriod = { key: "30" | "60" | "90" | "contract"; label: string; days: number; metrics: Record<ReportMetric, number>; change: Record<ReportMetric, number | null> };
-export type PriTier = "T1" | "T2" | "T3" | "T4";
 export type ReportWeek = { weekStart: string; weekEnd: string; isInProgress: boolean; operatingDays: number; routes: number; stops: number; packages: number; stopsPerRoute: number; packagesPerRoute: number; packagesPerStop: number; stopsChange: number | null; pickupStops: number; earlyPickups: number; latePickups: number; potentialMissedPickups: number; priComplete: boolean; weeklyPri: number | null; runningPri: number | null; runningTier: PriTier | null };
 export type ReportDay = { date: string; routes: number; stops: number; packages: number; intensity: number };
 export type OperationsReport = { periods: ReportPeriod[]; weeks: ReportWeek[]; days: ReportDay[]; narrative: string[]; throughDate: string | null; operatingDays: number };
@@ -13,33 +17,19 @@ const change = (current: number, prior: number) => prior > 0 ? (current - prior)
 const iso = (date: Date) => date.toISOString().slice(0, 10);
 const date = (value: string) => new Date(`${value.slice(0, 10)}T12:00:00Z`);
 const addDays = (value: Date, amount: number) => { const next = new Date(value); next.setUTCDate(next.getUTCDate() + amount); return next; };
-const PRI_WEIGHTS = { early: 225, late: 150, potentialMissed: 400 } as const;
-
-export function priTier(value: number | null): PriTier | null {
-  if (value == null) return null;
-  if (value < 0.17) return "T4";
-  if (value <= 0.72) return "T3";
-  if (value <= 1.1) return "T2";
-  return "T1";
-}
-
 function pickupReliability(rows: OperationsHistoryRow[]) {
   const pickupStops = rows.reduce((sum, row) => sum + n(row.actual_pickup_stops), 0);
   const earlyPickups = rows.reduce((sum, row) => sum + n(row.early_pickups), 0);
   const latePickups = rows.reduce((sum, row) => sum + n(row.late_pickups), 0);
   const potentialMissedPickups = rows.reduce((sum, row) => sum + n(row.potential_missed_pickups), 0);
   const complete = rows.length > 0 && rows.every((row) => row.pickup_reliability_complete === true);
-  const numerator = earlyPickups * PRI_WEIGHTS.early + latePickups * PRI_WEIGHTS.late + potentialMissedPickups * PRI_WEIGHTS.potentialMissed;
-
-  return {
+  return calculatePickupReliability({
     pickupStops,
     earlyPickups,
     latePickups,
     potentialMissedPickups,
     complete,
-    numerator,
-    pri: complete && pickupStops > 0 ? numerator / pickupStops : null,
-  };
+  });
 }
 
 function summarize(rows: OperationsHistoryRow[]): Record<ReportMetric, number> {

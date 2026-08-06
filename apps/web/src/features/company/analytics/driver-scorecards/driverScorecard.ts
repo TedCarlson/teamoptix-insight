@@ -3,6 +3,10 @@ import type {
   DriverScorecardIndexRow,
   ScorecardMetric,
 } from "./driverScorecard.types";
+import {
+  calculatePickupReliability,
+  type PriTier,
+} from "../pickupReliability";
 
 export function scorecardNumber(value: unknown): number {
   const parsed = Number(value);
@@ -10,33 +14,78 @@ export function scorecardNumber(value: unknown): number {
 }
 
 export type PickupContribution = {
-  status: "NO_SAMPLE" | "UNDER_REVIEW" | "SCORED";
+  status: "NO_SAMPLE" | "INCOMPLETE" | "SCORED";
   points: number | null;
   contribution: number | null;
+  pri: number | null;
+  tier: PriTier | null;
 };
+
+export function hasPickupExceptionActivity(
+  period: Pick<
+    DriverPeriodSummary,
+    "early_pickups" | "late_pickups" | "potential_missed_pickups"
+  >,
+) {
+  return (
+    scorecardNumber(period.early_pickups) > 0 ||
+    scorecardNumber(period.late_pickups) > 0 ||
+    scorecardNumber(period.potential_missed_pickups) > 0
+  );
+}
 
 export function pickupContribution(
   period: DriverPeriodSummary,
   metric: ScorecardMetric | undefined,
 ): PickupContribution {
   if (!metric || scorecardNumber(period.pickup_stops) <= 0) {
-    return { status: "NO_SAMPLE", points: null, contribution: null };
+    return {
+      status: "NO_SAMPLE",
+      points: null,
+      contribution: null,
+      pri: null,
+      tier: null,
+    };
   }
 
-  if (scorecardNumber(period.potential_missed_pickups) > 0) {
-    return { status: "UNDER_REVIEW", points: null, contribution: null };
+  const reliability = calculatePickupReliability({
+    pickupStops: period.pickup_stops,
+    earlyPickups: period.early_pickups,
+    latePickups: period.late_pickups,
+    potentialMissedPickups: period.potential_missed_pickups,
+    complete: period.pickup_reliability_complete === true,
+  });
+
+  if (reliability.pri == null || reliability.tier == null) {
+    return {
+      status: "INCOMPLETE",
+      points: null,
+      contribution: null,
+      pri: null,
+      tier: null,
+    };
   }
 
-  const failed =
-    scorecardNumber(period.early_pickups) +
-      scorecardNumber(period.late_pickups) >
-    0;
-  const points = failed ? 0 : 10;
+  const pointsByTier: Record<PriTier, number> = {
+    T4: scorecardNumber(metric.points_primary),
+    T3: scorecardNumber(metric.points_secondary),
+    T2: scorecardNumber(metric.points_tertiary),
+    T1: 0,
+  };
+  const points = pointsByTier[reliability.tier];
+  const contribution =
+    Math.round(
+      ((points / 10) * scorecardNumber(metric.contribution_weight) +
+        Number.EPSILON) *
+        1_000,
+    ) / 1_000;
 
   return {
     status: "SCORED",
     points,
-    contribution: (points / 10) * scorecardNumber(metric.contribution_weight),
+    contribution,
+    pri: reliability.pri,
+    tier: reliability.tier,
   };
 }
 
@@ -57,6 +106,10 @@ export function sourceLabel(metric: ScorecardMetric): string {
 }
 
 export function standardLabel(metric: ScorecardMetric): string {
+  if (metric.scoring_method === "PRI_TIER") {
+    return `T4 < ${scorecardNumber(metric.target_primary).toFixed(3)} (${scorecardNumber(metric.points_primary)} pts) · T3 ≤ ${scorecardNumber(metric.target_secondary).toFixed(3)} (${scorecardNumber(metric.points_secondary)} pts) · T2 ≤ ${scorecardNumber(metric.target_tertiary).toFixed(3)} (${scorecardNumber(metric.points_tertiary)} pts) · T1 > ${scorecardNumber(metric.target_tertiary).toFixed(3)} (0 pts)`;
+  }
+
   if (metric.scoring_method === "RYDE_NET") {
     return "Positive less negative survey points";
   }

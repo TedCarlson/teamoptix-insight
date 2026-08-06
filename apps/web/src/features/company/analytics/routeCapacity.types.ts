@@ -111,6 +111,55 @@ export type RouteCapacityPayload = {
 
   rows: RouteCapacityRow[];
   days: DailyRouteCapacitySummary[];
+  drivers: RouteDriverEvidenceFact[];
+  route_metrics: RouteChallengeFact | null;
+};
+
+export type RouteChallengeFact = {
+  operating_days: number | string;
+  delivery_stops: number | string;
+  delivery_packages: number | string;
+  miles: number | string;
+  mileage_days: number | string;
+  mileage_delivery_stops: number | string;
+  mileage_delivery_packages: number | string;
+  road_hours: number | string;
+  road_hour_days: number | string;
+  road_hour_delivery_stops: number | string;
+  road_hour_delivery_packages: number | string;
+  duty_hours: number | string;
+};
+
+export type RouteDriverEvidenceFact = {
+  roster_member_id: string;
+  driver_name: string;
+  fx_id: string | null;
+  employment_status?: string | null;
+  operating_days: number | string;
+  delivery_stops: number | string;
+  delivery_packages: number | string;
+  pickup_stops: number | string;
+  pickup_packages: number | string;
+  early_pickups: number | string;
+  late_pickups: number | string;
+  potential_missed_pickups: number | string;
+  exceptions: number | string;
+  code_85: number | string;
+  dna: number | string;
+  send_again: number | string;
+  required_signature: number | string;
+  miles: number | string;
+  mileage_days: number | string;
+  mileage_delivery_stops: number | string;
+  mileage_delivery_packages: number | string;
+  road_hours: number | string;
+  road_hour_days: number | string;
+  road_hour_delivery_stops: number | string;
+  road_hour_delivery_packages: number | string;
+  duty_hours: number | string;
+  observed_ils: number | string | null;
+  first_service_date: string;
+  last_service_date: string;
 };
 
 export type ScopedRouteFact = {

@@ -5,6 +5,8 @@ import { deriveRouteCapacityFromHistory } from "@/features/company/analytics/rou
 import type {
   RouteCapacityPayload,
   RouteCapacityRow,
+  RouteChallengeFact,
+  RouteDriverEvidenceFact,
   ScopedRouteFact,
 } from "@/features/company/analytics/routeCapacity.types";
 
@@ -93,7 +95,7 @@ export async function GET(
     }
 
     const { data, error } = await sb.rpc(
-      "get_company_route_intelligence_detail",
+      "get_company_route_intelligence_bundle",
       {
         p_company_id: company.id,
         p_route_baseline_id: routeId,
@@ -109,9 +111,18 @@ export async function GET(
       );
     }
 
+    const bundle = data && typeof data === "object" && !Array.isArray(data)
+      ? data as { route_days?: unknown; drivers?: unknown; route_metrics?: unknown }
+      : {};
     const rows = deriveRouteCapacityFromHistory(
-      Array.isArray(data) ? (data as ScopedRouteFact[]) : []
+      Array.isArray(bundle.route_days) ? bundle.route_days as ScopedRouteFact[] : []
     ).filter((row: RouteCapacityRow) => row.service_date >= startDate);
+    const drivers = Array.isArray(bundle.drivers)
+      ? bundle.drivers as RouteDriverEvidenceFact[]
+      : [];
+    const routeMetrics = bundle.route_metrics && typeof bundle.route_metrics === "object" && !Array.isArray(bundle.route_metrics)
+      ? bundle.route_metrics as RouteChallengeFact
+      : null;
 
     const payload: RouteCapacityPayload = {
       range: {
@@ -120,6 +131,8 @@ export async function GET(
       },
       rows,
       days: summarizeRouteCapacityByDay(rows),
+      drivers,
+      route_metrics: routeMetrics,
     };
 
     return NextResponse.json(payload, {

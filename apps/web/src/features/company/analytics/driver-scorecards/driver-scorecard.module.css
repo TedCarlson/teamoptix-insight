@@ -258,8 +258,20 @@
 .connectedValue {
   color: #087a50;
 }
+.exceptionMetricValue {
+  color: #b45309;
+}
 .zeroValue {
   color: #b42318;
+}
+.metricResult strong,
+.metricResult small {
+  display: block;
+}
+.metricResult small {
+  margin-top: 3px;
+  color: #7a8494;
+  font-size: 8px;
 }
 .incompleteTotal {
   color: #b45309;
@@ -434,6 +446,11 @@
   border-color: #a7d8c5;
   background: #f5fbf8;
 }
+.kpiGrid .pickupExceptionKpi {
+  border-color: #e8b66d;
+  background: #fff8eb;
+  box-shadow: inset 3px 0 0 #d97706;
+}
 .operatingLens,
 .costLens {
   margin: 0 20px 16px;
@@ -479,6 +496,13 @@
   margin-top: 5px;
   font-size: 15px;
 }
+.operatingLens article.pickupExceptionField {
+  background: #fff8eb;
+  box-shadow: inset 3px 0 0 #d97706;
+}
+.operatingLens article.pickupExceptionField strong {
+  color: #b45309;
+}
 .evidencePanel {
   margin: 0 20px 20px;
 }
@@ -493,16 +517,41 @@
 .evidenceHead,
 .evidenceTable > div:last-child > div {
   display: grid;
-  grid-template-columns: 80px minmax(130px, 1fr) 70px 80px 60px 90px 75px 65px;
-  gap: 7px;
+  grid-template-columns:
+    minmax(70px, 90px)
+    minmax(110px, 180px)
+    minmax(60px, 1fr)
+    minmax(70px, 1fr)
+    minmax(40px, 0.65fr)
+    minmax(72px, 1fr)
+    minmax(56px, 0.8fr)
+    minmax(74px, 1.1fr)
+    minmax(52px, 0.8fr);
+  gap: 6px;
   align-items: center;
-  min-width: 760px;
+  min-width: 710px;
+}
+.pickupExceptionValue {
+  width: fit-content;
+  padding: 4px 7px;
+  border-radius: 5px;
+  background: #fff2d8;
+  color: #9a4f08;
+  font-weight: 900;
+}
+.dailyPri strong,
+.dailyPri small {
+  display: block;
+}
+.dailyPri small {
+  margin-top: 2px;
+  font-size: 9px;
 }
 .evidenceHead {
-  padding: 8px 14px;
+  padding: 10px 14px;
   background: #f8fafc;
   color: #667085;
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 900;
   text-transform: uppercase;
 }
@@ -510,10 +559,17 @@
   padding: 0 14px 10px;
 }
 .evidenceTable > div:last-child > div {
-  min-height: 39px;
+  min-height: 46px;
   border-bottom: 1px solid #edf0f4;
   color: #475467;
-  font-size: 9px;
+  font-size: 11px;
+}
+.evidenceTable > div:last-child > div > strong {
+  color: #344054;
+  font-size: 11px;
+}
+.evidenceTable .dailyPri strong {
+  font-size: 11px;
 }
 .methodology {
   margin-top: 20px;

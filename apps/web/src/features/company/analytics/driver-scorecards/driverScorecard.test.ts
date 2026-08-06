@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  hasPickupExceptionActivity,
   pickupContribution,
   privatePublicationIdentity,
   standardLabel,
@@ -22,6 +23,9 @@ const period = (
   early_pickups: 0,
   late_pickups: 0,
   potential_missed_pickups: 0,
+  pickup_reliability_complete: true,
+  pickup_pri: 0,
+  pickup_pri_tier: "T4",
   exceptions: 0,
   code_85: 0,
   dna: 0,
@@ -39,36 +43,65 @@ const pickupMetric = {
   display_name: "Pickups",
   category_key: "SERVICE",
   contribution_weight: 18,
-  scoring_method: "BINARY_ZERO",
-  target_primary: 0,
-  target_secondary: null,
-  target_tertiary: null,
+  scoring_method: "PRI_TIER",
+  target_primary: 0.17,
+  target_secondary: 0.72,
+  target_tertiary: 1.1,
   points_primary: 10,
-  points_secondary: null,
-  points_tertiary: null,
+  points_secondary: 5,
+  points_tertiary: 3,
   source_mode: "WAREHOUSE",
   enabled: true,
   sort_order: 70,
 } satisfies ScorecardMetric;
 
 describe("driver scorecard warehouse foundation", () => {
-  it("awards the seeded pickup contribution only with a clean observed sample", () => {
+  it("distinguishes clean pickup records from exception activity", () => {
+    expect(hasPickupExceptionActivity(period())).toBe(false);
+    expect(
+      hasPickupExceptionActivity(period({ early_pickups: 1 })),
+    ).toBe(true);
+    expect(
+      hasPickupExceptionActivity(period({ late_pickups: 1 })),
+    ).toBe(true);
+    expect(
+      hasPickupExceptionActivity(period({ potential_missed_pickups: 1 })),
+    ).toBe(true);
+  });
+
+  it("applies the Operations PRI formula and tier contribution", () => {
     expect(pickupContribution(period(), pickupMetric)).toEqual({
       status: "SCORED",
       points: 10,
       contribution: 18,
+      pri: 0,
+      tier: "T4",
     });
     expect(
       pickupContribution(period({ late_pickups: 1 }), pickupMetric)
         .contribution,
     ).toBe(0);
+    expect(
+      pickupContribution(
+        period({ pickup_stops: 1_000, early_pickups: 1 }),
+        pickupMetric,
+      ),
+    ).toMatchObject({ pri: 0.225, tier: "T3", contribution: 9 });
+    expect(
+      pickupContribution(
+        period({ pickup_stops: 1_000, potential_missed_pickups: 2 }),
+        pickupMetric,
+      ),
+    ).toMatchObject({ pri: 0.8, tier: "T2", contribution: 5.4 });
   });
 
-  it("does not score provisional missed pickups", () => {
+  it("does not publish PRI when the underlying DSW split is incomplete", () => {
     expect(
-      pickupContribution(period({ potential_missed_pickups: 1 }), pickupMetric)
-        .status,
-    ).toBe("UNDER_REVIEW");
+      pickupContribution(
+        period({ pickup_reliability_complete: false }),
+        pickupMetric,
+      ).status,
+    ).toBe("INCOMPLETE");
   });
 
   it("reports only genuinely connected score weight", () => {
@@ -92,7 +125,9 @@ describe("driver scorecard warehouse foundation", () => {
   });
 
   it("turns seeded rules into plain-language contribution standards", () => {
-    expect(standardLabel(pickupMetric)).toBe("0 confirmed failures");
+    expect(standardLabel(pickupMetric)).toBe(
+      "T4 < 0.170 (10 pts) · T3 ≤ 0.720 (5 pts) · T2 ≤ 1.100 (3 pts) · T1 > 1.100 (0 pts)",
+    );
     expect(
       standardLabel({
         ...pickupMetric,
