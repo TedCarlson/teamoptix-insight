@@ -200,6 +200,7 @@
 .scenarioCard h3 { margin: 10px 0 13px; font-size: 17px; letter-spacing: -.02em; }
 .targetLine { display: flex; align-items: baseline; gap: 7px; }
 .targetLine strong { font-size: 35px; line-height: 1; letter-spacing: -.04em; }
+.scenarioCard:last-child .targetLine strong { font-size: 31px; }
 .targetLine span { color: #4f5d72; font-size: 11px; font-weight: 700; }
 .targetLine i { margin-left: auto; color: #687487; font-size: 10px; font-style: normal; }
 .scenarioCard p { margin: 8px 0 0; color: #626f82; font-size: 10px; line-height: 1.45; }

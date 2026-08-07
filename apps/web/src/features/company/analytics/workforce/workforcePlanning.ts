@@ -25,6 +25,10 @@ export type WorkforcePlanScenario = {
   driverDays: number;
   operatingDays: number;
   planningRoutesPerDay: number;
+  planningRoutesLow: number | null;
+  planningRoutesHigh: number | null;
+  targetLow: number | null;
+  targetHigh: number | null;
   explanation: string;
 };
 
@@ -35,6 +39,7 @@ export type WorkforcePlan = {
   peakWindowEnd: string | null;
   recentPlanningRoutesPerDay: number;
   peakPlanningRoutesPerDay: number;
+  peakMaximumRoutesPerDay: number;
   observedOperatingDaysPerWeek: number;
   coverageFactor: number;
   evidenceCoverageFactor: number | null;
@@ -141,8 +146,22 @@ function makeScenario(input: Omit<WorkforcePlanScenario, "target" | "evidenceTar
     driverDays: input.driverDays,
     operatingDays: input.operatingDays,
     planningRoutesPerDay: input.planningRoutesPerDay,
+    planningRoutesLow: input.planningRoutesLow,
+    planningRoutesHigh: input.planningRoutesHigh,
+    targetLow: input.targetLow,
+    targetHigh: input.targetHigh,
     explanation: input.explanation,
   } satisfies WorkforcePlanScenario;
+}
+
+export function calculateWorkforceTarget(
+  routesPerDay: number,
+  operatingDays: number,
+  driverDays: number,
+  coverageFactor: number
+) {
+  if (routesPerDay <= 0 || operatingDays <= 0 || driverDays <= 0 || coverageFactor <= 0) return 0;
+  return Math.ceil((routesPerDay * operatingDays * coverageFactor) / driverDays);
 }
 
 export function buildWorkforcePlan(
@@ -169,6 +188,9 @@ export function buildWorkforcePlan(
   }, null) ?? recentWeeks;
   const peakRows = peakWindow.flatMap((week) => week.rows);
   const peakPlanningRoutesPerDay = average(peakRows.map((row) => row.routes));
+  const peakMaximumRoutesPerDay = peakRows.length
+    ? Math.max(...peakRows.map((row) => row.routes))
+    : peakPlanningRoutesPerDay;
 
   const recordedMonths = monthly.filter((month) => month.scheduled_assignments > 0 && month.scheduled_days > 0);
   const scheduledAssignments = recordedMonths.reduce((sum, month) => sum + month.scheduled_assignments, 0);
@@ -190,6 +212,7 @@ export function buildWorkforcePlan(
     peakWindowEnd: peakWindow.at(-1)?.end ?? null,
     recentPlanningRoutesPerDay,
     peakPlanningRoutesPerDay,
+    peakMaximumRoutesPerDay,
     observedOperatingDaysPerWeek,
     coverageFactor: DEFAULT_COVERAGE_FACTOR,
     evidenceCoverageFactor,
@@ -206,6 +229,10 @@ export function buildWorkforcePlan(
         driverDays: 5,
         operatingDays: bauOperatingDays,
         planningRoutesPerDay: recentPlanningRoutesPerDay,
+        planningRoutesLow: null,
+        planningRoutesHigh: null,
+        targetLow: null,
+        targetHigh: null,
         coverageFactor: DEFAULT_COVERAGE_FACTOR,
         evidenceCoverageFactor,
         explanation: "Each active driver supplies five route-days; relief is retained for observed absences.",
@@ -220,6 +247,10 @@ export function buildWorkforcePlan(
         driverDays: 6,
         operatingDays: bauOperatingDays,
         planningRoutesPerDay: recentPlanningRoutesPerDay,
+        planningRoutesLow: null,
+        planningRoutesHigh: null,
+        targetLow: null,
+        targetHigh: null,
         coverageFactor: DEFAULT_COVERAGE_FACTOR,
         evidenceCoverageFactor,
         explanation: "Shows the smaller roster possible when every active driver carries a sixth day.",
@@ -227,16 +258,20 @@ export function buildWorkforcePlan(
       makeScenario({
         key: "peak",
         eyebrow: "Seasonal ramp",
-        label: "7-day peak plan",
+        label: "Peak staffing range",
         current: activeDrivers,
         noticeDepartures: routeReadyNoticeDepartures,
         projectedCurrent: Math.max(0, activeDrivers - routeReadyNoticeDepartures),
-        driverDays: 5,
+        driverDays: 6,
         operatingDays: 7,
-        planningRoutesPerDay: peakPlanningRoutesPerDay,
+        planningRoutesPerDay: peakMaximumRoutesPerDay,
+        planningRoutesLow: peakPlanningRoutesPerDay,
+        planningRoutesHigh: peakMaximumRoutesPerDay,
+        targetLow: calculateWorkforceTarget(peakPlanningRoutesPerDay, 7, 6, DEFAULT_COVERAGE_FACTOR),
+        targetHigh: calculateWorkforceTarget(peakMaximumRoutesPerDay, 7, 6, DEFAULT_COVERAGE_FACTOR),
         coverageFactor: DEFAULT_COVERAGE_FACTOR,
         evidenceCoverageFactor,
-        explanation: "Seven service days are covered while individual drivers remain on a five-day standard.",
+        explanation: "Observed sustained Peak average through the highest route day, with drivers planned across six days.",
       }),
     ],
   };

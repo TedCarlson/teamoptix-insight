@@ -162,6 +162,11 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
       match: (path) => path.startsWith(`${analyticsBase}/workforce`),
     },
     {
+      label: "Peak Planning",
+      href: `${analyticsBase}/peak-planning`,
+      match: (path) => path.startsWith(`${analyticsBase}/peak-planning`),
+    },
+    {
       label: "Driver Scorecards",
       href: `${analyticsBase}/driver-scorecards`,
       match: (path) =>

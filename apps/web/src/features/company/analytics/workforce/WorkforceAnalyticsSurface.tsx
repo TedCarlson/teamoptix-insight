@@ -104,6 +104,14 @@ function formatMonth(value: string) {
 }
 
 function scenarioDelta(scenario: WorkforcePlanScenario) {
+  if (scenario.key === "peak" && scenario.targetLow != null && scenario.targetHigh != null) {
+    if (scenario.projectedCurrent < scenario.targetLow) {
+      return `${scenario.status === "critical" ? "Critical · " : ""}${scenario.targetLow - scenario.projectedCurrent} below sustained demand · ${scenario.targetHigh - scenario.projectedCurrent} below max-day readiness`;
+    }
+    if (scenario.projectedCurrent <= scenario.targetHigh) {
+      return `Inside observed range · ${scenario.targetHigh - scenario.projectedCurrent} below max-day readiness`;
+    }
+  }
   if (scenario.delta < 0) return `${scenario.status === "critical" ? "Critical · " : ""}${Math.abs(scenario.delta)} drivers below target`;
   if (scenario.delta === 0) return "At target";
   return scenario.status === "heavy"
@@ -322,14 +330,16 @@ export default function WorkforceAnalyticsSurface({ slug }: { slug: string }) {
                         </div>
                         <h3>{scenario.label}</h3>
                         <div className={styles.targetLine}>
-                          <strong>{formatNumber(scenario.target)}</strong>
-                          <span>target drivers</span>
+                          <strong>{scenario.targetLow != null && scenario.targetHigh != null
+                            ? `${formatNumber(scenario.targetLow)}–${formatNumber(scenario.targetHigh)}`
+                            : formatNumber(scenario.target)}</strong>
+                          <span>{scenario.key === "peak" ? "driver range" : "target drivers"}</span>
                           <i>vs {formatNumber(scenario.projectedCurrent)} {scenario.noticeDepartures ? "projected" : "current"}</i>
                         </div>
                         <p className={styles.delta}>{scenarioDelta(scenario)}</p>
                         <div className={styles.readinessMeter}>
                           <i><b style={{ width: `${Math.min(100, scenario.readinessPercent)}%` }} /></i>
-                          <span>{formatNumber(scenario.readinessPercent, 0)}% of target staffed</span>
+                          <span>{formatNumber(scenario.readinessPercent, 0)}% of {scenario.key === "peak" ? "max-day target" : "target"} staffed</span>
                         </div>
                         <p>{scenario.explanation}</p>
                         <div className={styles.evidenceTarget}>
@@ -337,7 +347,9 @@ export default function WorkforceAnalyticsSurface({ slug }: { slug: string }) {
                           <strong>{scenario.evidenceTarget == null ? "Building history" : `${formatNumber(scenario.evidenceTarget)} drivers`}</strong>
                           <small>{workforcePlan.evidenceCoverageFactor == null ? "Schedule and absence record needed" : `${workforcePlan.evidenceCoverageFactor.toFixed(3)} observed factor`}</small>
                         </div>
-                        <small>{formatNumber(scenario.planningRoutesPerDay, 1)} routes/day · {scenario.operatingDays} service days · {scenario.driverDays} days/driver · {workforcePlan.coverageFactor.toFixed(3)} coverage</small>
+                        <small>{scenario.planningRoutesLow != null && scenario.planningRoutesHigh != null
+                          ? `${formatNumber(scenario.planningRoutesLow, 1)} average–${formatNumber(scenario.planningRoutesHigh, 1)} max routes/day`
+                          : `${formatNumber(scenario.planningRoutesPerDay, 1)} routes/day`} · {scenario.operatingDays} service days · {scenario.driverDays} days/driver · {workforcePlan.coverageFactor.toFixed(3)} coverage</small>
                       </article>
                     ))}
                   </div>
@@ -349,8 +361,8 @@ export default function WorkforceAnalyticsSurface({ slug }: { slug: string }) {
                     </div>
                     <div>
                       <span>Sustained peak</span>
-                      <strong>{formatNumber(workforcePlan.peakPlanningRoutesPerDay, 1)} routes/day</strong>
-                      <small>Average inside strongest 5-week block · {formatDate(workforcePlan.peakWindowStart)} – {formatDate(workforcePlan.peakWindowEnd)}</small>
+                      <strong>{formatNumber(workforcePlan.peakPlanningRoutesPerDay, 1)} avg · {formatNumber(workforcePlan.peakMaximumRoutesPerDay, 1)} max routes/day</strong>
+                      <small>Range inside strongest 5-week block · {formatDate(workforcePlan.peakWindowStart)} – {formatDate(workforcePlan.peakWindowEnd)}</small>
                     </div>
                     <div>
                       <span>Coverage reserve</span>
@@ -359,7 +371,7 @@ export default function WorkforceAnalyticsSurface({ slug }: { slug: string }) {
                     </div>
                   </div>
                   <p className={styles.formula}>
-                    <strong>How the targets are calculated:</strong> both use average required routes/day × service days ÷ driver days/week × coverage factor, rounded up. The planning benchmark uses 1.125; company evidence uses its observed scheduled-assignment loss from PTO, call-outs, and no-shows. Readiness below 85% is critical, 85–99% is light, 100–110% is optimal, and above 110% is heavy.
+                    <strong>How the targets are calculated:</strong> required routes/day × service days ÷ driver days/week × coverage factor, rounded up. BAU uses its recent average; Peak shows the sustained average through the highest observed route day in its strongest five-week block and plans six driver-days across seven service days. The planning benchmark uses 1.125; company evidence uses its observed scheduled-assignment loss from PTO, call-outs, and no-shows. Readiness below 85% is critical, 85–99% is light, 100–110% is optimal, and above 110% is heavy.
                   </p>
                 </section>
               ) : null}

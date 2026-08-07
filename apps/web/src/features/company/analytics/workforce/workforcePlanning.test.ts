@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OperationsHistoryRow } from "../operationsHistory.types";
-import { buildWorkforcePlan } from "./workforcePlanning";
+import { buildWorkforcePlan, calculateWorkforceTarget } from "./workforcePlanning";
 
 function row(serviceDate: string, routes: number): OperationsHistoryRow {
   return { service_date: serviceDate, route_count: routes } as OperationsHistoryRow;
@@ -26,8 +26,13 @@ describe("buildWorkforcePlan", () => {
     expect(plan.observedOperatingDaysPerWeek).toBe(6);
     expect(plan.scenarios[0].target).toBe(32);
     expect(plan.scenarios[0].status).toBe("light");
-    expect(plan.scenarios[2].target).toBe(37);
-    expect(plan.scenarios[2].status).toBe("critical");
+    expect(plan.peakPlanningRoutesPerDay).toBe(23);
+    expect(plan.peakMaximumRoutesPerDay).toBe(25);
+    expect(plan.scenarios[2].targetLow).toBe(31);
+    expect(plan.scenarios[2].targetHigh).toBe(33);
+    expect(plan.scenarios[2].target).toBe(33);
+    expect(plan.scenarios[2].driverDays).toBe(6);
+    expect(plan.scenarios[2].status).toBe("light");
   });
 
   it("uses scheduled absences as an observed availability factor", () => {
@@ -58,6 +63,11 @@ describe("buildWorkforcePlan", () => {
     expect(plan.scenarios[1].target).toBe(25);
     expect(plan.scenarios[0].evidenceTarget).toBeNull();
     expect(plan.scenarios[0].readinessPercent).toBeCloseTo(96.67, 2);
+  });
+
+  it("plans Peak from the sustained average through the observed maximum on six driver days", () => {
+    expect(calculateWorkforceTarget(24.6, 7, 6, 1.125)).toBe(33);
+    expect(calculateWorkforceTarget(32, 7, 6, 1.125)).toBe(42);
   });
 
   it("keeps current headcount visible while planning against known notice departures", () => {
