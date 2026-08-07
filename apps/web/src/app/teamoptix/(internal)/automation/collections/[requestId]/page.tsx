@@ -226,6 +226,7 @@ export default async function Page({ params }: { params: Promise<{ requestId: st
     { data: runtime },
     { data: artifactRuntime },
     { data: runtimeEvents },
+    { data: runnerLogs, error: runnerLogError },
   ] = await Promise.all([
     db
       .from("operations_collection_artifact_v")
@@ -247,6 +248,12 @@ export default async function Page({ params }: { params: Promise<{ requestId: st
       .select("*")
       .eq("collection_request_id", requestId)
       .order("occurred_at", { ascending: true }),
+    db
+      .from("operations_runner_log_event_v")
+      .select("*")
+      .eq("cycle_id", requestId)
+      .order("sequence", { ascending: true })
+      .limit(1000),
   ]);
 
   if (error) throw new Error(error.message);
@@ -261,6 +268,13 @@ export default async function Page({ params }: { params: Promise<{ requestId: st
     String(request.request_status).toUpperCase()
   );
   const terminalReceipt = objectValue(request.output_receipt_json);
+  const runnerLogRows = runnerLogs ?? [];
+  const runnerErrorCount = runnerLogRows.filter(
+    (event: any) => String(event.level).toUpperCase() === "ERROR"
+  ).length;
+  const runnerWarningCount = runnerLogRows.filter(
+    (event: any) => String(event.level).toUpperCase() === "WARN"
+  ).length;
   const receiptError = objectValue(terminalReceipt?.error);
   const failureEvidence = objectValue(receiptError?.evidence);
   const receiptDiagnostics = objectValue(terminalReceipt?.diagnostics);
@@ -446,6 +460,68 @@ export default async function Page({ params }: { params: Promise<{ requestId: st
           ) : null}
         </section>
       ) : null}
+
+      <section style={{ ...card, padding: 0, overflow: "hidden" }}>
+        <div
+          style={{
+            padding: "18px 20px 14px",
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 16,
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <span style={{ color: "#009b77", fontSize: 11, fontWeight: 900, letterSpacing: ".1em", textTransform: "uppercase" }}>
+              Failure audit
+            </span>
+            <h2 style={{ margin: "5px 0 4px", color: "#17233d" }}>Runner failure evidence</h2>
+            <p style={{ margin: 0, color: "#60708a", maxWidth: 760 }}>
+              A bounded sanitized trace is retained only when a run fails or ends without a terminal acknowledgement.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
+            <div><small>Events</small><strong style={{ display: "block" }}>{runnerLogRows.length}</strong></div>
+            <div><small>Warnings</small><strong style={{ display: "block", color: runnerWarningCount ? "#9a6700" : "inherit" }}>{runnerWarningCount}</strong></div>
+            <div><small>Errors</small><strong style={{ display: "block", color: runnerErrorCount ? "#b91c1c" : "inherit" }}>{runnerErrorCount}</strong></div>
+          </div>
+        </div>
+        {runnerLogRows.length ? (
+          <div style={{ ...tableViewport, borderLeft: 0, borderRight: 0, borderBottom: 0, borderRadius: 0, maxHeight: 560 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 840 }}>
+              <thead>
+                <tr>
+                  <th style={stickyTh}>Time</th>
+                  <th style={stickyTh}>Level</th>
+                  <th style={stickyTh}>Source</th>
+                  <th style={stickyTh}>Message</th>
+                </tr>
+              </thead>
+              <tbody>
+                {runnerLogRows.map((event: any) => {
+                  const level = String(event.level ?? "INFO").toUpperCase();
+                  const levelColor = level === "ERROR" ? "#b91c1c" : level === "WARN" ? "#9a6700" : "#2563eb";
+                  return (
+                    <tr key={event.id} style={{ background: level === "ERROR" ? "#fff7f7" : undefined }}>
+                      <td style={{ ...td, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{timeOnly(event.occurred_at)}</td>
+                      <td style={{ ...td, color: levelColor, fontWeight: 900 }}>{level}</td>
+                      <td style={{ ...td, whiteSpace: "nowrap", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12 }}>{event.stream}</td>
+                      <td style={{ ...td, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{event.message}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p style={{ margin: 0, padding: "0 20px 20px", color: runnerLogError ? "#9a6700" : "#60708a" }}>
+            {runnerLogError
+              ? "Runner failure-audit storage is not available yet. Existing collection evidence remains unchanged."
+              : "No runner failure audit was recorded. The terminal receipt is the authoritative success evidence for healthy runs."}
+          </p>
+        )}
+      </section>
 
       {terminalReceipt ? (
         <section style={{ ...card }}>
