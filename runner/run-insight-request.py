@@ -128,7 +128,7 @@ def infer_report_identity(filename: str) -> dict:
         return {
             "artifact_key": "DRO_PACKAGE_DETAIL",
             "report_family_key": "DRO",
-            "report_shape_key": "DRO_PACKAGE_DETAIL",
+            "report_shape_key": None,
             "report_frame": None,
             "display_filename": "package_detail.csv",
         }

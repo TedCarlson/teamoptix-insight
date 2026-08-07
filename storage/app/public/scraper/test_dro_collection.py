@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, call, patch
 
 import dro_collection
 
@@ -40,6 +40,39 @@ class DroCollectionTests(unittest.TestCase):
                 dro_collection._download_snapshot(folder),
                 {str(csv_path.resolve())},
             )
+
+    @patch.object(dro_collection, "WebDriverWait")
+    @patch.object(dro_collection.EC, "element_to_be_clickable")
+    def test_csv_export_targets_blob_download_anchor(
+        self,
+        element_to_be_clickable,
+        webdriver_wait,
+    ):
+        driver = Mock()
+        export = Mock()
+        condition = object()
+        element_to_be_clickable.return_value = condition
+        webdriver_wait.return_value.until.return_value = export
+
+        dro_collection._click_csv_export(driver)
+
+        element_to_be_clickable.assert_called_once_with(
+            (
+                dro_collection.By.CSS_SELECTOR,
+                dro_collection.DRO_CSV_EXPORT_SELECTOR,
+            )
+        )
+        webdriver_wait.assert_called_once_with(driver, 45)
+        webdriver_wait.return_value.until.assert_called_once_with(condition)
+        driver.execute_script.assert_has_calls(
+            [
+                call(
+                    "arguments[0].scrollIntoView({block: 'center'});",
+                    export,
+                ),
+                call("arguments[0].click();", export),
+            ]
+        )
 
     def test_post_login_wait_ignores_still_visible_login_state(self):
         driver = StateDriver(["LOGIN", "SELECTION"])

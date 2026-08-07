@@ -17,6 +17,10 @@ from runtime_events import emit_runtime_event
 DRO_LOGIN_URL = "https://dro.routesmart.com/login"
 DRO_SERVICE_AREA = os.environ.get("FCMS_DRO_SERVICE_AREA", "").strip()
 DRO_BUSINESS_NAME = os.environ.get("FCMS_DRO_BUSINESS_NAME", "").strip()
+DRO_CSV_EXPORT_SELECTOR = (
+    ".table-header__csv-search .csv-icon > "
+    "a[download$='.csv'][href^='blob:']"
+)
 
 
 def _normalized_xpath_literal(value: str) -> str:
@@ -134,26 +138,10 @@ def _open_package_detail_report(driver) -> None:
 
 
 def _click_csv_export(driver) -> None:
-    export_xpath = (
-        "//*[self::button or self::a or @role='button']"
-        "["
-        "contains(translate(@title, 'abcdefghijklmnopqrstuvwxyz', "
-        "'ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 'EXPORT TO CSV')"
-        " or contains(translate(@aria-label, 'abcdefghijklmnopqrstuvwxyz', "
-        "'ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 'EXPORT TO CSV')"
-        " or contains(translate(normalize-space(.), "
-        "'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'), "
-        "'EXPORT TO CSV')"
-        "]"
-        " | //img["
-        "contains(translate(@title, 'abcdefghijklmnopqrstuvwxyz', "
-        "'ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 'EXPORT TO CSV')"
-        " or contains(translate(@alt, 'abcdefghijklmnopqrstuvwxyz', "
-        "'ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 'EXPORT TO CSV')"
-        "]"
-    )
     export = WebDriverWait(driver, 45).until(
-        EC.element_to_be_clickable((By.XPATH, export_xpath))
+        EC.element_to_be_clickable(
+            (By.CSS_SELECTOR, DRO_CSV_EXPORT_SELECTOR)
+        )
     )
     driver.execute_script(
         "arguments[0].scrollIntoView({block: 'center'});",

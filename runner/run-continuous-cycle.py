@@ -19,10 +19,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from runner_log_evidence import RunnerLogEvidence
+
 
 APP_DIR = Path(__file__).resolve().parents[1]
 LEGACY_RUNNER_PATH = APP_DIR / "runner" / "run-insight-request.py"
 DONOR_RUNNER = APP_DIR / "runner" / "run-donor-once.sh"
+RUNNER_LOG_OUTBOX_DIR = APP_DIR / "runtime" / "runner-log-outbox"
 
 
 def load_legacy_runner():
@@ -45,7 +48,8 @@ REPORT_TARGETS: dict[str, dict[str, Any]] = {
         "label": "DRO · Package Detail",
         "artifact_key": "DRO_PACKAGE_DETAIL",
         "report_family_key": "DRO",
-        "report_shape_key": "DRO_PACKAGE_DETAIL",
+        "report_shape_key": None,
+        "report_frame": None,
         "runner_section": "DRO",
         "service_area": os.environ.get(
             "FCMS_DRO_SERVICE_AREA", ""
@@ -288,6 +292,24 @@ def sanitize_diagnostic_value(value: Any) -> Any:
     return value
 
 
+def diagnostic_level(line: str) -> str:
+    normalized = line.lower()
+    if any(
+        marker in normalized
+        for marker in (
+            "traceback (most recent call last)",
+            "exception:",
+            "error:",
+            " failed",
+            "failure",
+        )
+    ):
+        return "ERROR"
+    if any(marker in normalized for marker in (" warning", "warn:", "deferred")):
+        return "WARN"
+    return "INFO"
+
+
 def failure_evidence(
     *,
     donor_exit_code: int,
@@ -508,6 +530,7 @@ def cycle_exception_evidence(
 
 def execute_donor(
     environment: dict[str, str],
+    log_evidence: RunnerLogEvidence | None = None,
 ) -> tuple[int, list[dict[str, Any]], list[dict[str, Any]], str]:
     stages: list[dict[str, Any]] = []
     lane_timings: list[dict[str, Any]] = []
@@ -529,6 +552,14 @@ def execute_donor(
         print(line, end="")
         output_tail.append(line.strip())
         output_tail = output_tail[-80:]
+
+        sanitized_line = sanitize_diagnostic_line(line)
+        if log_evidence and sanitized_line:
+            log_evidence.append(
+                sanitized_line,
+                level=diagnostic_level(sanitized_line),
+                stream="DONOR",
+            )
 
         marker = parse_runtime_marker(line)
         if marker:
@@ -737,9 +768,40 @@ def main() -> int:
     }
     environment = child_environment(args, request)
 
+    delivered_outboxes, deferred_outboxes = RunnerLogEvidence.drain(
+        outbox_dir=RUNNER_LOG_OUTBOX_DIR,
+        rpc=RUNNER.rpc,
+        exclude_cycle_id=cycle_id,
+    )
+    log_evidence = RunnerLogEvidence(
+        outbox_dir=RUNNER_LOG_OUTBOX_DIR,
+        runner_key=args.runner_key,
+        cycle_id=cycle_id,
+        request_type=args.request_type,
+        service_date=args.service_date,
+        rpc=RUNNER.rpc,
+    )
+    log_evidence.append(
+        "Collection cycle started.",
+        stream="CONTINUOUS",
+        metadata={
+            "company_slug": args.company_slug,
+            "request_type": args.request_type,
+            "reports": reports,
+            "recovered_outboxes": delivered_outboxes,
+            "deferred_outboxes": deferred_outboxes,
+        },
+    )
+
     started_at = time.time()
     donor_exit_code, stages, lane_timings, output_tail = execute_donor(
-        environment
+        environment,
+        log_evidence,
+    )
+    log_evidence.append(
+        f"Collector exited with status {donor_exit_code}.",
+        level="INFO" if donor_exit_code == 0 else "ERROR",
+        stream="CONTINUOUS",
     )
     event_types = {
         str(stage.get("event_type") or "")
@@ -760,8 +822,23 @@ def main() -> int:
     upload_error: str | None = None
     try:
         artifacts, upload_metrics = upload_artifacts(request, started_at)
+        log_evidence.append(
+            f"Artifact handoff prepared {len(artifacts)} file(s).",
+            stream="HANDOFF",
+            metadata={
+                "artifact_count": len(artifacts),
+                "artifact_keys": [
+                    artifact.get("artifact_key") for artifact in artifacts
+                ],
+            },
+        )
     except Exception as exc:
         upload_error = str(exc)
+        log_evidence.append(
+            f"Artifact handoff failed: {exc}",
+            level="ERROR",
+            stream="HANDOFF",
+        )
 
     completed_at = time.time()
     exception_evidence = cycle_exception_evidence(stages)
@@ -875,10 +952,26 @@ def main() -> int:
     if args.request_type != "DRO_AM":
         terminal_params["p_request_type"] = args.request_type
 
-    terminal = RUNNER.rpc(
-        terminal_rpc,
-        terminal_params,
-        timeout_seconds=60,
+    try:
+        terminal = RUNNER.rpc(
+            terminal_rpc,
+            terminal_params,
+            timeout_seconds=60,
+        )
+    except Exception as exc:
+        log_evidence.append(
+            f"Terminal receipt submission failed: {exc}",
+            level="ERROR",
+            stream="HANDOFF",
+        )
+        log_evidence.flush()
+        raise
+
+    log_evidence.append(
+        f"Terminal receipt accepted with outcome {outcome}.",
+        level="INFO" if outcome == "COMPLETE" else "ERROR",
+        stream="HANDOFF",
+        metadata={"artifact_count": len(artifacts)},
     )
     print(
         json.dumps(
@@ -892,6 +985,16 @@ def main() -> int:
             indent=2,
         )
     )
+
+    failure_audit_required = (
+        donor_exit_code != 0
+        or upload_error is not None
+        or outcome != "COMPLETE"
+    )
+    if failure_audit_required:
+        log_evidence.flush()
+    else:
+        log_evidence.discard()
 
     if outcome == "COMPLETE":
         trigger_ingest(cycle_id)
