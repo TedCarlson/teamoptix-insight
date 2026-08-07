@@ -1,103 +1,19 @@
 import { createHash } from "node:crypto";
 import * as XLSX from "xlsx";
+import {
+  DRO_AM_HEADERS,
+  detectDroPackageDetailWorkbook,
+  droCellText,
+  normalizeDroRow,
+  normalizeDroWaNumber,
+  parseDroRows,
+} from "./dro.parser";
 
 type ArtifactRow = {
   service_date: string | null;
   size_bytes: number | null;
   runner_artifact_json?: Record<string, unknown> | null;
 };
-
-type ParsedRow = Record<string, unknown>;
-
-const DRO_AM_HEADERS = [
-  "SERVICE AREA",
-  "WA NAME",
-  "WA #",
-  "ROUTE TYPE",
-  "CAPACITY",
-  "TIME",
-  "DISTANCE",
-  "TOTAL STOPS",
-  "TIME CRITICAL",
-  "MISSED TIME CRT.",
-  "Delivery - STOPS",
-  "Delivery - PKGS.",
-];
-
-function cellText(value: unknown) {
-  return String(value ?? "").trim();
-}
-
-function normalizeHeader(value: unknown) {
-  return cellText(value)
-    .replace(/^\uFEFF/, "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .replace(/\s+#/g, "#")
-    .trim();
-}
-
-function normalizeWaNumber(value: unknown) {
-  const text = cellText(value);
-  const normalized = text.replace(/^0+/, "");
-  return normalized || text;
-}
-
-function rowHasHeaders(row: unknown[], headers: string[]) {
-  const normalized = new Set(row.map(normalizeHeader).filter(Boolean));
-  return headers.every((header) => normalized.has(normalizeHeader(header)));
-}
-
-function findHeaderRow(rows: unknown[][], headers: string[]) {
-  return rows.findIndex((row) => rowHasHeaders(row, headers));
-}
-
-function toNumber(value: unknown) {
-  const text = cellText(value).replace(/,/g, "");
-  if (!text) return null;
-  const parsed = Number(text);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function toInteger(value: unknown) {
-  const parsed = toNumber(value);
-  return parsed === null ? null : Math.trunc(parsed);
-}
-
-function objectRows(rows: unknown[][], headerIndex: number) {
-  const headers = (rows[headerIndex] ?? []).map(cellText);
-  return rows
-    .slice(headerIndex + 1)
-    .map((row, offset) => {
-      const raw: ParsedRow = {};
-      headers.forEach((header, index) => {
-        if (header) raw[header] = row[index] ?? "";
-      });
-      return { source_row_index: headerIndex + 2 + offset, raw };
-    })
-    .filter(({ raw }) =>
-      Object.values(raw).some((value) => Boolean(cellText(value)))
-    );
-}
-
-function normalizeDroAm(raw: ParsedRow) {
-  return {
-    wa_name: cellText(raw["WA NAME"]),
-    wa_number: cellText(raw["WA #"]),
-    route_type: cellText(raw["ROUTE TYPE"]),
-    distance: toNumber(raw["DISTANCE"]),
-    planned_time: toNumber(raw["TIME"]),
-    time_commits: toInteger(raw["TIME CRITICAL"]) ?? 0,
-    lp_stops: toInteger(raw["TOTAL STOPS"]) ?? 0,
-    lp_packages: toInteger(raw["Delivery - PKGS."]) ?? 0,
-    bulk_stops: 0,
-    bulk_packages: 0,
-    small_stops: 0,
-    small_packages: 0,
-    reg_stops: 0,
-    reg_packages: 0,
-  };
-}
 
 export async function ingestDroPackageDetailWorkbook(params: {
   supabase: any;
@@ -115,23 +31,20 @@ export async function ingestDroPackageDetailWorkbook(params: {
     artifact,
     uploadedByProfileId = null,
   } = params;
-  const serviceDate = cellText(artifact.service_date);
+  const serviceDate = droCellText(artifact.service_date);
   if (!serviceDate) {
     throw new Error("DRO Package Detail artifact is missing its service date.");
   }
 
   const workbook = XLSX.read(buffer, { type: "buffer", cellDates: false });
-  const sheetName = workbook.SheetNames[0];
-  if (!sheetName) throw new Error("DRO Package Detail workbook has no sheets.");
-
-  const rows = XLSX.utils.sheet_to_json<unknown[]>(
-    workbook.Sheets[sheetName],
-    { header: 1, blankrows: true, defval: "" }
-  );
-  const headerIndex = findHeaderRow(rows, DRO_AM_HEADERS);
-  if (headerIndex < 0) {
+  const detected = detectDroPackageDetailWorkbook(workbook);
+  if (!detected) {
     throw new Error("DRO Package Detail signature headers were not detected.");
   }
+  if (detected.frame !== "AM") {
+    throw new Error("Automated DRO Package Detail ingestion requires the AM report.");
+  }
+  const { sheetName, rows, headerIndex } = detected;
 
   const { data: company, error: companyError } = await supabase
     .from("companies")
@@ -142,14 +55,13 @@ export async function ingestDroPackageDetailWorkbook(params: {
     throw new Error(companyError?.message ?? "Company not found.");
   }
 
-  const { data: ownershipRows, error: ownershipError } = await supabase
-    .from("company_contract_config")
-    .select("*")
-    .eq("company_id", company.id)
-    .eq("status", "ACTIVE")
-    .lte("effective_start_date", serviceDate)
-    .or(`effective_end_date.is.null,effective_end_date.gte.${serviceDate}`)
-    .order("effective_start_date", { ascending: false });
+  const { data: ownershipRows, error: ownershipError } = await supabase.rpc(
+    "get_active_company_contract_config",
+    {
+      p_company_slug: slug,
+      p_service_date: serviceDate,
+    }
+  );
   if (ownershipError) throw new Error(ownershipError.message);
 
   const ownership = ownershipRows?.[0] ?? null;
@@ -168,20 +80,20 @@ export async function ingestDroPackageDetailWorkbook(params: {
     .or(`effective_end.is.null,effective_end.gte.${serviceDate}`);
   if (routeError) throw new Error(routeError.message);
 
-  const parsedRows = objectRows(rows, headerIndex).filter(
-    ({ raw }) => cellText(raw["WA NAME"]) || cellText(raw["WA #"])
+  const parsedRows = parseDroRows(rows, headerIndex).filter(
+    ({ raw }) => droCellText(raw["WA NAME"]) || droCellText(raw["WA #"])
   );
   const stagedRows = parsedRows.map(({ raw, source_row_index }) => {
-    const dro = normalizeDroAm(raw);
+    const dro = normalizeDroRow(raw, "AM");
     const routeMatch =
       routeRows?.find(
         (row: any) =>
-          normalizeWaNumber(row.current_wa_num) ===
-          normalizeWaNumber(dro.wa_number)
+          normalizeDroWaNumber(row.current_wa_num) ===
+          normalizeDroWaNumber(dro.wa_number)
       ) ??
       routeRows?.find(
         (row: any) =>
-          cellText(row.route_name).toLowerCase() ===
+          droCellText(row.route_name).toLowerCase() ===
           dro.wa_name.toLowerCase()
       ) ??
       null;
@@ -198,8 +110,8 @@ export async function ingestDroPackageDetailWorkbook(params: {
         service_area: ownership.service_area,
         route_baseline_id: routeMatch?.id ?? null,
         route_match_method: routeMatch
-          ? normalizeWaNumber(routeMatch.current_wa_num) ===
-            normalizeWaNumber(dro.wa_number)
+          ? normalizeDroWaNumber(routeMatch.current_wa_num) ===
+            normalizeDroWaNumber(dro.wa_number)
             ? "WA_NUMBER"
             : "ROUTE_NAME"
           : "NONE",
