@@ -28,9 +28,15 @@ export type ManifestRouteHealthCard = {
   express: {
     package_count: number;
     stop_count: number;
-    completed_package_count: number;
-    incomplete_package_count: number;
-    tracking_gap_package_count: number;
+    complete_package_count: number;
+    attempted_package_count: number;
+    open_package_count: number;
+    data_health: {
+      tracking_identity_missing_count: number;
+      stop_link_missing_count: number;
+      stop_link_ambiguous_count: number;
+      reference_match_available: boolean;
+    };
     residential_package_count: number;
     signature_package_count: number;
     hazmat_package_count: number;
@@ -371,16 +377,19 @@ function buildCombinedManifest(detail: RouteDetailPayload) {
     );
     const hasOpen = evidenceStates.includes("OPEN");
     const hasCodedAttempt = evidenceStates.includes("CODED_ATTEMPT");
-    const hasTrackingGap = evidenceStates.includes("NEEDS_ATTENTION");
+    const hasDataHealthIssue = packages.some((packageRow) => {
+      const dataHealth = packageRow.delivery_data_health;
+      return Array.isArray(dataHealth) && dataHealth.length > 0;
+    });
     const hasCompleteEvidence = evidenceStates.every(
       (state) => state === "COMPLETED"
     );
     const attention =
       unmanifested ||
       !packageLinked ||
-      hasTrackingGap ||
+      hasDataHealthIssue ||
       !evidenceStates.every((state) =>
-        ["OPEN", "CODED_ATTEMPT", "COMPLETED", "NEEDS_ATTENTION"].includes(
+        ["OPEN", "CODED_ATTEMPT", "COMPLETED"].includes(
           state
         )
       );
@@ -747,7 +756,7 @@ function RouteManifestDetail(props: {
                           ? "OPEN"
                         : evidenceState === "COMPLETED"
                           ? "COMPLETED"
-                          : "NEEDS ATTENTION";
+                          : "EVIDENCE UNAVAILABLE";
                     const evidenceColor =
                       evidenceState === "CODED_ATTEMPT"
                         ? "#c2410c"

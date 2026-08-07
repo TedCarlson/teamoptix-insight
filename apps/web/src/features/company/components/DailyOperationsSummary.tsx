@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
+import { ExpressProgressSignal } from "@/features/operations/express/ExpressProgressSignal";
 
 type CalendarStatus = "final" | "in_day" | "inactive" | "empty";
 
@@ -35,9 +36,13 @@ type SummaryPayload = {
     potential_missed_pickups: number;
     express: {
       package_count: number;
-      completed_package_count: number;
+      complete_package_count: number;
+      attempted_package_count: number;
       open_package_count: number;
-      tracking_gap_package_count: number;
+      tracking_identity_missing_count: number;
+      stop_link_missing_count: number;
+      stop_link_ambiguous_count: number;
+      reference_match_available: boolean;
     };
   };
   dispatch_actions: DispatchAction[];
@@ -94,7 +99,7 @@ type WatchlistItem = {
       tracking_id: string | null;
       st_number: string | null;
       sid: string | null;
-      signal_state: "OPEN" | "TRACKING_GAP" | "COMPLETED";
+      signal_state: "OPEN" | "CODED_ATTEMPT" | "COMPLETED";
     }>;
   };
 };
@@ -462,18 +467,44 @@ function workflowForSignal(signalType: string): WatchlistWorkflow {
       noteType: "ACTION",
       notePrompt: "Record the tracking IDs reviewed, confirmed disposition, and any terminal or driver follow-up.",
     },
-    EXPRESS_TRACKING_GAP: {
-      title: "Reconcile the Express stop-link gap",
-      objective: "Determine why the package has no matching completion link. The package remains provisionally treated as delivered until contrary evidence is found.",
+    EXPRESS_ATTEMPTED: {
+      title: "Review attempted Express packages",
+      objective: "Confirm the final disposition of each Express package carrying an All Codes attempt signal but no completion evidence.",
       steps: [
-        "Review the tracking ID and manifest identifiers below.",
-        "Compare the package with the authoritative tracking or terminal record.",
-        "Correct the source linkage or record the confirmed disposition.",
-        "Resolve as a tracking gap, source-data error, or verified service failure.",
+        "Review each attempted package in the evidence list.",
+        "Confirm its final disposition with the driver or authoritative terminal record.",
+        "Record the outcome and any escalation or coaching response.",
+        "Resolve after completion or service-failure evidence is confirmed.",
+      ],
+      recommendedState: "IN_PROGRESS",
+      noteType: "ACTION",
+      notePrompt: "Record the attempted tracking IDs reviewed, confirmed disposition, and required follow-up.",
+    },
+    EXPRESS_DATA_QUALITY: {
+      title: "Repair Express evidence linkage",
+      objective: "Correct missing or ambiguous stop linkage without changing the package performance state.",
+      steps: [
+        "Review the affected manifest identifiers and stop candidates.",
+        "Correct the route or stop linkage in the authoritative source.",
+        "Reprocess the manifest evidence and verify the health count clears.",
+        "Resolve as corrected operationally or source-data error.",
       ],
       recommendedState: "IN_PROGRESS",
       noteType: "CORRECTION",
-      notePrompt: "Record the tracking IDs reconciled, the authoritative result, and any linkage correction required.",
+      notePrompt: "Record the affected identifiers, linkage correction, and reprocessing result.",
+    },
+    EXPRESS_EVIDENCE_UNAVAILABLE: {
+      title: "Restore Express evidence availability",
+      objective: "Restore the protected manifest-to-All-Codes reference pass before interpreting Open volume.",
+      steps: [
+        "Confirm the latest delivery manifest and All Codes artifacts are present.",
+        "Re-run the protected reference attachment pass.",
+        "Verify the Express invariant and reference availability flag.",
+        "Resolve only after all operational surfaces show the same totals.",
+      ],
+      recommendedState: "IN_PROGRESS",
+      noteType: "CORRECTION",
+      notePrompt: "Record the source artifacts, repair action, and verified Complete / Attempted / Open totals.",
     },
     EARLY_LATE_PICKUPS: {
       title: "Review early and late pickup execution",
@@ -622,7 +653,7 @@ function WatchlistDrawer(props: {
               {isClosed ? <label className="ops-watch-field">Outcome
                 <select value={resolutionClass} onChange={(event) => setResolutionClass(event.target.value)}>
               <option value="">Choose the verified outcome</option>
-              {["SERVICE_FAILURE_CONFIRMED", "CORRECTED_OPERATIONALLY", "TRACKING_GAP", "SOURCE_DATA_ERROR", "NO_ACTION_REQUIRED", "ESCALATED_EXTERNALLY"].map((value) => <option key={value} value={value}>{prettyStatus(value)}</option>)}
+              {["SERVICE_FAILURE_CONFIRMED", "CORRECTED_OPERATIONALLY", "SOURCE_DATA_ERROR", "NO_ACTION_REQUIRED", "ESCALATED_EXTERNALLY"].map((value) => <option key={value} value={value}>{prettyStatus(value)}</option>)}
                 </select>
               </label> : null}
             </div>
@@ -864,9 +895,13 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
   const potentialMissedPickups = n(payload?.time_critical?.potential_missed_pickups);
   const express = payload?.time_critical?.express ?? {
     package_count: 0,
-    completed_package_count: 0,
+    complete_package_count: 0,
+    attempted_package_count: 0,
     open_package_count: 0,
-    tracking_gap_package_count: 0,
+    tracking_identity_missing_count: 0,
+    stop_link_missing_count: 0,
+    stop_link_ambiguous_count: 0,
+    reference_match_available: true,
   };
   const pickupVariance = actPuStops - puStops;
   const selectedWatchlistItem = watchlist.find((item) => item.id === selectedItemId) ?? null;
@@ -955,13 +990,27 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
                 <KpiCard label="Delivery packages" value={`${fmt(actDelPkgs)} / ${fmt(vscan)}`} detail="Completed / tendered" tone={actDelPkgs >= vscan ? "good" : "data"} />
                 <KpiCard label="Pickups" value={`${fmt(actPuStops)} / ${fmt(puStops)}`} detail={`${fmt(actPuPkgs)} packages · ${pickupVariance >= 0 ? "+" : ""}${fmt(pickupVariance)} stops`} tone={potentialMissedPickups ? "risk" : pickupVariance < 0 ? "watch" : "good"} />
                 <KpiCard label="ILS" value={`${fmt(ilsPercent, 1)}%`} detail={`${fmt(ils)} impact packages`} tone={ilsPercent >= 99.5 ? "good" : "risk"} />
-                <KpiCard label="Express" value={`${fmt(express.open_package_count)} open`} detail={`${fmt(express.tracking_gap_package_count)} gaps / ${fmt(express.package_count)} total`} tone={express.open_package_count ? "watch" : express.tracking_gap_package_count ? "risk" : "good"} />
+                <ExpressProgressSignal
+                  progress={{
+                    total: express.package_count,
+                    complete: express.complete_package_count,
+                    attempted: express.attempted_package_count,
+                    open: express.open_package_count,
+                  }}
+                  dataHealth={{
+                    trackingIdentityMissing: express.tracking_identity_missing_count,
+                    stopLinkMissing: express.stop_link_missing_count,
+                    stopLinkAmbiguous: express.stop_link_ambiguous_count,
+                    referenceMatchAvailable: express.reference_match_available,
+                  }}
+                  compact
+                />
               </section>
 
               <ReportSection title="Time-critical execution">
                 <div className="daily-operations-critical" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
-                  <SignalRow tone={express.open_package_count ? "watch" : "clear"} title={`Express · ${fmt(express.completed_package_count)} of ${fmt(express.package_count)} delivered or provisionally delivered`} detail={`${fmt(express.open_package_count)} manifest-linked incomplete packages. Incomplete status and tracking-link gaps remain separate.`} />
-                  <SignalRow tone={express.tracking_gap_package_count ? "risk" : "clear"} title={`Express tracking · ${fmt(express.tracking_gap_package_count)} gaps`} detail="A tracking gap is not presumed to be an undelivered package; it requires evidence review." />
+                  <SignalRow tone={express.open_package_count || express.attempted_package_count ? "watch" : "clear"} title={`Express · ${fmt(express.complete_package_count)} Complete · ${fmt(express.attempted_package_count)} Attempted · ${fmt(express.open_package_count)} Open`} detail={`${fmt(express.package_count)} total premium-service packages. Each package appears in exactly one state.`} />
+                  <SignalRow tone={!express.reference_match_available || express.tracking_identity_missing_count || express.stop_link_missing_count || express.stop_link_ambiguous_count ? "risk" : "clear"} title={`Express evidence · ${express.reference_match_available ? "Available" : "Unavailable"}`} detail={`${fmt(express.tracking_identity_missing_count)} missing tracking identities · ${fmt(express.stop_link_missing_count)} missing stop links · ${fmt(express.stop_link_ambiguous_count)} ambiguous links. Data health is separate from delivery state.`} />
                   <SignalRow tone={earlyLatePickups ? "watch" : "clear"} title={`Pickup timing · ${fmt(earlyLatePickups)} early / late`} detail="DSW E/L pickup events that need timing review." />
                   <SignalRow tone={potentialMissedPickups ? "risk" : "clear"} title={`Potential missed pickups · ${fmt(potentialMissedPickups)}`} detail="DSW potential-miss signal. Validate against pickup execution before closing." />
                   <SignalRow tone={pickupVariance < 0 ? "watch" : "clear"} title={`Pickup coverage · ${fmt(actPuStops)} actual / ${fmt(puStops)} planned`} detail={`${pickupVariance >= 0 ? "+" : ""}${fmt(pickupVariance)} stop variance; ${fmt(actPuPkgs)} pickup packages.`} />

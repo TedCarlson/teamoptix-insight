@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
+import { loadExpressEvidence } from "@/features/operations/express/loadExpressEvidence";
 
 export const runtime = "nodejs";
 
@@ -48,6 +50,7 @@ function currentDispatchActions(value: unknown) {
 export async function GET(req: NextRequest, context: RouteContext) {
   const { slug } = await context.params;
   const supabase = await getSupabaseServerClient();
+  const serviceRole = createSupabaseServiceRoleClient();
   const url = new URL(req.url);
   const serviceDate = text(url.searchParams.get("date")) || addDaysIso(todayNyIso(), -1);
 
@@ -77,21 +80,21 @@ export async function GET(req: NextRequest, context: RouteContext) {
     return Number.isFinite(parsed) ? parsed : 0;
   };
 
-  const { data: expressRows } = await supabase
-    .from("operations_manifest_express_route_signal_v")
-    .select("route_key, package_count, completed_package_count, open_package_count, tracking_gap_package_count")
-    .eq("company_id", company.id)
-    .eq("service_date", serviceDate);
-
-  const express = (expressRows ?? []).reduce(
-    (total, row) => ({
-      package_count: total.package_count + number(row.package_count),
-      completed_package_count: total.completed_package_count + number(row.completed_package_count),
-      open_package_count: total.open_package_count + number(row.open_package_count),
-      tracking_gap_package_count: total.tracking_gap_package_count + number(row.tracking_gap_package_count),
-    }),
-    { package_count: 0, completed_package_count: 0, open_package_count: 0, tracking_gap_package_count: 0 }
-  );
+  let expressSnapshot;
+  try {
+    expressSnapshot = await loadExpressEvidence({
+      companyId: company.id,
+      serviceDate,
+      manifestClient: serviceRole,
+      statusClient: serviceRole,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: `Unable to load Express evidence: ${error instanceof Error ? error.message : "Unknown error"}` },
+      { status: 500 }
+    );
+  }
+  const express = expressSnapshot.totals;
 
   const signals: Array<{
     key: string;
@@ -136,31 +139,54 @@ export async function GET(req: NextRequest, context: RouteContext) {
     value: ilsPercent,
   });
 
-  for (const row of expressRows ?? []) {
+  for (const row of expressSnapshot.routes) {
     const routeKey = text(row.route_key) || "UNASSIGNED";
     const open = number(row.open_package_count);
-    const gaps = number(row.tracking_gap_package_count);
+    const attempted = number(row.attempted_package_count);
+    const identityMissing = number(row.tracking_identity_missing_count);
+    const stopLinkMissing = number(row.stop_link_missing_count);
+    const stopLinkAmbiguous = number(row.stop_link_ambiguous_count);
+    const dataQualityCount = identityMissing + stopLinkMissing + stopLinkAmbiguous;
     if (open > 0) signals.push({
       key: `EXPRESS_OPEN:${routeKey}`,
       type: "EXPRESS_OPEN",
       title: `Open Express · ${routeKey}`,
-      detail: `${open} Express package${open === 1 ? " is" : "s are"} linked to a manifest stop whose completion status is not complete.`,
+      detail: `${open} Express package${open === 1 ? " has" : "s have"} no completion or current attempt evidence.`,
       source: "MANIFEST",
       severity: "CRITICAL",
       value: open,
       route: routeKey,
     });
-    if (gaps > 0) signals.push({
-      key: `EXPRESS_TRACKING_GAP:${routeKey}`,
-      type: "EXPRESS_TRACKING_GAP",
-      title: `Express tracking gap · ${routeKey}`,
-      detail: `${gaps} Express package${gaps === 1 ? " lacks" : "s lack"} an independently verifiable completion link.`,
+    if (attempted > 0) signals.push({
+      key: `EXPRESS_ATTEMPTED:${routeKey}`,
+      type: "EXPRESS_ATTEMPTED",
+      title: `Attempted Express · ${routeKey}`,
+      detail: `${attempted} Express package${attempted === 1 ? " has" : "s have"} current All Codes attempt evidence and remain incomplete.`,
+      source: "ALL_CODES",
+      severity: "WATCH",
+      value: attempted,
+      route: routeKey,
+    });
+    if (dataQualityCount > 0) signals.push({
+      key: `EXPRESS_DATA_QUALITY:${routeKey}`,
+      type: "EXPRESS_DATA_QUALITY",
+      title: `Express data quality · ${routeKey}`,
+      detail: `${identityMissing} missing tracking identities · ${stopLinkMissing} missing stop links · ${stopLinkAmbiguous} ambiguous stop links.`,
       source: "MANIFEST",
       severity: "RISK",
-      value: gaps,
+      value: dataQualityCount,
       route: routeKey,
     });
   }
+  if (!express.reference_match_available) signals.push({
+    key: "EXPRESS_EVIDENCE_UNAVAILABLE",
+    type: "EXPRESS_EVIDENCE_UNAVAILABLE",
+    title: "Express All Codes evidence unavailable",
+    detail: "Manifest volume remains visible, but Complete | Attempted | Open matching is not fully available in this runtime.",
+    source: "SYSTEM",
+    severity: "RISK",
+    value: express.package_count,
+  });
 
   // Materialize stable operational signals for company administrators. Read-only
   // users still receive the report even when the governed write is not allowed.

@@ -9,6 +9,8 @@ import {
   dedupeDeliveryManifestPackages,
   dedupeDeliveryManifestStops,
 } from "@/features/operations/manifests/deliveryManifest.dedupe";
+import { trackingReference } from "@/features/operations/reports/dsw/packageStatus/packageStatus.crypto";
+import { packageEvidenceConfigurationAvailable } from "@/features/operations/reports/dsw/packageStatus/packageStatus.evidence";
 
 type SupabaseClientLike = any;
 
@@ -251,6 +253,36 @@ async function processDeliveryArtifact(params: {
 
   if (replaceError) throw new Error(replaceError.message);
 
+  let attachedTrackingReferenceCount = 0;
+  if (packageEvidenceConfigurationAvailable()) {
+    const referenceRows = packageRows.rows
+      .filter((row) => Boolean(row.tracking_id?.trim()))
+      .map((row) => ({
+        tracking_id: row.tracking_id.trim(),
+        ...trackingReference({
+          companyId: artifact.company_id,
+          trackingId: row.tracking_id,
+        }),
+      }));
+    const { data: attachedCount, error: referenceError } = await supabase.rpc(
+      "attach_operations_delivery_manifest_tracking_refs",
+      { p_artifact_id: artifact.id, p_rows: referenceRows }
+    );
+    if (referenceError) throw new Error(referenceError.message);
+    attachedTrackingReferenceCount = Number(attachedCount ?? 0);
+  }
+
+  const { error: snapshotError } = await supabase.rpc(
+    "record_operations_express_progress_snapshot",
+    {
+      p_company_id: artifact.company_id,
+      p_service_date: artifact.service_date,
+      p_source_family: "DELIVERY_MANIFEST",
+      p_source_reference: artifact.id,
+    }
+  );
+  if (snapshotError) throw new Error(snapshotError.message);
+
   return {
     inserted_stop_count: Number(replaceResult?.delivery_stop_count ?? 0),
     inserted_package_count: Number(replaceResult?.delivery_package_count ?? 0),
@@ -263,6 +295,7 @@ async function processDeliveryArtifact(params: {
       parsed_row_count: parsed.packageDetail.parsedRowCount,
       skipped_row_count: parsed.packageDetail.skippedRowCount,
       express_package_count: parsed.packageDetail.rows.filter((row) => row.is_express).length,
+      attached_tracking_reference_count: attachedTrackingReferenceCount,
     },
     deduplication: {
       duplicate_stop_count: stopRows.duplicateCount,

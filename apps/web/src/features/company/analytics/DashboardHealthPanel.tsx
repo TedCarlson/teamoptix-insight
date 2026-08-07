@@ -278,11 +278,13 @@ export default function DashboardHealthPanel({
               ? "Manifest coverage emerging"
               : express.open_packages > 0
                 ? `${number(express.open_packages)} open packages`
-                : "No open package signal"}
+                : Number(express.attempted_packages ?? 0) > 0
+                  ? `${number(Number(express.attempted_packages ?? 0))} attempted packages`
+                  : "No open package signal"}
           </strong>
           <small>
             {express?.available
-              ? `${number(express.packages)} Express packages · ${number(express.coverage_days)} recent manifest days`
+              ? `${number(Number(express.complete_packages ?? 0))} Complete · ${number(Number(express.attempted_packages ?? 0))} Attempted · ${number(express.open_packages)} Open · ${number(express.coverage_days)} days`
               : "Express is manifest-derived and is not inferred from DSW"}
           </small>
         </div>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 
 export const runtime = "nodejs";
 type RouteContext = { params: Promise<{ slug: string }> };
@@ -19,6 +20,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
   if ("error" in result) return result.error;
   const serviceDate = req.nextUrl.searchParams.get("date") ?? "";
   const { supabase, company } = result;
+  const serviceRole = createSupabaseServiceRoleClient();
   const { data: items, error } = await supabase
     .from("operations_watchlist_item_v")
     .select("*")
@@ -32,10 +34,10 @@ export async function GET(req: NextRequest, context: RouteContext) {
     ? await supabase.from("operations_watchlist_note_v").select("*").in("watchlist_item_id", itemIds).order("created_at", { ascending: true })
     : { data: [] };
   const expressItems = (items ?? []).filter((item) =>
-    item.signal_type === "EXPRESS_OPEN" || item.signal_type === "EXPRESS_TRACKING_GAP"
+    item.signal_type === "EXPRESS_OPEN" || item.signal_type === "EXPRESS_ATTEMPTED"
   );
   const { data: expressEvidence, error: expressEvidenceError } = expressItems.length
-    ? await supabase
+    ? await serviceRole
         .from("operations_manifest_express_package_signal_v")
         .select("route_key, route_label, tracking_id, st_number, sid, signal_state")
         .eq("company_id", company.id)
@@ -53,7 +55,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
         ? {
             packages: (expressEvidence ?? []).filter((entry) =>
               entry.route_key === item.route_key
-              && entry.signal_state === (item.signal_type === "EXPRESS_OPEN" ? "OPEN" : "TRACKING_GAP")
+              && entry.signal_state === (item.signal_type === "EXPRESS_OPEN" ? "OPEN" : "CODED_ATTEMPT")
             ),
           }
         : { packages: [] },

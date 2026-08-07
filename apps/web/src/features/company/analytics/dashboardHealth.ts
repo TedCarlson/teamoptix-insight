@@ -123,6 +123,8 @@ export type DashboardExpressContext = {
   available: boolean;
   coverage_days: number;
   packages: number;
+  complete_packages?: number;
+  attempted_packages?: number;
   open_packages: number;
 };
 
@@ -488,6 +490,8 @@ export function buildDashboardHealth(
       : "healthy";
   const expressStatus: DashboardHealthStatus = express?.available && express.open_packages > 0
     ? "critical"
+    : express?.available && numeric(express.attempted_packages) > 0
+      ? "watch"
     : express?.available
       ? "healthy"
       : "emerging";
@@ -550,7 +554,14 @@ export function buildDashboardHealth(
       key: "express",
       level: "critical",
       title: "Close current Express exposure",
-      detail: `${express.open_packages} incomplete Express package${express.open_packages === 1 ? " is" : "s are"} visible across ${express.coverage_days} recent manifest days. Express is a bounded manifest signal, separate from the DSW history pull.`,
+      detail: `${numeric(express.complete_packages)} Complete · ${numeric(express.attempted_packages)} Attempted · ${express.open_packages} Open across ${express.coverage_days} recent manifest days. Each package is counted in exactly one state.`,
+    });
+  } else if (express?.available && numeric(express.attempted_packages) > 0) {
+    suggestions.push({
+      key: "express_attempted",
+      level: "watch",
+      title: "Review attempted Express packages",
+      detail: `${numeric(express.attempted_packages)} Express package${numeric(express.attempted_packages) === 1 ? " has" : "s have"} current All Codes attempt evidence and remain incomplete.`,
     });
   }
   if (!suggestions.length) {

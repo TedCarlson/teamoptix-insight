@@ -22,7 +22,7 @@ describe("DSW package evidence classification", () => {
     }
   });
 
-  it("separates current coded, completed, and tracking-gap packages", () => {
+  it("separates attempted, complete, and open packages while reporting identity health", () => {
     const companyId = "company-a";
     const codedReference = trackingReference({
       companyId,
@@ -61,7 +61,7 @@ describe("DSW package evidence classification", () => {
 
     expect(
       packages.map((row) => row.delivery_evidence_state)
-    ).toEqual(["CODED_ATTEMPT", "COMPLETED", "NEEDS_ATTENTION"]);
+    ).toEqual(["CODED_ATTEMPT", "COMPLETED", "OPEN"]);
     expect(packages[0]).toMatchObject({
       status_code_source: "STAR",
       vsa_status_code: null,
@@ -70,9 +70,13 @@ describe("DSW package evidence classification", () => {
     });
     expect(expressEvidenceCountsByRoute(packages).get("BPV 01")).toEqual({
       package_count: 3,
-      completed_package_count: 1,
+      complete_package_count: 1,
+      attempted_package_count: 1,
       open_package_count: 1,
-      tracking_gap_package_count: 1,
+      tracking_identity_missing_count: 1,
+      stop_link_missing_count: 0,
+      stop_link_ambiguous_count: 0,
+      reference_match_available: true,
     });
   });
 
@@ -143,8 +147,9 @@ describe("DSW package evidence classification", () => {
     ]);
 
     expect(packages[0]).toMatchObject({
-      delivery_evidence_state: "NEEDS_ATTENTION",
+      delivery_evidence_state: "OPEN",
       delivery_evidence_basis: "EVIDENCE_CONFIGURATION_REQUIRED",
+      delivery_data_health: ["REFERENCE_MATCH_UNAVAILABLE"],
     });
     expect(packages[1]).toMatchObject({
       delivery_evidence_state: "COMPLETED",
@@ -152,9 +157,13 @@ describe("DSW package evidence classification", () => {
     });
     expect(expressEvidenceCountsByRoute(packages).get("BPV 01")).toEqual({
       package_count: 2,
-      completed_package_count: 1,
-      open_package_count: 0,
-      tracking_gap_package_count: 1,
+      complete_package_count: 1,
+      attempted_package_count: 0,
+      open_package_count: 1,
+      tracking_identity_missing_count: 0,
+      stop_link_missing_count: 0,
+      stop_link_ambiguous_count: 0,
+      reference_match_available: false,
     });
   });
 });

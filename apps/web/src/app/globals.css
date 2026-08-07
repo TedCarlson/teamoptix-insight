@@ -775,10 +775,15 @@ h1 {
   width: 100%;
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr) 300px;
+  grid-template-areas: "workforce queue right";
   gap: 10px;
   align-items: start;
   margin-top: 10px;
 }
+
+.dispatch-workforce-rail { grid-area: workforce; }
+.dispatch-route-queue { grid-area: queue; }
+.dispatch-right-column { grid-area: right; }
 
 .dispatch-status-strip {
   display: flex;
@@ -1716,6 +1721,24 @@ h1 {
 @media (max-width: 1200px) {
   .dispatch-grid {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "queue"
+      "workforce"
+      "right";
+  }
+
+  .dispatch-route-row__signals {
+    grid-template-columns: minmax(230px, 1fr) minmax(210px, 0.9fr) !important;
+  }
+}
+
+@media (max-width: 860px) {
+  .dispatch-route-row:not(.dispatch-route-row--labels) {
+    grid-template-columns: 32px minmax(150px, 0.8fr) minmax(160px, 0.9fr) minmax(320px, 1.6fr) !important;
+  }
+
+  .dispatch-route-row__signals {
+    grid-template-columns: 1fr !important;
   }
 }
 
@@ -1801,20 +1824,21 @@ h1 {
     grid-row: 1;
   }
 
-  .dispatch-route-row__driver,
-  .dispatch-route-row__signals,
-  .dispatch-route-row__express {
+  .dispatch-route-row__driver {
     grid-column: 2;
   }
 
   .dispatch-route-row__signals {
-    overflow-x: auto;
-    padding-bottom: 2px;
-    scrollbar-width: none;
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr !important;
+    overflow: visible;
+    padding-top: 2px;
   }
 
-  .dispatch-route-row__signals::-webkit-scrollbar {
-    display: none;
+  .dispatch-route-row__plan-card {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
   }
 }
 

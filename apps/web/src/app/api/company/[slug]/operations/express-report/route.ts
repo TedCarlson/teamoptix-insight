@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  annotateManifestPackageEvidence,
-  markPackageEvidenceUnavailable,
-  packageEvidenceConfigurationAvailable,
   type CurrentPackageStatusEvidence,
   type EvidenceAnnotatedPackage,
 } from "@/features/operations/reports/dsw/packageStatus/packageStatus.evidence";
@@ -36,6 +33,7 @@ type ExpressReportRow = EvidenceAnnotatedPackage & {
   geocode_status: string | null;
   geocode_precision: string | null;
   completed: string | null;
+  manifest_stop_linked: boolean | null;
   delivery_time_begin: string | null;
   delivery_time_end: string | null;
   stop_instructions: string | null;
@@ -56,10 +54,13 @@ type RouteSummary = {
   capture_plan_route_id: string | null;
   express_package_count: number;
   express_stop_count: number;
-  completed_express_package_count: number;
-  incomplete_express_package_count: number;
-  coded_attempt_express_package_count: number;
-  open_uncoded_express_package_count: number;
+  complete_express_package_count: number;
+  attempted_express_package_count: number;
+  open_express_package_count: number;
+  tracking_identity_missing_count: number;
+  stop_link_missing_count: number;
+  stop_link_ambiguous_count: number;
+  reference_match_available: boolean;
   residential_express_package_count: number;
   signature_express_package_count: number;
   hazmat_express_package_count: number;
@@ -114,7 +115,7 @@ function stopKey(row: ExpressReportRow) {
 }
 
 function isCompleted(row: ExpressReportRow) {
-  return String(row.completed ?? "").trim().toUpperCase() === "Y";
+  return row.delivery_evidence_state === "COMPLETED";
 }
 
 function isCodedAttempt(row: ExpressReportRow) {
@@ -186,7 +187,7 @@ function buildMapStops(rows: ExpressReportRow[]) {
       longitude: first.longitude,
       geocode_status: first.geocode_status ?? "PENDING",
       package_count: stopRows.length,
-      open_count: stopRows.length - completeCount,
+      open_count: stopRows.filter(isOpenUncoded).length,
       coded_attempt_count: stopRows.filter(isCodedAttempt).length,
       complete_count: completeCount,
       delivery_time_begin: earliest(stopRows.map((row) => row.delivery_time_begin)),
@@ -202,6 +203,18 @@ function latest(values: Array<string | null | undefined>) {
 function incrementStatus(counts: Record<string, number>, status: string | null) {
   const key = String(status ?? "UNKNOWN").trim() || "UNKNOWN";
   counts[key] = (counts[key] ?? 0) + 1;
+}
+
+function meaningfulCode(value: unknown) {
+  const normalized = String(value ?? "").trim();
+  return normalized && normalized !== "0" ? normalized : null;
+}
+
+function statusCodeSource(vsa: string | null, star: string | null) {
+  if (vsa && star) return "VSA_AND_STAR" as const;
+  if (vsa) return "VSA" as const;
+  if (star) return "STAR" as const;
+  return null;
 }
 
 function buildRouteSummaries(rows: ExpressReportRow[]) {
@@ -230,12 +243,23 @@ function buildRouteSummaries(rows: ExpressReportRow[]) {
       capture_plan_route_id: first.capture_plan_route_id,
       express_package_count: routeRows.length,
       express_stop_count: stopKeys.size,
-      completed_express_package_count: routeRows.filter(isCompleted).length,
-      incomplete_express_package_count: routeRows.filter((row) => !isCompleted(row)).length,
-      coded_attempt_express_package_count:
+      complete_express_package_count: routeRows.filter(isCompleted).length,
+      attempted_express_package_count:
         routeRows.filter(isCodedAttempt).length,
-      open_uncoded_express_package_count:
+      open_express_package_count:
         routeRows.filter(isOpenUncoded).length,
+      tracking_identity_missing_count: routeRows.filter((row) =>
+        row.delivery_data_health.includes("TRACKING_IDENTITY_MISSING")
+      ).length,
+      stop_link_missing_count: routeRows.filter((row) =>
+        row.delivery_data_health.includes("STOP_LINK_MISSING")
+      ).length,
+      stop_link_ambiguous_count: routeRows.filter((row) =>
+        row.delivery_data_health.includes("STOP_LINK_AMBIGUOUS")
+      ).length,
+      reference_match_available: routeRows.every(
+        (row) => !row.delivery_data_health.includes("REFERENCE_MATCH_UNAVAILABLE")
+      ),
       residential_express_package_count: routeRows.filter((row) => row.is_residential).length,
       signature_express_package_count: routeRows.filter((row) => row.is_signature).length,
       hazmat_express_package_count: routeRows.filter((row) => row.is_hazmat).length,
@@ -254,18 +278,23 @@ function buildTotals(routeSummaries: RouteSummary[]) {
       express_package_count:
         totals.express_package_count + route.express_package_count,
       express_stop_count: totals.express_stop_count + route.express_stop_count,
-      completed_express_package_count:
-        totals.completed_express_package_count +
-        route.completed_express_package_count,
-      incomplete_express_package_count:
-        totals.incomplete_express_package_count +
-        route.incomplete_express_package_count,
-      coded_attempt_express_package_count:
-        totals.coded_attempt_express_package_count +
-        route.coded_attempt_express_package_count,
-      open_uncoded_express_package_count:
-        totals.open_uncoded_express_package_count +
-        route.open_uncoded_express_package_count,
+      complete_express_package_count:
+        totals.complete_express_package_count +
+        route.complete_express_package_count,
+      attempted_express_package_count:
+        totals.attempted_express_package_count +
+        route.attempted_express_package_count,
+      open_express_package_count:
+        totals.open_express_package_count + route.open_express_package_count,
+      tracking_identity_missing_count:
+        totals.tracking_identity_missing_count +
+        route.tracking_identity_missing_count,
+      stop_link_missing_count:
+        totals.stop_link_missing_count + route.stop_link_missing_count,
+      stop_link_ambiguous_count:
+        totals.stop_link_ambiguous_count + route.stop_link_ambiguous_count,
+      reference_match_available:
+        totals.reference_match_available && route.reference_match_available,
       residential_express_package_count:
         totals.residential_express_package_count +
         route.residential_express_package_count,
@@ -282,10 +311,13 @@ function buildTotals(routeSummaries: RouteSummary[]) {
       route_count: 0,
       express_package_count: 0,
       express_stop_count: 0,
-      completed_express_package_count: 0,
-      incomplete_express_package_count: 0,
-      coded_attempt_express_package_count: 0,
-      open_uncoded_express_package_count: 0,
+      complete_express_package_count: 0,
+      attempted_express_package_count: 0,
+      open_express_package_count: 0,
+      tracking_identity_missing_count: 0,
+      stop_link_missing_count: 0,
+      stop_link_ambiguous_count: 0,
+      reference_match_available: true,
       residential_express_package_count: 0,
       signature_express_package_count: 0,
       hazmat_express_package_count: 0,
@@ -344,20 +376,27 @@ export async function GET(
 
     const manifestRows = (data ?? []) as Array<Record<string, unknown>>;
     const companyId = String(manifestRows[0]?.company_id ?? "").trim();
-    const packageStatusResult = companyId
-      ? await serviceRole
+    const [packageStatusResult, packageSignalResult] = companyId
+      ? await Promise.all([
+        serviceRole
           .from("operations_dsw_package_status_current_v")
           .select(
             "tracking_ref,work_area_name,work_area_number,vision_label,vision_label_at_local,vsa_status_code,star_status_code,star_scan_at_local,snapshot_generated_at"
           )
           .eq("company_id", companyId)
-          .eq("service_date", serviceDate)
-      : { data: [], error: null };
+          .eq("service_date", serviceDate),
+        serviceRole
+          .from("operations_manifest_express_package_signal_v")
+          .select("route_key,tracking_id,signal_state,data_health")
+          .eq("company_id", companyId)
+          .eq("service_date", serviceDate),
+      ])
+      : [{ data: [], error: null }, { data: [], error: null }];
 
-    if (packageStatusResult.error) {
+    if (packageStatusResult.error || packageSignalResult.error) {
       return NextResponse.json(
         {
-          error: packageStatusResult.error.message,
+          error: packageStatusResult.error?.message ?? packageSignalResult.error?.message,
           packages: [],
           route_summaries: [],
           totals: null,
@@ -366,17 +405,54 @@ export async function GET(
       );
     }
 
-    const rows = (
-      packageEvidenceConfigurationAvailable()
-        ? annotateManifestPackageEvidence({
-            companyId,
-            packages: manifestRows,
-            currentStatusRows:
-              (packageStatusResult.data ??
-                []) as CurrentPackageStatusEvidence[],
-          })
-        : markPackageEvidenceUnavailable(manifestRows)
-    ) as ExpressReportRow[];
+    const statusByReference = new Map(
+      ((packageStatusResult.data ?? []) as CurrentPackageStatusEvidence[]).map(
+        (status) => [status.tracking_ref, status]
+      )
+    );
+    const signalByPackage = new Map(
+      (packageSignalResult.data ?? []).map((signal) => [
+        `${String(signal.route_key ?? "").trim()}|${String(signal.tracking_id ?? "").trim()}`,
+        signal,
+      ])
+    );
+    const rows = manifestRows.map((manifestRow) => {
+      const signal = signalByPackage.get(
+        `${String(manifestRow.route_key ?? "").trim()}|${String(manifestRow.tracking_id ?? "").trim()}`
+      );
+      const state = String(signal?.signal_state ?? "OPEN") as
+        | "OPEN"
+        | "CODED_ATTEMPT"
+        | "COMPLETED";
+      const dataHealth = (signal?.data_health ?? {}) as Record<string, unknown>;
+      const currentStatus = statusByReference.get(
+        String(manifestRow.tracking_ref ?? "")
+      );
+      const vsaStatusCode = meaningfulCode(currentStatus?.vsa_status_code);
+      const starStatusCode = meaningfulCode(currentStatus?.star_status_code);
+      return {
+        ...manifestRow,
+        delivery_evidence_state: state,
+        delivery_evidence_basis:
+          state === "COMPLETED"
+            ? "MANIFEST_COMPLETED"
+            : state === "CODED_ATTEMPT"
+              ? "DSW_ALL_CODES"
+              : "MANIFEST_OPEN",
+        delivery_data_health: [
+          dataHealth.tracking_identity_missing ? "TRACKING_IDENTITY_MISSING" : null,
+          dataHealth.stop_link_missing ? "STOP_LINK_MISSING" : null,
+          dataHealth.reference_match_unavailable ? "REFERENCE_MATCH_UNAVAILABLE" : null,
+        ].filter(Boolean),
+        status_code_source: statusCodeSource(vsaStatusCode, starStatusCode),
+        vsa_status_code: vsaStatusCode,
+        star_status_code: starStatusCode,
+        status_code_at_local:
+          currentStatus?.star_scan_at_local ?? currentStatus?.vision_label_at_local ?? null,
+        evidence_snapshot_generated_at:
+          currentStatus?.snapshot_generated_at ?? null,
+      };
+    }) as ExpressReportRow[];
     const routeSummaries = buildRouteSummaries(rows);
 
     return NextResponse.json({
@@ -400,6 +476,7 @@ export async function GET(
         completed: row.completed,
         delivery_evidence_state: row.delivery_evidence_state,
         delivery_evidence_basis: row.delivery_evidence_basis,
+        delivery_data_health: row.delivery_data_health,
         status_code_source: row.status_code_source,
         vsa_status_code: row.vsa_status_code,
         star_status_code: row.star_status_code,

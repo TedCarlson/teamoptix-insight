@@ -155,7 +155,7 @@ describe("buildDashboardHealth", () => {
 
     expect(result.status).toBe("critical");
     expect(result.suggestions.find((item) => item.key === "express")?.detail).toContain(
-      "3 incomplete Express packages"
+      "3 Open"
     );
   });
 

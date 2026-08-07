@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   annotateManifestPackageEvidence,
-  expressEvidenceCountsByRoute,
   markPackageEvidenceUnavailable,
-  packageEvidenceConfigurationAvailable,
+  packageEvidenceAvailableForPackages,
   type CurrentPackageStatusEvidence,
 } from "@/features/operations/reports/dsw/packageStatus/packageStatus.evidence";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { loadExpressEvidence } from "@/features/operations/express/loadExpressEvidence";
 
 export const runtime = "nodejs";
 
@@ -41,7 +41,12 @@ type RouteHealthRow = {
   express_stop_count: number | null;
   completed_express_package_count: number | null;
   incomplete_express_package_count: number | null;
-  tracking_gap_express_package_count: number | null;
+  attempted_express_package_count?: number | null;
+  open_express_package_count?: number | null;
+  tracking_identity_missing_count?: number | null;
+  stop_link_missing_count?: number | null;
+  stop_link_ambiguous_count?: number | null;
+  reference_match_available?: boolean;
   residential_express_package_count: number | null;
   signature_express_package_count: number | null;
   hazmat_express_package_count: number | null;
@@ -89,9 +94,15 @@ type RouteHealthCard = {
   express: {
     package_count: number;
     stop_count: number;
-    completed_package_count: number;
-    incomplete_package_count: number;
-    tracking_gap_package_count: number;
+    complete_package_count: number;
+    attempted_package_count: number;
+    open_package_count: number;
+    data_health: {
+      tracking_identity_missing_count: number;
+      stop_link_missing_count: number;
+      stop_link_ambiguous_count: number;
+      reference_match_available: boolean;
+    };
     residential_package_count: number;
     signature_package_count: number;
     hazmat_package_count: number;
@@ -122,34 +133,53 @@ function normalizedManifestKey(value: unknown) {
   return String(value ?? "").trim().replace(/\s+/g, " ").toUpperCase();
 }
 
-function manifestStopKeys(row: Record<string, unknown>) {
-  const sid = normalizedManifestKey(row.sid);
-  const stopNumber = normalizedManifestKey(row.st_number);
+function manifestAddressKey(row: Record<string, unknown>) {
   return [
-    sid ? `SID|${sid}` : "",
-    stopNumber ? `STOP|${stopNumber}` : "",
-  ].filter(Boolean);
+    row.address_line_1,
+    row.address_line_2,
+    row.city,
+    row.state,
+    row.postal_code,
+  ]
+    .map(normalizedManifestKey)
+    .filter(Boolean)
+    .join("|");
 }
 
 function packagesWithManifestCompletion(params: {
   packages: Array<Record<string, unknown>>;
   stops: Array<Record<string, unknown>>;
-}) {
-  const completionByStopKey = new Map<string, unknown>();
-
-  params.stops.forEach((stop) => {
-    manifestStopKeys(stop).forEach((key) => {
-      completionByStopKey.set(key, stop.completed);
-    });
-  });
-
+}): Array<Record<string, unknown>> {
   return params.packages.map((packageRow) => {
-    const completed = manifestStopKeys(packageRow)
-      .map((key) => completionByStopKey.get(key))
-      .find((value) => value !== undefined);
+    const sid = normalizedManifestKey(packageRow.sid);
+    const stopNumber = normalizedManifestKey(packageRow.st_number);
+    const address = manifestAddressKey(packageRow);
+    const candidateGroups = [
+      sid
+        ? params.stops.filter(
+            (stop) => normalizedManifestKey(stop.sid) === sid
+          )
+        : [],
+      stopNumber && stopNumber !== "0"
+        ? params.stops.filter(
+            (stop) => normalizedManifestKey(stop.st_number) === stopNumber
+          )
+        : [],
+      address
+        ? params.stops.filter((stop) => manifestAddressKey(stop) === address)
+        : [],
+    ];
+    const bestCandidates = candidateGroups.find((group) => group.length > 0) ?? [];
+    const linkedStop = bestCandidates.length === 1 ? bestCandidates[0] : null;
     return {
       ...packageRow,
-      manifest_completed: completed ?? null,
+      manifest_completed: linkedStop?.completed ?? null,
+      manifest_stop_link_status:
+        bestCandidates.length === 1
+          ? "LINKED"
+          : bestCandidates.length > 1
+            ? "AMBIGUOUS"
+            : "MISSING",
     };
   });
 }
@@ -201,9 +231,15 @@ function toRouteHealthCard(row: RouteHealthRow): RouteHealthCard {
     express: {
       package_count: n(row.express_package_count),
       stop_count: n(row.express_stop_count),
-      completed_package_count: n(row.completed_express_package_count),
-      incomplete_package_count: n(row.incomplete_express_package_count),
-      tracking_gap_package_count: n(row.tracking_gap_express_package_count),
+      complete_package_count: n(row.completed_express_package_count),
+      attempted_package_count: n(row.attempted_express_package_count),
+      open_package_count: n(row.open_express_package_count),
+      data_health: {
+        tracking_identity_missing_count: n(row.tracking_identity_missing_count),
+        stop_link_missing_count: n(row.stop_link_missing_count),
+        stop_link_ambiguous_count: n(row.stop_link_ambiguous_count),
+        reference_match_available: row.reference_match_available !== false,
+      },
       residential_package_count: n(row.residential_express_package_count),
       signature_package_count: n(row.signature_express_package_count),
       hazmat_package_count: n(row.hazmat_express_package_count),
@@ -243,12 +279,23 @@ function buildTotals(rows: RouteHealthRow[]) {
         totals.express_package_count + n(row.express_package_count),
       express_stop_count:
         totals.express_stop_count + n(row.express_stop_count),
-      incomplete_express_package_count:
-        totals.incomplete_express_package_count +
-        n(row.incomplete_express_package_count),
-      tracking_gap_express_package_count:
-        totals.tracking_gap_express_package_count +
-        n(row.tracking_gap_express_package_count),
+      complete_express_package_count:
+        totals.complete_express_package_count +
+        n(row.completed_express_package_count),
+      attempted_express_package_count:
+        totals.attempted_express_package_count +
+        n(row.attempted_express_package_count),
+      open_express_package_count:
+        totals.open_express_package_count + n(row.open_express_package_count),
+      tracking_identity_missing_count:
+        totals.tracking_identity_missing_count +
+        n(row.tracking_identity_missing_count),
+      stop_link_missing_count:
+        totals.stop_link_missing_count + n(row.stop_link_missing_count),
+      stop_link_ambiguous_count:
+        totals.stop_link_ambiguous_count + n(row.stop_link_ambiguous_count),
+      reference_match_available:
+        totals.reference_match_available && row.reference_match_available !== false,
       pickup_stop_count:
         totals.pickup_stop_count + n(row.pickup_stop_count),
       pickup_expected_package_count:
@@ -267,8 +314,13 @@ function buildTotals(rows: RouteHealthRow[]) {
       delivery_package_count: 0,
       express_package_count: 0,
       express_stop_count: 0,
-      incomplete_express_package_count: 0,
-      tracking_gap_express_package_count: 0,
+      complete_express_package_count: 0,
+      attempted_express_package_count: 0,
+      open_express_package_count: 0,
+      tracking_identity_missing_count: 0,
+      stop_link_missing_count: 0,
+      stop_link_ambiguous_count: 0,
+      reference_match_available: true,
       pickup_stop_count: 0,
       pickup_expected_package_count: 0,
       pickup_actual_package_count: 0,
@@ -370,6 +422,7 @@ export async function GET(
         packagesResult,
         pickupsResult,
         packageStatusResult,
+        expressReferenceResult,
       ] = await Promise.all([
           supabase
             .from("operations_delivery_manifest_stop_v")
@@ -400,25 +453,43 @@ export async function GET(
             )
             .eq("company_id", company.id)
             .eq("service_date", serviceDate),
+          supabase
+            .from("operations_manifest_express_report_v")
+            .select("tracking_id,tracking_ref,manifest_stop_linked")
+            .eq("company_id", company.id)
+            .eq("service_date", serviceDate)
+            .eq("route_key", routeKey),
         ]);
 
       const detailError =
         deliveryStopsResult.error ??
         packagesResult.error ??
         pickupsResult.error ??
-        packageStatusResult.error;
+        packageStatusResult.error ??
+        expressReferenceResult.error;
 
       if (detailError) {
         return NextResponse.json({ error: detailError.message }, { status: 500 });
       }
 
+      const referenceByTrackingId = new Map(
+        (expressReferenceResult.data ?? []).map((row) => [
+          String(row.tracking_id ?? "").trim(),
+          row,
+        ])
+      );
       const manifestPackages = packagesWithManifestCompletion({
         packages: (packagesResult.data ?? []) as Array<Record<string, unknown>>,
         stops: (deliveryStopsResult.data ?? []) as Array<
           Record<string, unknown>
         >,
+      }).map((packageRow) => {
+        const reference = referenceByTrackingId.get(
+          String(packageRow.tracking_id ?? "").trim()
+        );
+        return reference ? { ...packageRow, ...reference } : packageRow;
       });
-      const packages = packageEvidenceConfigurationAvailable()
+      const packages = packageEvidenceAvailableForPackages(manifestPackages)
         ? annotateManifestPackageEvidence({
             companyId: company.id,
             packages: manifestPackages,
@@ -438,7 +509,7 @@ export async function GET(
       });
     }
 
-    const [routeHealthResult, expressPackagesResult, packageStatusResult] =
+    const [routeHealthResult, expressEvidence] =
       await Promise.all([
         supabase
           .from("operations_manifest_route_health_v")
@@ -447,24 +518,15 @@ export async function GET(
           .eq("service_date", serviceDate)
           .order("route_health_severity", { ascending: true })
           .order("route_key", { ascending: true }),
-        supabase
-          .from("operations_manifest_express_report_v")
-          .select("route_key,tracking_id,completed")
-          .eq("company_id", company.id)
-          .eq("service_date", serviceDate),
-        serviceRole
-          .from("operations_dsw_package_status_current_v")
-          .select(
-            "tracking_ref,work_area_name,work_area_number,vision_label,vision_label_at_local,vsa_status_code,star_status_code,star_scan_at_local,snapshot_generated_at"
-          )
-          .eq("company_id", company.id)
-          .eq("service_date", serviceDate),
+        loadExpressEvidence({
+          companyId: company.id,
+          serviceDate,
+          manifestClient: serviceRole,
+          statusClient: serviceRole,
+        }),
       ]);
 
-    const summaryError =
-      routeHealthResult.error ??
-      expressPackagesResult.error ??
-      packageStatusResult.error;
+    const summaryError = routeHealthResult.error;
     if (summaryError) {
       return NextResponse.json(
         {
@@ -479,24 +541,8 @@ export async function GET(
     const canonicalRows = canonicalRouteRows(
       (routeHealthResult.data ?? []) as RouteHealthRow[]
     );
-    const manifestExpressPackages = (expressPackagesResult.data ?? []).map(
-      (packageRow) => ({
-        ...packageRow,
-        is_express: true,
-      })
-    );
-    const annotatedExpressPackages =
-      packageEvidenceConfigurationAvailable()
-        ? annotateManifestPackageEvidence({
-            companyId: company.id,
-            packages: manifestExpressPackages,
-            currentStatusRows:
-              (packageStatusResult.data ??
-                []) as CurrentPackageStatusEvidence[],
-          })
-        : markPackageEvidenceUnavailable(manifestExpressPackages);
-    const expressByRoute = expressEvidenceCountsByRoute(
-      annotatedExpressPackages
+    const expressByRoute = new Map(
+      expressEvidence.routes.map((route) => [route.route_key, route])
     );
     const rows = canonicalRows.map((row) => {
       const signal = expressByRoute.get(String(row.route_key));
@@ -504,12 +550,16 @@ export async function GET(
         ...row,
         express_package_count: n(signal?.package_count),
         completed_express_package_count: n(
-          signal?.completed_package_count
+          signal?.complete_package_count
         ),
-        incomplete_express_package_count: n(signal?.open_package_count),
-        tracking_gap_express_package_count: n(
-          signal?.tracking_gap_package_count
+        attempted_express_package_count: n(signal?.attempted_package_count),
+        open_express_package_count: n(signal?.open_package_count),
+        tracking_identity_missing_count: n(
+          signal?.tracking_identity_missing_count
         ),
+        stop_link_missing_count: n(signal?.stop_link_missing_count),
+        stop_link_ambiguous_count: n(signal?.stop_link_ambiguous_count),
+        reference_match_available: signal?.reference_match_available !== false,
       };
     });
 

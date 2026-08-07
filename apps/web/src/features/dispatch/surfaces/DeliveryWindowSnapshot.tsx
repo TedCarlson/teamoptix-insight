@@ -12,6 +12,7 @@ import RouteHealthOverlay, {
   type ManifestRouteHealthCard,
 } from "@/features/operations/manifests/components/RouteHealthOverlay";
 import RouteHealthSignal from "@/features/operations/delivery-window/components/RouteHealthSignal";
+import { ExpressProgressSignal } from "@/features/operations/express/ExpressProgressSignal";
 import {
   computeFccRouteHealth,
   type FccRouteSignalRow,
@@ -787,11 +788,14 @@ console.log(
   const expressPackageTotal = Number(
     routeHealthPayload?.totals?.express_package_count ?? 0
   );
-  const openExpressPackageTotal = Number(
-    routeHealthPayload?.totals?.incomplete_express_package_count ?? 0
+  const completeExpressPackageTotal = Number(
+    routeHealthPayload?.totals?.complete_express_package_count ?? 0
   );
-  const expressTrackingGapTotal = Number(
-    routeHealthPayload?.totals?.tracking_gap_express_package_count ?? 0
+  const attemptedExpressPackageTotal = Number(
+    routeHealthPayload?.totals?.attempted_express_package_count ?? 0
+  );
+  const openExpressPackageTotal = Number(
+    routeHealthPayload?.totals?.open_express_package_count ?? 0
   );
 
   return (
@@ -843,12 +847,6 @@ console.log(
             ["📍 Del Stops", `${executionTotals.actualStops.toLocaleString()} / ${executionTotals.plannedStops.toLocaleString()}`],
             ["📦 Del Packages", `${executionTotals.actualPackages.toLocaleString()} / ${executionTotals.plannedPackages.toLocaleString()}`],
             ["🛻 Pickups", `${executionTotals.actualPickupStops.toLocaleString()} / ${executionTotals.plannedPickupStops.toLocaleString()}`],
-            [
-              "🕒 Express",
-              expressPackageTotal > 0
-                ? `${openExpressPackageTotal.toLocaleString()} open · ${expressTrackingGapTotal.toLocaleString()} gap / ${expressPackageTotal.toLocaleString()}`
-                : "0",
-            ],
             ["ILS %", companyIlsPercent],
             ["Completion", `${fleetCompletion}%`],
           ].map(([label, value]) => (
@@ -877,6 +875,21 @@ console.log(
               <strong>{value}</strong>
             </div>
           ))}
+          <ExpressProgressSignal
+            progress={{
+              total: expressPackageTotal,
+              complete: completeExpressPackageTotal,
+              attempted: attemptedExpressPackageTotal,
+              open: openExpressPackageTotal,
+            }}
+            dataHealth={{
+              trackingIdentityMissing: Number(routeHealthPayload?.totals?.tracking_identity_missing_count ?? 0),
+              stopLinkMissing: Number(routeHealthPayload?.totals?.stop_link_missing_count ?? 0),
+              stopLinkAmbiguous: Number(routeHealthPayload?.totals?.stop_link_ambiguous_count ?? 0),
+              referenceMatchAvailable: routeHealthPayload?.totals?.reference_match_available !== false,
+            }}
+            compact
+          />
         </div>
 
         {error ? (
@@ -997,10 +1010,21 @@ console.log(
                       planned={row.planned_pickup_stops ?? 0}
                     />
                     {routeManifestHealth && routeManifestHealth.express.package_count > 0 ? (
-                      <ExpressPill
-                        packages={routeManifestHealth.express.package_count}
-                        open={routeManifestHealth.express.incomplete_package_count}
-                        gaps={routeManifestHealth.express.tracking_gap_package_count}
+                      <ExpressProgressSignal
+                        progress={{
+                          total: routeManifestHealth.express.package_count,
+                          complete: routeManifestHealth.express.complete_package_count,
+                          attempted: routeManifestHealth.express.attempted_package_count,
+                          open: routeManifestHealth.express.open_package_count,
+                        }}
+                        dataHealth={{
+                          trackingIdentityMissing: routeManifestHealth.express.data_health.tracking_identity_missing_count,
+                          stopLinkMissing: routeManifestHealth.express.data_health.stop_link_missing_count,
+                          stopLinkAmbiguous: routeManifestHealth.express.data_health.stop_link_ambiguous_count,
+                          referenceMatchAvailable: routeManifestHealth.express.data_health.reference_match_available,
+                        }}
+                        compact
+                        style={{ minWidth: 210 }}
                       />
                     ) : null}
                   </div>
@@ -1108,27 +1132,6 @@ function ProgressPill(props: {
       }}
     >
       {props.icon} {props.actual} of {props.planned}
-    </span>
-  );
-}
-
-function ExpressPill(props: { packages: number; open: number; gaps: number }) {
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 5,
-        border: `1px solid ${props.gaps > 0 ? "#fca5a5" : props.open === 0 ? "#86efac" : "#fdba74"}`,
-        borderRadius: 999,
-        padding: "7px 10px",
-        background: props.gaps > 0 ? "#fef2f2" : props.open === 0 ? "#ecfdf5" : "#fff7ed",
-        color: props.gaps > 0 ? "#991b1b" : props.open === 0 ? "#166534" : "#9a3412",
-        whiteSpace: "nowrap",
-      }}
-      title={`${props.open} open Express packages; ${props.gaps} tracking gaps`}
-    >
-      🕒 {props.open} open · {props.gaps} gap / {props.packages}
     </span>
   );
 }

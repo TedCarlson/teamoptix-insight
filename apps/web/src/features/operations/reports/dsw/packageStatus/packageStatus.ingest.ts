@@ -132,6 +132,32 @@ export async function ingestDswPackageStatusWorkbook(params: {
   );
   if (membershipError) throw new Error(membershipError.message);
 
+  const { error: manifestReferenceError } = await supabase.rpc(
+    "attach_operations_dsw_manifest_tracking_refs",
+    {
+      p_snapshot_id: snapshotId,
+      p_company_id: company.id,
+      p_service_date: parsed.service_date,
+      p_rows: parsed.rows.map((row, index) => ({
+        tracking_id: row.tracking_id,
+        tracking_ref: rows[index].tracking_ref,
+        tracking_ref_version: rows[index].tracking_ref_version,
+      })),
+    }
+  );
+  if (manifestReferenceError) throw new Error(manifestReferenceError.message);
+
+  const { error: expressSnapshotError } = await supabase.rpc(
+    "record_operations_express_progress_snapshot",
+    {
+      p_company_id: company.id,
+      p_service_date: parsed.service_date,
+      p_source_family: "DSW_ALL_CODES",
+      p_source_reference: snapshotId,
+    }
+  );
+  if (expressSnapshotError) throw new Error(expressSnapshotError.message);
+
   return {
     ok: true,
     // Package-status snapshots live outside the legacy operations report

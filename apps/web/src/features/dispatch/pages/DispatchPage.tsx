@@ -41,15 +41,27 @@ import { DispatchEventOverlay } from "../components/DispatchEventOverlay";
 import { DispatchRightRail } from "../components/DispatchRightRail";
 import { DispatchRouteQueue } from "../components/DispatchRouteQueue";
 import { DispatchWorkforceRail } from "../components/DispatchWorkforceRail";
+import type { ExpressDataHealth, ExpressProgress } from "@/features/operations/express/expressProgress";
 
 type DispatchExpressHealth = {
   route_key: string;
   route_label: string | null;
   express: {
     package_count: number;
-    incomplete_package_count: number;
-    tracking_gap_package_count: number;
+    complete_package_count: number;
+    attempted_package_count: number;
+    open_package_count: number;
+    data_health: {
+      tracking_identity_missing_count: number;
+      stop_link_missing_count: number;
+      stop_link_ambiguous_count: number;
+      reference_match_available: boolean;
+    };
   };
+};
+
+type DispatchExpressSignal = ExpressProgress & {
+  dataHealth: Partial<ExpressDataHealth>;
 };
 
 export default function DispatchPage() {
@@ -66,7 +78,13 @@ export default function DispatchPage() {
   const [complianceReportOpen, setComplianceReportOpen] = useState(false);
   const persistedCalloutKeys = useRef(new Set<string>());
   const [expressHealthRows, setExpressHealthRows] = useState<DispatchExpressHealth[]>([]);
-  const [expressHealthTotals, setExpressHealthTotals] = useState({ packages: 0, open: 0, gaps: 0 });
+  const [expressHealthTotals, setExpressHealthTotals] = useState<DispatchExpressSignal>({
+    total: 0,
+    complete: 0,
+    attempted: 0,
+    open: 0,
+    dataHealth: { referenceMatchAvailable: true },
+  });
 
   const serviceDate = todayIso();
   const planningDate = addDaysIso(serviceDate, 1);
@@ -101,17 +119,33 @@ export default function DispatchPage() {
           { credentials: "include", cache: "no-store" }
         );
         const payload = await response.json();
-        if (!active || !response.ok) return;
+        if (!active) return;
+        if (!response.ok) {
+          throw new Error(payload?.error ?? "Express evidence is unavailable.");
+        }
         setExpressHealthRows(Array.isArray(payload.routes) ? payload.routes : []);
         setExpressHealthTotals({
-          packages: Number(payload.totals?.express_package_count ?? 0),
-          open: Number(payload.totals?.incomplete_express_package_count ?? 0),
-          gaps: Number(payload.totals?.tracking_gap_express_package_count ?? 0),
+          total: Number(payload.totals?.express_package_count ?? 0),
+          complete: Number(payload.totals?.complete_express_package_count ?? 0),
+          attempted: Number(payload.totals?.attempted_express_package_count ?? 0),
+          open: Number(payload.totals?.open_express_package_count ?? 0),
+          dataHealth: {
+            trackingIdentityMissing: Number(payload.totals?.tracking_identity_missing_count ?? 0),
+            stopLinkMissing: Number(payload.totals?.stop_link_missing_count ?? 0),
+            stopLinkAmbiguous: Number(payload.totals?.stop_link_ambiguous_count ?? 0),
+            referenceMatchAvailable: payload.totals?.reference_match_available !== false,
+          },
         });
       } catch {
         if (active) {
           setExpressHealthRows([]);
-          setExpressHealthTotals({ packages: 0, open: 0, gaps: 0 });
+          setExpressHealthTotals({
+            total: 0,
+            complete: 0,
+            attempted: 0,
+            open: 0,
+            dataHealth: { referenceMatchAvailable: false },
+          });
         }
       }
     }
@@ -204,23 +238,27 @@ export default function DispatchPage() {
       });
     });
 
-    return dispatchRoutes.reduce<Record<string, { packages: number; open: number; gaps: number }>>(
+    return dispatchRoutes.reduce<Record<string, DispatchExpressSignal>>(
       (signals, route) => {
         const candidates = [route.route_key, route.current_wa_num, route.route_name];
         let health: DispatchExpressHealth | undefined;
         for (const candidate of candidates) {
           const normalized = normalize(candidate);
           health = healthIndex.get(normalized);
-          if (!health && normalized) {
-            health = expressHealthRows.find((row) => normalize(row.route_label).endsWith(normalized));
-          }
           if (health) break;
         }
         if (health?.express.package_count) {
           signals[route.route_key] = {
-            packages: Number(health.express.package_count),
-            open: Number(health.express.incomplete_package_count),
-            gaps: Number(health.express.tracking_gap_package_count),
+            total: Number(health.express.package_count),
+            complete: Number(health.express.complete_package_count),
+            attempted: Number(health.express.attempted_package_count),
+            open: Number(health.express.open_package_count),
+            dataHealth: {
+              trackingIdentityMissing: Number(health.express.data_health?.tracking_identity_missing_count ?? 0),
+              stopLinkMissing: Number(health.express.data_health?.stop_link_missing_count ?? 0),
+              stopLinkAmbiguous: Number(health.express.data_health?.stop_link_ambiguous_count ?? 0),
+              referenceMatchAvailable: health.express.data_health?.reference_match_available !== false,
+            },
           };
         }
         return signals;

@@ -17,7 +17,11 @@ export function deriveManifestServiceFlags(premSvcRaw: string | null | undefined
   const compact = tokens.join("");
 
   return {
-    is_express: tokens.includes("EXP") || compact.includes("EXP"),
+    // FedEx premium-service exports use EXP as a token or terminal service
+    // suffix (for example RES EXP, DSIGNEXP, HAZ ASIGNEXP). Avoid broad
+    // substring matching so unrelated values such as EXPERIMENTAL cannot
+    // silently inflate Express volume.
+    is_express: tokens.includes("EXP") || compact.endsWith("EXP"),
     is_residential: tokens.includes("RES") || compact.includes("RES"),
     is_signature: compact.includes("DSIGN") || compact.includes("SIGN"),
     is_hazmat: tokens.includes("HAZ") || compact.includes("HAZ"),

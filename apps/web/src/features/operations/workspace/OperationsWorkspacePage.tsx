@@ -27,6 +27,8 @@ import RouteHealthOverlay, {
 } from "@/features/operations/manifests/components/RouteHealthOverlay";
 import ExpressReportOverlay from "@/features/operations/manifests/components/ExpressReportOverlay";
 import ComplianceReportOverlay from "@/features/operations/components/ComplianceReportOverlay";
+import { ExpressProgressSignal } from "@/features/operations/express/ExpressProgressSignal";
+import type { ExpressDataHealth, ExpressProgress } from "@/features/operations/express/expressProgress";
 import {
   todayIso,
   type DispatchDayRow,
@@ -63,11 +65,8 @@ function routeMatchesFilter(phase: OperationalPhase, filter: RouteFilter) {
   return phase === "complete";
 }
 
-type ExpressSignal = {
-  packages: number;
-  completed: number;
-  open: number;
-  gaps: number;
+type ExpressSignal = ExpressProgress & {
+  dataHealth: Partial<ExpressDataHealth>;
 };
 
 type RouteHealthRow = ManifestRouteHealthCard;
@@ -279,6 +278,26 @@ function Metric(props: {
   );
 }
 
+function OperationsExpressMetric({ express }: { express: ExpressSignal }) {
+  const title = `${express.complete} Complete · ${express.attempted} Attempted · ${express.open} Open · ${express.total} total`;
+  return (
+    <span
+      className={`ou-metric ou-express-metric ${express.open > 0 ? "has-open" : express.attempted > 0 ? "has-attempted" : "is-clear"}`}
+      aria-label={title}
+      title={title}
+    >
+      <strong className="ou-express-values" aria-hidden="true">
+        <span className="is-complete">{express.complete}</span>
+        <i>/</i>
+        <span className="is-attempted">{express.attempted}</span>
+        <i>/</i>
+        <span className="is-open">{express.open}</span>
+      </strong>
+      <small>Express</small>
+    </span>
+  );
+}
+
 function RouteUnit(props: {
   route: DispatchRoute;
   routeSortKey: "route_name" | "current_wa_num";
@@ -306,7 +325,9 @@ function RouteUnit(props: {
     (delivery?.scannerRole === "driver" ? delivery.driverName : null) ||
     null;
   const needsDriver = !effectiveDriverName;
-  const hasException = Boolean(express?.gaps || express?.open);
+  const hasException = Boolean(
+    express?.open || express?.attempted || express?.dataHealth.referenceMatchAvailable === false
+  );
   const passenger = route.helpers[0] ?? route.trainees[0] ?? null;
   const passengerRole = route.helpers[0]
     ? "Helper"
@@ -321,7 +342,6 @@ function RouteUnit(props: {
   const completedPickupStops = Number(delivery?.actualPickupStops ?? 0);
   const visibleStops = tenderedStops || Number(plan?.stops ?? 0);
   const visiblePackages = tendered || Number(plan?.packages ?? 0);
-  const expressCompleted = Math.max(0, Number(express?.completed ?? 0));
   const servicePct =
     tenderedStops > 0
       ? Math.min(100, Math.round((deliveredStops / tenderedStops) * 100))
@@ -336,15 +356,9 @@ function RouteUnit(props: {
   const phasePresentation = phaseCopy[phase];
   const completedIls =
     phase === "complete" ? formatIls(delivery?.ilsPercent) : null;
-  const expressClass = express?.packages
-    ? express?.open || express?.gaps
-      ? "ou-express-metric has-attention"
-      : "ou-express-metric has-express"
-    : "ou-express-metric is-muted";
-
   return (
     <article
-      className={`ou-unit phase-${phase} ${express?.packages ? "has-express" : ""} ${
+      className={`ou-unit phase-${phase} ${express?.total ? "has-express" : ""} ${
         hasException ? "has-express-risk" : ""
       } ${hasDeliverySignal ? "has-delivery-signal" : ""} ${
         selected ? "is-selected" : ""
@@ -430,7 +444,7 @@ function RouteUnit(props: {
 
       <button
         type="button"
-        className={`ou-activity ${express?.packages ? "has-four" : ""}`}
+        className={`ou-activity ${express?.total ? "has-four" : ""}`}
         onClick={(event) => {
           event.stopPropagation();
           onSelect();
@@ -448,12 +462,8 @@ function RouteUnit(props: {
           label="PU"
           value={`${completedPickupStops}/${pickupStops}`}
         />
-        {express?.packages ? (
-          <Metric
-            label="Express"
-            value={`${expressCompleted}/${express.packages}`}
-            className={expressClass}
-          />
+        {express?.total ? (
+          <OperationsExpressMetric express={express} />
         ) : null}
       </button>
 
@@ -959,19 +969,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         .map(normalize)
         .filter(Boolean);
       const direct = candidates.map((key) => index.get(key)).find(Boolean);
-      const row =
-        direct ??
-        expressRows.find((candidate) => {
-          const label = normalize(candidate.route_label);
-          const key = normalize(candidate.route_key);
-          return candidates.some(
-            (routeCandidate) =>
-              label === routeCandidate ||
-              key === routeCandidate ||
-              label.startsWith(routeCandidate) ||
-              label.endsWith(routeCandidate)
-          );
-        });
+      const row = direct;
 
       if (row) {
         result[route.route_key] = row;
@@ -986,10 +984,16 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         Record<string, ExpressSignal>
       >((result, [routeKey, row]) => {
         result[routeKey] = {
-          packages: Number(row.express.package_count ?? 0),
-          completed: Number(row.express.completed_package_count ?? 0),
-          open: Number(row.express.incomplete_package_count ?? 0),
-          gaps: Number(row.express.tracking_gap_package_count ?? 0),
+          total: Number(row.express.package_count ?? 0),
+          complete: Number(row.express.complete_package_count ?? 0),
+          attempted: Number(row.express.attempted_package_count ?? 0),
+          open: Number(row.express.open_package_count ?? 0),
+          dataHealth: {
+            trackingIdentityMissing: Number(row.express.data_health.tracking_identity_missing_count ?? 0),
+            stopLinkMissing: Number(row.express.data_health.stop_link_missing_count ?? 0),
+            stopLinkAmbiguous: Number(row.express.data_health.stop_link_ambiguous_count ?? 0),
+            referenceMatchAvailable: row.express.data_health.reference_match_available !== false,
+          },
         };
         return result;
       }, {}),
@@ -1443,7 +1447,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         ),
         hasException: Boolean(
           expressByRouteKey[route.route_key]?.open ||
-            expressByRouteKey[route.route_key]?.gaps
+            expressByRouteKey[route.route_key]?.attempted
         ),
       })),
     [
@@ -1814,7 +1818,15 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
                       ? `${selectedDelivery.scannerRole === "helper" ? "Helper" : selectedDelivery.scannerRole === "trainee" ? "Trainee" : "Driver"} logged in · ${selectedDelivery.driverName}`
                       : "No login reported"}
                   </span>
-                  <span>Express · {selectedExpress?.packages ?? "—"} packages · {selectedExpress?.open ?? "—"} open</span>
+                  {selectedExpress ? (
+                    <ExpressProgressSignal
+                      className="ou-workspace-express"
+                      progress={selectedExpress}
+                      dataHealth={selectedExpress.dataHealth}
+                    />
+                  ) : (
+                    <span>Express · No manifest volume</span>
+                  )}
                 </div>
               </Section>
 
@@ -2313,7 +2325,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
           grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 5px;
         }
-        .ou-activity.has-four .ou-metric { padding: 6px; }
+        .ou-activity.has-four .ou-metric { padding: 6px 4px; }
         .ou-activity.has-four .ou-metric strong { font-size: 12px; }
         .ou-metric {
           display: grid;
@@ -2327,26 +2339,33 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         .ou-metric strong { font-size: 14px; }
         .ou-metric small { color: #7a8495; font-size: 9px; line-height: 1.2; }
         .ou-express-metric {
-          border: 1px solid transparent;
-          transition: border-color 150ms ease, background-color 150ms ease;
+          min-width: 0;
+          border: 1px solid #dfe4ec;
+          background: #fff;
         }
-        .ou-express-metric.has-express,
-        .ou-express-metric.has-attention {
-          border-color: rgba(255, 98, 0, .48);
-          background:
-            radial-gradient(circle at 100% 100%, rgba(255, 98, 0, .16), transparent 70%),
-            #fffaf6;
+        .ou-express-metric.has-open { border-color: #fdba74; }
+        .ou-express-metric.has-attempted { border-color: #c4b5fd; }
+        .ou-express-metric.is-clear { border-color: #86efac; }
+        .ou-express-values {
+          min-width: 0;
+          display: flex;
+          align-items: baseline;
+          justify-content: center;
+          gap: 2px;
+          white-space: nowrap;
+          line-height: 1;
         }
-        .ou-express-metric.has-express strong,
-        .ou-express-metric.has-attention strong { color: #b54708; }
-        .ou-express-metric.has-express small,
-        .ou-express-metric.has-attention small { color: #a74b16; }
-        .ou-express-metric.is-muted {
-          border-color: #edf0f4;
-          background: #f4f5f7;
+        .ou-express-values span { font-weight: 900; }
+        .ou-express-values i {
+          color: #cbd5e1;
+          font-size: 8px;
+          font-style: normal;
+          font-weight: 750;
         }
-        .ou-express-metric.is-muted strong,
-        .ou-express-metric.is-muted small { color: #98a1af; }
+        .ou-express-values .is-complete { color: #15803d; }
+        .ou-express-values .is-attempted { color: #7c3aed; }
+        .ou-express-values .is-open { color: #c2410c; }
+        }
         .ou-groups { display: grid; gap: 2px; padding: 4px 0 10px; }
         .ou-group > header {
           display: flex;
@@ -2525,6 +2544,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         }
         .ou-workspace-signals { display: grid; gap: 7px; }
         .ou-workspace-signals span { padding: 9px; border-radius: 9px; background: #f5f7fa; }
+        .ou-workspace-express { width: 100%; box-sizing: border-box; }
         .ou-timeline { display: grid; gap: 11px; margin: 0; padding: 0; list-style: none; }
         .ou-timeline li { display: grid; grid-template-columns: 58px 1fr; gap: 9px; }
         .ou-timeline time { color: #7a8495; font-size: 12px; }

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
+import { loadExpressEvidence } from "@/features/operations/express/loadExpressEvidence";
 
 export const runtime = "nodejs";
 type RouteContext = { params: Promise<{ slug: string }> };
@@ -76,6 +78,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     }
 
     const supabase = await getSupabaseServerClient();
+    const serviceRole = createSupabaseServiceRoleClient();
     const { data: auth } = await supabase.auth.getUser();
     if (!auth.user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
     const { data: company } = await supabase.from("companies").select("id, company_name").eq("company_slug", slug).single();
@@ -86,11 +89,24 @@ export async function POST(req: NextRequest, context: RouteContext) {
     if (!summary) return NextResponse.json({ error: "A FINAL Daily Service Worksheet is required before sharing." }, { status: 409 });
     const row = (summary.normalized_row_json ?? {}) as Record<string, unknown>;
 
-    const { data: expressRows } = await supabase.from("operations_manifest_express_route_signal_v").select("package_count, completed_package_count, open_package_count, tracking_gap_package_count").eq("company_id", company.id).eq("service_date", serviceDate);
-    const express = (expressRows ?? []).reduce((total, item) => ({
-      total: total.total + number(item.package_count), completed: total.completed + number(item.completed_package_count),
-      open: total.open + number(item.open_package_count), gaps: total.gaps + number(item.tracking_gap_package_count),
-    }), { total: 0, completed: 0, open: 0, gaps: 0 });
+    const expressEvidence = await loadExpressEvidence({
+      companyId: company.id,
+      serviceDate,
+      manifestClient: serviceRole,
+      statusClient: serviceRole,
+    });
+    const express = {
+      total: expressEvidence.totals.package_count,
+      complete: expressEvidence.totals.complete_package_count,
+      attempted: expressEvidence.totals.attempted_package_count,
+      open: expressEvidence.totals.open_package_count,
+      data_health: {
+        tracking_identity_missing: expressEvidence.totals.tracking_identity_missing_count,
+        stop_link_missing: expressEvidence.totals.stop_link_missing_count,
+        stop_link_ambiguous: expressEvidence.totals.stop_link_ambiguous_count,
+        reference_match_available: expressEvidence.totals.reference_match_available,
+      },
+    };
     const { data: watchlist } = await supabase.from("operations_watchlist_item_v").select("title, detail, status, severity").eq("company_id", company.id).eq("service_date", serviceDate).eq("client_visible", true).not("status", "in", "(RESOLVED,DISMISSED)");
     const { data: dispatchRows, error: dispatchError } = await supabase.rpc("get_daily_operations_dispatch_actions", { p_company_id: company.id, p_service_date: serviceDate });
     if (dispatchError) return NextResponse.json({ error: `Unable to load Dispatch actions: ${dispatchError.message}` }, { status: 500 });
@@ -117,7 +133,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
       }).join("")}`
       : `<h2 style="font-size:18px;margin:24px 0 8px">Dispatch actions</h2><p style="color:#64748b">No dispatch actions were recorded for this service date.</p>`;
     const html = `<div style="font-family:Arial,sans-serif;color:#0f172a;max-width:760px;margin:auto"><p style="color:#059669;font-size:12px;font-weight:900;letter-spacing:.12em;text-transform:uppercase">Daily operations brief</p><h1 style="margin:0">${escapeHtml(company.company_name)}</h1><p style="color:#64748b">Service date ${escapeHtml(serviceDate)}</p>${message ? `<p>${escapeHtml(message)}</p>` : ""}<table style="width:100%;border-collapse:collapse;margin-top:20px"><tr>${[
-      ["Routes", snapshot.routes], ["Delivery stops", `${snapshot.delivery_stops.actual} / ${snapshot.delivery_stops.planned}`], ["Pickups", `${snapshot.pickups.actual} / ${snapshot.pickups.planned}`], ["ILS", `${snapshot.ils_percent.toFixed(1)}%`], ["Express", `${express.open} open · ${express.gaps} gaps / ${express.total}`],
+      ["Routes", snapshot.routes], ["Delivery stops", `${snapshot.delivery_stops.actual} / ${snapshot.delivery_stops.planned}`], ["Pickups", `${snapshot.pickups.actual} / ${snapshot.pickups.planned}`], ["ILS", `${snapshot.ils_percent.toFixed(1)}%`], ["Express", `${express.complete} Complete · ${express.attempted} Attempted · ${express.open} Open`],
     ].map(([label, value]) => `<td style="border:1px solid #d7e2f2;padding:12px"><small style="color:#64748b;text-transform:uppercase">${label}</small><strong style="display:block;font-size:18px;margin-top:5px">${value}</strong></td>`).join("")}</tr></table>${watchlistHtml}${dispatchHtml}<p style="color:#94a3b8;font-size:11px;margin-top:28px">This is a governed snapshot of the FINAL report and its action state at send time.</p></div>`;
 
     const response = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: `Bearer ${requireEnv("RESEND_API_KEY")}`, "Content-Type": "application/json" }, body: JSON.stringify({ from: `${process.env.RESEND_FROM_NAME?.trim() || "Insight"} <${requireEnv("RESEND_FROM_EMAIL")}>`, to: recipients, subject, html }) });

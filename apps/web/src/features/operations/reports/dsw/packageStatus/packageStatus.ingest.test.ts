@@ -141,7 +141,7 @@ describe("ingestDswPackageStatusWorkbook", () => {
       },
     });
 
-    expect(supabase.rpcCalls).toHaveLength(2);
+    expect(supabase.rpcCalls).toHaveLength(4);
     expect(supabase.rpcCalls[0].name).toBe(
       "import_operations_dsw_package_status"
     );
@@ -163,6 +163,24 @@ describe("ingestDswPackageStatusWorkbook", () => {
     expect(supabase.rpcCalls[1].args.p_tracking_refs).toEqual([
       expect.stringMatching(/^v1_[a-f0-9]{64}$/),
     ]);
+    expect(supabase.rpcCalls[2]).toMatchObject({
+      name: "attach_operations_dsw_manifest_tracking_refs",
+      args: {
+        p_snapshot_id: "00000000-0000-4000-8000-000000000002",
+        p_company_id: "00000000-0000-4000-8000-000000000001",
+        p_service_date: "2026-07-27",
+      },
+    });
+    expect(JSON.stringify(supabase.rpcCalls[2].args.p_rows)).toContain(TRACKING_ID);
+    expect(supabase.rpcCalls[3]).toMatchObject({
+      name: "record_operations_express_progress_snapshot",
+      args: {
+        p_company_id: "00000000-0000-4000-8000-000000000001",
+        p_service_date: "2026-07-27",
+        p_source_family: "DSW_ALL_CODES",
+        p_source_reference: "00000000-0000-4000-8000-000000000002",
+      },
+    });
     expect(result.batch_id).toBeNull();
     expect(result.snapshot_id).toBe(
       "00000000-0000-4000-8000-000000000002"

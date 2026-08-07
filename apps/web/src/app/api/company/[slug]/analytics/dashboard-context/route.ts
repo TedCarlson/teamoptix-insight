@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import { buildWorkforceTenureProfile } from "@/features/company/analytics/workforce/workforceTenure";
 import { buildResignationNoticeCountdowns } from "@/features/company/analytics/workforce/resignationNotice";
 
@@ -20,9 +21,11 @@ function addDays(value: string, days: number) {
 type ExpressRow = {
   service_date: string;
   route_key: string;
-  express_package_count: number | string | null;
-  express_stop_count: number | string | null;
-  incomplete_express_package_count: number | string | null;
+  package_count: number | string | null;
+  complete_package_count: number | string | null;
+  attempted_package_count: number | string | null;
+  canonical_open_package_count: number | string | null;
+  reference_match_available: boolean | null;
 };
 
 function number(value: unknown) {
@@ -49,6 +52,7 @@ export async function GET(
     // read intentionally bounded to the recent six calendar weeks.
     const expressStart = addDays(endDate, -41);
     const supabase = await getSupabaseServerClient();
+    const serviceRole = createSupabaseServiceRoleClient();
     const { data: company, error: companyError } = await supabase
       .from("companies")
       .select("id")
@@ -64,10 +68,10 @@ export async function GET(
         .from("company_roster_view")
         .select("roster_member_id, full_name, worker_type, employment_status, hire_date")
         .eq("company_id", company.id),
-      supabase
-        .from("operations_manifest_route_health_v")
+      serviceRole
+        .from("operations_manifest_express_route_signal_v")
         .select(
-          "service_date, route_key, express_package_count, express_stop_count, incomplete_express_package_count"
+          "service_date, route_key, package_count, complete_package_count, attempted_package_count, canonical_open_package_count, reference_match_available"
         )
         .eq("company_id", company.id)
         .gte("service_date", expressStart)
@@ -112,18 +116,14 @@ export async function GET(
       }
       routeDays.set(key, {
         ...row,
-        express_package_count: Math.max(
-          number(current.express_package_count),
-          number(row.express_package_count)
+        package_count: Math.max(
+          number(current.package_count),
+          number(row.package_count)
         ),
-        express_stop_count: Math.max(
-          number(current.express_stop_count),
-          number(row.express_stop_count)
-        ),
-        incomplete_express_package_count: Math.max(
-          number(current.incomplete_express_package_count),
-          number(row.incomplete_express_package_count)
-        ),
+        complete_package_count: Math.max(number(current.complete_package_count), number(row.complete_package_count)),
+        attempted_package_count: Math.max(number(current.attempted_package_count), number(row.attempted_package_count)),
+        canonical_open_package_count: Math.max(number(current.canonical_open_package_count), number(row.canonical_open_package_count)),
+        reference_match_available: current.reference_match_available !== false && row.reference_match_available !== false,
       });
     }
 
@@ -144,19 +144,17 @@ export async function GET(
         coverage_days: expressDates.size,
         route_days: expressRows.length,
         packages: expressRows.reduce(
-          (sum, row) => sum + number(row.express_package_count),
+          (sum, row) => sum + number(row.package_count),
           0
         ),
-        stops: expressRows.reduce(
-          (sum, row) => sum + number(row.express_stop_count),
-          0
-        ),
+        complete_packages: expressRows.reduce((sum, row) => sum + number(row.complete_package_count), 0),
+        attempted_packages: expressRows.reduce((sum, row) => sum + number(row.attempted_package_count), 0),
         open_packages: expressRows.reduce(
-          (sum, row) => sum + number(row.incomplete_express_package_count),
+          (sum, row) => sum + number(row.canonical_open_package_count),
           0
         ),
-        available: !expressResult.error && expressRows.length > 0,
-        error: expressResult.error?.message ?? null,
+        available: !expressResult.error && expressRows.length > 0 && expressRows.every((row) => row.reference_match_available !== false),
+        error: expressResult.error?.message ?? (expressRows.some((row) => row.reference_match_available === false) ? "Express reference matching is unavailable for part of this period." : null),
       },
     });
   } catch (error) {
