@@ -1,9 +1,14 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAnalyticsData } from "./AnalyticsDataProvider";
-import { OperatingCalendar } from "./OperatingCalendar";
 import CompositeOperatingChart from "./CompositeOperatingChart";
+import DashboardHealthPanel from "./DashboardHealthPanel";
+import {
+  buildDashboardHealth,
+  type DashboardExpressContext,
+  type DashboardWorkforceContext,
+} from "./dashboardHealth";
 import { buildOperatingIntelligenceDataset } from "./operatingIntelligence";
 
 type PayloadMetadata = {
@@ -11,6 +16,18 @@ type PayloadMetadata = {
   end_date?: string | null;
   through_service_date?: string | null;
   finalized_operating_day_count?: number | null;
+};
+
+type DashboardContextPayload = {
+  workforce: DashboardWorkforceContext;
+  express: DashboardExpressContext;
+  error?: string;
+};
+
+type DashboardContextState = {
+  key: string;
+  data: DashboardContextPayload | null;
+  error: string | null;
 };
 
 function formatDate(value: string | null | undefined) {
@@ -24,7 +41,7 @@ function formatDate(value: string | null | undefined) {
   }).format(new Date(`${value.slice(0, 10)}T12:00:00Z`));
 }
 
-export default function AnalyticsDashboardSurface() {
+export default function AnalyticsDashboardSurface({ slug }: { slug: string }) {
   const {
     selectedYear,
     loadedYear,
@@ -35,12 +52,66 @@ export default function AnalyticsDashboardSurface() {
     error,
     selectYear,
   } = useAnalyticsData();
+  const [contextState, setContextState] = useState<DashboardContextState | null>(null);
 
   const metadata = (payload?.metadata ?? null) as PayloadMetadata | null;
   const intelligence = useMemo(
     () => buildOperatingIntelligenceDataset(payload?.rows ?? []),
     [payload]
   );
+  const throughDate = metadata?.through_service_date ?? null;
+
+  useEffect(() => {
+    if (!throughDate) return;
+    let active = true;
+
+    fetch(
+      `/api/company/${slug}/analytics/dashboard-context?end=${encodeURIComponent(throughDate)}`,
+      {
+        credentials: "include",
+        cache: "no-store",
+      }
+    )
+      .then(async (response) => {
+        const body = (await response.json()) as DashboardContextPayload;
+        if (!response.ok) {
+          throw new Error(body.error ?? "Unable to load dashboard operating context.");
+        }
+        return body;
+      })
+      .then((body) => {
+        if (!active) return;
+        setContextState({ key: throughDate, data: body, error: null });
+      })
+      .catch((caught) => {
+        if (!active) return;
+        setContextState({
+          key: throughDate,
+          data: null,
+          error:
+            caught instanceof Error
+              ? caught.message
+              : "Unable to load dashboard operating context.",
+        });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [slug, throughDate]);
+
+  const dashboardContext = contextState?.key === throughDate ? contextState.data : null;
+  const contextError = contextState?.key === throughDate ? contextState.error : null;
+
+  const health = useMemo(() => {
+    if (!payload || !throughDate || !dashboardContext) return null;
+    return buildDashboardHealth(
+      payload.rows,
+      throughDate,
+      dashboardContext.workforce,
+      dashboardContext.express
+    );
+  }, [dashboardContext, payload, throughDate]);
 
   return (
     <main className="workspace-shell">
@@ -59,9 +130,6 @@ export default function AnalyticsDashboardSurface() {
               <div style={{ maxWidth: 720 }}>
                 <p className="value-card__eyebrow">Operating Intelligence</p>
                 <h2 className="app-card__title">Contract-year operating story</h2>
-                <p className="app-card__body" style={{ marginTop: 8 }}>
-                  Weekly routes, completed stop and package volume, and operating modes rendered from the canonical FINAL DSW history payload.
-                </p>
               </div>
 
               <div style={{ display: "grid", gap: 6, justifyItems: "end" }}>
@@ -167,14 +235,32 @@ export default function AnalyticsDashboardSurface() {
 
           {!payloadLoading && payload && intelligence.weeks.length > 0 ? (
             <>
-              <OperatingCalendar
+              <CompositeOperatingChart
                 days={intelligence.days}
+                weeks={intelligence.weeks}
                 overlays={intelligence.overlays}
-                startDate={metadata?.start_date ?? intelligence.days[0]?.serviceDate ?? ""}
-                endDate={metadata?.end_date ?? intelligence.days.at(-1)?.serviceDate ?? ""}
-                throughDate={metadata?.through_service_date}
+                compact
               />
-              <CompositeOperatingChart days={intelligence.days} weeks={intelligence.weeks} overlays={intelligence.overlays} compact />
+              {health ? (
+                <DashboardHealthPanel
+                  health={health}
+                  express={dashboardContext?.express ?? null}
+                  slug={slug}
+                />
+              ) : contextError ? (
+                <article className="app-card" style={{ padding: 18 }}>
+                  <strong style={{ color: "#b91c1c" }}>Operating health unavailable.</strong>
+                  <span style={{ display: "block", marginTop: 5, color: "#64748b", fontSize: 12 }}>
+                    {contextError}
+                  </span>
+                </article>
+              ) : (
+                <article className="app-card" style={{ padding: 18 }}>
+                  <span style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>
+                    Connecting demand, workforce, and service health…
+                  </span>
+                </article>
+              )}
             </>
           ) : null}
 

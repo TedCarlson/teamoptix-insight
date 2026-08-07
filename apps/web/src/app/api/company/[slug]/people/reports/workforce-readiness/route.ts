@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { buildWorkforceTenureProfile } from "@/features/company/analytics/workforce/workforceTenure";
+import { buildResignationNoticeCountdowns } from "@/features/company/analytics/workforce/resignationNotice";
 
 export const runtime = "nodejs";
 
@@ -16,27 +18,49 @@ function classifyChecklist(itemKey: string, label: string): MilestoneKey | null 
   return null;
 }
 
-export async function GET(_request: NextRequest, context: { params: Promise<{ slug: string }> }) {
+export async function GET(request: NextRequest, context: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await context.params;
     const supabase = await getSupabaseServerClient();
     const { data: company, error: companyError } = await supabase.from("companies").select("id").eq("company_slug", slug).single();
     if (companyError || !company) return NextResponse.json({ error: "Company not found." }, { status: 404 });
 
-    const [rosterResult, configResult, factsResult, stagesResult, eventsResult] = await Promise.all([
-      supabase.from("company_roster_view").select("roster_member_id, employment_status").eq("company_id", company.id),
+    const [rosterResult, configResult, factsResult, stagesResult, eventsResult, noticeResult] = await Promise.all([
+      supabase.from("company_roster_view").select("roster_member_id, full_name, worker_type, employment_status, hire_date").eq("company_id", company.id),
       supabase.from("company_candidate_checklist_config_v").select("item_type_id, item_key, display_label, default_label").eq("company_id", company.id),
       supabase.from("roster_candidate_checklist_fact_v").select("roster_id, item_type_id, is_complete").eq("company_id", company.id),
       supabase.from("roster_candidate_stage_v").select("roster_id, stage_key, default_label, is_terminal").eq("company_id", company.id),
       supabase.from("company_roster_event_view").select("roster_id, event_type, event_metadata").eq("company_id", company.id).in("event_type", ["candidate_created", "candidate_checklist_item_completed", "marked_trainee", "marked_active"]),
+      supabase.from("schedule_override").select("id, roster_member_id, override_type, start_date, end_date, separation_effective_date, workflow_status, is_active").eq("company_id", company.id).eq("override_type", "RESIGNATION_NOTICE").eq("is_active", true),
     ]);
-    const readError = rosterResult.error || configResult.error || factsResult.error || stagesResult.error || eventsResult.error;
+    const readError = rosterResult.error || configResult.error || factsResult.error || stagesResult.error || eventsResult.error || noticeResult.error;
     if (readError) return NextResponse.json({ error: readError.message }, { status: 500 });
 
     const roster = rosterResult.data ?? [];
     const stages = stagesResult.data ?? [];
     const facts = factsResult.data ?? [];
     const events = eventsResult.data ?? [];
+    const requestedAsOf = request.nextUrl.searchParams.get("as_of");
+    const asOfDate = requestedAsOf && /^\d{4}-\d{2}-\d{2}$/.test(requestedAsOf)
+      ? requestedAsOf
+      : new Date().toISOString().slice(0, 10);
+    const tenure = buildWorkforceTenureProfile(roster, asOfDate);
+    const noticeAsOf = new Date().toISOString().slice(0, 10);
+    const noticeResignations = buildResignationNoticeCountdowns(
+      noticeResult.data ?? [],
+      roster,
+      noticeAsOf
+    );
+    const candidateIds = new Set(
+      roster
+        .filter((row) => row.employment_status === "Candidate")
+        .map((row) => row.roster_member_id)
+    );
+    const onboardingCandidateIds = new Set(
+      stages
+        .filter((row) => candidateIds.has(row.roster_id) && !row.is_terminal && row.stage_key === "onboarding")
+        .map((row) => row.roster_id)
+    );
     const milestoneByItemId = new Map<string, MilestoneKey>();
     for (const config of configResult.data ?? []) {
       const milestone = classifyChecklist(String(config.item_key ?? ""), String(config.display_label ?? config.default_label ?? ""));
@@ -97,7 +121,15 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ sl
       failures.set(key, current);
     }
 
-    return NextResponse.json({ introduced: introducedIds.size, checkpoints, failures: Array.from(failures.values()) });
+    return NextResponse.json({
+      introduced: introducedIds.size,
+      onboarding_candidates: onboardingCandidateIds.size,
+      tenure,
+      notice_as_of: noticeAsOf,
+      notice_resignations: noticeResignations,
+      checkpoints,
+      failures: Array.from(failures.values()),
+    });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to prepare workforce readiness history." }, { status: 500 });
   }

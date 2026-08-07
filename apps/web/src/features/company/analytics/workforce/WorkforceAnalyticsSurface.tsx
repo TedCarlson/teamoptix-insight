@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAnalyticsData } from "../AnalyticsDataProvider";
 import styles from "./workforce-analytics.module.css";
+import { buildWorkforcePlan, type WorkforcePlanScenario } from "./workforcePlanning";
+import type { WorkforceTenureProfile } from "./workforceTenure";
+import type { WorkforceResignationNotice } from "./resignationNotice";
 
 type WorkforceSummary = {
   active: number;
@@ -53,6 +56,10 @@ type WorkforcePayload = {
 
 type ReadinessPayload = {
   introduced?: number;
+  onboarding_candidates?: number;
+  tenure?: WorkforceTenureProfile;
+  notice_as_of?: string;
+  notice_resignations?: WorkforceResignationNotice[];
   checkpoints?: Array<{
     key: string;
     label: string;
@@ -96,6 +103,14 @@ function formatMonth(value: string) {
   }).format(new Date(`${value}-01T12:00:00Z`));
 }
 
+function scenarioDelta(scenario: WorkforcePlanScenario) {
+  if (scenario.delta < 0) return `${scenario.status === "critical" ? "Critical · " : ""}${Math.abs(scenario.delta)} drivers below target`;
+  if (scenario.delta === 0) return "At target";
+  return scenario.status === "heavy"
+    ? `${scenario.delta} drivers above planning band`
+    : `${scenario.delta} drivers of operating cover`;
+}
+
 export default function WorkforceAnalyticsSurface({ slug }: { slug: string }) {
   const { payload, payloadLoading, error: analyticsError, loadedYear } = useAnalyticsData();
   const [workforce, setWorkforce] = useState<WorkforcePayload | null>(null);
@@ -120,7 +135,7 @@ export default function WorkforceAnalyticsSurface({ slug }: { slug: string }) {
         credentials: "include",
         cache: "no-store",
       }),
-      fetch(`/api/company/${slug}/people/reports/workforce-readiness`, {
+      fetch(`/api/company/${slug}/people/reports/workforce-readiness?as_of=${encodeURIComponent(throughDate)}`, {
         credentials: "include",
         cache: "no-store",
       }),
@@ -189,6 +204,22 @@ export default function WorkforceAnalyticsSurface({ slug }: { slug: string }) {
     workforce?.coverage.schedule_start && startDate && workforce.coverage.schedule_start > startDate
   );
   const attendanceSignals = (summary?.call_outs ?? 0) + (summary?.no_shows ?? 0) + (summary?.late_arrivals ?? 0);
+  const noticeResignations = readiness?.notice_resignations ?? [];
+  const routeReadyNoticeDepartures = noticeResignations.filter(
+    (notice) => notice.route_ready_departure
+  ).length;
+  const projectedActiveDrivers = Math.max(
+    0,
+    (summary?.active ?? 0) - routeReadyNoticeDepartures
+  );
+  const workforcePlan = useMemo(() => buildWorkforcePlan(
+    payload?.rows ?? [],
+    throughDate ?? "",
+    summary?.active ?? 0,
+    workforce?.monthly ?? [],
+    routeReadyNoticeDepartures
+  ), [payload, throughDate, summary?.active, workforce?.monthly, routeReadyNoticeDepartures]);
+  const tenure = readiness?.tenure;
 
   return (
     <main className="workspace-shell">
@@ -214,12 +245,160 @@ export default function WorkforceAnalyticsSurface({ slug }: { slug: string }) {
           {!payloadLoading && !loading && !analyticsError && !error && workforce ? (
             <>
               <section className={styles.summary}>
-                <article><span>Active workforce</span><strong>{formatNumber((summary?.active ?? 0) + (summary?.trainees ?? 0))}</strong><small>{formatNumber(summary?.trainees ?? 0)} trainees included</small></article>
-                <article><span>Candidate pipeline</span><strong>{formatNumber(summary?.candidates ?? 0)}</strong><small>{formatNumber(readiness?.introduced ?? 0)} lifecycle records observed</small></article>
+                <article className={noticeResignations.length ? styles.offRampCard : ""}>
+                  <span>Active workforce</span>
+                  <strong>{formatNumber((summary?.active ?? 0) + (summary?.trainees ?? 0))}</strong>
+                  <small>
+                    {formatNumber(summary?.trainees ?? 0)} trainees included
+                    {noticeResignations.length ? ` · ${formatNumber(noticeResignations.length)} on notice` : ""}
+                  </small>
+                </article>
+                <article><span>Candidate pipeline</span><strong>{formatNumber(readiness?.onboarding_candidates ?? 0)}</strong><small>Current candidates in Onboarding</small></article>
                 <article><span>Contract hires</span><strong>{formatNumber(summary?.contract_hires ?? 0)}</strong><small>Hire date inside shared contract block</small></article>
                 <article><span>Contract separations</span><strong>{formatNumber(summary?.contract_separations ?? 0)}</strong><small>Separation date inside shared contract block</small></article>
                 <article className={attendanceSignals ? styles.signalCard : ""}><span>Attendance signals</span><strong>{formatNumber(attendanceSignals)}</strong><small>{formatNumber(summary?.call_outs ?? 0)} call-outs · {formatNumber(summary?.no_shows ?? 0)} no-shows · {formatNumber(summary?.late_arrivals ?? 0)} late</small></article>
               </section>
+
+              {noticeResignations.length ? (
+                <section className={styles.offRampSection}>
+                  <header className={styles.sectionHead}>
+                    <div>
+                      <p>Known workforce off-ramp</p>
+                      <h2>Notice resignation countdown</h2>
+                      <span>Active notice records remain in today&apos;s workforce through each final scheduled day, while projected capacity reflects the known loss now.</span>
+                    </div>
+                    <div className={styles.offRampProjection}>
+                      <span>Projected route-ready</span>
+                      <strong>{formatNumber(projectedActiveDrivers)} after notice</strong>
+                      <small>{formatNumber(routeReadyNoticeDepartures)} current driver departure{routeReadyNoticeDepartures === 1 ? "" : "s"}</small>
+                    </div>
+                  </header>
+                  <div className={styles.offRampRows}>
+                    {noticeResignations.map((notice) => (
+                      <article key={notice.id}>
+                        <div className={styles.countdown}>
+                          <strong>{formatNumber(notice.days_until_last_day)}</strong>
+                          <span>{notice.days_until_last_day === 1 ? "day" : "days"} to last day</span>
+                        </div>
+                        <div className={styles.offRampIdentity}>
+                          <strong>{notice.full_name}</strong>
+                          <span>{notice.worker_type ?? notice.employment_status ?? "Roster member"}</span>
+                        </div>
+                        <div className={styles.offRampDates}>
+                          <span>Notice {formatDate(notice.notice_date)}</span>
+                          <strong>Final scheduled day {formatDate(notice.last_scheduled_date)}</strong>
+                          <small>Separation effective {formatDate(notice.separation_effective_date)}</small>
+                        </div>
+                        <b className={notice.route_ready_departure ? styles.routeReadyLoss : styles.developmentExit}>
+                          {notice.route_ready_departure ? "Route-ready capacity loss" : "Development capacity exit"}
+                        </b>
+                      </article>
+                    ))}
+                  </div>
+                  <footer>Baseline schedule remains in force through the final scheduled day and stops painting after that boundary.</footer>
+                </section>
+              ) : null}
+
+              {workforcePlan.recentPlanningRoutesPerDay > 0 ? (
+                <section className={styles.planningSection}>
+                  <header className={styles.sectionHead}>
+                    <div>
+                      <p>Demand-based workforce guidance</p>
+                      <h2>Workforce readiness target</h2>
+                      <span>Route-ready headcount for normal operations, six-day flex, and a seven-day seasonal ramp. Trainees are shown in workforce count but excluded from independent route capacity.</span>
+                    </div>
+                    <div className={styles.currentCapacity}>
+                      <span>{routeReadyNoticeDepartures ? "Current → projected" : "Current route-ready"}</span>
+                      <strong>{formatNumber(summary?.active ?? 0)} active drivers</strong>
+                      <small>{routeReadyNoticeDepartures ? `${formatNumber(projectedActiveDrivers)} after active notice` : `${formatNumber(summary?.trainees ?? 0)} trainee${summary?.trainees === 1 ? "" : "s"} developing`}</small>
+                    </div>
+                  </header>
+                  <div className={styles.scenarioGrid}>
+                    {workforcePlan.scenarios.map((scenario) => (
+                      <article className={`${styles.scenarioCard} ${styles[scenario.status]}`} key={scenario.key}>
+                        <div className={styles.scenarioTitle}>
+                          <span>{scenario.eyebrow}</span>
+                          <b>{scenario.status}</b>
+                        </div>
+                        <h3>{scenario.label}</h3>
+                        <div className={styles.targetLine}>
+                          <strong>{formatNumber(scenario.target)}</strong>
+                          <span>target drivers</span>
+                          <i>vs {formatNumber(scenario.projectedCurrent)} {scenario.noticeDepartures ? "projected" : "current"}</i>
+                        </div>
+                        <p className={styles.delta}>{scenarioDelta(scenario)}</p>
+                        <div className={styles.readinessMeter}>
+                          <i><b style={{ width: `${Math.min(100, scenario.readinessPercent)}%` }} /></i>
+                          <span>{formatNumber(scenario.readinessPercent, 0)}% of target staffed</span>
+                        </div>
+                        <p>{scenario.explanation}</p>
+                        <div className={styles.evidenceTarget}>
+                          <span>Company evidence</span>
+                          <strong>{scenario.evidenceTarget == null ? "Building history" : `${formatNumber(scenario.evidenceTarget)} drivers`}</strong>
+                          <small>{workforcePlan.evidenceCoverageFactor == null ? "Schedule and absence record needed" : `${workforcePlan.evidenceCoverageFactor.toFixed(3)} observed factor`}</small>
+                        </div>
+                        <small>{formatNumber(scenario.planningRoutesPerDay, 1)} routes/day · {scenario.operatingDays} service days · {scenario.driverDays} days/driver · {workforcePlan.coverageFactor.toFixed(3)} coverage</small>
+                      </article>
+                    ))}
+                  </div>
+                  <div className={styles.planningProof}>
+                    <div>
+                      <span>BAU demand</span>
+                      <strong>{formatNumber(workforcePlan.recentPlanningRoutesPerDay, 1)} routes/day</strong>
+                      <small>Average · last 5 complete weeks · {formatDate(workforcePlan.recentWindowStart)} – {formatDate(workforcePlan.recentWindowEnd)}</small>
+                    </div>
+                    <div>
+                      <span>Sustained peak</span>
+                      <strong>{formatNumber(workforcePlan.peakPlanningRoutesPerDay, 1)} routes/day</strong>
+                      <small>Average inside strongest 5-week block · {formatDate(workforcePlan.peakWindowStart)} – {formatDate(workforcePlan.peakWindowEnd)}</small>
+                    </div>
+                    <div>
+                      <span>Coverage reserve</span>
+                      <strong>{workforcePlan.coverageFactor.toFixed(3)} · 12.5%</strong>
+                      <small>{workforcePlan.evidenceCoverageFactor != null ? `Company evidence: ${workforcePlan.evidenceCoverageFactor.toFixed(3)} factor from ${formatNumber((1 - workforcePlan.availability) * 100, 1)}% observed absence burden` : "Default until company history can calibrate the factor"}</small>
+                    </div>
+                  </div>
+                  <p className={styles.formula}>
+                    <strong>How the targets are calculated:</strong> both use average required routes/day × service days ÷ driver days/week × coverage factor, rounded up. The planning benchmark uses 1.125; company evidence uses its observed scheduled-assignment loss from PTO, call-outs, and no-shows. Readiness below 85% is critical, 85–99% is light, 100–110% is optimal, and above 110% is heavy.
+                  </p>
+                </section>
+              ) : null}
+
+              {tenure ? (
+                <section className={styles.tenureSection}>
+                  <header className={styles.sectionHead}>
+                    <div>
+                      <p>Experience + management readiness</p>
+                      <h2>Tenure mix and supervision load</h2>
+                      <span>Current Active drivers grouped by tenure as of {formatDate(tenure.as_of)}. Tenure directs coaching attention; it does not by itself assert a service or safety failure.</span>
+                    </div>
+                    <div className={styles.tenureHeadline}>
+                      <span>New-driver cohort</span>
+                      <strong>{formatNumber(tenure.new_driver_count)} · {formatNumber(tenure.new_driver_share * 100)}%</strong>
+                      <small>First 90 days · {formatNumber(summary?.trainees ?? 0)} trainee{summary?.trainees === 1 ? "" : "s"} separate</small>
+                    </div>
+                  </header>
+                  <div className={styles.tenureSegments}>
+                    {tenure.segments.map((segment) => (
+                      <article key={segment.key}>
+                        <span>{segment.label}</span>
+                        <strong>{formatNumber(segment.count)}</strong>
+                        <small>{segment.range} · {formatNumber(segment.share * 100)}% of known</small>
+                        <i><b style={{ width: `${segment.share * 100}%` }} /></i>
+                        <em>{segment.managementFocus}</em>
+                      </article>
+                    ))}
+                  </div>
+                  <div className={styles.tenureGuidance}>
+                    <div>
+                      <span>Management focus</span>
+                      <strong>{tenure.new_driver_share >= 0.3 ? "Elevated coaching load" : tenure.new_driver_share >= 0.15 ? "Active development load" : "Established workforce mix"}</strong>
+                    </div>
+                    <p>{tenure.new_driver_count > 0 ? `${formatNumber(tenure.new_driver_count)} active drivers are inside their first 90 days. Prioritize ride-alongs, pickup-service verification, safety observation, and frequent reliability feedback while their operating record matures.` : "No active drivers are currently inside the first 90-day development window."}</p>
+                    <small>{tenure.missing_hire_date ? `${formatNumber(tenure.missing_hire_date)} Active driver${tenure.missing_hire_date === 1 ? " is" : "s are"} excluded because hire date is missing.` : `${formatNumber(tenure.known_tenure)} of ${formatNumber(tenure.active_drivers)} Active drivers have known hire dates.`}</small>
+                  </div>
+                </section>
+              ) : null}
 
               {scheduleHistoryPartial ? (
                 <div className={styles.coverageNotice}>
