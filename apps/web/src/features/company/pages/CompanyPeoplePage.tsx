@@ -9,6 +9,7 @@ import {
   UserRoundX,
   Users,
 } from "lucide-react";
+import type { WorkforceResignationNotice } from "@/features/company/analytics/workforce/resignationNotice";
 import styles from "./people-landing.module.css";
 
 type RosterMetricRow = {
@@ -85,6 +86,16 @@ function timeLabel(value?: string | null) {
   return new Intl.DateTimeFormat(undefined, {
     hour: "numeric",
     minute: "2-digit",
+  }).format(date);
+}
+
+function shortDateLabel(value?: string | null) {
+  if (!value) return "Date pending";
+  const date = new Date(`${value.slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return "Date pending";
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
   }).format(date);
 }
 
@@ -211,6 +222,7 @@ export default function CompanyPeoplePage() {
   const [scheduleRows, setScheduleRows] = useState<ScheduleDayRow[]>([]);
   const [interviews, setInterviews] = useState<InterviewRow[]>([]);
   const [pendingRequests, setPendingRequests] = useState<TimeOffRequestRow[]>([]);
+  const [noticeResignations, setNoticeResignations] = useState<WorkforceResignationNotice[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [unavailableSignals, setUnavailableSignals] = useState(0);
 
@@ -224,9 +236,10 @@ export default function CompanyPeoplePage() {
       fetchJson(`/api/company/${slug}/schedule/generated?date=${today}`),
       fetchJson(`/api/company/${slug}/people/interviews`),
       fetchJson(`/api/company/${slug}/schedule/time-off-requests`),
+      fetchJson(`/api/company/${slug}/people/reports/workforce-readiness?as_of=${today}`),
     ]);
 
-    const [rosterResult, scheduleResult, interviewResult, timeOffResult] = results;
+    const [rosterResult, scheduleResult, interviewResult, timeOffResult, readinessResult] = results;
 
     if (rosterResult.status === "fulfilled") {
       setRoster(Array.isArray(rosterResult.value?.roster) ? rosterResult.value.roster : []);
@@ -250,6 +263,16 @@ export default function CompanyPeoplePage() {
       setPendingRequests(Array.isArray(timeOffResult.value?.pending) ? timeOffResult.value.pending : []);
     } else {
       setPendingRequests([]);
+    }
+
+    if (readinessResult.status === "fulfilled") {
+      setNoticeResignations(
+        Array.isArray(readinessResult.value?.notice_resignations)
+          ? readinessResult.value.notice_resignations
+          : []
+      );
+    } else {
+      setNoticeResignations(null);
     }
 
     setUnavailableSignals(results.filter((result) => result.status === "rejected").length);
@@ -329,6 +352,14 @@ export default function CompanyPeoplePage() {
   const retentionWindows = ([30, 60, 90] as const).map((days) =>
     retentionWindow(roster, today, days)
   );
+  const nextNoticeResignation = noticeResignations?.[0];
+  const noticeResignationDetail = loading
+    ? "Checking active notices"
+    : noticeResignations == null
+      ? "Signal temporarily unavailable"
+      : nextNoticeResignation
+        ? `Next final scheduled day ${shortDateLabel(nextNoticeResignation.last_scheduled_date)} · ${nextNoticeResignation.days_until_last_day} ${nextNoticeResignation.days_until_last_day === 1 ? "day" : "days"}`
+        : "No active notices";
 
   return (
     <main className="workspace-shell">
@@ -404,6 +435,11 @@ export default function CompanyPeoplePage() {
                   <strong>{posture.drivers}</strong> active drivers
                   {posture.leadership > 0 ? ` · ${posture.leadership} leadership` : ""}
                 </span>
+              </div>
+              <div className={styles.noticeDatum} data-signal="NOTICE_RESIGNATION">
+                <span>Resignation notice</span>
+                <strong>{noticeResignations == null ? "—" : noticeResignations.length}</strong>
+                <small>{noticeResignationDetail}</small>
               </div>
             </section>
 

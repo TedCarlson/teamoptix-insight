@@ -349,6 +349,41 @@
   color: #2463b4;
 }
 
+.noticeDatum {
+  display: grid;
+  grid-template-columns: 112px 32px minmax(0, 1fr);
+  gap: 11px;
+  align-items: baseline;
+  margin: -5px 18px 16px;
+  padding: 5px 10px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #fff7df, #fffbef);
+  box-shadow:
+    inset 3px 0 0 #d69a2d,
+    inset 0 1px 0 #f0d49a,
+    inset 0 -1px 0 #f0d49a;
+}
+
+.noticeDatum > span {
+  color: #8a5a0a;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.noticeDatum strong {
+  color: #a16207;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.noticeDatum small {
+  color: #856b3d;
+  font-size: 9px;
+  line-height: 1.35;
+  text-align: right;
+}
+
 .agendaList,
 .changeGrid {
   display: grid;
@@ -534,6 +569,16 @@
 
   .postureSummary {
     margin: 0 14px 14px;
+  }
+
+  .noticeDatum {
+    grid-template-columns: minmax(0, 1fr) auto;
+    margin: -3px 14px 14px;
+  }
+
+  .noticeDatum small {
+    grid-column: 1 / -1;
+    text-align: left;
   }
 
   .agendaRow {
