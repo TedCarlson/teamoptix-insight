@@ -39,7 +39,7 @@ export default function DemandTrendCard({ summary }: { summary: IntelligenceSumm
 
   return (
     <section style={{ border: "1px solid #d7e2f2", borderRadius: 14, background: "#fff", padding: 12, display: "grid", gap: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12 }}>
+      <div className="planning-demand__header" style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12 }}>
         <div>
           <p style={{ margin: "0 0 3px", color: "#009b67", fontSize: 11, fontWeight: 950, letterSpacing: "0.12em", textTransform: "uppercase" }}>
             Demand Trend
@@ -55,7 +55,7 @@ export default function DemandTrendCard({ summary }: { summary: IntelligenceSumm
         </div>
       </div>
 
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+      <section className="planning-demand__metrics" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
         <DemandMetric label="Routes" latest={demand.latest?.routes} average={demand.average?.routes} delta={demand.delta_pct?.routes} />
         <DemandMetric label="Stops" latest={demand.latest?.stops} average={demand.average?.stops} delta={demand.delta_pct?.stops} />
         <DemandMetric label="Packages" latest={demand.latest?.packages} average={demand.average?.packages} delta={demand.delta_pct?.packages} />

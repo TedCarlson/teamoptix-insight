@@ -19,7 +19,7 @@ export default function OperationsReportSurface() {
   const intelligence = useMemo(() => buildOperatingIntelligenceDataset(payload?.rows ?? []), [payload]);
 
   return <main className="workspace-shell"><section className="workspace-main" style={{ paddingTop: 0, paddingBottom: 36 }}>
-    <article style={{ maxWidth: 1240, margin: "0 auto", background: "#fff", border: "1px solid #dbe3ed", boxShadow: "0 18px 50px rgba(15,23,42,.06)", padding: "clamp(18px, 2.5vw, 36px)" }}>
+    <article style={{ width: "100%", background: "#fff", border: "1px solid #dbe3ed", boxShadow: "0 18px 50px rgba(15,23,42,.06)", padding: "clamp(18px, 2.5vw, 36px)" }}>
       <header style={{ borderBottom: "3px solid #0f172a", paddingBottom: 22, display: "flex", justifyContent: "space-between", gap: 24, alignItems: "end", flexWrap: "wrap" }}>
         <div><p className="value-card__eyebrow">Analytics · Operations</p><h1 style={{ margin: "7px 0 0", fontSize: "clamp(34px, 5vw, 54px)", lineHeight: 1, letterSpacing: "-.045em" }}>Operations Report</h1><p style={{ margin: "12px 0 0", color: "#475569", maxWidth: 680, lineHeight: 1.65 }}>A contract-year reading of demand, route supply, and the workload carried by each operating plan.</p></div>
         <div style={{ textAlign: "right", color: "#475569", fontSize: 12, lineHeight: 1.7 }}><strong style={{ display: "block", color: "#0f172a", fontSize: 14 }}>Contract year {loadedYear ?? "—"}</strong><span>FINAL DSW · {report.operatingDays} operating days</span><br/><span>Current through {report.throughDate ? shortDate(report.throughDate) : "—"}</span></div>

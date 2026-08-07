@@ -533,6 +533,7 @@ export default function PlanningPage({ slug }: Props) {
           </section>
         ) : (
           <section
+            className="operations-planning-layout"
             style={{
               display: "grid",
               gridTemplateColumns: "minmax(0, 1fr) 320px",
@@ -541,8 +542,8 @@ export default function PlanningPage({ slug }: Props) {
               alignItems: "start",
             }}
           >
-            <section style={{ ...panel, padding: 14, display: "grid", gap: 10 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <section className="operations-planning-main" style={{ ...panel, padding: 14, display: "grid", gap: 10 }}>
+              <div className="operations-planning-header" style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                 <div>
                   <p style={eyebrow}>{planningFrameLabel(planningFrame.frame)}</p>
                   <h2 style={{ margin: 0, fontSize: 18 }}>Planning snapshot</h2>
@@ -571,7 +572,7 @@ export default function PlanningPage({ slug }: Props) {
                 </span>
               </section>
 
-              <div style={{ display: "grid", gap: 8 }}>
+              <div className="operations-planning-row-list" style={{ display: "grid", gap: 8 }}>
                 {rows.map((row, index) => {
                   const key =
                     row.route_baseline_id ??
@@ -585,6 +586,7 @@ export default function PlanningPage({ slug }: Props) {
                   return (
                     <div
                       key={key}
+                      className="operations-planning-row"
                                                                   style={{
                         width: "100%",
                         display: "grid",
@@ -598,7 +600,7 @@ export default function PlanningPage({ slug }: Props) {
                         textAlign: "left",
                                               }}
                     >
-                      <div style={{ minWidth: 0 }}>
+                      <div className="operations-planning-row__identity" style={{ minWidth: 0 }}>
                         <strong
                           style={{
                             display: "block",
@@ -630,6 +632,7 @@ export default function PlanningPage({ slug }: Props) {
 
 
                       <div
+                        className="operations-planning-row__assignment"
                         style={{
                           display: "grid",
                           gap: 2,
@@ -683,7 +686,7 @@ export default function PlanningPage({ slug }: Props) {
               </div>
             </section>
 
-            <aside style={{ ...panel, padding: 14, display: "grid", gap: 10 }}>
+            <aside className="operations-planning-aside" style={{ ...panel, padding: 14, display: "grid", gap: 10 }}>
               <div>
                 <p style={eyebrow}>Planning Readiness</p>
                 <strong>{planningSummary.readinessLabel}</strong>
@@ -787,6 +790,7 @@ function RouteIntelligenceCell(props: {
 
   return (
     <div
+      className="operations-planning-row__intelligence"
       style={{
         display: "grid",
         gap: 2,
@@ -855,6 +859,7 @@ function RailStat(props: { label: string; value: string | number }) {
 function DroPlanningSignal({ row }: { row: DroPlanRow }) {
   return (
     <span
+      className="operations-planning-row__signal"
       title={[
         `${fmt(row.stops)} stops`,
         `${fmt(row.packages)} packages`,

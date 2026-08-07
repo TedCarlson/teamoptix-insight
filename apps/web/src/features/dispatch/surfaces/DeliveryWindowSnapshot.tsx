@@ -800,14 +800,14 @@ console.log(
 
   return (
     <section className="delivery-window-grid">
-      <section style={{ ...panel, padding: 14, display: "grid", gap: 10 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <section className="delivery-window__main" style={{ ...panel, padding: 14, display: "grid", gap: 10 }}>
+        <div className="delivery-window__header" style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
             <p style={eyebrow}>Service</p>
             <h2 style={{ margin: 0, fontSize: 18 }}>Service Line Up</h2>
           </div>
 
-          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
+          <div className="delivery-window__actions" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
             <button type="button" className="button" onClick={() => setComplianceReportOpen(true)} style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}>
               Compliance Report
             </button>
@@ -834,6 +834,7 @@ console.log(
         </div>
 
         <div
+          className="delivery-window__summary-grid"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
@@ -902,7 +903,7 @@ console.log(
           <div style={{ padding: 12, color: "#64748b", fontWeight: 800 }}>Loading DSW snapshot...</div>
         ) : null}
 
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center" }}>
+        <div className="delivery-window__filters" style={{ display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center" }}>
           {[
             ["all", "All Routes"],
             ["on_road", "On Road"],
@@ -927,7 +928,7 @@ console.log(
           ))}
         </div>
 
-        <div style={{ display: "grid", gap: 8 }}>
+        <div className="delivery-window__route-list" style={{ display: "grid", gap: 8 }}>
           {visibleRouteRows.map((item) => {
             const { route, row, signal, completion, fccHealth } = item;
             const routeManifestHealth = manifestHealthForItem(item);
@@ -935,6 +936,7 @@ console.log(
             return (
               <div
                 key={item.key}
+                className="delivery-window__route-row"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "minmax(180px, 1.1fr) minmax(280px, 1.5fr) 72px",
@@ -951,7 +953,7 @@ console.log(
                     : "#fff",
                 }}
               >
-                <div style={{ minWidth: 0 }}>
+                <div className="delivery-window__route-identity" style={{ minWidth: 0 }}>
                   <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {item.route ? routeLabelForDisplay(item.route) : dswDisplayKey(row!, item.sortOrder)}
                   </strong>
@@ -985,6 +987,7 @@ console.log(
 
                 {row ? (
                   <div
+                    className="delivery-window__route-progress"
                     style={{
                       display: "flex",
                       gap: 10,
@@ -1029,12 +1032,13 @@ console.log(
                     ) : null}
                   </div>
                 ) : (
-                  <div style={{ color: "#94a3b8", fontSize: 12, fontWeight: 900 }}>
+                  <div className="delivery-window__route-progress" style={{ color: "#94a3b8", fontSize: 12, fontWeight: 900 }}>
                     No active DSW row matched
                   </div>
                 )}
 
                 <div
+                  className="delivery-window__route-health"
                   style={{
                     justifySelf: "end",
                     display: "inline-flex",
@@ -1096,7 +1100,7 @@ console.log(
         onClose={() => setSelectedRouteHealth(null)}
       />
 
-      <aside style={{ display: "grid", gap: 12 }}>
+      <aside className="delivery-window__aside" style={{ display: "grid", gap: 12 }}>
         {onUploadReport ? (
           <OperationsUploadCard onUpload={onUploadReport} />
         ) : null}

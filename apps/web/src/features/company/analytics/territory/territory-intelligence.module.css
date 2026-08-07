@@ -1,4 +1,4 @@
-.report { max-width: 1280px; margin: 0 auto; padding: clamp(20px, 3vw, 38px); border: 1px solid #dbe3ed; background: #fff; box-shadow: 0 18px 50px rgba(15, 23, 42, .06); color: #132039; }
+.report { width: 100%; padding: clamp(20px, 3vw, 38px); border: 1px solid #dbe3ed; background: #fff; box-shadow: 0 18px 50px rgba(15, 23, 42, .06); color: #132039; }
 .hero { display: flex; justify-content: space-between; align-items: end; gap: 28px; padding-bottom: 22px; border-bottom: 3px solid #132039; }
 .hero p, .sectionHead p { margin: 0 0 7px; color: #169b69; font-size: 11px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
 .hero h1 { margin: 0; font-size: clamp(36px, 5vw, 54px); line-height: 1; letter-spacing: -.045em; }

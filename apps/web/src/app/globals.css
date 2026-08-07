@@ -1747,7 +1747,7 @@ h1 {
   justify-content: flex-end;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 720px) {
   .operations-workspace-toolbar {
     align-items: stretch !important;
     flex-direction: column;
@@ -1905,6 +1905,171 @@ h1 {
 @media (max-width: 1200px) {
   .delivery-window-grid {
     grid-template-columns: 1fr;
+  }
+
+  .operations-planning-layout {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .operations-planning-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .operations-planning-row__identity,
+  .operations-planning-row__signal {
+    grid-column: 1 / -1;
+    min-width: 0 !important;
+  }
+
+  .operations-planning-row__assignment,
+  .operations-planning-row__intelligence {
+    min-width: 0 !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .delivery-window-grid,
+  .operations-planning-layout {
+    gap: 8px !important;
+    margin-top: 8px !important;
+  }
+
+  .delivery-window__main,
+  .operations-planning-main,
+  .operations-planning-aside {
+    border-radius: 14px !important;
+    padding: 10px !important;
+  }
+
+  .delivery-window__header,
+  .operations-planning-header,
+  .planning-demand__header,
+  .route-history__header {
+    align-items: stretch !important;
+    flex-direction: column;
+    gap: 8px !important;
+  }
+
+  .operations-planning-header > :last-child {
+    text-align: left !important;
+  }
+
+  .delivery-window__actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .delivery-window__actions .button {
+    justify-content: center;
+    min-height: 42px !important;
+    width: 100%;
+  }
+
+  .delivery-window__summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .delivery-window__filters {
+    justify-content: flex-start !important;
+  }
+
+  .delivery-window__route-list,
+  .operations-planning-row-list {
+    gap: 7px !important;
+  }
+
+  .delivery-window__route-row {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 8px !important;
+    padding: 10px !important;
+  }
+
+  .delivery-window__route-identity {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .delivery-window__route-progress {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-width: 0 !important;
+  }
+
+  .delivery-window__route-progress > * {
+    min-width: 0 !important;
+    max-width: 100%;
+  }
+
+  .delivery-window__route-health {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end !important;
+  }
+
+  .delivery-window__aside {
+    gap: 8px !important;
+  }
+
+  .operations-planning-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    padding: 10px !important;
+  }
+
+  .operations-planning-row__identity,
+  .operations-planning-row__signal {
+    grid-column: 1 / -1;
+    min-width: 0 !important;
+  }
+
+  .operations-planning-row__signal {
+    gap: 7px !important;
+  }
+
+  .operations-planning-row__assignment,
+  .operations-planning-row__intelligence {
+    min-width: 0 !important;
+  }
+
+  .planning-demand__metrics,
+  .route-history__inspections {
+    grid-template-columns: 1fr !important;
+  }
+
+  .route-history__actions {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .route-history__actions .button {
+    min-height: 42px !important;
+  }
+
+  .route-history__table-scroll {
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+}
+
+@media (max-width: 420px) {
+  .delivery-window__summary-grid,
+  .delivery-window__actions,
+  .operations-planning-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  .delivery-window__route-row {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+  }
+
+  .operations-planning-row__identity,
+  .operations-planning-row__signal,
+  .operations-planning-row__assignment,
+  .operations-planning-row__intelligence {
+    grid-column: 1;
   }
 }
 

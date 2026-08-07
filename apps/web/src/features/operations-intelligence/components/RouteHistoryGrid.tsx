@@ -95,7 +95,7 @@ export default function RouteHistoryGrid(props: {
 
   return (
     <section style={{ border: "1px solid #d7e2f2", borderRadius: 14, background: "#fff", overflow: "hidden" }}>
-      <div style={{ padding: 12, borderBottom: "1px solid #e6edf5", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+      <div className="route-history__header" style={{ padding: 12, borderBottom: "1px solid #e6edf5", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
         <div>
           <p style={{ margin: "0 0 3px", color: "#009b67", fontSize: 11, fontWeight: 950, letterSpacing: "0.12em", textTransform: "uppercase" }}>
 Route History Evidence
@@ -106,7 +106,7 @@ Route History Evidence
           </p>
         </div>
 
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div className="route-history__actions" style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <span style={{ color: "#64748b", fontSize: 12, fontWeight: 850 }}>
             {grid.length} routes
           </span>
@@ -122,7 +122,7 @@ Route History Evidence
         </div>
       </div>
 
-      <section style={{ padding: 12, borderBottom: "1px solid #e6edf5", display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+      <section className="route-history__inspections" style={{ padding: 12, borderBottom: "1px solid #e6edf5", display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
         <RouteInspectionCard
           label="Heaviest stop load"
           route={routeInspection.highestStops?.label}
@@ -143,7 +143,7 @@ Route History Evidence
         />
       </section>
 
-      <div style={{ overflowX: "auto" }}>
+      <div className="route-history__table-scroll" style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
           <thead>
             <tr style={{ background: "#f8fafc", color: "#64748b", textAlign: "left" }}>
