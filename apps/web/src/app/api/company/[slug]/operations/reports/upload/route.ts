@@ -4,24 +4,18 @@ import { createHash } from "crypto";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import { resolveAutomationAccess } from "@/features/automation/server/automation.repository";
+import {
+  detectDroPackageDetailWorkbook,
+  droCellText,
+  normalizeDroRow,
+  normalizeDroWaNumber,
+  parseDroRows,
+} from "@/features/operations/reports/dro/dro.parser";
 
 export const runtime = "nodejs";
 
 type RouteContext = { params: Promise<{ slug: string }> };
 type ParsedRow = Record<string, unknown>;
-
-const DRO_PM_HEADERS = [
-  "WA NAME", "WA #", "ROUTE TYPE", "Distance", "TIME", "TIME COMMITS",
-  "LP STOPS", "LP PACKAGES", "BULK STOPS", "BULK PKGS",
-  "SMALL STOPS", "SMALL PKGS", "REG STOPS", "REG PKGS",
-];
-
-const DRO_AM_HEADERS = [
-  "SERVICE AREA", "WA NAME", "WA #", "ROUTE TYPE",
-  "CAPACITY", "TIME", "DISTANCE", "TOTAL STOPS",
-  "TIME CRITICAL", "MISSED TIME CRT.",
-  "Delivery - STOPS", "Delivery - PKGS.",
-];
 
 const FCC_DETAIL_HEADERS = [
   "Station",
@@ -140,47 +134,6 @@ function normalizeFcc(raw: ParsedRow, headerMeta: Record<string, unknown>) {
     report_date_text: headerMeta.report_date_text,
     export_generated_text: headerMeta.export_generated_text,
     display_work_area: headerMeta.display_work_area,
-  };
-}
-
-function normalizeDro(raw: ParsedRow, frame: "AM" | "PM") {
-  if (frame === "AM") {
-    const stops = toInteger(raw["TOTAL STOPS"]) ?? 0;
-    const packages = toInteger(raw["Delivery - PKGS."]) ?? 0;
-
-    return {
-      wa_name: cellText(raw["WA NAME"]),
-      wa_number: cellText(raw["WA #"]),
-      route_type: cellText(raw["ROUTE TYPE"]),
-      distance: toNumber(raw["DISTANCE"]),
-      planned_time: toNumber(raw["TIME"]),
-      time_commits: toInteger(raw["TIME CRITICAL"]) ?? 0,
-      lp_stops: stops,
-      lp_packages: packages,
-      bulk_stops: 0,
-      bulk_packages: 0,
-      small_stops: 0,
-      small_packages: 0,
-      reg_stops: 0,
-      reg_packages: 0,
-    };
-  }
-
-  return {
-    wa_name: cellText(raw["WA NAME"]),
-    wa_number: cellText(raw["WA #"]),
-    route_type: cellText(raw["ROUTE TYPE"]),
-    distance: toNumber(raw["Distance"]),
-    planned_time: toNumber(raw["TIME"]),
-    time_commits: toInteger(raw["TIME COMMITS"]) ?? 0,
-    lp_stops: toInteger(raw["LP STOPS"]) ?? 0,
-    lp_packages: toInteger(raw["LP PACKAGES"]) ?? 0,
-    bulk_stops: toInteger(raw["BULK STOPS"]) ?? 0,
-    bulk_packages: toInteger(raw["BULK PKGS"]) ?? 0,
-    small_stops: toInteger(raw["SMALL STOPS"]) ?? 0,
-    small_packages: toInteger(raw["SMALL PKGS"]) ?? 0,
-    reg_stops: toInteger(raw["REG STOPS"]) ?? 0,
-    reg_packages: toInteger(raw["REG PKGS"]) ?? 0,
   };
 }
 
@@ -434,37 +387,17 @@ export async function POST(req: NextRequest, context: RouteContext) {
       });
     }
 
-    const sheetName = workbook.SheetNames[0];
-
-    if (!sheetName) {
-      return NextResponse.json({ error: "Workbook has no sheets." }, { status: 400 });
-    }
-
-    const rows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], {
-      header: 1,
-      blankrows: true,
-      defval: "",
-    });
-
-    const pmHeaderIndex = findHeaderRow(rows, DRO_PM_HEADERS);
-    const amHeaderIndex = findHeaderRow(rows, DRO_AM_HEADERS);
-
-    const detectedFrame =
-      amHeaderIndex >= 0
-        ? "AM"
-        : pmHeaderIndex >= 0
-          ? "PM"
-          : null;
-
-    const headerIndex =
-      detectedFrame === "AM"
-        ? amHeaderIndex
-        : pmHeaderIndex;
-
-    if (!detectedFrame || headerIndex < 0) {
+    const detectedDro = detectDroPackageDetailWorkbook(workbook);
+    if (!detectedDro) {
       return NextResponse.json({ error: "DRO signature headers were not detected." }, { status: 400 });
     }
-
+    const {
+      sheetName,
+      rows,
+      frame: detectedFrame,
+      headerIndex,
+      detectedHeaders,
+    } = detectedDro;
     const reportFrame = detectedFrame;
 
     if (
@@ -513,26 +446,31 @@ export async function POST(req: NextRequest, context: RouteContext) {
     }
 
     function findRouteMatch(raw: ParsedRow) {
-      const waName = cellText(raw["WA NAME"]);
-      const waNumber = cellText(raw["WA #"]);
+      const waName = droCellText(raw["WA NAME"]);
+      const waNumber = droCellText(raw["WA #"]);
 
-      const byWa = routeRows?.find((row) => cellText(row.current_wa_num) === waNumber);
+      const byWa = routeRows?.find(
+        (row) =>
+          normalizeDroWaNumber(row.current_wa_num) ===
+          normalizeDroWaNumber(waNumber)
+      );
       if (byWa) return { row: byWa, method: "WA_NUMBER" };
 
       const byName = routeRows?.find(
-        (row) => cellText(row.route_name).toLowerCase() === waName.toLowerCase()
+        (row) =>
+          droCellText(row.route_name).toLowerCase() === waName.toLowerCase()
       );
       if (byName) return { row: byName, method: "ROUTE_NAME" };
 
       return { row: null, method: "NONE" };
     }
 
-    const parsedRows = objectRows(rows, headerIndex).filter(
-      ({ raw }) => cellText(raw["WA NAME"]) || cellText(raw["WA #"])
+    const parsedRows = parseDroRows(rows, headerIndex).filter(
+      ({ raw }) => droCellText(raw["WA NAME"]) || droCellText(raw["WA #"])
     );
 
     const stagedRows = parsedRows.map(({ raw, source_row_index }) => {
-      const dro = normalizeDro(raw, reportFrame);
+      const dro = normalizeDroRow(raw, reportFrame);
       const routeMatch = findRouteMatch(raw);
 
       return {
@@ -573,10 +511,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
         p_source_hash: sourceHash,
         p_detected_sheet_name: sheetName,
         p_detected_header_row: headerIndex + 1,
-        p_detected_headers:
-          detectedFrame === "AM"
-            ? DRO_AM_HEADERS
-            : DRO_PM_HEADERS,
+        p_detected_headers: detectedHeaders,
         p_row_count: parsedRows.length,
         p_route_row_count: stagedRows.length,
         p_participant_row_count: 0,
