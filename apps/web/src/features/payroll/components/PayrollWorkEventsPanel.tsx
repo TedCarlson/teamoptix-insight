@@ -33,6 +33,14 @@ function eventLabel(eventType: PayrollWorkEvent["event_type"]) {
   return "Helper day";
 }
 
+function treatmentLabel(event: PayrollWorkEvent) {
+  if (event.event_type !== "WALK_ON_DAY") return "Roster rate";
+  if (event.pay_treatment === "ONE_DAY_RATE") {
+    return `$${Number(event.override_daily_pay_rate ?? 0).toFixed(2)} one-day rate`;
+  }
+  return "Intercompany · no employee pay";
+}
+
 export default function PayrollWorkEventsPanel({
   slug,
   days,
@@ -41,14 +49,11 @@ export default function PayrollWorkEventsPanel({
 }: Props) {
   const [events, setEvents] = useState<PayrollWorkEvent[]>([]);
   const [rosterMemberId, setRosterMemberId] = useState("");
-  const [serviceDate, setServiceDate] = useState(
-    days[days.length - 1] ?? ""
-  );
+  const [serviceDate, setServiceDate] = useState(days[days.length - 1] ?? "");
   const [eventType, setEventType] =
     useState<PayrollWorkEvent["event_type"]>("TRAINING_DAY");
-  const [payTreatment, setPayTreatment] = useState<
-    PayrollWorkEvent["pay_treatment"]
-  >("ONE_DAY_RATE");
+  const [payTreatment, setPayTreatment] =
+    useState<PayrollWorkEvent["pay_treatment"]>("ONE_DAY_RATE");
   const [overrideDailyPayRate, setOverrideDailyPayRate] = useState("");
   const [note, setNote] = useState("");
   const [reversingId, setReversingId] = useState<string | null>(null);
@@ -115,26 +120,23 @@ export default function PayrollWorkEventsPanel({
     setNotice(null);
 
     try {
-      const response = await fetch(
-        `/api/company/${slug}/payroll/work-events`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            action: "create",
-            roster_member_id: rosterMemberId,
-            service_date: serviceDate,
-            event_type: eventType,
-            pay_treatment: eventType === "WALK_ON_DAY" ? payTreatment : null,
-            override_daily_pay_rate:
-              eventType === "WALK_ON_DAY" && payTreatment === "ONE_DAY_RATE"
-                ? Number(overrideDailyPayRate)
-                : null,
-            note,
-          }),
-        }
-      );
+      const response = await fetch(`/api/company/${slug}/payroll/work-events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action: "create",
+          roster_member_id: rosterMemberId,
+          service_date: serviceDate,
+          event_type: eventType,
+          pay_treatment: eventType === "WALK_ON_DAY" ? payTreatment : null,
+          override_daily_pay_rate:
+            eventType === "WALK_ON_DAY" && payTreatment === "ONE_DAY_RATE"
+              ? Number(overrideDailyPayRate)
+              : null,
+          note,
+        }),
+      });
       const payload = await response.json().catch(() => ({}));
 
       if (!response.ok) {
@@ -163,19 +165,16 @@ export default function PayrollWorkEventsPanel({
     setNotice(null);
 
     try {
-      const response = await fetch(
-        `/api/company/${slug}/payroll/work-events`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            action: "reverse",
-            work_event_id: workEventId,
-            reason: reversalReason,
-          }),
-        }
-      );
+      const response = await fetch(`/api/company/${slug}/payroll/work-events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action: "reverse",
+          work_event_id: workEventId,
+          reason: reversalReason,
+        }),
+      });
       const payload = await response.json().catch(() => ({}));
 
       if (!response.ok) {
@@ -195,240 +194,248 @@ export default function PayrollWorkEventsPanel({
   }
 
   return (
-    <section
-      style={{
-        border: "1px solid #dbe7f3",
-        borderRadius: 16,
-        background: "#fff",
-        padding: 16,
-        display: "grid",
-        gap: 16,
-      }}
-    >
-      <div>
-        <p className="value-card__eyebrow">Fallback work evidence</p>
-        <h3 className="app-card__title">Add a missed or overridden work day</h3>
-        <p className="app-card__body">
-          Training and helper events fill missing work evidence. Walk-on events
-          apply an explicit pay treatment while DSW remains authoritative for
-          route production.
+    <section className="payroll-adjustment-panel">
+      <article className="payroll-adjustment-editor">
+        <header className="payroll-adjustment-editor__header">
+          <div>
+            <p className="value-card__eyebrow">Work evidence</p>
+            <h3>Add a missed or supporting work day</h3>
+          </div>
+          <span className="payroll-adjustment-editor__signal">
+            Rebuilds when saved
+          </span>
+        </header>
+
+        <p className="payroll-adjustment-editor__intro">
+          Record only the evidence DSW could not resolve. Route production stays
+          authoritative; this entry fills the person, pay, and audit seam.
         </p>
-      </div>
 
-      <form
-        onSubmit={submitCreate}
-        style={{
-          display: "grid",
-          gridTemplateColumns:
-            "repeat(auto-fit, minmax(min(100%, 180px), 1fr))",
-          gap: 10,
-          alignItems: "end",
-        }}
-      >
-        <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontSize: 12, fontWeight: 900 }}>Person</span>
-          <select
-            value={rosterMemberId}
-            onChange={(event) => setRosterMemberId(event.target.value)}
-            required
-            className="workspace-select"
-          >
-            <option value="">Select person</option>
-            {eligibleRoster.map((person) => (
-              <option
-                key={person.roster_member_id}
-                value={person.roster_member_id}
-              >
-                {person.full_name} · {person.employment_status}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontSize: 12, fontWeight: 900 }}>Service date</span>
-          <select
-            value={serviceDate}
-            onChange={(event) => setServiceDate(event.target.value)}
-            required
-            className="workspace-select"
-          >
-            {days.map((day) => (
-              <option key={day} value={day}>
-                {day}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontSize: 12, fontWeight: 900 }}>Work type</span>
-          <select
-            value={eventType}
-            onChange={(event) =>
-              {
+        <form className="payroll-adjustment-form" onSubmit={submitCreate}>
+          <label className="payroll-adjustment-field payroll-adjustment-field--third">
+            <span>Work type</span>
+            <select
+              value={eventType}
+              onChange={(changeEvent) => {
                 setEventType(
-                  event.target.value as PayrollWorkEvent["event_type"]
+                  changeEvent.target.value as PayrollWorkEvent["event_type"]
                 );
                 setRosterMemberId("");
-              }
-            }
-            required
-            className="workspace-select"
-          >
-            <option value="TRAINING_DAY">Training day</option>
-            <option value="HELPER_DAY">Helper day</option>
-            <option value="WALK_ON_DAY">Walk-on day</option>
-          </select>
-        </label>
+              }}
+              required
+            >
+              <option value="TRAINING_DAY">Training day</option>
+              <option value="HELPER_DAY">Helper day</option>
+              <option value="WALK_ON_DAY">Walk-on day</option>
+            </select>
+          </label>
 
-        {eventType === "WALK_ON_DAY" ? (
-          <>
-            <label style={{ display: "grid", gap: 6 }}>
-              <span style={{ fontSize: 12, fontWeight: 900 }}>Pay treatment</span>
-              <select
-                value={payTreatment}
-                onChange={(event) =>
-                  setPayTreatment(
-                    event.target.value as PayrollWorkEvent["pay_treatment"]
-                  )
-                }
-                className="workspace-select"
-              >
-                <option value="ONE_DAY_RATE">One-day rate</option>
-                <option value="INTERCOMPANY">Intercompany / no employee pay</option>
-              </select>
-            </label>
-            {payTreatment === "ONE_DAY_RATE" ? (
-              <label style={{ display: "grid", gap: 6 }}>
-                <span style={{ fontSize: 12, fontWeight: 900 }}>One-day rate</span>
-                <input
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  value={overrideDailyPayRate}
-                  onChange={(event) => setOverrideDailyPayRate(event.target.value)}
-                  required
-                  placeholder="0.00"
-                  className="workspace-input"
-                />
+          <label className="payroll-adjustment-field payroll-adjustment-field--third">
+            <span>Person</span>
+            <select
+              value={rosterMemberId}
+              onChange={(changeEvent) => setRosterMemberId(changeEvent.target.value)}
+              required
+            >
+              <option value="">Select person</option>
+              {eligibleRoster.map((person) => (
+                <option
+                  key={person.roster_member_id}
+                  value={person.roster_member_id}
+                >
+                  {person.full_name} · {person.employment_status}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="payroll-adjustment-field payroll-adjustment-field--third">
+            <span>Service date</span>
+            <select
+              value={serviceDate}
+              onChange={(changeEvent) => setServiceDate(changeEvent.target.value)}
+              required
+            >
+              {days.map((day) => (
+                <option key={day} value={day}>{day}</option>
+              ))}
+            </select>
+          </label>
+
+          {eventType === "WALK_ON_DAY" ? (
+            <>
+              <label className="payroll-adjustment-field payroll-adjustment-field--third">
+                <span>Pay treatment</span>
+                <select
+                  value={payTreatment}
+                  onChange={(changeEvent) =>
+                    setPayTreatment(
+                      changeEvent.target.value as PayrollWorkEvent["pay_treatment"]
+                    )
+                  }
+                >
+                  <option value="ONE_DAY_RATE">One-day rate</option>
+                  <option value="INTERCOMPANY">Intercompany · no employee pay</option>
+                </select>
               </label>
-            ) : null}
-          </>
+
+              {payTreatment === "ONE_DAY_RATE" ? (
+                <label className="payroll-adjustment-field payroll-adjustment-field--third">
+                  <span>One-day rate</span>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={overrideDailyPayRate}
+                    onChange={(changeEvent) =>
+                      setOverrideDailyPayRate(changeEvent.target.value)
+                    }
+                    required
+                    placeholder="0.00"
+                  />
+                </label>
+              ) : null}
+            </>
+          ) : null}
+
+          <label className="payroll-adjustment-field payroll-adjustment-field--wide">
+            <span>Reason and verification</span>
+            <input
+              value={note}
+              onChange={(changeEvent) => setNote(changeEvent.target.value)}
+              required
+              placeholder="What was missed, and how was it verified?"
+            />
+          </label>
+
+          <div className="payroll-adjustment-form__action">
+            <button
+              type="submit"
+              className="button button-primary"
+              disabled={saving}
+            >
+              {saving ? "Saving…" : "Add evidence"}
+            </button>
+          </div>
+        </form>
+
+        {eventType === "WALK_ON_DAY" && eligibleRoster.length === 0 ? (
+          <p className="payroll-adjustment-message payroll-adjustment-message--attention">
+            No support drivers are available. Add the person to the walk-on roster
+            before creating payroll evidence.
+          </p>
         ) : null}
 
-        <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontSize: 12, fontWeight: 900 }}>
-            Reason or supporting note
-          </span>
-          <input
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            required
-            placeholder="What was missed and how was it verified?"
-            className="workspace-input"
-          />
-        </label>
+        {error ? (
+          <p role="alert" className="payroll-adjustment-message payroll-adjustment-message--error">
+            {error}
+          </p>
+        ) : null}
+        {notice ? (
+          <p role="status" className="payroll-adjustment-message payroll-adjustment-message--success">
+            {notice}
+          </p>
+        ) : null}
+      </article>
 
-        <button
-          type="submit"
-          className="button payroll-action-button"
-          disabled={saving}
-        >
-          {saving ? "Saving..." : "Add event"}
-        </button>
-      </form>
+      <article className="payroll-evidence-ledger">
+        <header className="payroll-evidence-ledger__header">
+          <div>
+            <p className="value-card__eyebrow">Weekly evidence</p>
+            <h3>Work-event ledger</h3>
+          </div>
+          <span>{events.length} {events.length === 1 ? "record" : "records"}</span>
+        </header>
 
-      {error ? (
-        <div role="alert" style={{ color: "#991b1b", fontWeight: 800 }}>
-          {error}
-        </div>
-      ) : null}
-      {notice ? (
-        <div role="status" style={{ color: "#166534", fontWeight: 800 }}>
-          {notice}
-        </div>
-      ) : null}
-
-      <div style={{ display: "grid", gap: 8 }}>
-        <strong>Event log for this payroll week</strong>
         {loading ? (
-          <span className="muted">Loading work events...</span>
+          <p className="payroll-evidence-ledger__empty">Loading work evidence…</p>
         ) : events.length === 0 ? (
-          <span className="muted">No manual fallback events recorded.</span>
+          <p className="payroll-evidence-ledger__empty">
+            No fallback work evidence has been recorded for this week.
+          </p>
         ) : (
-          events.map((event) => (
-            <div
-              key={event.work_event_id}
-              style={{
-                display: "grid",
-                gridTemplateColumns:
-                  "repeat(auto-fit, minmax(min(100%, 150px), 1fr))",
-                gap: 12,
-                alignItems: "center",
-                borderTop: "1px solid #e6edf5",
-                paddingTop: 10,
-                color: event.event_status === "REVERSED" ? "#94a3b8" : "#334155",
-              }}
-            >
-              <span>{event.service_date}</span>
-              <strong>{event.person_name}</strong>
-              <span>{eventLabel(event.event_type)}</span>
-              <span>
-                {event.note}
-                {event.event_type === "WALK_ON_DAY"
-                  ? ` · ${event.pay_treatment === "ONE_DAY_RATE" ? `$${Number(event.override_daily_pay_rate ?? 0).toFixed(2)}` : event.pay_treatment.replaceAll("_", " ").toLowerCase()}`
-                  : ""}
-                {event.reversal_reason
-                  ? ` · Reversed: ${event.reversal_reason}`
-                  : ""}
-              </span>
-              {event.event_status === "ACTIVE" ? (
-                reversingId === event.work_event_id ? (
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <input
-                      value={reversalReason}
-                      onChange={(changeEvent) =>
-                        setReversalReason(changeEvent.target.value)
-                      }
-                      placeholder="Reason"
-                      className="workspace-input"
-                    />
-                    <button
-                      type="button"
-                      className="button"
-                      disabled={saving}
-                      onClick={() => submitReversal(event.work_event_id)}
-                    >
-                      Confirm
-                    </button>
-                    <button
-                      type="button"
-                      className="button"
-                      onClick={() => {
-                        setReversingId(null);
-                        setReversalReason("");
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    className="button"
-                    onClick={() => setReversingId(event.work_event_id)}
-                  >
-                    Reverse
-                  </button>
-                )
-              ) : (
-                <strong>Reversed</strong>
-              )}
-            </div>
-          ))
+          <div className="payroll-evidence-ledger__table-wrap">
+            <table className="payroll-evidence-ledger__table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Person</th>
+                  <th>Evidence</th>
+                  <th>Verification</th>
+                  <th>Pay treatment</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {events.map((workEvent) => (
+                  <tr key={workEvent.work_event_id}>
+                    <td>{workEvent.service_date}</td>
+                    <td><strong>{workEvent.person_name}</strong></td>
+                    <td>
+                      <span className="payroll-evidence-chip">
+                        {eventLabel(workEvent.event_type)}
+                      </span>
+                    </td>
+                    <td>
+                      {workEvent.note || "—"}
+                      {workEvent.reversal_reason ? (
+                        <small>Reversed: {workEvent.reversal_reason}</small>
+                      ) : null}
+                    </td>
+                    <td>{treatmentLabel(workEvent)}</td>
+                    <td>
+                      {workEvent.event_status === "ACTIVE" ? (
+                        reversingId === workEvent.work_event_id ? (
+                          <div className="payroll-ledger-reversal">
+                            <input
+                              value={reversalReason}
+                              onChange={(changeEvent) =>
+                                setReversalReason(changeEvent.target.value)
+                              }
+                              placeholder="Reversal reason"
+                              aria-label="Reversal reason"
+                            />
+                            <button
+                              type="button"
+                              className="button button-primary"
+                              disabled={saving}
+                              onClick={() => submitReversal(workEvent.work_event_id)}
+                            >
+                              Confirm
+                            </button>
+                            <button
+                              type="button"
+                              className="button"
+                              onClick={() => {
+                                setReversingId(null);
+                                setReversalReason("");
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="payroll-ledger-status payroll-ledger-status--active"
+                            onClick={() => setReversingId(workEvent.work_event_id)}
+                          >
+                            Active · Reverse
+                          </button>
+                        )
+                      ) : (
+                        <span className="payroll-ledger-status payroll-ledger-status--reversed">
+                          Reversed
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
-      </div>
+      </article>
     </section>
   );
 }

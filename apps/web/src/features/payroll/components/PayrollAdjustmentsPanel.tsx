@@ -323,172 +323,199 @@ export default function PayrollAdjustmentsPanel({ slug, weekEnd, roster }: Props
   }
 
   return (
-    <section style={{ display: "grid", gap: 12 }}>
-      <article className="app-card" style={{ padding: 14 }}>
-        <p className="value-card__eyebrow">Payroll workbench</p>
-        <h3 className="app-card__title" style={{ fontSize: 18 }}>Add payroll adjustment</h3>
-        <p className="muted" style={{ marginTop: 6 }}>
-          Select the label, scope, start date, and end date before creating an adjustment.
-          No payroll adjustment is inserted until the review step is accepted.
+    <section className="payroll-adjustment-panel">
+      <article className="payroll-adjustment-editor">
+        <header className="payroll-adjustment-editor__header">
+          <div>
+            <p className="value-card__eyebrow">Pay adjustment</p>
+            <h3>Create a payroll adjustment</h3>
+          </div>
+          <span className="payroll-adjustment-editor__signal payroll-adjustment-editor__signal--staged">
+            Staged until rebuild
+          </span>
+        </header>
+
+        <p className="payroll-adjustment-editor__intro">
+          Define who is affected, the effective dates, and the daily amount.
+          You will review the complete impact before anything is saved.
         </p>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginTop: 12 }}>
-          <label style={{ display: "grid", gap: 5 }}>
-            <span className="hero-stat__label">Label</span>
+        <div className="payroll-adjustment-form">
+          <label className="payroll-adjustment-field payroll-adjustment-field--third">
+            <span>Label</span>
             <input
               value={label}
-              placeholder="Required"
-              onChange={(e) => setLabel(e.target.value)}
-              style={{ height: 40, borderRadius: 10, border: "1px solid #d6dfeb", padding: "0 10px" }}
+              placeholder="Example: Peak bonus"
+              onChange={(event) => setLabel(event.target.value)}
             />
           </label>
 
-          <label style={{ display: "grid", gap: 5 }}>
-            <span className="hero-stat__label">Scope</span>
+          <label className="payroll-adjustment-field payroll-adjustment-field--third">
+            <span>Scope</span>
             <select
               value={scope}
-              onChange={(e) => {
-                const nextScope = e.target.value as "" | AdjustmentScope;
+              onChange={(event) => {
+                const nextScope = event.target.value as "" | AdjustmentScope;
                 setScope(nextScope);
 
                 if (nextScope !== "TARGETED") {
                   setSelectedRosterIds([]);
                 }
               }}
-              style={{ height: 40, borderRadius: 10, border: "1px solid #d6dfeb", padding: "0 10px" }}
             >
               <option value="">Select scope</option>
-              <option value="GLOBAL">Global</option>
-              <option value="TARGETED">Targeted</option>
+              <option value="GLOBAL">Everyone eligible</option>
+              <option value="TARGETED">Selected people</option>
             </select>
           </label>
 
-          <label style={{ display: "grid", gap: 5 }}>
-            <span className="hero-stat__label">Start</span>
+          <label className="payroll-adjustment-field payroll-adjustment-field--third">
+            <span>Daily amount</span>
+            <input
+              type="number"
+              step="0.01"
+              value={amount}
+              placeholder="0.00"
+              onChange={(event) => setAmount(event.target.value)}
+            />
+          </label>
+
+          <label className="payroll-adjustment-field payroll-adjustment-field--half">
+            <span>Start date</span>
             <input
               type="date"
               value={startDate}
-              onChange={(e) => {
-                const nextStart = e.target.value;
+              onChange={(event) => {
+                const nextStart = event.target.value;
                 setStartDate(nextStart);
 
                 if (!endDate) {
                   setEndDate(nextStart);
                 }
               }}
-              style={{ height: 40, borderRadius: 10, border: "1px solid #d6dfeb", padding: "0 10px" }}
             />
           </label>
 
-          <label style={{ display: "grid", gap: 5 }}>
-            <span className="hero-stat__label">End</span>
+          <label className="payroll-adjustment-field payroll-adjustment-field--half">
+            <span>End date</span>
             <input
               type="date"
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              style={{ height: 40, borderRadius: 10, border: "1px solid #d6dfeb", padding: "0 10px" }}
-            />
-          </label>
-
-          <label style={{ display: "grid", gap: 5 }}>
-            <span className="hero-stat__label">Daily amount</span>
-            <input
-              type="number"
-              step="0.01"
-              value={amount}
-              placeholder="Required"
-              onChange={(e) => setAmount(e.target.value)}
-              style={{ height: 40, borderRadius: 10, border: "1px solid #d6dfeb", padding: "0 10px" }}
+              onChange={(event) => setEndDate(event.target.value)}
             />
           </label>
 
           {scope === "TARGETED" ? (
-            <section className="payroll-target-picker" style={{ gridColumn: "span 3" }}>
-              <div className="payroll-target-picker__summary">
-                <div>
-                  <span className="hero-stat__label">Targets</span>
-                  <strong>{selectedCountLabel}</strong>
+            <details className="payroll-adjustment-targets">
+              <summary>
+                <span>
+                  <strong>Choose people</strong>
+                  <small>{selectedCountLabel}</small>
+                </span>
+                <span aria-hidden="true">＋</span>
+              </summary>
+
+              {selectedRoster.length > 0 ? (
+                <div className="payroll-adjustment-targets__chips">
+                  {selectedRoster.map((person) => (
+                    <span key={person.roster_member_id}>
+                      {person.full_name || "Unnamed driver"}
+                    </span>
+                  ))}
                 </div>
+              ) : null}
 
-                {selectedRoster.length > 0 ? (
-                  <details>
-                    <summary>Review selected drivers</summary>
-                    <div className="payroll-target-picker__chips">
-                      {selectedRoster.map((person) => (
-                        <span key={person.roster_member_id}>
-                          {person.full_name || "Unnamed driver"}
-                        </span>
-                      ))}
-                    </div>
-                  </details>
-                ) : (
-                  <p>Select one or more eligible drivers below.</p>
-                )}
-              </div>
-
-              <div className="payroll-target-picker__list" aria-label="Targeted payroll adjustment drivers">
+              <div
+                className="payroll-adjustment-targets__list"
+                aria-label="Targeted payroll adjustment people"
+              >
                 {activeRoster.length === 0 ? (
-                  <p>No active drivers are available for targeted adjustments.</p>
+                  <p>No active people are available for targeted adjustments.</p>
                 ) : (
                   activeRoster.map((person) => (
-                    <label className="payroll-target-picker__option" key={person.roster_member_id}>
+                    <label key={person.roster_member_id}>
                       <input
                         type="checkbox"
                         checked={selectedRosterIds.includes(person.roster_member_id)}
                         onChange={(event) =>
-                          toggleRosterSelection(person.roster_member_id, event.target.checked)
+                          toggleRosterSelection(
+                            person.roster_member_id,
+                            event.target.checked
+                          )
                         }
                       />
                       <span>
-                        {person.full_name || "Unnamed driver"} · {person.employment_status}
+                        {person.full_name || "Unnamed driver"}
+                        <small>{person.employment_status}</small>
                       </span>
                     </label>
                   ))
                 )}
               </div>
-            </section>
+            </details>
           ) : null}
 
-          <label style={{ display: "grid", gap: 5, gridColumn: "1 / -1" }}>
-            <span className="hero-stat__label">Notes</span>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} style={{ borderRadius: 10, border: "1px solid #d6dfeb", padding: 10 }} />
+          <label className="payroll-adjustment-field payroll-adjustment-field--wide">
+            <span>Reason and supporting note</span>
+            <input
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              placeholder="Why is this adjustment needed?"
+            />
           </label>
+
+          <div className="payroll-adjustment-form__action">
+            <button
+              className="button button-primary"
+              type="button"
+              disabled={saving || !canReview}
+              onClick={openReview}
+            >
+              Review adjustment
+            </button>
+          </div>
         </div>
 
         {startDate && endDate && startDate > endDate ? (
-          <p style={{ color: "#991b1b", fontWeight: 800 }}>End date must be on or after start date.</p>
+          <p className="payroll-adjustment-message payroll-adjustment-message--error">
+            End date must be on or after start date.
+          </p>
         ) : null}
 
-        {error ? <p style={{ color: "#991b1b", fontWeight: 800 }}>{error}</p> : null}
-        {notice ? <p style={{ color: "#166534", fontWeight: 800 }}>{notice}</p> : null}
-
-        <div className="cta-row" style={{ marginTop: 12 }}>
-          <button className="button button-primary" type="button" disabled={saving || !canReview} onClick={openReview}>
-            Review adjustment
-          </button>
-        </div>
+        {error ? (
+          <p className="payroll-adjustment-message payroll-adjustment-message--error">{error}</p>
+        ) : null}
+        {notice ? (
+          <p className="payroll-adjustment-message payroll-adjustment-message--success">{notice}</p>
+        ) : null}
       </article>
 
-      <article className="app-card" style={{ padding: 14 }}>
-        <p className="value-card__eyebrow">Current week</p>
-        <h3 className="app-card__title" style={{ fontSize: 18 }}>Adjustments</h3>
-        <p className="muted" style={{ marginTop: 6 }}>Selected payroll week: {weekStart} → {weekEnd}</p>
+      <article className="payroll-evidence-ledger">
+        <header className="payroll-evidence-ledger__header">
+          <div>
+            <p className="value-card__eyebrow">Weekly evidence</p>
+            <h3>Pay-adjustment ledger</h3>
+          </div>
+          <span>{adjustments.length} {adjustments.length === 1 ? "record" : "records"}</span>
+        </header>
 
         {loading ? (
-          <p className="muted">Loading adjustments...</p>
+          <p className="payroll-evidence-ledger__empty">Loading adjustments…</p>
         ) : adjustments.length === 0 ? (
-          <p className="app-card__body" style={{ marginTop: 8 }}>No payroll adjustments for this week.</p>
+          <p className="payroll-evidence-ledger__empty">
+            No pay adjustments have been recorded for {weekStart} → {weekEnd}.
+          </p>
         ) : (
-          <div style={{ marginTop: 12, overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <div className="payroll-evidence-ledger__table-wrap">
+            <table className="payroll-evidence-ledger__table">
               <thead>
-                <tr style={{ borderBottom: "1px solid #d6dfeb", color: "#64748b", textAlign: "left" }}>
-                  <th style={{ padding: 10 }}>Adjustment</th>
-                  <th style={{ padding: 10 }}>Scope</th>
-                  <th style={{ padding: 10 }}>Dates</th>
-                  <th style={{ padding: 10, textAlign: "right" }}>Amount</th>
-                  <th style={{ padding: 10 }}>Notes</th>
-                  <th style={{ padding: 10, textAlign: "right" }}>Actions</th>
+                <tr>
+                  <th>Adjustment</th>
+                  <th>Scope</th>
+                  <th>Effective dates</th>
+                  <th>Daily amount</th>
+                  <th>Evidence</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -496,27 +523,33 @@ export default function PayrollAdjustmentsPanel({ slug, weekEnd, roster }: Props
                   const alreadyReversed = hasExistingReversal(row);
 
                   return (
-                    <tr key={row.adjustment_event_id} style={{ borderBottom: "1px solid #eef2f7" }}>
-                      <td style={{ padding: 10 }}><strong>{row.adjustment_label}</strong></td>
-                      <td style={{ padding: 10 }}>{row.adjustment_scope}{row.adjustment_scope === "TARGETED" ? ` · ${row.target_count}` : ""}</td>
-                      <td style={{ padding: 10 }}>{row.start_date} → {row.end_date}</td>
-                      <td style={{ padding: 10, textAlign: "right" }}>{money(Number(row.amount ?? 0))}</td>
-                      <td style={{ padding: 10, color: "#64748b" }}>
-                        {row.notes || "—"}
-                        {alreadyReversed ? (
-                          <div style={{ color: "#166534", fontWeight: 850, marginTop: 4 }}>Reversed</div>
-                        ) : null}
+                    <tr key={row.adjustment_event_id}>
+                      <td><strong>{row.adjustment_label}</strong></td>
+                      <td>
+                        <span className="payroll-evidence-chip">
+                          {row.adjustment_scope === "TARGETED"
+                            ? `${row.target_count} selected`
+                            : "Everyone"}
+                        </span>
                       </td>
-                      <td style={{ padding: 10, textAlign: "right" }}>
-                        <button
-                          className="button"
-                          type="button"
-                          disabled={saving || alreadyReversed}
-                          onClick={() => openReversal(row)}
-                          style={{ minHeight: 34, padding: "6px 12px" }}
-                        >
-                          Reverse
-                        </button>
+                      <td>{row.start_date} → {row.end_date}</td>
+                      <td><strong>{money(Number(row.amount ?? 0))}</strong></td>
+                      <td>{row.notes || "—"}</td>
+                      <td>
+                        {alreadyReversed ? (
+                          <span className="payroll-ledger-status payroll-ledger-status--reversed">
+                            Reversed
+                          </span>
+                        ) : (
+                          <button
+                            className="payroll-ledger-status payroll-ledger-status--staged"
+                            type="button"
+                            disabled={saving}
+                            onClick={() => openReversal(row)}
+                          >
+                            Staged · Reverse
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

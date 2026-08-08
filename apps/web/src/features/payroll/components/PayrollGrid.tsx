@@ -29,8 +29,7 @@ import PayrollDetailTable from "@/features/payroll/components/PayrollDetailTable
 import PayrollDswAliasTool from "@/features/payroll/components/PayrollDswAliasTool";
 import PayrollRecordRepairTool from "@/features/payroll/components/PayrollRecordRepairTool";
 import PayrollReportEmailDialog from "@/features/payroll/components/PayrollReportEmailDialog";
-import PayrollAdjustmentsPanel from "@/features/payroll/components/PayrollAdjustmentsPanel";
-import PayrollWorkEventsPanel from "@/features/payroll/components/PayrollWorkEventsPanel";
+import PayrollAdjustmentsWorkspace from "@/features/payroll/components/PayrollAdjustmentsWorkspace";
 import { isFallbackWorkEventSource } from "@/features/payroll/lib/payroll.sources";
 
 import {
@@ -643,19 +642,15 @@ export default function PayrollGrid({
             </div>
 
             <div hidden={payrollView !== "adjustments"}>
-              <div style={{ display: "grid", gap: 16 }}>
-                <PayrollWorkEventsPanel
-                  slug={slug}
-                  days={days}
-                  roster={roster}
-                  onChanged={() => setRepairRefreshKey((value) => value + 1)}
-                />
-                <PayrollAdjustmentsPanel
-                  slug={slug}
-                  weekEnd={weekEnd}
-                  roster={roster}
-                />
-              </div>
+              <PayrollAdjustmentsWorkspace
+                slug={slug}
+                weekEnd={weekEnd}
+                days={days}
+                roster={roster}
+                onWorkEventChanged={() =>
+                  setRepairRefreshKey((value) => value + 1)
+                }
+              />
             </div>
 
             <div hidden={payrollView !== "attendance"}>
