@@ -20,6 +20,7 @@ export type PayrollWorkDayKind = "TRAINING" | "HELPER" | "WALK_ON";
 export type PayrollSummaryRow = {
   roster_member_id: string | null;
   person_name: string;
+  memo?: string | null;
   days_worked: number;
   worked_days?: string[];
   worked_day_kinds?: Record<string, PayrollWorkDayKind>;

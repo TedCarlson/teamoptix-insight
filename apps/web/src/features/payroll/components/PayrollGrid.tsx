@@ -80,6 +80,7 @@ export default function PayrollGrid({
   const [repairCount, setRepairCount] = useState(0);
   const [repairRefreshKey, setRepairRefreshKey] = useState(0);
   const [reportEmailOpen, setReportEmailOpen] = useState(false);
+  const [summaryMemos, setSummaryMemos] = useState<Record<string, string>>({});
   const [includeNonDriverWorkers, setIncludeNonDriverWorkers] = useState(
     DEFAULT_COMPANY_PAYROLL_CONFIG.include_non_driver_workers
   );
@@ -140,7 +141,7 @@ export default function PayrollGrid({
           throw new Error(rosterData?.error ?? "Failed to load roster.");
         }
 
-        const [dispatchPayloads, payrollRes] = await Promise.all([
+        const [dispatchPayloads, payrollRes, memoRes] = await Promise.all([
           Promise.all(
             days.map(async (day) => {
               const res = await fetch(`/api/company/${slug}/dispatch/day?date=${day}`, {
@@ -158,18 +159,41 @@ export default function PayrollGrid({
             credentials: "include",
             cache: "no-store",
           }),
+          fetch(`/api/company/${slug}/payroll/summary-memos?weekEnd=${weekEnd}`, {
+            credentials: "include",
+            cache: "no-store",
+          }),
         ]);
 
         const payrollData = await payrollRes.json();
+        const memoData = await memoRes.json();
 
         if (!payrollRes.ok) {
           throw new Error(payrollData?.error ?? "Failed to load payroll metrics.");
+        }
+
+        if (!memoRes.ok) {
+          throw new Error(memoData?.error ?? "Failed to load payroll memos.");
         }
 
         if (!active) return;
 
         setRoster((rosterData?.roster ?? []) as RosterRow[]);
         setEventsByDay(Object.fromEntries(dispatchPayloads));
+        setSummaryMemos(
+          Object.fromEntries(
+            (Array.isArray(memoData?.memos) ? memoData.memos : [])
+              .filter(
+                (row: { roster_member_id?: unknown; memo?: unknown }) =>
+                  typeof row.roster_member_id === "string" &&
+                  typeof row.memo === "string"
+              )
+              .map((row: { roster_member_id: string; memo: string }) => [
+                row.roster_member_id,
+                row.memo,
+              ])
+          )
+        );
         const summary = ((payrollData?.summary ?? []) as PayrollSummaryRow[])
           .map((row) => ({
             roster_member_id: row.roster_member_id ?? null,
@@ -195,6 +219,7 @@ export default function PayrollGrid({
         if (!active) return;
         setRoster([]);
         setEventsByDay({});
+        setSummaryMemos({});
         setPayrollMetrics(null);
         setError(err instanceof Error ? err.message : "Failed to load payroll attendance.");
       } finally {
@@ -354,6 +379,18 @@ export default function PayrollGrid({
     [payrollMetrics?.activity]
   );
 
+  const payrollActivityRosterIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (payrollMetrics?.activity ?? [])
+            .map((row) => row.roster_member_id)
+            .filter((id): id is string => Boolean(id))
+        )
+      ),
+    [payrollMetrics?.activity]
+  );
+
   const detailRows = useMemo(
     () => buildPayrollRowDetails(payrollMetrics?.activity ?? []),
     [payrollMetrics?.activity]
@@ -376,21 +413,60 @@ export default function PayrollGrid({
   // roster identity.
   const payableSummaryRows = useMemo(
     () =>
-      reconciledSummaryRows.filter((row) => {
-        if (!row.roster_member_id) return false;
-        if (includeNonDriverWorkers) return true;
-        if (fallbackWorkEventRosterIds.has(row.roster_member_id)) return true;
+      reconciledSummaryRows
+        .filter((row) => {
+          if (!row.roster_member_id) return false;
+          if (includeNonDriverWorkers) return true;
+          if (fallbackWorkEventRosterIds.has(row.roster_member_id)) return true;
 
-        const rosterMember = rosterById.get(row.roster_member_id);
-        return isDriverType(rosterMember?.worker_type);
-      }),
+          const rosterMember = rosterById.get(row.roster_member_id);
+          return isDriverType(rosterMember?.worker_type);
+        })
+        .map((row) => ({
+          ...row,
+          memo: row.roster_member_id
+            ? summaryMemos[row.roster_member_id] ?? null
+            : null,
+        })),
     [
       fallbackWorkEventRosterIds,
       includeNonDriverWorkers,
       reconciledSummaryRows,
       rosterById,
+      summaryMemos,
     ]
   );
+
+  async function saveSummaryMemo(rosterMemberId: string, memo: string) {
+    const res = await fetch(
+      `/api/company/${slug}/payroll/summary-memos`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          roster_member_id: rosterMemberId,
+          week_end_date: weekEnd,
+          memo,
+        }),
+      }
+    );
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(data?.error ?? "Failed to save payroll memo.");
+    }
+
+    const savedMemo =
+      typeof data?.memo?.memo === "string" ? data.memo.memo : "";
+
+    setSummaryMemos((current) => {
+      const next = { ...current };
+      if (savedMemo) next[rosterMemberId] = savedMemo;
+      else delete next[rosterMemberId];
+      return next;
+    });
+  }
 
   const groupedSummaryRows = useMemo(
     () => buildPayrollSummaryGroups(payableSummaryRows, rosterById),
@@ -630,7 +706,10 @@ export default function PayrollGrid({
         {!loading ? (
           <>
             <div hidden={payrollView !== "summary"}>
-              <PayrollSummaryTable groupedSummaryRows={groupedSummaryRows} />
+              <PayrollSummaryTable
+                groupedSummaryRows={groupedSummaryRows}
+                onSaveMemo={saveSummaryMemo}
+              />
             </div>
 
             <div hidden={payrollView !== "payroll-detail"}>
@@ -647,6 +726,7 @@ export default function PayrollGrid({
                 weekEnd={weekEnd}
                 days={days}
                 roster={roster}
+                payrollActivityRosterIds={payrollActivityRosterIds}
                 onWorkEventChanged={() =>
                   setRepairRefreshKey((value) => value + 1)
                 }

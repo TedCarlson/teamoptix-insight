@@ -205,9 +205,51 @@ export async function POST(
 
     if (adjustmentScope === "TARGETED" && rosterMemberIds.length === 0) {
       return NextResponse.json(
-        { error: "Select at least one driver for a targeted adjustment." },
+        { error: "Select at least one person for a targeted adjustment." },
         { status: 400 }
       );
+    }
+
+    if (adjustmentScope === "TARGETED") {
+      const { data: company, error: companyError } = await supabase
+        .from("companies")
+        .select("id")
+        .eq("company_slug", slug)
+        .single();
+
+      if (companyError || !company) {
+        return NextResponse.json(
+          { error: "Company not found." },
+          { status: 404 }
+        );
+      }
+
+      const { data: targetRoster, error: targetRosterError } = await supabase
+        .from("company_roster_view")
+        .select("roster_member_id")
+        .eq("company_id", company.id)
+        .in("roster_member_id", rosterMemberIds);
+
+      if (targetRosterError) {
+        return NextResponse.json(
+          {
+            error: "Failed to validate adjustment targets.",
+            detail: targetRosterError.message,
+          },
+          { status: 500 }
+        );
+      }
+
+      const validTargetIds = new Set(
+        (targetRoster ?? []).map((row) => row.roster_member_id)
+      );
+
+      if (rosterMemberIds.some((id: string) => !validTargetIds.has(id))) {
+        return NextResponse.json(
+          { error: "Every targeted adjustment person must belong to this company." },
+          { status: 400 }
+        );
+      }
     }
 
     if (!Number.isFinite(amount)) {

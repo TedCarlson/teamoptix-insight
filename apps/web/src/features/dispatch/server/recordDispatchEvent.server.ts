@@ -20,6 +20,27 @@ export async function recordDispatchEvent(
     return NextResponse.json({ error: "event_code is required." }, { status: 400 });
   }
 
+  const eventPayload =
+    body.event_payload && typeof body.event_payload === "object"
+      ? (body.event_payload as Record<string, unknown>)
+      : {};
+
+  if (eventCode === "PASS_ROUTE_TO_CSA") {
+    const routeKey =
+      typeof body.route_key === "string" ? body.route_key.trim() : "";
+    const receivingCsa =
+      typeof eventPayload.receiving_csa === "string"
+        ? eventPayload.receiving_csa.trim()
+        : "";
+
+    if (!routeKey || !receivingCsa) {
+      return NextResponse.json(
+        { error: "Route and receiving CSA are required for a route handoff." },
+        { status: 400 }
+      );
+    }
+  }
+
   const { data, error } = await ctx.supabase.rpc("dispatch_record_event", {
     p_company_id: ctx.company.id,
     p_dispatch_date: dispatchDate,
@@ -43,10 +64,7 @@ export async function recordDispatchEvent(
     p_to_route_label:
       typeof body.to_route_label === "string" ? body.to_route_label : null,
     p_note: typeof body.note === "string" ? body.note : null,
-    p_event_payload:
-      body.event_payload && typeof body.event_payload === "object"
-        ? body.event_payload
-        : {},
+    p_event_payload: eventPayload,
     p_created_by_profile_id: ctx.access?.profile_id ?? null,
   });
 

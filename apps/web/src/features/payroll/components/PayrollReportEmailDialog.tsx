@@ -1,8 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { PayrollSummaryRow } from "@/features/payroll/lib/payroll.types";
 import { money } from "@/features/payroll/lib/payroll.format";
+
+type LeadershipRecipient = {
+  role_key: "authorized_operator" | "business_contact";
+  role_label: string;
+  full_name: string;
+  email: string;
+};
+
+const DEFAULT_PAYROLL_NOTES = "Payroll Notes:\n";
 
 export default function PayrollReportEmailDialog({
   open,
@@ -22,9 +31,86 @@ export default function PayrollReportEmailDialog({
   onClose: () => void;
 }) {
   const [recipientsText, setRecipientsText] = useState("");
+  const [leadershipRecipients, setLeadershipRecipients] = useState<
+    LeadershipRecipient[]
+  >([]);
+  const [selectedLeadershipEmails, setSelectedLeadershipEmails] = useState<
+    string[]
+  >([]);
+  const [leadershipLoading, setLeadershipLoading] = useState(false);
+  const [reportMemo, setReportMemo] = useState(DEFAULT_PAYROLL_NOTES);
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || !slug) return;
+
+    let active = true;
+
+    async function loadLeadershipRecipients() {
+      setLeadershipLoading(true);
+
+      try {
+        const response = await fetch(`/api/company/${slug}/config/leadership`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+        const payload = await response.json().catch(() => ({}));
+
+        if (!active) return;
+        if (!response.ok) {
+          setLeadershipRecipients([]);
+          return;
+        }
+
+        const recipients: LeadershipRecipient[] = (
+          Array.isArray(payload?.roles) ? payload.roles : []
+        )
+          .filter(
+            (role: { role_key?: unknown; email?: unknown }) =>
+              (role.role_key === "authorized_operator" ||
+                role.role_key === "business_contact") &&
+              typeof role.email === "string" &&
+              role.email.trim().length > 0
+          )
+          .map(
+            (role: {
+              role_key: "authorized_operator" | "business_contact";
+              role_label?: string;
+              full_name?: string;
+              email: string;
+            }): LeadershipRecipient => ({
+              role_key: role.role_key,
+              role_label:
+                role.role_label ||
+                (role.role_key === "authorized_operator"
+                  ? "Authorized Operator"
+                  : "Business Contact"),
+              full_name: role.full_name || role.email,
+              email: role.email.trim(),
+            })
+          );
+
+        setLeadershipRecipients(recipients);
+        setSelectedLeadershipEmails((current) =>
+          current.filter((email) =>
+            recipients.some((recipient) => recipient.email === email)
+          )
+        );
+      } catch {
+        if (active) setLeadershipRecipients([]);
+      } finally {
+        if (active) setLeadershipLoading(false);
+      }
+    }
+
+    void loadLeadershipRecipients();
+
+    return () => {
+      active = false;
+    };
+  }, [open, slug]);
 
   if (!open) return null;
 
@@ -49,6 +135,8 @@ export default function PayrollReportEmailDialog({
         .map((value) => value.trim())
         .filter(Boolean);
 
+      recipients.push(...selectedLeadershipEmails);
+
       const res = await fetch(`/api/company/${slug}/payroll/report-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -56,6 +144,7 @@ export default function PayrollReportEmailDialog({
         body: JSON.stringify({
           weekEnd,
           recipients,
+          memo: reportMemo.trim(),
           summary,
           groupedSummaryRows,
         }),
@@ -131,8 +220,74 @@ export default function PayrollReportEmailDialog({
           />
         </label>
 
+        <div style={{ display: "grid", gap: 7 }}>
+          <span className="hero-stat__label">Company leadership recipients</span>
+          {leadershipLoading ? (
+            <span style={{ color: "#64748b", fontSize: 12 }}>
+              Loading AO and Business Contact…
+            </span>
+          ) : leadershipRecipients.length === 0 ? (
+            <span style={{ color: "#92400e", fontSize: 12, fontWeight: 750 }}>
+              No AO or Business Contact email is configured.
+            </span>
+          ) : (
+            <div style={{ display: "grid", gap: 7 }}>
+              {leadershipRecipients.map((recipient) => (
+                <label
+                  key={`${recipient.role_key}:${recipient.email}`}
+                  style={{
+                    display: "flex",
+                    gap: 9,
+                    alignItems: "flex-start",
+                    border: "1px solid #dbe6f3",
+                    borderRadius: 11,
+                    padding: "9px 10px",
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedLeadershipEmails.includes(recipient.email)}
+                    onChange={(event) => {
+                      setSelectedLeadershipEmails((current) =>
+                        event.target.checked
+                          ? Array.from(new Set([...current, recipient.email]))
+                          : current.filter((email) => email !== recipient.email)
+                      );
+                    }}
+                  />
+                  <span style={{ display: "grid", gap: 2 }}>
+                    <strong style={{ fontSize: 13 }}>{recipient.full_name}</strong>
+                    <small style={{ color: "#64748b" }}>
+                      {recipient.role_label} · {recipient.email}
+                    </small>
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <label style={{ display: "grid", gap: 6 }}>
+          <span className="hero-stat__label">Email body memo</span>
+          <textarea
+            value={reportMemo}
+            onChange={(event) => setReportMemo(event.target.value)}
+            maxLength={4000}
+            style={{
+              minHeight: 120,
+              borderRadius: 12,
+              border: "1px solid #d6dfeb",
+              padding: 12,
+              font: "inherit",
+              resize: "vertical",
+            }}
+          />
+        </label>
+
         <p style={{ margin: 0, color: "#64748b", fontSize: 12 }}>
-          The signed-in user is automatically included.
+          The signed-in user is automatically included. Selected leadership
+          contacts and additional recipients are added to the same report.
         </p>
 
         {aliasCount > 0 ? (

@@ -69,7 +69,7 @@ export function applyDispatchEvent(
     };
   }
 
-  if (code === "REMOVE_ROUTE") {
+  if (code === "REMOVE_ROUTE" || code === "PASS_ROUTE_TO_CSA") {
     if (!routeKey || !current[routeKey]) return current;
 
     const next = { ...current };

@@ -65,6 +65,7 @@ export async function POST(
     const body = await req.json().catch(() => ({}));
 
     const weekEnd = String(body.weekEnd ?? "").trim();
+    const reportMemo = String(body.memo ?? "").trim().slice(0, 4000);
     const summary = Array.isArray(body.summary) ? body.summary : [];
     const groupedSummaryRows = Array.isArray(body.groupedSummaryRows)
       ? body.groupedSummaryRows
@@ -99,6 +100,25 @@ export async function POST(
 
     if (companyError || !company) {
       return NextResponse.json({ error: "Company not found." }, { status: 404 });
+    }
+
+    const { data: persistedMemos, error: memoError } = await supabase.rpc(
+      "list_company_payroll_summary_memos",
+      {
+        p_company_slug: slug,
+        p_week_end_date: weekEnd,
+      }
+    );
+
+    if (memoError) {
+      return NextResponse.json({ error: memoError.message }, { status: 500 });
+    }
+
+    const payrollMemoByRosterId = new Map<string, string>();
+    for (const row of persistedMemos ?? []) {
+      if (row.roster_member_id && row.memo) {
+        payrollMemoByRosterId.set(String(row.roster_member_id), String(row.memo));
+      }
     }
 
     const weekStart = addDays(weekEnd, -6);
@@ -183,25 +203,31 @@ export async function POST(
       .map((group: any) => {
         const rows = Array.isArray(group.rows) ? group.rows : [];
 
-        const cleanRows = rows.filter((row: any) => {
-          const name = String(row.person_name ?? "").trim().toLowerCase();
-          const total = Number(row.estimated_total ?? 0);
+        const cleanRows = rows
+          .filter((row: any) => {
+            const name = String(row.person_name ?? "").trim().toLowerCase();
+            const total = Number(row.estimated_total ?? 0);
 
-          if (!row.roster_member_id) return false;
-          if (!name || name === "unmatched") return false;
-          if (String(group.group ?? "").toLowerCase().includes("unmatched")) return false;
+            if (!row.roster_member_id) return false;
+            if (!name || name === "unmatched") return false;
+            if (String(group.group ?? "").toLowerCase().includes("unmatched")) return false;
 
-          if (
-            !payrollConfig.include_non_driver_workers &&
-            !isDriverType(
-              rosterWorkerTypeById.get(String(row.roster_member_id))
-            )
-          ) {
-            return false;
-          }
+            if (
+              !payrollConfig.include_non_driver_workers &&
+              !isDriverType(
+                rosterWorkerTypeById.get(String(row.roster_member_id))
+              )
+            ) {
+              return false;
+            }
 
-          return total !== 0;
-        });
+            return total !== 0;
+          })
+          .map((row: any) => ({
+            ...row,
+            memo:
+              payrollMemoByRosterId.get(String(row.roster_member_id)) ?? null,
+          }));
 
         const groupTotal = cleanRows.reduce(
           (sum: number, row: any) => sum + Number(row.estimated_total ?? 0),
@@ -235,6 +261,7 @@ export async function POST(
           .map((row: any) => `
             <tr>
               <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;">${escapeHtml(row.person_name)}</td>
+              <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;color:#475569;">${escapeHtml(row.memo || "—")}</td>
               <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:right;">${escapeHtml(row.days_worked)}</td>
               <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:right;">${money(row.daily_pay_total)}</td>
               <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:right;">${money(row.threshold_pay_total)}</td>
@@ -252,6 +279,7 @@ export async function POST(
             <thead>
               <tr style="background:#f8fafc;">
                 <th style="padding:8px;text-align:left;border-bottom:1px solid #cbd5e1;">Employee</th>
+                <th style="padding:8px;text-align:left;border-bottom:1px solid #cbd5e1;">Memo</th>
                 <th style="padding:8px;text-align:right;border-bottom:1px solid #cbd5e1;">Days</th>
                 <th style="padding:8px;text-align:right;border-bottom:1px solid #cbd5e1;">Base Pay</th>
                 <th style="padding:8px;text-align:right;border-bottom:1px solid #cbd5e1;">Threshold Pay</th>
@@ -320,6 +348,12 @@ export async function POST(
             <td colspan="3" style="padding:8px;border:1px solid #e5e7eb;text-align:right;font-weight:900;">${money(estimatedPayroll)}</td>
           </tr>
         </table>
+
+        ${reportMemo ? `
+          <div style="border:1px solid #dbe6f3;border-radius:10px;background:#f8fafc;padding:12px 14px;margin:0 0 16px;font-size:13px;line-height:1.5;color:#334155;">
+            ${escapeHtml(reportMemo).replaceAll("\n", "<br />")}
+          </div>
+        ` : ""}
 
         ${groupHtml}
 

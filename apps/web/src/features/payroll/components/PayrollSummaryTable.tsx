@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type {
   PayrollSummaryRow,
   PayrollWorkDayKind,
@@ -108,20 +109,110 @@ const tdStyle = {
   fontSize: 13,
 };
 
+function PayrollMemoCell({
+  row,
+  onSave,
+}: {
+  row: PayrollSummaryRow;
+  onSave: (rosterMemberId: string, memo: string) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState(row.memo ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDraft(row.memo ?? "");
+  }, [row.memo]);
+
+  const changed = draft.trim() !== (row.memo ?? "").trim();
+
+  async function save() {
+    if (!row.roster_member_id || !changed) return;
+
+    try {
+      setSaving(true);
+      setError(null);
+      await onSave(row.roster_member_id, draft.trim());
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "Failed to save memo."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 4, minWidth: 220 }}>
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <input
+          value={draft}
+          maxLength={2000}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void save();
+            }
+          }}
+          placeholder="Add payroll memo"
+          aria-label={`Payroll memo for ${row.person_name}`}
+          style={{
+            width: "100%",
+            minWidth: 0,
+            height: 34,
+            border: "1px solid #d6dfeb",
+            borderRadius: 9,
+            padding: "0 9px",
+            color: "#334155",
+            font: "inherit",
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={!changed || saving || !row.roster_member_id}
+          title={draft.trim() ? "Save payroll memo" : "Clear payroll memo"}
+          style={{
+            height: 34,
+            padding: "0 10px",
+            border: "1px solid #cbd5e1",
+            borderRadius: 9,
+            background: changed ? "#eff6ff" : "#f8fafc",
+            color: changed ? "#1d4ed8" : "#94a3b8",
+            fontWeight: 850,
+            cursor: changed && !saving ? "pointer" : "default",
+          }}
+        >
+          {saving ? "Saving" : "Save"}
+        </button>
+      </div>
+      {error ? (
+        <span style={{ color: "#991b1b", fontSize: 11, fontWeight: 750 }}>
+          {error}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export default function PayrollSummaryTable({
   groupedSummaryRows,
+  onSaveMemo,
 }: {
   groupedSummaryRows: {
     group: string;
     rows: PayrollSummaryRow[];
   }[];
+  onSaveMemo: (rosterMemberId: string, memo: string) => Promise<void>;
 }) {
   return (
     <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 760 }}>
+      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1040 }}>
         <thead>
           <tr>
             <th style={thStyle}>Employee</th>
+            <th style={thStyle}>Memo</th>
             <th style={{ ...thStyle, textAlign: "right" }}>Days Worked</th>
             <th style={{ ...thStyle, textAlign: "right" }}>Base Pay</th>
             <th style={{ ...thStyle, textAlign: "right" }}>Threshold Pay</th>
@@ -132,7 +223,7 @@ export default function PayrollSummaryTable({
         <tbody>
           {groupedSummaryRows.length === 0 ? (
             <tr>
-              <td colSpan={6} style={{ padding: 16, color: "#64748b", fontWeight: 800 }}>
+              <td colSpan={7} style={{ padding: 16, color: "#64748b", fontWeight: 800 }}>
                 No payroll activity found for this week.
               </td>
             </tr>
@@ -140,7 +231,7 @@ export default function PayrollSummaryTable({
             groupedSummaryRows.flatMap(({ group, rows }) => [
               <tr key={`group-${group}`}>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   style={{
                     ...tdStyle,
                     background: "#f8fafc",
@@ -157,6 +248,9 @@ export default function PayrollSummaryTable({
               ...rows.map((row, rowIndex) => (
                 <tr key={`${group}-${row.roster_member_id ?? row.person_name}-${rowIndex}`}>
                   <td style={tdStyle}><strong>{row.person_name}</strong></td>
+                  <td style={tdStyle}>
+                    <PayrollMemoCell row={row} onSave={onSaveMemo} />
+                  </td>
                   <td style={{ ...tdStyle, textAlign: "right" }}>
                     <WorkedDaysCell row={row} />
                   </td>

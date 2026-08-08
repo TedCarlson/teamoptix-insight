@@ -122,7 +122,11 @@ function manualEventToAction(event: DispatchEventTypeRow): DispatchActionOption 
     event_label: event.event_label,
     event_category: event.event_category,
     requiresNote: event.requires_note,
-    targetMode: event.requires_person ? "scheduled_person" : "none",
+    targetMode: event.requires_route
+      ? "active_route"
+      : event.requires_person
+        ? "scheduled_person"
+        : "none",
   };
 }
 
@@ -237,6 +241,7 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
   const [assistingRouteId, setAssistingRouteId] = useState("");
   const [receivingRouteId, setReceivingRouteId] = useState("");
   const [assistStopCount, setAssistStopCount] = useState("");
+  const [receivingCsa, setReceivingCsa] = useState("");
 
   const selected = useMemo(() => {
     return allActions.find((option) => option.event_code === eventCode) ?? allActions[0] ?? null;
@@ -321,6 +326,9 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
       ) return;
     }
     if (selected.requiresNote && !note.trim()) return;
+    if (selected.event_code === "PASS_ROUTE_TO_CSA" && !receivingCsa.trim()) {
+      return;
+    }
 
     const selectedPerson =
       selected.targetMode === "scheduled_person" || selected.targetMode === "unscheduled_driver"
@@ -344,7 +352,10 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
       event_code: selected.event_code,
       event_label: selected.event_label,
       event_category: selected.event_category,
-      note,
+      note:
+        selected.event_code === "PASS_ROUTE_TO_CSA" && !note.trim()
+          ? `Passed to ${receivingCsa.trim()}.`
+          : note,
       person_roster_member_id: selectedPerson?.roster_member_id ?? null,
       person_name: selectedPerson?.full_name ?? null,
       route_key: selectedRoute?.route_key ?? null,
@@ -389,7 +400,8 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
               route_type: selectedRoute.route_type ?? "ADDED",
               source: "dispatch_action_overlay",
             }
-          : selected.event_code === "REMOVE_ROUTE" && selectedRoute
+          : (selected.event_code === "REMOVE_ROUTE" ||
+              selected.event_code === "PASS_ROUTE_TO_CSA") && selectedRoute
             ? {
                 route_name: selectedRoute.route_name,
                 current_wa_num: selectedRoute.current_wa_num,
@@ -397,6 +409,20 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
                 route_type: selectedRoute.route_type,
                 removed_driver_name: selectedRoute.driver?.full_name ?? null,
                 removed_helpers: selectedRoute.helpers.map((person) => person.full_name),
+                receiving_csa:
+                  selected.event_code === "PASS_ROUTE_TO_CSA"
+                    ? receivingCsa.trim()
+                    : null,
+                planning_ownership:
+                  selected.event_code === "PASS_ROUTE_TO_CSA"
+                    ? "ORIGINATING_CSA"
+                    : null,
+                dsw_tracking:
+                  selected.event_code === "PASS_ROUTE_TO_CSA"
+                    ? "RECEIVING_CSA"
+                    : null,
+                resource_relief:
+                  selected.event_code === "PASS_ROUTE_TO_CSA" ? true : null,
                 source: "dispatch_action_overlay",
               }
             : selected.kind === "add_driver" && selectedPerson
@@ -417,6 +443,7 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
     setWalkOnWorkforceUnitId("");
     setNewWalkOnWorkforceUnit("");
     setWalkOnServiceDate(serviceDate);
+    setReceivingCsa("");
     setNote("");
   }
 
@@ -711,7 +738,9 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
                   {selected?.targetMode === "route"
                     ? "Select available route"
                     : selected?.targetMode === "active_route"
-                      ? "Select route to remove"
+                      ? selected.event_code === "PASS_ROUTE_TO_CSA"
+                        ? "Select route to pass"
+                        : "Select active route"
                       : selected?.targetMode === "unscheduled_driver"
                       ? "Select unscheduled driver"
                       : "Select scheduled worker"}
@@ -733,6 +762,17 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
                     ))}
               </select>
             )}
+
+            {selected?.event_code === "PASS_ROUTE_TO_CSA" ? (
+              <input
+                value={receivingCsa}
+                onChange={(event) => setReceivingCsa(event.target.value)}
+                required
+                maxLength={160}
+                placeholder="Receiving CSA / company"
+                className="workspace-input"
+              />
+            ) : null}
           </section>
 
           {selected ? (
@@ -746,7 +786,9 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
                   : selected.targetMode === "route"
                     ? "This action adds an available route into today's dispatch board. "
                     : selected.targetMode === "active_route"
-                      ? "This action removes a route from today's dispatch board. "
+                      ? selected.event_code === "PASS_ROUTE_TO_CSA"
+                        ? "The route stays in our DRO plan, transfers to the receiving CSA for DSW, and no longer consumes our dispatch resources. "
+                        : "This action updates an active route on today's dispatch board. "
                       : "This action does not require a linked item. "}
               {selected.requiresNote ? "A note is required. " : "Note is optional. "}
               Category: {categoryLabel(selected.event_category)}

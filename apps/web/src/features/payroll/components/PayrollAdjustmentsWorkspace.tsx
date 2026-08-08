@@ -12,6 +12,7 @@ type Props = {
   weekEnd: string;
   days: string[];
   roster: RosterRow[];
+  payrollActivityRosterIds: string[];
   onWorkEventChanged: () => void;
 };
 
@@ -40,6 +41,7 @@ export default function PayrollAdjustmentsWorkspace({
   weekEnd,
   days,
   roster,
+  payrollActivityRosterIds,
   onWorkEventChanged,
 }: Props) {
   const [mode, setMode] = useState<AdjustmentMode>("work-evidence");
@@ -108,6 +110,7 @@ export default function PayrollAdjustmentsWorkspace({
           slug={slug}
           weekEnd={weekEnd}
           roster={roster}
+          payrollActivityRosterIds={payrollActivityRosterIds}
         />
       </div>
     </section>

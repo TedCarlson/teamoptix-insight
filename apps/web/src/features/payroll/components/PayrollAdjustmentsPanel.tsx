@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { RosterRow } from "@/features/people/types/roster.types";
 import { money } from "@/features/payroll/lib/payroll.format";
+import { buildPayrollAdjustmentCandidates } from "@/features/payroll/lib/payroll.adjustment-candidates";
 
 type AdjustmentScope = "GLOBAL" | "TARGETED";
 
@@ -23,6 +24,7 @@ type Props = {
   slug: string;
   weekEnd: string;
   roster: RosterRow[];
+  payrollActivityRosterIds: string[];
 };
 
 type ReviewPayload = {
@@ -55,7 +57,12 @@ function daysAffected(startDate: string, endDate: string) {
   return Math.floor((end - start) / 86_400_000) + 1;
 }
 
-export default function PayrollAdjustmentsPanel({ slug, weekEnd, roster }: Props) {
+export default function PayrollAdjustmentsPanel({
+  slug,
+  weekEnd,
+  roster,
+  payrollActivityRosterIds,
+}: Props) {
   const weekStart = useMemo(() => addDays(weekEnd, -6), [weekEnd]);
   const [adjustments, setAdjustments] = useState<PayrollAdjustmentRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -128,18 +135,20 @@ export default function PayrollAdjustmentsPanel({ slug, weekEnd, roster }: Props
     };
   }, [slug, weekEnd]);
 
-  const activeRoster = roster
-    .filter((row) => row.employment_status === "Active" || row.employment_status === "Trainee")
-    .sort((a, b) => String(a.full_name ?? "").localeCompare(String(b.full_name ?? "")));
+  const adjustmentCandidates = useMemo(
+    () =>
+      buildPayrollAdjustmentCandidates(roster, payrollActivityRosterIds),
+    [payrollActivityRosterIds, roster]
+  );
 
-  const selectedRoster = activeRoster.filter((person) =>
+  const selectedRoster = adjustmentCandidates.filter((person) =>
     selectedRosterIds.includes(person.roster_member_id)
   );
 
   const selectedCountLabel =
     selectedRosterIds.length === 1
-      ? "1 driver selected"
-      : `${selectedRosterIds.length} drivers selected`;
+      ? "1 person selected"
+      : `${selectedRosterIds.length} people selected`;
 
   const amountNumber = Number(amount || 0);
   const canReview =
@@ -429,10 +438,10 @@ export default function PayrollAdjustmentsPanel({ slug, weekEnd, roster }: Props
                 className="payroll-adjustment-targets__list"
                 aria-label="Targeted payroll adjustment people"
               >
-                {activeRoster.length === 0 ? (
-                  <p>No active people are available for targeted adjustments.</p>
+                {adjustmentCandidates.length === 0 ? (
+                  <p>No payroll-eligible people are available for this week.</p>
                 ) : (
-                  activeRoster.map((person) => (
+                  adjustmentCandidates.map((person) => (
                     <label key={person.roster_member_id}>
                       <input
                         type="checkbox"
@@ -446,7 +455,11 @@ export default function PayrollAdjustmentsPanel({ slug, weekEnd, roster }: Props
                       />
                       <span>
                         {person.full_name || "Unnamed driver"}
-                        <small>{person.employment_status}</small>
+                        <small>
+                          {person.roster_record_kind === "WALK_ON"
+                            ? "Support · Walk-on"
+                            : person.employment_status}
+                        </small>
                       </span>
                     </label>
                   ))
