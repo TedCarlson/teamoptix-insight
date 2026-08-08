@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { useDispatchWorkspaceData } from "@/features/dispatch/hooks/useDispatchWorkspaceData";
 import {
@@ -29,8 +29,8 @@ import ExpressReportOverlay from "@/features/operations/manifests/components/Exp
 import ComplianceReportOverlay from "@/features/operations/components/ComplianceReportOverlay";
 import { ExpressProgressSignal } from "@/features/operations/express/ExpressProgressSignal";
 import type { ExpressDataHealth, ExpressProgress } from "@/features/operations/express/expressProgress";
+import { completionNeedsWorkspaceRefresh } from "./operationsCollectionRefresh";
 import {
-  todayIso,
   type DispatchDayRow,
   type DispatchEventRow,
   type DispatchPerson,
@@ -586,8 +586,15 @@ function AttendanceOverlay(props: {
   );
 }
 
-export default function OperationsWorkspacePage({ slug }: { slug: string }) {
-  const serviceDate = todayIso();
+export default function OperationsWorkspacePage({
+  active,
+  slug,
+  serviceDate,
+}: {
+  active: boolean;
+  slug: string;
+  serviceDate: string;
+}) {
   const [selectedRouteKey, setSelectedRouteKey] = useState<string | null>(null);
   const [selectedSeat, setSelectedSeat] = useState<Seat>("driver");
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
@@ -611,6 +618,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
   const [runnerSchedule, setRunnerSchedule] =
     useState<RunnerScheduleSummary | null>(null);
   const [signalNow, setSignalNow] = useState(() => Date.now());
+  const refreshedCompletionIds = useRef(new Set<string>());
 
   const {
     dispatchDay,
@@ -619,6 +627,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
     dswRows,
     error,
     eventTypes,
+    lastHydrationStartedAt,
     loading,
     refreshKey,
     refreshWorkspace,
@@ -632,10 +641,11 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
   } = useDispatchWorkspaceData(slug, serviceDate);
 
   useEffect(() => {
-    let active = true;
+    if (!active) return;
+
+    let mounted = true;
     const supabase = getSupabaseBrowserClient();
     let channel: ReturnType<typeof supabase.channel> | null = null;
-    const refreshedCompletionIds = new Set<string>();
 
     async function loadCollectionRequests() {
       try {
@@ -651,7 +661,7 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
               : "Unable to load collection status."
           );
         }
-        if (!active) return;
+        if (!mounted) return;
 
         const rows = Array.isArray(data?.rows)
           ? (data.rows as CollectionRequestSummary[])
@@ -665,11 +675,12 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
 
         const companyId =
           typeof data?.company_id === "string" ? data.company_id : null;
-        if (!companyId || !active) return;
+        if (!companyId || !mounted) return;
 
         const handleRequestChange = (payload: {
           new: Record<string, unknown>;
         }) => {
+          if (!mounted) return;
           const row = payload.new as unknown as CollectionRequestSummary;
           if (!row.id || row.company_id !== companyId) return;
 
@@ -681,9 +692,9 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
           if (
             row.request_status === "COMPLETE" &&
             !row.error_message &&
-            !refreshedCompletionIds.has(row.id)
+            !refreshedCompletionIds.current.has(row.id)
           ) {
-            refreshedCompletionIds.add(row.id);
+            refreshedCompletionIds.current.add(row.id);
             refreshWorkspace();
           }
         };
@@ -720,15 +731,31 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
     void loadCollectionRequests();
 
     return () => {
-      active = false;
+      mounted = false;
       if (channel) void supabase.removeChannel(channel);
     };
-  }, [refreshWorkspace, slug]);
+  }, [active, refreshWorkspace, slug]);
 
   useEffect(() => {
+    if (!active || !lastHydrationStartedAt) return;
+
+    const missedCompletion = collectionRequests.find(
+      (request) =>
+        !refreshedCompletionIds.current.has(request.id) &&
+        completionNeedsWorkspaceRefresh(request, lastHydrationStartedAt)
+    );
+
+    if (!missedCompletion) return;
+
+    refreshedCompletionIds.current.add(missedCompletion.id);
+    refreshWorkspace();
+  }, [active, collectionRequests, lastHydrationStartedAt, refreshWorkspace]);
+
+  useEffect(() => {
+    if (!active) return;
     const timerId = window.setInterval(() => setSignalNow(Date.now()), 30_000);
     return () => window.clearInterval(timerId);
-  }, []);
+  }, [active]);
 
   const latestSuccessfulCollection = collectionRequests.find(
     (request) =>

@@ -1,3 +1,3 @@
-import DispatchPage from "@/features/dispatch/pages/DispatchPage";
-
-export default DispatchPage;
+export default function OperationsDispatchPage() {
+  return null;
+}

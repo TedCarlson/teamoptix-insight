@@ -27,6 +27,7 @@ export type DispatchWorkspaceData = {
   dswRows: DswCurrentRow[];
   error: string | null;
   eventTypes: DispatchEventTypeRow[];
+  lastHydrationStartedAt: string | null;
   lastUpdatedAt: string | null;
   loading: boolean;
   refreshKey: number;
@@ -52,6 +53,8 @@ export function useDispatchWorkspaceData(
   const [eventTypes, setEventTypes] = useState<DispatchEventTypeRow[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [lastHydrationStartedAt, setLastHydrationStartedAt] =
+    useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [droPlanRows, setDroPlanRows] = useState<DroPlanRow[]>([]);
@@ -69,6 +72,8 @@ export function useDispatchWorkspaceData(
     let active = true;
 
     async function hydrateDispatchWorkspace() {
+      const hydrationStartedAt = new Date().toISOString();
+
       try {
         if (refreshKey === 0) setLoading(true);
         setError(null);
@@ -146,6 +151,7 @@ export function useDispatchWorkspaceData(
         setDispatchDay((inputs.dispatchDay.data?.dispatch_day ?? null) as DispatchDayRow | null);
         setDispatchEvents((inputs.dispatchDay.data?.events ?? []) as DispatchEventRow[]);
         setEventTypes((inputs.eventTypes.data?.event_types ?? []) as DispatchEventTypeRow[]);
+        setLastHydrationStartedAt(hydrationStartedAt);
         setLastUpdatedAt(new Date().toISOString());
       } catch {
         if (!active) return;
@@ -173,6 +179,7 @@ export function useDispatchWorkspaceData(
     dswRows,
     error,
     eventTypes,
+    lastHydrationStartedAt,
     lastUpdatedAt,
     loading,
     refreshKey,

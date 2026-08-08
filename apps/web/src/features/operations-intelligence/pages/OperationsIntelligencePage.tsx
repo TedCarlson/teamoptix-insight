@@ -26,7 +26,7 @@ import {
   routeLookupKeys,
 } from "../lib/planning-intelligence";
 
-type Props = { slug: string };
+type Props = { slug: string; todayDate?: string };
 
 type DroPlanRow = {
   route_baseline_id?: string | null;
@@ -171,8 +171,8 @@ function sortRows(rows: DroPlanRow[], routeSortKey: "route_name" | "current_wa_n
   });
 }
 
-export default function PlanningPage({ slug }: Props) {
-  const todayDate = todayNyIso();
+export default function PlanningPage({ slug, todayDate: providedTodayDate }: Props) {
+  const todayDate = providedTodayDate ?? todayNyIso();
   const planningDate = addDaysIso(todayDate, 1);
 
   const [uploadOverlayOpen, setUploadOverlayOpen] = useState(false);

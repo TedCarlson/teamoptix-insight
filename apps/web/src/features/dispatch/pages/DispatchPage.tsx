@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "next/navigation";
 import {
   type AssignmentIntent,
   type DispatchDayRow,
@@ -11,7 +10,6 @@ import {
   type Seat,
   cleanRouteKey,
   panel,
-  todayIso,
 } from "../lib/dispatchSupport";
 import { addDaysIso } from "../lib/dispatchDates";
 import {
@@ -64,10 +62,13 @@ type DispatchExpressSignal = ExpressProgress & {
   dataHealth: Partial<ExpressDataHealth>;
 };
 
-export default function DispatchPage() {
-  const params = useParams();
-  const slug = String(params?.slug ?? "");
-
+export default function DispatchPage({
+  slug,
+  serviceDate,
+}: {
+  slug: string;
+  serviceDate: string;
+}) {
   const [assignments, setAssignments] = useState<Record<string, DispatchRoute>>({});
   const [intent, setIntent] = useState<AssignmentIntent>(null);
   const [eventOverlayOpen, setEventOverlayOpen] = useState(false);
@@ -86,7 +87,6 @@ export default function DispatchPage() {
     dataHealth: { referenceMatchAvailable: true },
   });
 
-  const serviceDate = todayIso();
   const planningDate = addDaysIso(serviceDate, 1);
   const {
     dispatchDay,
