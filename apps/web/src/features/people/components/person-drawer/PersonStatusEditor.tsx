@@ -21,7 +21,9 @@ export default function PersonStatusEditor({
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [status, setStatus] = useState(person.employment_status);
+  const [status, setStatus] = useState<RosterEmploymentStatus>(
+    person.employment_status === "Support" ? "Active" : person.employment_status
+  );
   const [effectiveDate, setEffectiveDate] = useState(
     new Date().toISOString().slice(0, 10)
   );
@@ -59,7 +61,7 @@ export default function PersonStatusEditor({
           </h3>
         </div>
 
-        <button
+        {person.roster_record_kind !== "WALK_ON" ? <button
           className="button"
           type="button"
           onClick={() =>
@@ -67,7 +69,7 @@ export default function PersonStatusEditor({
           }
         >
           {editing ? "Cancel" : "Edit"}
-        </button>
+        </button> : null}
       </div>
 
       {!editing ? (

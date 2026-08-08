@@ -44,14 +44,16 @@ export default function PersonLifecycleSection({
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Draft>({
-    employment_status: person.employment_status,
+    employment_status:
+      person.employment_status === "Support" ? "Active" : person.employment_status,
     effective_date: todayIso(),
     note: "",
   });
 
   function beginEdit() {
     setDraft({
-      employment_status: person.employment_status,
+      employment_status:
+        person.employment_status === "Support" ? "Active" : person.employment_status,
       effective_date: todayIso(),
       note: "",
     });
@@ -66,12 +68,24 @@ export default function PersonLifecycleSection({
   return (
     <DrawerSection
       eyebrow="Lifecycle"
-      title="Status and posture"
-      editing={editing}
+      title={person.roster_record_kind === "WALK_ON" ? "Support relationship" : "Status and posture"}
+      editing={person.roster_record_kind === "WALK_ON" ? false : editing}
       saving={saving}
-      onEdit={() => (editing ? setEditing(false) : beginEdit())}
+      onEdit={
+        person.roster_record_kind === "WALK_ON"
+          ? undefined
+          : () => (editing ? setEditing(false) : beginEdit())
+      }
     >
-      {!editing ? (
+      {person.roster_record_kind === "WALK_ON" ? (
+        <div style={{ display: "grid", gap: 8 }}>
+          <FactRow label="Relationship" value="Walk-on support driver" />
+          <FactRow label="Employment" value="Not an employee or candidate" />
+          <p className="app-card__body" style={{ margin: 0 }}>
+            Manage service dates from Dispatch and pay treatment from Payroll.
+          </p>
+        </div>
+      ) : !editing ? (
         <div style={{ display: "grid", gap: 10 }}>
           <div style={{ display: "grid", gap: 8 }}>
             <FactRow label="Employment" value={person.employment_status} />

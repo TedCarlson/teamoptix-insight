@@ -24,13 +24,14 @@ type TimelineEvent = {
 
 type ApiRosterRow = {
   roster_member_id: string;
+  roster_record_kind?: "INTERNAL" | "WALK_ON" | null;
   profile_id?: string | null;
   person_id?: string | null;
   full_name: string | null;
   email: string | null;
   phone: string | null;
   worker_type: string | null;
-  employment_status: "Active" | "Candidate" | "Trainee" | "Former" | null;
+  employment_status: "Active" | "Candidate" | "Trainee" | "Former" | "Support" | null;
   market_code: string | null;
   reports_to_name: string | null;
   notes?: string | null;
@@ -67,6 +68,7 @@ type ApiRosterRow = {
 function normalizeRosterRow(row: ApiRosterRow): RosterRow {
   return {
     roster_member_id: row.roster_member_id,
+    roster_record_kind: row.roster_record_kind ?? "INTERNAL",
     profile_id: row.profile_id ?? null,
     person_id: row.person_id ?? null,
     full_name: row.full_name ?? "Unknown",
@@ -110,12 +112,13 @@ function normalizeRosterRow(row: ApiRosterRow): RosterRow {
 
 function matchesRosterTab(row: RosterRow, tab: RosterTab) {
   if (tab === "all") return true;
-  if (tab === "active") return row.employment_status === "Active";
-  if (tab === "trainee") return row.employment_status === "Trainee";
+  if (tab === "walk_ons") return row.roster_record_kind === "WALK_ON";
+  if (tab === "active") return row.roster_record_kind !== "WALK_ON" && row.employment_status === "Active";
+  if (tab === "trainee") return row.roster_record_kind !== "WALK_ON" && row.employment_status === "Trainee";
   if (tab === "candidates") {
-    return row.employment_status === "Candidate" && row.candidate_stage_is_terminal !== true;
+    return row.roster_record_kind !== "WALK_ON" && row.employment_status === "Candidate" && row.candidate_stage_is_terminal !== true;
   }
-  if (tab === "former") return row.employment_status === "Former";
+  if (tab === "former") return row.roster_record_kind !== "WALK_ON" && row.employment_status === "Former";
   return true;
 }
 
@@ -307,10 +310,11 @@ export default function CompanyRosterPage() {
     );
   }, [driversOnly, search, statusRows]);
 
-  const activeCount = rows.filter((r) => r.employment_status === "Active").length;
-  const traineeCount = rows.filter((r) => r.employment_status === "Trainee").length;
-  const candidateCount = rows.filter((r) => r.employment_status === "Candidate").length;
-  const formerCount = rows.filter((r) => r.employment_status === "Former").length;
+  const activeCount = rows.filter((r) => r.roster_record_kind !== "WALK_ON" && r.employment_status === "Active").length;
+  const traineeCount = rows.filter((r) => r.roster_record_kind !== "WALK_ON" && r.employment_status === "Trainee").length;
+  const candidateCount = rows.filter((r) => r.roster_record_kind !== "WALK_ON" && r.employment_status === "Candidate").length;
+  const walkOnCount = rows.filter((r) => r.roster_record_kind === "WALK_ON").length;
+  const formerCount = rows.filter((r) => r.roster_record_kind !== "WALK_ON" && r.employment_status === "Former").length;
   const complianceAlertCount = rows.filter(
     (r) => r.compliance_signals.length > 0
   ).length;
@@ -642,6 +646,7 @@ export default function CompanyRosterPage() {
               active: activeCount,
               trainee: traineeCount,
               candidates: candidateCount,
+              walk_ons: walkOnCount,
               former: formerCount,
               all: rows.length,
               complianceAlerts: complianceAlertCount,

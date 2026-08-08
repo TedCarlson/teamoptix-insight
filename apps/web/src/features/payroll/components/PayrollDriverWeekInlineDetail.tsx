@@ -91,11 +91,13 @@ function DailyPayValue({
     return <>{money(amount)}</>;
   }
 
-  const label = kind === "TRAINING" ? "T" : "H";
+  const label = kind === "TRAINING" ? "T" : kind === "WALK_ON" ? "W" : "H";
   const title =
     kind === "TRAINING"
       ? "Training day"
-      : "Helper day";
+      : kind === "WALK_ON"
+        ? "Walk-on day"
+        : "Helper day";
 
   return (
     <span

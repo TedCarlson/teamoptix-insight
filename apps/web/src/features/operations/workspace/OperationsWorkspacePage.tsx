@@ -1289,12 +1289,20 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
     route_label?: string | null;
     event_payload?: Record<string, unknown>;
     walk_on_full_name?: string | null;
+    walk_on_record_mode?: "CANDIDATE" | "WALK_ON";
+    walk_on_roster_member_id?: string | null;
+    walk_on_dswid?: string | null;
+    walk_on_workforce_unit_id?: string | null;
+    walk_on_new_workforce_unit_name?: string | null;
+    walk_on_service_date?: string | null;
   }) {
     try {
       setSavingEvent(true);
       setError(null);
       let walkOnRosterId: string | null = null;
       const walkOnName = payload.walk_on_full_name?.trim();
+      const walkOnRecordMode = payload.walk_on_record_mode ?? "WALK_ON";
+      const eventServiceDate = payload.walk_on_service_date || serviceDate;
 
       if (walkOnName) {
         const response = await fetch(`/api/company/${slug}/dispatch/walk-on`, {
@@ -1302,8 +1310,14 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({
+            record_mode: walkOnRecordMode,
+            roster_member_id: payload.walk_on_roster_member_id,
             full_name: walkOnName,
-            seen_date: serviceDate,
+            dswid: payload.walk_on_dswid,
+            workforce_unit_id: payload.walk_on_workforce_unit_id,
+            new_workforce_unit_name: payload.walk_on_new_workforce_unit_name,
+            seen_date: eventServiceDate,
+            note: payload.note,
           }),
         });
         const result = await response.json().catch(() => ({}));
@@ -1319,11 +1333,15 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
 
       const { ok, data } = await recordDispatchEvent({
         slug,
-        dispatchDate: serviceDate,
+        dispatchDate: eventServiceDate,
         payload: {
           ...payload,
           event_code: walkOnName ? "ADD_DRIVER" : payload.event_code,
-          event_label: walkOnName ? "Walk-on driver added" : payload.event_label,
+          event_label: walkOnName
+            ? walkOnRecordMode === "CANDIDATE"
+              ? "Walk-on candidate added"
+              : "Walk-on driver added"
+            : payload.event_label,
           person_roster_member_id:
             walkOnRosterId || payload.person_roster_member_id,
           person_name: walkOnName || payload.person_name,
@@ -1333,8 +1351,10 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
             ? {
                 ...(payload.event_payload ?? {}),
                 source: "dispatch_walk_on_driver",
-                assignment_source: "WALK_ON",
+                assignment_source: walkOnRecordMode,
                 roster_member_id: walkOnRosterId,
+                service_date: eventServiceDate,
+                workforce_unit_id: payload.walk_on_workforce_unit_id ?? null,
               }
             : payload.event_payload ?? {},
         },
@@ -1344,13 +1364,15 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
         setError(data?.error ?? "Failed to add dispatch event.");
         return;
       }
-      if (data?.event) {
+      if (data?.event && eventServiceDate === serviceDate) {
         setDispatchEvents((current) => [
           ...current,
           data.event as DispatchEventRow,
         ]);
       }
-      if (data?.dispatch_day) setDispatchDay(data.dispatch_day);
+      if (data?.dispatch_day && eventServiceDate === serviceDate) {
+        setDispatchDay(data.dispatch_day);
+      }
       setEventOverlayOpen(false);
     } catch {
       setError("Failed to add dispatch event.");
@@ -1886,6 +1908,8 @@ export default function OperationsWorkspacePage({ slug }: { slug: string }) {
       </div>
 
       <DispatchEventOverlay
+        slug={slug}
+        serviceDate={serviceDate}
         open={eventOverlayOpen}
         saving={savingEvent}
         eventTypes={eventTypes}

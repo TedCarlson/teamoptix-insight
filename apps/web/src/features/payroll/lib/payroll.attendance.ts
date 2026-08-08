@@ -129,7 +129,9 @@ export function buildAttendanceRows({
         : isFallbackWorkEventSource(activity.source_kind)
           ? activity.source_kind?.includes("TRAINING")
             ? "TRAINING"
-            : "HELPER"
+            : activity.source_kind?.includes("WALK_ON")
+              ? "WALK_ON"
+              : "HELPER"
           : "PAYROLL"
     );
 

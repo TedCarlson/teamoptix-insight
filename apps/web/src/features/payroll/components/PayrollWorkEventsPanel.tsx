@@ -10,11 +10,14 @@ type PayrollWorkEvent = {
   worker_type: string | null;
   employment_status: string | null;
   service_date: string;
-  event_type: "TRAINING_DAY" | "HELPER_DAY";
+  event_type: "TRAINING_DAY" | "HELPER_DAY" | "WALK_ON_DAY";
   event_status: "ACTIVE" | "REVERSED";
   note: string;
   reversal_reason: string | null;
   created_at: string;
+  pay_treatment: "ROSTER_RATE" | "ONE_DAY_RATE" | "INTERCOMPANY";
+  override_daily_pay_rate: number | null;
+  roster_record_kind: "INTERNAL" | "WALK_ON";
 };
 
 type Props = {
@@ -25,7 +28,9 @@ type Props = {
 };
 
 function eventLabel(eventType: PayrollWorkEvent["event_type"]) {
-  return eventType === "TRAINING_DAY" ? "Training day" : "Helper day";
+  if (eventType === "TRAINING_DAY") return "Training day";
+  if (eventType === "WALK_ON_DAY") return "Walk-on day";
+  return "Helper day";
 }
 
 export default function PayrollWorkEventsPanel({
@@ -41,6 +46,10 @@ export default function PayrollWorkEventsPanel({
   );
   const [eventType, setEventType] =
     useState<PayrollWorkEvent["event_type"]>("TRAINING_DAY");
+  const [payTreatment, setPayTreatment] = useState<
+    PayrollWorkEvent["pay_treatment"]
+  >("ONE_DAY_RATE");
+  const [overrideDailyPayRate, setOverrideDailyPayRate] = useState("");
   const [note, setNote] = useState("");
   const [reversingId, setReversingId] = useState<string | null>(null);
   const [reversalReason, setReversalReason] = useState("");
@@ -52,13 +61,15 @@ export default function PayrollWorkEventsPanel({
   const eligibleRoster = useMemo(
     () =>
       roster
-        .filter(
-          (person) =>
-            person.employment_status === "Active" ||
-            person.employment_status === "Trainee"
+        .filter((person) =>
+          eventType === "WALK_ON_DAY"
+            ? person.roster_record_kind === "WALK_ON"
+            : person.roster_record_kind !== "WALK_ON" &&
+              (person.employment_status === "Active" ||
+                person.employment_status === "Trainee")
         )
         .sort((a, b) => a.full_name.localeCompare(b.full_name)),
-    [roster]
+    [eventType, roster]
   );
 
   const loadEvents = useCallback(async () => {
@@ -115,6 +126,11 @@ export default function PayrollWorkEventsPanel({
             roster_member_id: rosterMemberId,
             service_date: serviceDate,
             event_type: eventType,
+            pay_treatment: eventType === "WALK_ON_DAY" ? payTreatment : null,
+            override_daily_pay_rate:
+              eventType === "WALK_ON_DAY" && payTreatment === "ONE_DAY_RATE"
+                ? Number(overrideDailyPayRate)
+                : null,
             note,
           }),
         }
@@ -193,10 +209,11 @@ export default function PayrollWorkEventsPanel({
     >
       <div>
         <p className="value-card__eyebrow">Fallback work evidence</p>
-        <h3 className="app-card__title">Add a missed training or helper day</h3>
+        <h3 className="app-card__title">Add a missed or overridden work day</h3>
         <p className="app-card__body">
-          Use this only when scanner activity does not represent the person’s
-          work. DSW remains authoritative when both signals exist.
+          Training and helper events fill missing work evidence. Walk-on events
+          apply an explicit pay treatment while DSW remains authoritative for
+          route production.
         </p>
       </div>
 
@@ -251,17 +268,56 @@ export default function PayrollWorkEventsPanel({
           <select
             value={eventType}
             onChange={(event) =>
-              setEventType(
-                event.target.value as PayrollWorkEvent["event_type"]
-              )
+              {
+                setEventType(
+                  event.target.value as PayrollWorkEvent["event_type"]
+                );
+                setRosterMemberId("");
+              }
             }
             required
             className="workspace-select"
           >
             <option value="TRAINING_DAY">Training day</option>
             <option value="HELPER_DAY">Helper day</option>
+            <option value="WALK_ON_DAY">Walk-on day</option>
           </select>
         </label>
+
+        {eventType === "WALK_ON_DAY" ? (
+          <>
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={{ fontSize: 12, fontWeight: 900 }}>Pay treatment</span>
+              <select
+                value={payTreatment}
+                onChange={(event) =>
+                  setPayTreatment(
+                    event.target.value as PayrollWorkEvent["pay_treatment"]
+                  )
+                }
+                className="workspace-select"
+              >
+                <option value="ONE_DAY_RATE">One-day rate</option>
+                <option value="INTERCOMPANY">Intercompany / no employee pay</option>
+              </select>
+            </label>
+            {payTreatment === "ONE_DAY_RATE" ? (
+              <label style={{ display: "grid", gap: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 900 }}>One-day rate</span>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={overrideDailyPayRate}
+                  onChange={(event) => setOverrideDailyPayRate(event.target.value)}
+                  required
+                  placeholder="0.00"
+                  className="workspace-input"
+                />
+              </label>
+            ) : null}
+          </>
+        ) : null}
 
         <label style={{ display: "grid", gap: 6 }}>
           <span style={{ fontSize: 12, fontWeight: 900 }}>
@@ -322,6 +378,9 @@ export default function PayrollWorkEventsPanel({
               <span>{eventLabel(event.event_type)}</span>
               <span>
                 {event.note}
+                {event.event_type === "WALK_ON_DAY"
+                  ? ` · ${event.pay_treatment === "ONE_DAY_RATE" ? `$${Number(event.override_daily_pay_rate ?? 0).toFixed(2)}` : event.pay_treatment.replaceAll("_", " ").toLowerCase()}`
+                  : ""}
                 {event.reversal_reason
                   ? ` · Reversed: ${event.reversal_reason}`
                   : ""}

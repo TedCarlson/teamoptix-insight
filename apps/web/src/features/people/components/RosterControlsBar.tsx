@@ -1,6 +1,6 @@
 "use client";
 
-export type RosterTab = "active" | "trainee" | "candidates" | "former" | "all";
+export type RosterTab = "active" | "trainee" | "candidates" | "walk_ons" | "former" | "all";
 
 type Props = {
   tab: RosterTab;
@@ -14,6 +14,7 @@ type Props = {
     active: number;
     trainee: number;
     candidates: number;
+    walk_ons: number;
     former: number;
     all: number;
     complianceAlerts: number;
@@ -37,6 +38,7 @@ export default function RosterControlsBar(props: Props) {
     active: "Active",
     trainee: "Trainee",
     candidates: "Candidates",
+    walk_ons: "Walk-ons",
     former: "Former",
     all: "All workforce",
   }[tab];
@@ -56,6 +58,14 @@ export default function RosterControlsBar(props: Props) {
         }}
       >
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="button"
+            aria-pressed={tab === "walk_ons"}
+            onClick={() => setTab("walk_ons")}
+          >
+            Walk-ons {counts ? `(${counts.walk_ons})` : ""}
+          </button>
           <button
             type="button"
             className="button"

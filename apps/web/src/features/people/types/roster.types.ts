@@ -1,4 +1,5 @@
 export type RosterEmploymentStatus = "Active" | "Candidate" | "Trainee" | "Former";
+export type RosterOperationalStatus = RosterEmploymentStatus | "Support";
 
 export type RosterInviteStatus =
   | "Not Invited"
@@ -10,6 +11,7 @@ import type { RosterComplianceSignal } from "@/features/compliance/lib/rosterCom
 
 export type RosterRow = {
   roster_member_id: string;
+  roster_record_kind?: "INTERNAL" | "WALK_ON";
 
   person_id?: string | null;
   profile_id?: string | null;
@@ -21,7 +23,7 @@ export type RosterRow = {
   worker_type: string | null;
   job_title?: string | null;
 
-  employment_status: RosterEmploymentStatus;
+  employment_status: RosterOperationalStatus;
 
   market_code: string | null;
   reports_to_name: string | null;

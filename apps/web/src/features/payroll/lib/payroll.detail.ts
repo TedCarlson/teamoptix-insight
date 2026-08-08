@@ -48,7 +48,7 @@ export function buildPayrollSummaryFromDriverDayDetails(
       worked_days: Set<string>;
       worked_day_kinds: Map<
         string,
-        "TRAINING" | "HELPER"
+        "TRAINING" | "HELPER" | "WALK_ON"
       >;
       daily_pay_total: number;
       threshold_pay_total: number;
@@ -64,7 +64,7 @@ export function buildPayrollSummaryFromDriverDayDetails(
       worked_days: new Set<string>(),
       worked_day_kinds: new Map<
         string,
-        "TRAINING" | "HELPER"
+        "TRAINING" | "HELPER" | "WALK_ON"
       >(),
       daily_pay_total: 0,
       threshold_pay_total: 0,
@@ -140,13 +140,20 @@ export function buildPayrollDriverDayDetails(
       const hasFallbackEvidence = rows.some((row) =>
         isFallbackWorkEventSource(row.source_kind)
       );
-      const workDayKind =
-        rows
-          .map((row) => payrollWorkDayKind(row.source_kind))
-          .find(
-            (kind): kind is "TRAINING" | "HELPER" =>
-              kind != null
-          ) ?? null;
+      const hasWalkOnEvidence = rows.some(
+        (row) => Boolean(
+          row.metadata_json?.walk_on_payroll_event_id ||
+            row.metadata_json?.walk_on_assignment_id
+        )
+      );
+      const workDayKind = hasWalkOnEvidence
+        ? "WALK_ON" as const
+        : rows
+            .map((row) => payrollWorkDayKind(row.source_kind))
+            .find(
+              (kind): kind is "TRAINING" | "HELPER" | "WALK_ON" =>
+                kind != null
+            ) ?? null;
 
       for (const row of rows) {
         const wa = row.wa_number ?? "—";
@@ -238,7 +245,9 @@ export function buildPayrollDriverDayDetails(
         route_collection_label: hasFallbackEvidence
           ? rows.some((row) => row.source_kind?.includes("TRAINING"))
             ? "Training day · fallback work evidence"
-            : "Helper day · fallback work evidence"
+            : rows.some((row) => row.source_kind?.includes("WALK_ON"))
+              ? "Walk-on day · fallback work evidence"
+              : "Helper day · fallback work evidence"
           : routeCollection
               .map((route) => `WA ${route.wa_number}: ${route.total_stops} stops`)
               .join(" · "),

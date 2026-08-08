@@ -56,7 +56,9 @@ function DayToken({
   const title =
     kind === "TRAINING"
       ? "Training day"
-      : "Helper day";
+      : kind === "WALK_ON"
+        ? "Walk-on day"
+        : "Helper day";
 
   return (
     <span

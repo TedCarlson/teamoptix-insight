@@ -105,11 +105,16 @@ export async function POST(
       const rosterMemberId = text(body.roster_member_id);
       const eventType = text(body.event_type);
       const note = text(body.note);
+      const payTreatment = text(body.pay_treatment).toUpperCase();
+      const overrideDailyPayRate =
+        body.override_daily_pay_rate == null
+          ? null
+          : Number(body.override_daily_pay_rate);
 
       if (
         !rosterMemberId ||
         !isIsoDate(serviceDate) ||
-        !["TRAINING_DAY", "HELPER_DAY"].includes(eventType) ||
+        !["TRAINING_DAY", "HELPER_DAY", "WALK_ON_DAY"].includes(eventType) ||
         !note
       ) {
         return NextResponse.json(
@@ -121,16 +126,23 @@ export async function POST(
         );
       }
 
-      const { error } = await supabase.rpc(
-        "create_company_payroll_work_event",
-        {
-          p_company_slug: slug,
-          p_roster_member_id: rosterMemberId,
-          p_service_date: serviceDate,
-          p_event_type: eventType,
-          p_note: note,
-        }
-      );
+      const { error } =
+        eventType === "WALK_ON_DAY"
+          ? await supabase.rpc("create_company_walk_on_payroll_event", {
+              p_company_slug: slug,
+              p_roster_member_id: rosterMemberId,
+              p_service_date: serviceDate,
+              p_pay_treatment: payTreatment,
+              p_override_daily_pay_rate: overrideDailyPayRate,
+              p_note: note,
+            })
+          : await supabase.rpc("create_company_payroll_work_event", {
+              p_company_slug: slug,
+              p_roster_member_id: rosterMemberId,
+              p_service_date: serviceDate,
+              p_event_type: eventType,
+              p_note: note,
+            });
 
       if (error) {
         return NextResponse.json(

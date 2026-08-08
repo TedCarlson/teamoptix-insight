@@ -25,7 +25,7 @@ export async function loadRosterAuthoritativeDto({
     supabase
       .from("company_roster_view")
       .select(
-        "roster_member_id, company_id, profile_id, person_id, full_name, email, phone, worker_type, job_title, employment_status, market_code, reports_to_name, hire_date, separation_date, reports_to_roster_id, invite_status, notes, fx_id, dswid",
+        "roster_member_id, company_id, profile_id, person_id, full_name, email, phone, worker_type, job_title, employment_status, market_code, reports_to_name, hire_date, separation_date, reports_to_roster_id, invite_status, notes, fx_id, dswid, roster_record_kind",
       )
       .eq("company_id", companyId)
       .eq("roster_member_id", rosterId)
@@ -99,6 +99,7 @@ export async function loadRosterAuthoritativeDto({
 
   return {
     roster_member_id: roster.roster_member_id,
+    roster_record_kind: roster.roster_record_kind ?? "INTERNAL",
     company_id: roster.company_id,
     profile_id: roster.profile_id,
     person_id: roster.person_id,
@@ -114,11 +115,14 @@ export async function loadRosterAuthoritativeDto({
     hire_date: roster.hire_date,
     separation_date: roster.separation_date,
     invite_status: roster.invite_status,
-    compliance_signals: deriveRosterComplianceSignals({
-      licenseExpirationDate: license?.expiration_date ?? null,
-      dotExpirationDate: operations?.dot_exp ?? null,
-      qualificationExpirationDate: operations?.qual_cert_exp ?? null,
-    }),
+    compliance_signals:
+      roster.roster_record_kind === "WALK_ON"
+        ? []
+        : deriveRosterComplianceSignals({
+            licenseExpirationDate: license?.expiration_date ?? null,
+            dotExpirationDate: operations?.dot_exp ?? null,
+            qualificationExpirationDate: operations?.qual_cert_exp ?? null,
+          }),
     notes: roster.notes ?? null,
 
     scanner_serial:

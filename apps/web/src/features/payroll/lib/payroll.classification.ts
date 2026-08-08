@@ -22,7 +22,11 @@ export function payrollSummaryGroup(row: PayrollSummaryRow, rosterById: Map<stri
   const driver = isDriverType(roster?.worker_type);
   const active = isActiveStatus(roster?.employment_status);
   const trainee = isTraineeStatus(roster?.employment_status);
+  const walkOn =
+    roster?.roster_record_kind === "WALK_ON" ||
+    Object.values(row.worked_day_kinds ?? {}).includes("WALK_ON");
 
+  if (walkOn) return "Walk-ons · Support";
   if (driver && trainee) return "Drivers · Trainee";
   if (driver && active) return "Drivers · Active";
   if (driver && !active) return "Drivers · Former";

@@ -11,6 +11,7 @@ describe("payroll source contract", () => {
     expect(isFallbackWorkEventSource("MANUAL_TRAINING")).toBe(true);
     expect(isFallbackWorkEventSource("DISPATCH_HELPER")).toBe(true);
     expect(isPayrollSource("MANUAL_HELPER")).toBe(true);
+    expect(isPayrollSource("MANUAL_WALK_ON")).toBe(true);
     expect(isPayrollSource("DISPATCH_TRAINING")).toBe(true);
   });
 

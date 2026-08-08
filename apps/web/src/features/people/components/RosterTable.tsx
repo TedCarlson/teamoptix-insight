@@ -116,7 +116,7 @@ export default function RosterTable(props: Props) {
               <td style={cellStyle}>{row.phone ?? "—"}</td>
               <td style={cellStyle}>{row.worker_type ?? "—"}</td>
               <td style={cellStyle}>
-                <Pill value={row.employment_status} />
+                <Pill value={row.roster_record_kind === "WALK_ON" ? "Walk-on" : row.employment_status} />
               </td>
               <td style={cellStyle}>
                 <Pill value={row.invite_status} tone={inviteTone(row.invite_status)} />

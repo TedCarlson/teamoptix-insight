@@ -15,7 +15,7 @@ export type AttendanceRow = {
   days: Record<string, AttendanceCell>;
 };
 
-export type PayrollWorkDayKind = "TRAINING" | "HELPER";
+export type PayrollWorkDayKind = "TRAINING" | "HELPER" | "WALK_ON";
 
 export type PayrollSummaryRow = {
   roster_member_id: string | null;

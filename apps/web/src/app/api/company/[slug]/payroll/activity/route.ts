@@ -38,6 +38,15 @@ function dswBridgeKey(value: unknown) {
   return last && first ? `${last}|${first}` : "";
 }
 
+function isWalkOnPayControlled(row: PayrollActivityRow) {
+  const metadata = row.metadata_json ?? {};
+  return Boolean(
+    metadata.walk_on_assignment_id ||
+      metadata.walk_on_payroll_event_id ||
+      (row.review_flags ?? []).includes("WALK_ON_PAY_OVERRIDE_REQUIRED")
+  );
+}
+
 
 export async function GET(
   req: NextRequest,
@@ -273,6 +282,28 @@ export async function GET(
 
     const rows = rawRows.map((row) => {
       if (row.roster_member_id) {
+        // A walk-on assignment is never allowed to inherit the roster rate
+        // fallback. The database projection supplies either an explicit
+        // one-day/intercompany result or a $0 review signal.
+        if (isWalkOnPayControlled(row)) {
+          const needsOverride = (row.review_flags ?? []).includes(
+            "WALK_ON_PAY_OVERRIDE_REQUIRED"
+          );
+          return {
+            ...row,
+            daily_pay_eligible: needsOverride
+              ? false
+              : row.daily_pay_eligible === true,
+            daily_pay_rate: needsOverride ? null : row.daily_pay_rate ?? null,
+            daily_pay_effective_date: needsOverride
+              ? null
+              : row.daily_pay_effective_date ?? null,
+            daily_pay_source: needsOverride
+              ? "WALK_ON_OVERRIDE_REQUIRED"
+              : "WALK_ON_EVENT",
+          };
+        }
+
         const ops = opsByRosterId.get(row.roster_member_id);
         const resolvedDailyPay = resolveDailyPay(
           row.roster_member_id,

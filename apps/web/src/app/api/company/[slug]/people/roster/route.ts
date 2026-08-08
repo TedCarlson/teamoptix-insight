@@ -136,11 +136,15 @@ export async function GET(
           candidate_stage_key: stage?.stage_key ?? null,
           candidate_stage_label: stage?.default_label ?? null,
           candidate_stage_is_terminal: Boolean(stage?.is_terminal ?? false),
-          compliance_signals: deriveRosterComplianceSignals({
-            licenseExpirationDate: license?.expiration_date ?? row.license_expiration_date ?? null,
-            dotExpirationDate: ops?.dot_exp ?? null,
-            qualificationExpirationDate: ops?.qual_cert_exp ?? null,
-          }),
+          compliance_signals:
+            row.roster_record_kind === "WALK_ON"
+              ? []
+              : deriveRosterComplianceSignals({
+                  licenseExpirationDate:
+                    license?.expiration_date ?? row.license_expiration_date ?? null,
+                  dotExpirationDate: ops?.dot_exp ?? null,
+                  qualificationExpirationDate: ops?.qual_cert_exp ?? null,
+                }),
         };
       })
       .filter((row: any) => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   DispatchEventTypeRow,
   DispatchPerson,
@@ -20,6 +20,8 @@ type DispatchActionOption = {
 };
 
 type DispatchEventOverlayProps = {
+  slug: string;
+  serviceDate: string;
   open: boolean;
   saving: boolean;
   eventTypes: DispatchEventTypeRow[];
@@ -48,7 +50,26 @@ type DispatchEventOverlayProps = {
     to_route_label?: string | null;
     event_payload?: Record<string, unknown>;
     walk_on_full_name?: string | null;
+    walk_on_record_mode?: "CANDIDATE" | "WALK_ON";
+    walk_on_roster_member_id?: string | null;
+    walk_on_dswid?: string | null;
+    walk_on_workforce_unit_id?: string | null;
+    walk_on_new_workforce_unit_name?: string | null;
+    walk_on_service_date?: string | null;
   }) => Promise<void>;
+};
+
+type WalkOnRosterOption = {
+  roster_member_id: string;
+  full_name: string;
+  dswid: string | null;
+  workforce_unit_id: string | null;
+  workforce_unit_name: string | null;
+};
+
+type WalkOnWorkforceUnitOption = {
+  workforce_unit_id: string;
+  unit_name: string;
 };
 
 const addDriverAction: DispatchActionOption = {
@@ -111,6 +132,8 @@ function routeDropdownLabel(route: DispatchRoute) {
 
 export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
   const {
+    slug,
+    serviceDate,
     open,
     saving,
     eventTypes,
@@ -196,6 +219,19 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
   const [eventCode, setEventCode] = useState("");
   const [selectedTargetId, setSelectedTargetId] = useState("");
   const [walkOnName, setWalkOnName] = useState("");
+  const [walkOnDswid, setWalkOnDswid] = useState("");
+  const [walkOnRecordChoice, setWalkOnRecordChoice] = useState<
+    "EXISTING" | "NEW" | "CANDIDATE"
+  >("EXISTING");
+  const [walkOnRosterId, setWalkOnRosterId] = useState("");
+  const [walkOnWorkforceUnitId, setWalkOnWorkforceUnitId] = useState("");
+  const [newWalkOnWorkforceUnit, setNewWalkOnWorkforceUnit] = useState("");
+  const [walkOnServiceDate, setWalkOnServiceDate] = useState(serviceDate);
+  const [walkOnRoster, setWalkOnRoster] = useState<WalkOnRosterOption[]>([]);
+  const [walkOnWorkforceUnits, setWalkOnWorkforceUnits] = useState<
+    WalkOnWorkforceUnitOption[]
+  >([]);
+  const [walkOnLookupError, setWalkOnLookupError] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [deliveryActionCode, setDeliveryActionCode] = useState("DELIVERY_NOTE");
   const [assistingRouteId, setAssistingRouteId] = useState("");
@@ -205,6 +241,50 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
   const selected = useMemo(() => {
     return allActions.find((option) => option.event_code === eventCode) ?? allActions[0] ?? null;
   }, [allActions, eventCode]);
+
+  useEffect(() => {
+    setWalkOnServiceDate(serviceDate);
+  }, [serviceDate]);
+
+  useEffect(() => {
+    if (!open || !slug) return;
+
+    let active = true;
+    setWalkOnLookupError(null);
+
+    void fetch(`/api/company/${slug}/dispatch/walk-on`, {
+      credentials: "include",
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error ?? "Failed to load walk-on roster.");
+        }
+        if (!active) return;
+
+        const nextRoster = Array.isArray(payload?.walk_ons)
+          ? (payload.walk_ons as WalkOnRosterOption[])
+          : [];
+        const nextUnits = Array.isArray(payload?.workforce_units)
+          ? (payload.workforce_units as WalkOnWorkforceUnitOption[])
+          : [];
+
+        setWalkOnRoster(nextRoster);
+        setWalkOnWorkforceUnits(nextUnits);
+        setWalkOnRecordChoice(nextRoster.length > 0 ? "EXISTING" : "NEW");
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setWalkOnLookupError(
+          error instanceof Error ? error.message : "Failed to load walk-on roster."
+        );
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [open, slug]);
 
   const targetOptions = useMemo(() => {
     if (!selected) return [];
@@ -226,7 +306,20 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
     const needsTarget =
       selected.targetMode !== "none" && selected.targetMode !== "walk_on_name";
     if (needsTarget && !selectedTargetId) return;
-    if (selected.targetMode === "walk_on_name" && !walkOnName.trim()) return;
+    if (selected.targetMode === "walk_on_name") {
+      if (!walkOnServiceDate) return;
+      if (walkOnRecordChoice === "EXISTING" && !walkOnRosterId) return;
+      if (walkOnRecordChoice === "CANDIDATE" && !walkOnName.trim()) return;
+      if (
+        walkOnRecordChoice === "NEW" &&
+        (!walkOnName.trim() || !walkOnDswid.trim())
+      ) return;
+      if (
+        walkOnRecordChoice !== "CANDIDATE" &&
+        !walkOnWorkforceUnitId &&
+        !newWalkOnWorkforceUnit.trim()
+      ) return;
+    }
     if (selected.requiresNote && !note.trim()) return;
 
     const selectedPerson =
@@ -243,6 +336,10 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
           ) ?? null
         : null;
 
+    const selectedWalkOn = walkOnRoster.find(
+      (person) => person.roster_member_id === walkOnRosterId
+    );
+
     await onSubmit({
       event_code: selected.event_code,
       event_label: selected.event_label,
@@ -253,7 +350,31 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
       route_key: selectedRoute?.route_key ?? null,
       route_label: selectedRoute ? routeDropdownLabel(selectedRoute) : null,
       walk_on_full_name:
-        selected.targetMode === "walk_on_name" ? walkOnName.trim() : null,
+        selected.targetMode === "walk_on_name"
+          ? selectedWalkOn?.full_name ?? walkOnName.trim()
+          : null,
+      walk_on_record_mode:
+        selected.targetMode === "walk_on_name"
+          ? walkOnRecordChoice === "CANDIDATE" ? "CANDIDATE" : "WALK_ON"
+          : undefined,
+      walk_on_roster_member_id:
+        selected.targetMode === "walk_on_name" && walkOnRecordChoice === "EXISTING"
+          ? walkOnRosterId
+          : null,
+      walk_on_dswid:
+        selected.targetMode === "walk_on_name" && walkOnRecordChoice === "NEW"
+          ? walkOnDswid.trim()
+          : null,
+      walk_on_workforce_unit_id:
+        selected.targetMode === "walk_on_name" && walkOnRecordChoice !== "CANDIDATE"
+          ? walkOnWorkforceUnitId || selectedWalkOn?.workforce_unit_id || null
+          : null,
+      walk_on_new_workforce_unit_name:
+        selected.targetMode === "walk_on_name" && walkOnRecordChoice !== "CANDIDATE"
+          ? newWalkOnWorkforceUnit.trim() || null
+          : null,
+      walk_on_service_date:
+        selected.targetMode === "walk_on_name" ? walkOnServiceDate : null,
       event_payload:
         selected.kind === "add_walk_on"
           ? {
@@ -291,6 +412,11 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
     setEventCode("");
     setSelectedTargetId("");
     setWalkOnName("");
+    setWalkOnDswid("");
+    setWalkOnRosterId("");
+    setWalkOnWorkforceUnitId("");
+    setNewWalkOnWorkforceUnit("");
+    setWalkOnServiceDate(serviceDate);
     setNote("");
   }
 
@@ -450,19 +576,110 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
             </label>
 
             {selected?.targetMode === "walk_on_name" ? (
-              <input
-                value={walkOnName}
-                onChange={(e) => setWalkOnName(e.target.value)}
-                required
-                placeholder="Enter walk-on driver full name"
-                style={{
-                  height: 42,
-                  padding: "0 12px",
-                  borderRadius: 12,
-                  border: "1px solid #d6dfeb",
-                  background: "#fff",
-                }}
-              />
+              <div style={{ display: "grid", gap: 10 }}>
+                <select
+                  value={walkOnRecordChoice}
+                  onChange={(event) => {
+                    setWalkOnRecordChoice(
+                      event.target.value as "EXISTING" | "NEW" | "CANDIDATE"
+                    );
+                    setWalkOnRosterId("");
+                  }}
+                  className="workspace-select"
+                >
+                  <option value="EXISTING" disabled={walkOnRoster.length === 0}>
+                    Choose existing walk-on
+                  </option>
+                  <option value="NEW">Add reusable walk-on</option>
+                  <option value="CANDIDATE">Create candidate instead</option>
+                </select>
+
+                {walkOnRecordChoice === "EXISTING" ? (
+                  <select
+                    value={walkOnRosterId}
+                    onChange={(event) => {
+                      const rosterId = event.target.value;
+                      const person = walkOnRoster.find(
+                        (item) => item.roster_member_id === rosterId
+                      );
+                      setWalkOnRosterId(rosterId);
+                      setWalkOnWorkforceUnitId(person?.workforce_unit_id ?? "");
+                    }}
+                    required
+                    className="workspace-select"
+                  >
+                    <option value="">Select known walk-on</option>
+                    {walkOnRoster.map((person) => (
+                      <option key={person.roster_member_id} value={person.roster_member_id}>
+                        {person.full_name} · {person.dswid || "DSWID missing"} · {person.workforce_unit_name || "Unit missing"}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    value={walkOnName}
+                    onChange={(event) => setWalkOnName(event.target.value)}
+                    required
+                    placeholder={
+                      walkOnRecordChoice === "CANDIDATE"
+                        ? "Candidate full name"
+                        : "Walk-on driver full name"
+                    }
+                    className="workspace-input"
+                  />
+                )}
+
+                {walkOnRecordChoice === "NEW" ? (
+                  <input
+                    value={walkOnDswid}
+                    onChange={(event) => setWalkOnDswid(event.target.value)}
+                    required
+                    placeholder="Foreign DSWID, e.g. HEARNS,JAYLEN VIRGIL"
+                    className="workspace-input"
+                  />
+                ) : null}
+
+                {walkOnRecordChoice !== "CANDIDATE" ? (
+                  <>
+                    <select
+                      value={walkOnWorkforceUnitId}
+                      onChange={(event) => setWalkOnWorkforceUnitId(event.target.value)}
+                      className="workspace-select"
+                    >
+                      <option value="">Choose known lending workforce unit</option>
+                      {walkOnWorkforceUnits.map((unit) => (
+                        <option key={unit.workforce_unit_id} value={unit.workforce_unit_id}>
+                          {unit.unit_name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      value={newWalkOnWorkforceUnit}
+                      onChange={(event) => setNewWalkOnWorkforceUnit(event.target.value)}
+                      placeholder="Or add a new workforce unit, e.g. Derwood"
+                      className="workspace-input"
+                    />
+                  </>
+                ) : null}
+
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 900 }}>Service date</span>
+                  <input
+                    type="date"
+                    value={walkOnServiceDate}
+                    max={serviceDate > new Date().toISOString().slice(0, 10) ? serviceDate : new Date().toISOString().slice(0, 10)}
+                    onChange={(event) => setWalkOnServiceDate(event.target.value)}
+                    required
+                    className="workspace-input"
+                  />
+                </label>
+
+                {walkOnLookupError ? (
+                  <span style={{ color: "#991b1b", fontWeight: 800 }}>
+                    {walkOnLookupError}
+                  </span>
+                ) : null}
+              </div>
             ) : selected?.targetMode === "none" ? (
               <div
                 style={{
@@ -523,7 +740,7 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
               {selected.targetMode === "scheduled_person"
                 ? "This action links to scheduled workforce. "
                 : selected.targetMode === "walk_on_name"
-                  ? "This action creates a Candidate roster record for a walk-on driver verified by the operator. "
+                  ? "Choose a reusable walk-on identity or explicitly create a candidate. Walk-ons stay outside the employee and hiring populations. "
                 : selected.targetMode === "unscheduled_driver"
                   ? "This action adds a non-scheduled driver into today's dispatch pool. "
                   : selected.targetMode === "route"

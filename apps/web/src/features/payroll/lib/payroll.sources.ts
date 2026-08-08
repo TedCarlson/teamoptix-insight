@@ -7,6 +7,7 @@ const DSW_PAYROLL_SOURCES = new Set([
 const FALLBACK_WORK_EVENT_SOURCES = new Set([
   "MANUAL_TRAINING",
   "MANUAL_HELPER",
+  "MANUAL_WALK_ON",
   "DISPATCH_TRAINING",
   "DISPATCH_HELPER",
 ]);
@@ -32,7 +33,7 @@ export function isPayrollSource(sourceKind: string | null | undefined) {
 
 export function payrollWorkDayKind(
   sourceKind: string | null | undefined
-): "TRAINING" | "HELPER" | null {
+): "TRAINING" | "HELPER" | "WALK_ON" | null {
   const normalized = String(sourceKind ?? "");
 
   if (
@@ -48,6 +49,8 @@ export function payrollWorkDayKind(
   ) {
     return "HELPER";
   }
+
+  if (normalized === "MANUAL_WALK_ON") return "WALK_ON";
 
   return null;
 }
