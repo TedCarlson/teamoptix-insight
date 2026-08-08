@@ -23,7 +23,6 @@ type Props = {
   slug: string;
   weekEnd: string;
   roster: RosterRow[];
-  onChanged: () => void;
 };
 
 type ReviewPayload = {
@@ -56,7 +55,7 @@ function daysAffected(startDate: string, endDate: string) {
   return Math.floor((end - start) / 86_400_000) + 1;
 }
 
-export default function PayrollAdjustmentsPanel({ slug, weekEnd, roster, onChanged }: Props) {
+export default function PayrollAdjustmentsPanel({ slug, weekEnd, roster }: Props) {
   const weekStart = useMemo(() => addDays(weekEnd, -6), [weekEnd]);
   const [adjustments, setAdjustments] = useState<PayrollAdjustmentRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -233,17 +232,23 @@ export default function PayrollAdjustmentsPanel({ slug, weekEnd, roster, onChang
         data?.message ??
           "Reversal saved. Rebuild payroll to apply it to the selected week."
       );
-      onChanged();
-
-      const reload = await fetch(`/api/company/${slug}/payroll/adjustments?weekEnd=${weekEnd}`, {
-        credentials: "include",
-        cache: "no-store",
-      });
-      const reloadData = await reload.json().catch(() => ({}));
-
-      if (reload.ok) {
-        setAdjustments(Array.isArray(reloadData?.adjustments) ? reloadData.adjustments : []);
-      }
+      setAdjustments((current) => [
+        ...current,
+        {
+          adjustment_event_id:
+            String(data?.result?.adjustment_event_id ?? "") ||
+            `pending-reversal-${payload.row.adjustment_event_id}`,
+          adjustment_key: "REVERSAL",
+          adjustment_label: `Reversal: ${payload.row.adjustment_label}`,
+          adjustment_scope: payload.row.adjustment_scope,
+          start_date: payload.row.start_date,
+          end_date: payload.row.end_date,
+          amount: Number(payload.row.amount ?? 0) * -1,
+          amount_mode: payload.row.amount_mode,
+          notes: `Reversal of adjustment ${payload.row.adjustment_event_id}: ${reason}`,
+          target_count: payload.row.target_count,
+        },
+      ]);
     } finally {
       setSaving(false);
     }
@@ -294,17 +299,24 @@ export default function PayrollAdjustmentsPanel({ slug, weekEnd, roster, onChang
         data?.message ??
           "Adjustment saved. Rebuild payroll to apply it to the selected week."
       );
-      onChanged();
-
-      const reload = await fetch(`/api/company/${slug}/payroll/adjustments?weekEnd=${weekEnd}`, {
-        credentials: "include",
-        cache: "no-store",
-      });
-      const reloadData = await reload.json().catch(() => ({}));
-
-      if (reload.ok) {
-        setAdjustments(Array.isArray(reloadData?.adjustments) ? reloadData.adjustments : []);
-      }
+      setAdjustments((current) => [
+        ...current,
+        {
+          adjustment_event_id:
+            String(data?.result?.adjustment_event_id ?? "") ||
+            `pending-adjustment-${Date.now()}`,
+          adjustment_key: "PAYROLL_ADJUSTMENT",
+          adjustment_label: payload.label,
+          adjustment_scope: payload.scope,
+          start_date: payload.startDate,
+          end_date: payload.endDate,
+          amount: payload.amount,
+          amount_mode: "DAILY",
+          notes: payload.notes || null,
+          target_count:
+            payload.scope === "TARGETED" ? payload.selectedRoster.length : 0,
+        },
+      ]);
     } finally {
       setSaving(false);
     }

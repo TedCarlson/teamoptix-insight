@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import type { DispatchEventRow } from "@/features/dispatch/lib/dispatchSupport";
 import type { RosterRow } from "@/features/people/types/roster.types";
 
@@ -36,7 +35,6 @@ import { isFallbackWorkEventSource } from "@/features/payroll/lib/payroll.source
 
 import {
   addDays,
-  defaultPayrollWeekEndFriday,
   weekDaysForEnd,
 } from "@/features/payroll/lib/payroll.date";
 
@@ -54,47 +52,21 @@ import {
 
 export type PayrollView = "attendance" | "summary" | "payroll-detail" | "row-detail" | "adjustments";
 
-const PAYROLL_WEEK_END_STORAGE_PREFIX = "teamoptix.payroll.weekEnd.";
+type PayrollGridProps = {
+  slug: string;
+  weekEnd: string;
+  setWeekEnd: (value: string) => void;
+  view?: PayrollView;
+  viewPicker?: React.ReactNode;
+};
 
-function isIsoDate(value: string | null | undefined): value is string {
-  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; viewPicker?: React.ReactNode }) {
-  const params = useParams();
-  const searchParams = useSearchParams();
-  const slug = String(params?.slug ?? "");
-  const requestedWeekEnd = searchParams.get("weekEnd");
-
-  const [weekEnd, setWeekEndState] = useState(defaultPayrollWeekEndFriday);
+export default function PayrollGrid({
+  slug,
+  weekEnd,
+  setWeekEnd,
+  view,
+  viewPicker,
+}: PayrollGridProps) {
   const [roster, setRoster] = useState<RosterRow[]>([]);
   const [eventsByDay, setEventsByDay] = useState<Record<string, DispatchEventRow[]>>({});
   const [payrollMetrics, setPayrollMetrics] = useState<PayrollMetrics | null>(null);
@@ -111,64 +83,6 @@ export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; 
   const [reportEmailOpen, setReportEmailOpen] = useState(false);
   const [includeNonDriverWorkers, setIncludeNonDriverWorkers] = useState(
     DEFAULT_COMPANY_PAYROLL_CONFIG.include_non_driver_workers
-  );
-
-  useEffect(() => {
-    if (!slug) return;
-
-    if (isIsoDate(requestedWeekEnd)) {
-      setWeekEndState(requestedWeekEnd);
-
-      try {
-        window.localStorage.setItem(
-          `${PAYROLL_WEEK_END_STORAGE_PREFIX}${slug}`,
-          requestedWeekEnd
-        );
-      } catch {
-        // URL state is still the source of truth when storage is unavailable.
-      }
-
-      return;
-    }
-
-    try {
-      const storedWeekEnd = window.localStorage.getItem(
-        `${PAYROLL_WEEK_END_STORAGE_PREFIX}${slug}`
-      );
-
-      if (isIsoDate(storedWeekEnd)) {
-        setWeekEndState(storedWeekEnd);
-      }
-    } catch {
-      // Fall back to the previous completed payroll week.
-    }
-  }, [requestedWeekEnd, slug]);
-
-  const setWeekEnd = useCallback(
-    (nextWeekEnd: string) => {
-      if (!isIsoDate(nextWeekEnd)) return;
-
-      setWeekEndState(nextWeekEnd);
-
-      try {
-        window.localStorage.setItem(
-          `${PAYROLL_WEEK_END_STORAGE_PREFIX}${slug}`,
-          nextWeekEnd
-        );
-      } catch {
-        // Non-blocking persistence only.
-      }
-
-      const params = new URLSearchParams(window.location.search);
-      params.set("weekEnd", nextWeekEnd);
-
-      window.history.replaceState(
-        null,
-        "",
-        `${window.location.pathname}?${params.toString()}`
-      );
-    },
-    [slug]
   );
 
   const days = useMemo(() => weekDaysForEnd(weekEnd), [weekEnd]);
@@ -329,7 +243,7 @@ export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; 
     return () => {
       active = false;
     };
-  }, [slug, weekEnd, payrollMetrics?.activity]);
+  }, [slug, weekEnd, repairRefreshKey]);
 
   useEffect(() => {
     let active = true;
@@ -368,7 +282,7 @@ export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; 
     return () => {
       active = false;
     };
-  }, [slug, weekEnd, payrollMetrics?.activity, repairRefreshKey]);
+  }, [slug, weekEnd, repairRefreshKey]);
 
   async function rebuildPayrollActivity() {
     try {
@@ -712,43 +626,46 @@ export default function PayrollGrid({ view, viewPicker }: { view?: PayrollView; 
           <div style={{ color: "#991b1b", fontWeight: 800 }}>{error}</div>
         ) : null}
 
-        {loading ? (
-          <div className="muted">Loading attendance...</div>
-        ) : payrollView === "summary" ? (
-          <PayrollSummaryTable groupedSummaryRows={groupedSummaryRows} />
-        ) : payrollView === "payroll-detail" ? (
-          <PayrollDetailTable rows={payrollDetailRows} days={days} />
-        ) : payrollView === "row-detail" ? (
-          <PayrollRowDetailTable detailRows={detailRows} />
-        ) : payrollView === "adjustments" ? (
-          <div style={{ display: "grid", gap: 16 }}>
-            <PayrollWorkEventsPanel
-              slug={slug}
-              days={days}
-              roster={roster}
-              onChanged={() => setRepairRefreshKey((value) => value + 1)}
-            />
-            <PayrollAdjustmentsPanel
-              slug={slug}
-              weekEnd={weekEnd}
-              roster={roster}
-              onChanged={() => setRepairRefreshKey((value) => value + 1)}
-            />
-          </div>
-        ) : (
-          <div style={{ display: "grid", gap: 16 }}>
-            <PayrollWorkEventsPanel
-              slug={slug}
-              days={days}
-              roster={roster}
-              onChanged={() => setRepairRefreshKey((value) => value + 1)}
-            />
-            <PayrollAttendanceTable
-              attendanceRows={attendanceRows}
-              days={days}
-            />
-          </div>
-        )}
+        {loading ? <div className="muted">Loading attendance...</div> : null}
+
+        {!loading ? (
+          <>
+            <div hidden={payrollView !== "summary"}>
+              <PayrollSummaryTable groupedSummaryRows={groupedSummaryRows} />
+            </div>
+
+            <div hidden={payrollView !== "payroll-detail"}>
+              <PayrollDetailTable rows={payrollDetailRows} days={days} />
+            </div>
+
+            <div hidden={payrollView !== "row-detail"}>
+              <PayrollRowDetailTable detailRows={detailRows} />
+            </div>
+
+            <div hidden={payrollView !== "adjustments"}>
+              <div style={{ display: "grid", gap: 16 }}>
+                <PayrollWorkEventsPanel
+                  slug={slug}
+                  days={days}
+                  roster={roster}
+                  onChanged={() => setRepairRefreshKey((value) => value + 1)}
+                />
+                <PayrollAdjustmentsPanel
+                  slug={slug}
+                  weekEnd={weekEnd}
+                  roster={roster}
+                />
+              </div>
+            </div>
+
+            <div hidden={payrollView !== "attendance"}>
+              <PayrollAttendanceTable
+                attendanceRows={attendanceRows}
+                days={days}
+              />
+            </div>
+          </>
+        ) : null}
       <PayrollReportEmailDialog
         open={reportEmailOpen}
         slug={slug}

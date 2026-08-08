@@ -5,11 +5,24 @@ import PayrollGrid, { type PayrollView } from "@/features/payroll/components/Pay
 
 type ProductivityView = Extract<PayrollView, "payroll-detail" | "row-detail">;
 
-export default function PayrollProductivityWorkspace() {
+type PayrollProductivityWorkspaceProps = {
+  slug: string;
+  weekEnd: string;
+  setWeekEnd: (value: string) => void;
+};
+
+export default function PayrollProductivityWorkspace({
+  slug,
+  weekEnd,
+  setWeekEnd,
+}: PayrollProductivityWorkspaceProps) {
   const [view, setView] = useState<ProductivityView>("payroll-detail");
 
   return (
     <PayrollGrid
+      slug={slug}
+      weekEnd={weekEnd}
+      setWeekEnd={setWeekEnd}
       view={view}
       viewPicker={
         <div className="workspace-view-picker">

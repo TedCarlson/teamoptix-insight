@@ -144,7 +144,6 @@ export default function PayrollWorkEventsPanel({
 
       setNote("");
       setNotice(payload?.message ?? "Work event saved and payroll rebuilt.");
-      await loadEvents();
       onChanged();
     } catch {
       setError("Failed to save work event.");
@@ -187,7 +186,6 @@ export default function PayrollWorkEventsPanel({
       setReversingId(null);
       setReversalReason("");
       setNotice(payload?.message ?? "Work event reversed and payroll rebuilt.");
-      await loadEvents();
       onChanged();
     } catch {
       setError("Failed to reverse work event.");

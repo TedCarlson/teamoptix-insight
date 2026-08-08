@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import type { MouseEvent } from "react";
 import IdentityPill from "@/features/access/components/IdentityPill";
 import { useAccess } from "@/features/access/AccessProvider";
 
@@ -368,7 +369,34 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
                   ? fleetSubItems
                 : inOperationsBranch
                   ? operationsSubItems
-                  : [];
+              : [];
+
+  function navigateWithinPayrollWorkspace(
+    event: MouseEvent<HTMLAnchorElement>,
+    href: string
+  ) {
+    if (
+      !inPayrollBranch ||
+      !href.startsWith(`${payrollBase}/`) ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (window.location.pathname === href) return;
+
+    window.history.pushState(
+      null,
+      "",
+      `${href}${window.location.search}`
+    );
+  }
 
   return (
     <nav className="app-nav-shell" aria-label="Company workspace">
@@ -425,18 +453,41 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
         <div className="app-workspace-rail app-workspace-rail--surfaces" aria-label="Workspace surfaces">
           {subItems.map((item) => {
             const active = item.match(pathname);
+            const isPayrollSurface =
+              inPayrollBranch && item.href.startsWith(`${payrollBase}/`);
+            const className = `app-workspace-tile app-workspace-tile--surface${active ? " app-workspace-tile--active" : ""}`;
+            const style = item.label.startsWith("Signature Required")
+              ? {
+                  background: "#fee2e2",
+                  borderColor: "#ef4444",
+                  color: "#991b1b",
+                }
+              : undefined;
+
+            if (isPayrollSurface) {
+              return (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  onClick={(event) =>
+                    navigateWithinPayrollWorkspace(event, item.href)
+                  }
+                  className={className}
+                  aria-current={active ? "page" : undefined}
+                  style={style}
+                >
+                  {item.label}
+                </a>
+              );
+            }
 
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`app-workspace-tile app-workspace-tile--surface${active ? " app-workspace-tile--active" : ""}`}
+                className={className}
                 aria-current={active ? "page" : undefined}
-                style={
-                  item.label.startsWith("Signature Required")
-                    ? { background: "#fee2e2", borderColor: "#ef4444", color: "#991b1b" }
-                    : undefined
-                }
+                style={style}
               >
                 {item.label}
               </Link>
