@@ -34,7 +34,6 @@ import OperationsWorkspaceToolbar from "@/features/operations/components/Operati
 import ExpressReportOverlay from "@/features/operations/manifests/components/ExpressReportOverlay";
 import ComplianceReportOverlay from "@/features/operations/components/ComplianceReportOverlay";
 import OperationsIntelligenceFeed from "@/features/operations/components/OperationsIntelligenceFeed";
-import OperationsUploadCard from "@/features/operations/components/OperationsUploadCard";
 import { DispatchEventOverlay } from "../components/DispatchEventOverlay";
 import { DispatchRightRail } from "../components/DispatchRightRail";
 import { DispatchRouteQueue } from "../components/DispatchRouteQueue";
@@ -837,6 +836,7 @@ export default function DispatchPage({
           lastUpdatedAt={lastUpdatedAt}
           refreshing={loading}
           onRefresh={refreshWorkspace}
+          onUpload={() => setUploadOverlayOpen(true)}
           actions={<>
             <button type="button" className="button" onClick={() => setComplianceReportOpen(true)} style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}>
               Compliance Report
@@ -892,8 +892,6 @@ export default function DispatchPage({
             />
 
             <div className="dispatch-right-column" style={{ display: "grid", gap: 12 }}>
-              <OperationsUploadCard onUpload={() => setUploadOverlayOpen(true)} />
-
               <OperationsIntelligenceFeed
                 key={`dispatch-feed-${refreshKey}-${deliveryPhase ? "delivery" : "dispatch"}`}
                 slug={slug}

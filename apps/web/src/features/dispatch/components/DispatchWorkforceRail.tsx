@@ -7,8 +7,8 @@ import {
   eyebrow,
   panel,
   panelHeader,
+  personTypeLabel,
 } from "../lib/dispatchSupport";
-import { WorkforceGroup } from "./DispatchRails";
 
 type DispatchWorkforceRailProps = {
   allPeopleCount: number;
@@ -82,13 +82,6 @@ export function DispatchWorkforceRail(props: DispatchWorkforceRailProps) {
           </div>
         )}
 
-        <WorkforceGroup
-          title="Available Drivers"
-          people={availablePeople}
-          intent={intent}
-          onSelect={onSelectPerson}
-        />
-
         <section
           style={{
             border: "1px solid #e6edf5",
@@ -106,9 +99,9 @@ export function DispatchWorkforceRail(props: DispatchWorkforceRailProps) {
               alignItems: "center",
             }}
           >
-            <p style={eyebrow}>Arrival check</p>
+            <p style={eyebrow}>Available drivers</p>
             <strong style={{ color: "#64748b" }}>
-              {arrivedPersonIds.size}
+              {availablePeople.length}
             </strong>
           </div>
 
@@ -119,20 +112,50 @@ export function DispatchWorkforceRail(props: DispatchWorkforceRailProps) {
 
                 return (
                   <div
-                    key={`arrival-${person.roster_member_id}`}
+                    key={`available-${person.roster_member_id}`}
                     style={{
                       display: "grid",
                       gridTemplateColumns: "1fr 32px",
-                      gap: 8,
+                      gap: 6,
                       alignItems: "center",
                       border: "1px solid #e6edf5",
                       borderRadius: 10,
-                      padding: "7px 8px",
+                      padding: 4,
                       fontSize: 12,
                       fontWeight: 800,
                     }}
                   >
-                    <span>{person.full_name}</span>
+                    <button
+                      type="button"
+                      onClick={() => onSelectPerson(person)}
+                      disabled={!intent}
+                      title={intent ? `Assign ${person.full_name}` : personTypeLabel(person)}
+                      style={{
+                        minWidth: 0,
+                        minHeight: 36,
+                        padding: "4px 6px",
+                        border: 0,
+                        borderRadius: 7,
+                        background: intent ? "#eff6ff" : "transparent",
+                        color: intent ? "#0f172a" : "#334155",
+                        cursor: intent ? "pointer" : "default",
+                        textAlign: "left",
+                      }}
+                    >
+                      <strong
+                        style={{
+                          display: "block",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {person.full_name}
+                      </strong>
+                      <span style={{ display: "block", marginTop: 1, color: "#64748b", fontSize: 10 }}>
+                        {personTypeLabel(person)}
+                      </span>
+                    </button>
                     <button
                       type="button"
                       aria-label={arrived ? "Arrived verified" : "Arrival not verified"}
@@ -157,7 +180,7 @@ export function DispatchWorkforceRail(props: DispatchWorkforceRailProps) {
             </div>
           ) : (
             <div style={{ color: "#94a3b8", fontSize: 12 }}>
-              No available drivers to verify.
+              No available drivers.
             </div>
           )}
         </section>

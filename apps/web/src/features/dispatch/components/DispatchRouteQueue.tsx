@@ -144,6 +144,7 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
 
   return (
     <section className="dispatch-route-queue" style={panel}>
+      <div className="dispatch-route-queue__chrome">
       <div className="dispatch-route-queue__header" style={panelHeader}>
         <div>
           <p style={eyebrow}>Route Queue</p>
@@ -197,9 +198,6 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
         className="dispatch-route-row dispatch-route-row--labels"
         style={{
           ...routeRowBase,
-          position: "sticky",
-          top: 0,
-          zIndex: 1,
           background: "#f8fafc",
           fontSize: 11,
           fontWeight: 900,
@@ -271,8 +269,9 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
           ) : null}
         </div>
       </div>
+      </div>
 
-      <div className="dispatch-route-queue__scroll" style={{ maxHeight: "calc(100vh - 236px)", overflow: "auto" }}>
+      <div className="dispatch-route-queue__scroll">
         {loading ? (
           <div style={{ padding: 14 }}>Loading dispatch...</div>
         ) : routes.length === 0 ? (

@@ -785,6 +785,40 @@ h1 {
 .dispatch-route-queue { grid-area: queue; }
 .dispatch-right-column { grid-area: right; }
 
+@media (min-width: 1201px) {
+  .dispatch-workforce-rail,
+  .dispatch-right-column {
+    position: sticky;
+    top: 10px;
+  }
+
+  .dispatch-route-queue__chrome {
+    position: sticky;
+    top: 10px;
+    z-index: 4;
+    overflow: visible;
+    border-radius: 16px 16px 0 0;
+    background: #fff;
+    box-shadow: 0 8px 16px rgba(15, 23, 42, 0.06);
+  }
+}
+
+.dispatch-route-queue__scroll {
+  overflow: visible;
+}
+
+.dispatch-right-rail__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.dispatch-right-rail__stats > div {
+  align-items: flex-start !important;
+  flex-direction: column;
+  padding: 8px !important;
+}
+
 .dispatch-status-strip {
   display: flex;
   gap: 8px;
