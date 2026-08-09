@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import { OPERATIONS_COLLECTION_PAYLOAD_VERSION, runnerGoalForRequestType } from "@/features/automation/contracts/runnerGoal";
 import { normalizeCollectionTarget } from "@/features/automation/contracts/collectionTarget";
+import { isMissingContinuousRunnerCancellationRpc } from "@/features/automation/lib/continuousRunnerCompatibility";
 import { resolveOperatingDateDecision } from "@/features/operations/workspace/operationsOperatingCalendar";
 
 export const runtime = "nodejs";
@@ -624,7 +625,12 @@ export async function GET() {
           await supabase.rpc("cancel_continuous_runner_legacy_requests", {
             p_company_id: companyId,
           });
-        if (cancellationError) throw new Error(cancellationError.message);
+        if (
+          cancellationError &&
+          !isMissingContinuousRunnerCancellationRpc(cancellationError)
+        ) {
+          throw new Error(cancellationError.message);
+        }
 
         results.push({
           company_slug: companySlug,
@@ -633,6 +639,14 @@ export async function GET() {
           reason:
             "signed continuous-runner schedule owns Prior Day, DRO AM, and Operations Pulse",
           cancelled_legacy_requests: cancelledLegacyRequests ?? 0,
+          migration_drift: cancellationError
+            ? {
+                migration: "20260809150000",
+                status: "PENDING",
+                effect:
+                  "Daily work remains delegated to the VPS; duplicate queued requests were not cancelled.",
+              }
+            : null,
           service_date: terminalState.todayIso,
           timezone: terminalTimeZone,
         });

@@ -1,83 +1,28 @@
 begin;
 
--- The signed runner schedule is the sole run/rest authority for the daily
--- package. Keep DRO AM beside Prior Day and Operations Pulse instead of in a
--- VPS-only environment gate.
+-- The existing signed Team Optix schedule remains the sole run/rest authority
+-- for Prior Day, DRO AM, and Operations Pulse. Preserve the working Pulse and
+-- collection gate exactly as they are. Move only DRO AM's existing 04:00
+-- behavior from a VPS environment override into the governed schedule.
+--
+-- Do not set runner_state to PENDING or change collection_enabled here. The
+-- controller will acknowledge the incremented configuration version when it
+-- next receives or bootstraps this equivalent schedule.
 update core.operations_runner_schedule schedule
 set
   report_config_json = jsonb_set(
-    jsonb_set(
-      coalesce(schedule.report_config_json, '{}'::jsonb),
-      '{dro_am}',
-      coalesce(
-        schedule.report_config_json -> 'dro_am',
-        jsonb_build_object(
-          'enabled', true,
-          'start_time', '04:00',
-          'reports', jsonb_build_array('DRO')
-        )
-      ),
-      true
-    ),
-    '{run_gate}',
-    coalesce(
-      schedule.report_config_json -> 'run_gate',
-      jsonb_build_object(
-        'authority', 'MANUAL',
-        'manual_state',
-          case when schedule.collection_enabled then 'ACTIVE' else 'INACTIVE' end
-      )
+    coalesce(schedule.report_config_json, '{}'::jsonb),
+    '{dro_am}',
+    jsonb_build_object(
+      'enabled', true,
+      'start_time', '04:00',
+      'reports', jsonb_build_array('DRO')
     ),
     true
   ),
   config_version = schedule.config_version + 1,
-  runner_state = 'PENDING',
-  runner_last_error = null,
   updated_at = now()
-where schedule.report_config_json -> 'dro_am' is null
-   or schedule.report_config_json -> 'run_gate' is null;
-
-create or replace function public.cancel_continuous_runner_legacy_requests(
-  p_company_id uuid
-)
-returns integer
-language plpgsql
-security definer
-set search_path to 'public', 'core'
-as $$
-declare
-  v_cancelled integer := 0;
-begin
-  if coalesce(auth.role(), '') <> 'service_role' then
-    raise exception 'Service role required.' using errcode = '42501';
-  end if;
-
-  update core.operations_collection_request request
-  set
-    request_status = 'CANCELLED',
-    error_message =
-      'Cancelled because the signed continuous-runner schedule owns this daily collection.',
-    completed_at = now(),
-    updated_at = now()
-  where request.company_id = p_company_id
-    and request.request_status = 'QUEUED'
-    and request.claimed_by is null
-    and request.request_type in ('PREVIOUS_DAY_CLOSE', 'DRO_AM', 'OPERATIONS_PULSE')
-    and exists (
-      select 1
-      from core.operations_runner_schedule schedule
-      where schedule.company_id = request.company_id
-    );
-
-  get diagnostics v_cancelled = row_count;
-  return v_cancelled;
-end;
-$$;
-
-revoke all on function public.cancel_continuous_runner_legacy_requests(uuid)
-  from public, anon, authenticated;
-grant execute on function public.cancel_continuous_runner_legacy_requests(uuid)
-  to service_role;
+where schedule.report_config_json -> 'dro_am' is null;
 
 create or replace function public.get_operations_runner_bootstrap(
   p_runner_key text
@@ -122,14 +67,6 @@ begin
     'timezone', v_schedule.timezone,
     'collection_enabled', v_schedule.collection_enabled,
     'config_version', v_schedule.config_version,
-    'run_gate', coalesce(
-      v_schedule.report_config_json -> 'run_gate',
-      jsonb_build_object(
-        'authority', 'MANUAL',
-        'manual_state',
-          case when v_schedule.collection_enabled then 'ACTIVE' else 'INACTIVE' end
-      )
-    ),
     'previous_day_close', jsonb_build_object(
       'enabled', v_schedule.previous_day_close_enabled,
       'start_time', to_char(v_schedule.previous_day_close_time, 'HH24:MI'),
@@ -180,10 +117,72 @@ revoke all on function public.get_operations_runner_bootstrap(text)
 grant execute on function public.get_operations_runner_bootstrap(text)
   to service_role;
 
--- Remove queue-era daily requests immediately. Continuous terminal receipts
--- remain the audit record after each runner-owned cycle.
-select public.cancel_continuous_runner_legacy_requests(schedule.company_id)
-from core.operations_runner_schedule schedule;
+-- Remove unclaimed queue-era duplicates for a company that already has a
+-- continuous-runner schedule. Historical sweep, targeted recovery, terminal
+-- receipts, artifact ingest, and completed request history continue to use
+-- core.operations_collection_request.
+create or replace function public.cancel_continuous_runner_legacy_requests(
+  p_company_id uuid
+)
+returns integer
+language plpgsql
+security definer
+set search_path to 'public', 'core'
+as $$
+declare
+  v_cancelled integer := 0;
+begin
+  if coalesce(auth.role(), '') <> 'service_role' then
+    raise exception 'Service role required.' using errcode = '42501';
+  end if;
+
+  update core.operations_collection_request request
+  set
+    request_status = 'CANCELLED',
+    error_message =
+      'Cancelled because the signed continuous-runner schedule owns this daily collection.',
+    completed_at = now(),
+    updated_at = now()
+  where request.company_id = p_company_id
+    and request.request_status = 'QUEUED'
+    and request.claimed_by is null
+    and request.request_type in ('PREVIOUS_DAY_CLOSE', 'DRO_AM', 'OPERATIONS_PULSE')
+    and exists (
+      select 1
+      from core.operations_runner_schedule schedule
+      where schedule.company_id = request.company_id
+    );
+
+  get diagnostics v_cancelled = row_count;
+  return v_cancelled;
+end;
+$$;
+
+revoke all on function public.cancel_continuous_runner_legacy_requests(uuid)
+  from public, anon, authenticated;
+grant execute on function public.cancel_continuous_runner_legacy_requests(uuid)
+  to service_role;
+
+-- Cancel only unclaimed daily-package duplicates that already exist. Use
+-- direct migration-owner SQL here because the runtime RPC intentionally
+-- requires an authenticated service-role JWT. Claimed, running,
+-- terminal-receipt, recovery, historical, and completed requests are
+-- intentionally untouched.
+update core.operations_collection_request request
+set
+  request_status = 'CANCELLED',
+  error_message =
+    'Cancelled because the signed continuous-runner schedule owns this daily collection.',
+  completed_at = now(),
+  updated_at = now()
+where request.request_status = 'QUEUED'
+  and request.claimed_by is null
+  and request.request_type in ('PREVIOUS_DAY_CLOSE', 'DRO_AM', 'OPERATIONS_PULSE')
+  and exists (
+    select 1
+    from core.operations_runner_schedule schedule
+    where schedule.company_id = request.company_id
+  );
 
 notify pgrst, 'reload schema';
 

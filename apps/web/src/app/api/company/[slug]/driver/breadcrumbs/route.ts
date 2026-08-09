@@ -69,6 +69,9 @@ export async function GET(req: NextRequest, context: RouteContext) {
       )
       .eq("company_id", company.id)
       .eq("service_date", serviceDate)
+      // Continuous Mobile Companion paths require a purpose-built governed
+      // read surface. The legacy payroll evidence feed remains DRIVER_WEB-only.
+      .eq("source", "DRIVER_WEB")
       .order("captured_at", { ascending: false });
 
     if (breadcrumbError) {

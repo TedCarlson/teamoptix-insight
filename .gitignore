@@ -15,6 +15,7 @@ snapshots/
 *.tsbuildinfo
 turbo
 apps/web/.env.local
+apps/automation-worker/.env.production
 
 # Automation runtime downloads
 .automation-downloads/
