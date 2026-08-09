@@ -35,6 +35,8 @@ jobs:
 
       - name: Set up Supabase CLI
         uses: supabase/setup-cli@v1
+        with:
+          version: 2.109.1
 
       - name: Require deployment guard secrets
         shell: bash
