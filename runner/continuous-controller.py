@@ -44,14 +44,29 @@ DONOR_LOCK_FILE = APP_DIR / "runtime" / "locks" / "report-runner.lock"
 SHADOW_MODE = os.environ.get("CONTINUOUS_RUNNER_SHADOW", "1") != "0"
 CONTROL_PORT = int(os.environ.get("RUNNER_CONTROL_PORT", "8790"))
 CONTROL_SECRET = os.environ.get("RUNNER_CONTROL_SECRET", "")
-RUNNER_VERSION = os.environ.get(
-    "TEAMOPTIX_RUNNER_VERSION", "continuous-runner-v1"
-)
-DRO_AM_ENABLED = (
-    os.environ.get("DRO_AM_ENABLED", "0").strip().lower()
-    in {"1", "true", "yes", "on"}
-)
-DRO_AM_TIME = os.environ.get("DRO_AM_TIME", "04:00").strip()
+
+
+def detect_runner_version() -> str:
+    configured = os.environ.get("TEAMOPTIX_RUNNER_VERSION", "").strip()
+    if configured:
+        return configured
+    try:
+        revision = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            cwd=str(APP_DIR.parent),
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        ).stdout.strip()
+        if revision:
+            return revision
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return "unversioned-runner"
+
+
+RUNNER_VERSION = detect_runner_version()
 
 
 class CredentialConfigurationError(RuntimeError):
@@ -368,9 +383,12 @@ class ContinuousController:
         )
 
     def dro_am_due(self, now: datetime) -> bool:
-        if not DRO_AM_ENABLED:
+        dro_am = self.schedule.get("dro_am") or {}
+        if not dro_am.get("enabled"):
             return False
-        hour, minute = self.parse_clock(DRO_AM_TIME)
+        hour, minute = self.parse_clock(
+            str(dro_am.get("start_time") or "04:00")
+        )
         completed_date = str(self.journal.get("dro_am_date") or "")
         return (
             now.hour == hour
@@ -576,13 +594,13 @@ class ContinuousController:
                             self.shadow_observation(
                                 "DRO_AM",
                                 now.date().isoformat(),
-                                ["DRO"],
+                                self.reports_for("dro_am") or ["DRO"],
                             )
                         else:
                             status = self.run_cycle(
                                 "DRO_AM",
                                 now.date().isoformat(),
-                                ["DRO"],
+                                self.reports_for("dro_am") or ["DRO"],
                             )
                             if status == 0:
                                 self.journal["dro_am_date"] = (
