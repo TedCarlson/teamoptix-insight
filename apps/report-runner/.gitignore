@@ -28,10 +28,10 @@ notes.txt
 .env
 .env.*
 !.env.example
-runtime/
-storage/app/public/scraper/.venv/
-storage/app/public/scraper/Excels/
-storage/app/public/scraper/Logs/
+/runtime
+/storage/app/public/scraper/.venv
+/storage/app/public/scraper/Excels
+/storage/app/public/scraper/Logs
 storage/framework/cache/*
 storage/framework/sessions/*
 storage/framework/views/*
