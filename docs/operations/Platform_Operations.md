@@ -74,6 +74,10 @@ create queued Prior Day or Operations Pulse requests.
 
 Runs on the DigitalOcean worker.
 
+Canonical source: `apps/report-runner` in the Insight GitHub repository. The
+legacy standalone runner repository is retained only as a temporary rollback
+reference during monorepo cutover.
+
 Responsibilities
 
 - Obeys the signed daily-package RUN/REST gate.

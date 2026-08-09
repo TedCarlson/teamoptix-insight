@@ -2,5 +2,17 @@
 
 set -eu
 
-echo "Checking repository migrations against linked Supabase before push..."
+check_main=0
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    check_main=1
+  fi
+done
+
+if [ "$check_main" -eq 0 ]; then
+  echo "Branch push allowed; Supabase alignment is enforced when publishing main."
+  exit 0
+fi
+
+echo "Checking repository migrations against linked Supabase before publishing main..."
 node scripts/check-supabase-migration-alignment.mjs

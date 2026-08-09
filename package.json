@@ -8,14 +8,16 @@
     "db:drift": "node scripts/check-supabase-migration-alignment.mjs",
     "db:drift:test": "node --test scripts/check-supabase-migration-alignment.test.mjs",
     "setup:git-hooks": "git config core.hooksPath .githooks",
+    "source:check": "node scripts/verify-source-authority.mjs",
     "build": "pnpm --filter web build",
     "lint": "pnpm --filter web lint",
     "test": "pnpm --filter web test",
     "test:mobile": "pnpm --filter @insight/mobile-companion test",
+    "test:runner": "pnpm --filter @insight/report-runner test:controller",
     "typecheck": "pnpm --filter web typecheck",
     "typecheck:mobile": "pnpm --filter @insight/mobile-companion typecheck",
     "artifact-ingest-poller": "node ./scripts/local-artifact-ingest-poller.js",
-    "verify": "pnpm lint && pnpm test && pnpm test:mobile && pnpm typecheck && pnpm typecheck:mobile && pnpm build && pnpm build:worker",
+    "verify": "pnpm lint && pnpm test && pnpm test:mobile && pnpm test:runner && pnpm typecheck && pnpm typecheck:mobile && pnpm build && pnpm build:worker",
     "build:worker": "pnpm --filter automation-worker build"
   }
 }

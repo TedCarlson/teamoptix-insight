@@ -163,11 +163,26 @@ revoke all on function public.cancel_continuous_runner_legacy_requests(uuid)
 grant execute on function public.cancel_continuous_runner_legacy_requests(uuid)
   to service_role;
 
--- Cancel only unclaimed daily-package duplicates that already exist. Claimed,
--- running, terminal-receipt, recovery, historical, and completed requests are
+-- Cancel only unclaimed daily-package duplicates that already exist. Use
+-- direct migration-owner SQL here because the runtime RPC intentionally
+-- requires an authenticated service-role JWT. Claimed, running,
+-- terminal-receipt, recovery, historical, and completed requests are
 -- intentionally untouched.
-select public.cancel_continuous_runner_legacy_requests(schedule.company_id)
-from core.operations_runner_schedule schedule;
+update core.operations_collection_request request
+set
+  request_status = 'CANCELLED',
+  error_message =
+    'Cancelled because the signed continuous-runner schedule owns this daily collection.',
+  completed_at = now(),
+  updated_at = now()
+where request.request_status = 'QUEUED'
+  and request.claimed_by is null
+  and request.request_type in ('PREVIOUS_DAY_CLOSE', 'DRO_AM', 'OPERATIONS_PULSE')
+  and exists (
+    select 1
+    from core.operations_runner_schedule schedule
+    where schedule.company_id = request.company_id
+  );
 
 notify pgrst, 'reload schema';
 
