@@ -5,6 +5,9 @@
   "scripts": {
     "dev": "pnpm --filter web dev",
     "dev:mobile": "pnpm --filter @insight/mobile-companion start",
+    "db:drift": "node scripts/check-supabase-migration-alignment.mjs",
+    "db:drift:test": "node --test scripts/check-supabase-migration-alignment.test.mjs",
+    "setup:git-hooks": "git config core.hooksPath .githooks",
     "build": "pnpm --filter web build",
     "lint": "pnpm --filter web lint",
     "test": "pnpm --filter web test",

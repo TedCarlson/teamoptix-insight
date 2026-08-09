@@ -1,0 +1,6 @@
+#!/bin/sh
+
+set -eu
+
+echo "Checking repository migrations against linked Supabase before push..."
+node scripts/check-supabase-migration-alignment.mjs
