@@ -44,6 +44,11 @@ DONOR_LOCK_FILE = APP_DIR / "runtime" / "locks" / "report-runner.lock"
 SHADOW_MODE = os.environ.get("CONTINUOUS_RUNNER_SHADOW", "1") != "0"
 CONTROL_PORT = int(os.environ.get("RUNNER_CONTROL_PORT", "8790"))
 CONTROL_SECRET = os.environ.get("RUNNER_CONTROL_SECRET", "")
+LEGACY_DRO_AM_ENABLED = (
+    os.environ.get("DRO_AM_ENABLED", "0").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
+LEGACY_DRO_AM_TIME = os.environ.get("DRO_AM_TIME", "04:00").strip()
 
 
 def detect_runner_version() -> str:
@@ -153,6 +158,7 @@ class ContinuousController:
         self.next_retry_at = 0.0
         self.failure_count = 0
         self.last_shadow_log_at = 0.0
+        self.legacy_dro_notice_logged = False
 
     def apply_schedule(
         self,
@@ -383,12 +389,26 @@ class ContinuousController:
         )
 
     def dro_am_due(self, now: datetime) -> bool:
-        dro_am = self.schedule.get("dro_am") or {}
-        if not dro_am.get("enabled"):
+        dro_am = self.schedule.get("dro_am")
+        if isinstance(dro_am, dict):
+            enabled = bool(dro_am.get("enabled"))
+            start_time = str(dro_am.get("start_time") or "04:00")
+        else:
+            # Availability bridge for deployments that predate the governed
+            # dro_am schedule block. Once the database contract is applied,
+            # the signed schedule always wins and this branch becomes inert.
+            enabled = LEGACY_DRO_AM_ENABLED
+            start_time = LEGACY_DRO_AM_TIME
+            if enabled and not self.legacy_dro_notice_logged:
+                print(
+                    "[controller] migration guard: signed dro_am schedule "
+                    "missing; using legacy environment fallback",
+                    flush=True,
+                )
+                self.legacy_dro_notice_logged = True
+        if not enabled:
             return False
-        hour, minute = self.parse_clock(
-            str(dro_am.get("start_time") or "04:00")
-        )
+        hour, minute = self.parse_clock(start_time)
         completed_date = str(self.journal.get("dro_am_date") or "")
         return (
             now.hour == hour
