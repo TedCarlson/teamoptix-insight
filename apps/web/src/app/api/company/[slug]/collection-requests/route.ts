@@ -110,9 +110,11 @@ export async function GET(
     if (mode === "status") {
       const { operationalDate, start, end } = easternOperationalDayBounds();
       const service = createSupabaseServiceRoleClient();
+      const access = await resolveAutomationAccess(supabase, slug);
       const [
         { data, error },
         { data: runnerSchedule, error: scheduleError },
+        { data: inDayAssignment, error: assignmentError },
       ] = await Promise.all([
         service
           .from("operations_collection_request_v")
@@ -127,9 +129,24 @@ export async function GET(
         service
           .from("operations_runner_schedule_v")
           .select(
-            "collection_enabled,operations_pulse_enabled,operations_pulse_start_time,operations_pulse_end_time,timezone,report_config_json"
+            "collection_enabled,operations_pulse_enabled,operations_pulse_start_time,operations_pulse_end_time,timezone"
           )
           .eq("company_id", resolved.company.id)
+          .maybeSingle(),
+        service
+          .from("company_operations_ticket_assignment_v")
+          .select(
+            "id,start_time,end_time,cadence_minutes,assignment_payload_json"
+          )
+          .eq("company_id", resolved.company.id)
+          .eq("operational_contract", "IN_DAY_OPERATIONS")
+          .eq("assignment_status", "active")
+          .eq("is_enabled", true)
+          .eq("generation_mode", "scheduled")
+          .lte("active_start_date", operationalDate)
+          .or(`inactive_end_date.is.null,inactive_end_date.gt.${operationalDate}`)
+          .order("release_order", { ascending: true })
+          .limit(1)
           .maybeSingle(),
       ]);
 
@@ -145,6 +162,18 @@ export async function GET(
           { status: 500 }
         );
       }
+      if (assignmentError) {
+        return NextResponse.json(
+          { error: assignmentError.message, rows: [] },
+          { status: 500 }
+        );
+      }
+
+      const assignmentPayload =
+        inDayAssignment?.assignment_payload_json &&
+        typeof inDayAssignment.assignment_payload_json === "object"
+          ? inDayAssignment.assignment_payload_json
+          : {};
 
       return NextResponse.json(
         {
@@ -152,6 +181,19 @@ export async function GET(
           company_id: resolved.company.id,
           rows: data ?? [],
           runner_schedule: runnerSchedule ?? null,
+          operating_calendar: inDayAssignment
+            ? {
+                assignment_id: inDayAssignment.id,
+                start_time: inDayAssignment.start_time,
+                end_time: inDayAssignment.end_time,
+                cadence_minutes: inDayAssignment.cadence_minutes,
+                operating_weekdays:
+                  assignmentPayload.operating_weekdays ?? [],
+                operating_date_overrides:
+                  assignmentPayload.operating_date_overrides ?? {},
+              }
+            : null,
+          can_manage_operating_calendar: access.canAdmin,
         },
         {
           headers: {

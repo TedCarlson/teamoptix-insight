@@ -30,6 +30,7 @@ import ComplianceReportOverlay from "@/features/operations/components/Compliance
 import { ExpressProgressSignal } from "@/features/operations/express/ExpressProgressSignal";
 import type { ExpressDataHealth, ExpressProgress } from "@/features/operations/express/expressProgress";
 import { completionNeedsWorkspaceRefresh } from "./operationsCollectionRefresh";
+import { resolveOperatingDateDecision } from "./operationsOperatingCalendar";
 import {
   type DispatchDayRow,
   type DispatchEventRow,
@@ -88,10 +89,15 @@ type RunnerScheduleSummary = {
   operations_pulse_start_time: string;
   operations_pulse_end_time: string;
   timezone: string;
-  report_config_json: {
-    operating_weekdays?: number[];
-    operating_date_overrides?: Record<string, "OPERATING" | "CLOSED">;
-  } | null;
+};
+
+type OperatingCalendarSummary = {
+  assignment_id: string;
+  start_time: string | null;
+  end_time: string | null;
+  cadence_minutes: number | null;
+  operating_weekdays: number[];
+  operating_date_overrides: Record<string, "OPERATING" | "CLOSED">;
 };
 
 const phaseCopy: Record<
@@ -617,6 +623,15 @@ export default function OperationsWorkspacePage({
   >([]);
   const [runnerSchedule, setRunnerSchedule] =
     useState<RunnerScheduleSummary | null>(null);
+  const [operatingCalendar, setOperatingCalendar] =
+    useState<OperatingCalendarSummary | null>(null);
+  const [collectionOperationalDate, setCollectionOperationalDate] =
+    useState<string | null>(null);
+  const [canManageOperatingCalendar, setCanManageOperatingCalendar] =
+    useState(false);
+  const [savingOperatingOverride, setSavingOperatingOverride] = useState(false);
+  const [operatingOverrideError, setOperatingOverrideError] =
+    useState<string | null>(null);
   const [signalNow, setSignalNow] = useState(() => Date.now());
   const refreshedCompletionIds = useRef(new Set<string>());
 
@@ -671,6 +686,19 @@ export default function OperationsWorkspacePage({
           data?.runner_schedule
             ? (data.runner_schedule as RunnerScheduleSummary)
             : null
+        );
+        setOperatingCalendar(
+          data?.operating_calendar
+            ? (data.operating_calendar as OperatingCalendarSummary)
+            : null
+        );
+        setCollectionOperationalDate(
+          typeof data?.operational_date === "string"
+            ? data.operational_date
+            : null
+        );
+        setCanManageOperatingCalendar(
+          data?.can_manage_operating_calendar === true
         );
 
         const companyId =
@@ -768,30 +796,22 @@ export default function OperationsWorkspacePage({
   );
   const latestCollection = collectionRequests[0];
 
+  const operatingDateDecision = useMemo(() => {
+    const operationalDate =
+      collectionOperationalDate ?? easternClockParts(new Date(signalNow)).date;
+    const dayOfWeek = new Date(`${operationalDate}T00:00:00Z`).getUTCDay();
+
+    return resolveOperatingDateDecision({
+      operationalDate,
+      dayOfWeek,
+      operatingWeekdays: operatingCalendar?.operating_weekdays,
+      operatingDateOverrides: operatingCalendar?.operating_date_overrides,
+    });
+  }, [collectionOperationalDate, operatingCalendar, signalNow]);
+
   const collectionSignal = useMemo(() => {
     const now = new Date(signalNow);
     const eastern = easternClockParts(now);
-    const weekdayNumber: Record<string, number> = {
-      Sun: 0,
-      Mon: 1,
-      Tue: 2,
-      Wed: 3,
-      Thu: 4,
-      Fri: 5,
-      Sat: 6,
-    };
-    const configuredWeekdays =
-      runnerSchedule?.report_config_json?.operating_weekdays ?? [
-        1, 2, 3, 4, 5, 6,
-      ];
-    const dateOverride =
-      runnerSchedule?.report_config_json?.operating_date_overrides?.[
-        eastern.date
-      ];
-    const operatesToday =
-      dateOverride === "OPERATING" ||
-      (dateOverride !== "CLOSED" &&
-        configuredWeekdays.includes(weekdayNumber[eastern.weekday] ?? -1));
     const withinWindow =
       eastern.minutes >=
         clockMinutes(runnerSchedule?.operations_pulse_start_time) &&
@@ -803,11 +823,20 @@ export default function OperationsWorkspacePage({
       Boolean(
         runnerSchedule?.collection_enabled &&
           runnerSchedule.operations_pulse_enabled &&
-          operatesToday &&
+          operatingDateDecision.operates &&
           withinWindow
       );
 
     if (!active) {
+      if (!operatingDateDecision.operates) {
+        return {
+          active: false,
+          copy:
+            operatingDateDecision.override === "CLOSED"
+              ? "Collection paused · dated closure"
+              : "Collection paused · outside the operating calendar",
+        };
+      }
       return {
         active: false,
         copy: runnerSchedule?.operations_pulse_start_time
@@ -891,9 +920,61 @@ export default function OperationsWorkspacePage({
     activeCollection,
     latestCollection,
     latestSuccessfulCollection,
+    operatingDateDecision,
     runnerSchedule,
     signalNow,
   ]);
+
+  async function updateOperatingDateOverride(
+    overrideMode: "OPERATING" | "INHERIT"
+  ) {
+    if (!collectionOperationalDate || savingOperatingOverride) return;
+
+    try {
+      setSavingOperatingOverride(true);
+      setOperatingOverrideError(null);
+      const response = await fetch(
+        `/api/company/${slug}/operations/collection-calendar`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            operational_date: collectionOperationalDate,
+            override_mode: overrideMode,
+          }),
+        }
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          typeof data?.error === "string"
+            ? data.error
+            : "Failed to update today’s collection calendar."
+        );
+      }
+
+      setOperatingCalendar((current) => {
+        if (!current) return current;
+        const overrides = { ...current.operating_date_overrides };
+        if (overrideMode === "INHERIT") {
+          delete overrides[collectionOperationalDate];
+        } else {
+          overrides[collectionOperationalDate] = overrideMode;
+        }
+        return { ...current, operating_date_overrides: overrides };
+      });
+      setSignalNow(Date.now());
+    } catch (overrideError) {
+      setOperatingOverrideError(
+        overrideError instanceof Error
+          ? overrideError.message
+          : "Failed to update today’s collection calendar."
+      );
+    } finally {
+      setSavingOperatingOverride(false);
+    }
+  }
 
   const routeSort = useMemo(
     () => createRouteSorter(routeSortKey),
@@ -1635,7 +1716,18 @@ export default function OperationsWorkspacePage({
                 {routeUnits.length} routes · {serviceDate} ·{" "}
                 {collectionSignal.copy}
               </small>
+              {operatingDateDecision.override === "OPERATING" ? (
+                <small className="ou-supplemental-day-signal">
+                  Supplemental collection day
+                </small>
+              ) : null}
+              {operatingOverrideError ? (
+                <small role="alert" className="ou-operating-override-error">
+                  {operatingOverrideError}
+                </small>
+              ) : null}
             </span>
+
           </header>
 
           {loading ? <p className="ou-empty">Loading operational units…</p> : null}
@@ -1953,6 +2045,26 @@ export default function OperationsWorkspacePage({
         onPrepareCorrectiveAction={() => {
           window.location.href = `/company/${slug}/people/corrective-actions?source=${dispatchDay?.status === "LOCKED" ? "delivery" : "dispatch"}&incidentDate=${serviceDate}`;
         }}
+        supplementalCollectionAction={
+          canManageOperatingCalendar &&
+          collectionOperationalDate === serviceDate &&
+          (!operatingDateDecision.operates ||
+            operatingDateDecision.override === "OPERATING")
+            ? {
+                label:
+                  operatingDateDecision.override === "OPERATING"
+                    ? "Use normal calendar"
+                    : "Collect today",
+                saving: savingOperatingOverride,
+                onAction: () =>
+                  updateOperatingDateOverride(
+                    operatingDateDecision.override === "OPERATING"
+                      ? "INHERIT"
+                      : "OPERATING"
+                  ),
+              }
+            : undefined
+        }
         onClose={() => setEventOverlayOpen(false)}
         onSubmit={addManualDispatchEvent}
       />
@@ -2069,12 +2181,18 @@ export default function OperationsWorkspacePage({
           box-shadow: 0 10px 30px rgba(20, 31, 53, .06);
         }
         .ou-collection > header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
           padding: 14px 16px;
           border-bottom: 1px solid #e7ebf1;
         }
         .ou-collection > header span { display: grid; gap: 2px; }
         .ou-collection > header small { color: #7a8495; }
         .ou-collection > header small.is-active { color: #315f9c; font-weight: 750; }
+        .ou-supplemental-day-signal { color: #047857 !important; font-weight: 850; }
+        .ou-operating-override-error { color: #b91c1c !important; font-weight: 750; }
         .ou-route-filters {
           display: flex;
           gap: 7px;
@@ -2713,6 +2831,7 @@ export default function OperationsWorkspacePage({
           .ou-shell { padding: 10px; }
           .ou-header { align-items: stretch; flex-direction: column; }
           .ou-header-actions { align-items: stretch; flex-direction: column; }
+          .ou-collection > header { align-items: stretch; flex-direction: column; }
           .ou-grid { grid-template-columns: 1fr; }
           .ou-workspace { inset: 0; border: 0; border-radius: 0; }
           .ou-workspace-body { max-height: calc(100vh - 100px); }

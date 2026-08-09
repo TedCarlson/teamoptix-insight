@@ -34,6 +34,12 @@ type DispatchEventOverlayProps = {
   onHandoffToDelivery?: () => Promise<void> | void;
   onReturnToDispatch?: () => Promise<void> | void;
   onPrepareCorrectiveAction?: () => void;
+  supplementalCollectionAction?: {
+    label: string;
+    saving: boolean;
+    error?: string | null;
+    onAction: () => Promise<void> | void;
+  };
   onClose: () => void;
   onSubmit: (payload: {
     event_code: string;
@@ -150,6 +156,7 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
     onHandoffToDelivery,
     onReturnToDispatch,
     onPrepareCorrectiveAction,
+    supplementalCollectionAction,
     onClose,
     onSubmit,
   } = props;
@@ -509,7 +516,40 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
     setAssistStopCount("");
   }
 
-  function renderActionColumn(title: string, actions: DispatchActionOption[]) {
+  function renderSupplementalCollectionButton() {
+    if (!supplementalCollectionAction) return null;
+
+    return (
+      <span style={{ display: "grid", gap: 5 }}>
+        <button
+          type="button"
+          disabled={supplementalCollectionAction.saving}
+          style={{
+            ...compactButton,
+            borderColor: "#059669",
+            background: "#ecfdf5",
+            color: "#047857",
+          }}
+          onClick={() => void supplementalCollectionAction.onAction()}
+        >
+          {supplementalCollectionAction.saving
+            ? "Saving…"
+            : supplementalCollectionAction.label}
+        </button>
+        {supplementalCollectionAction.error ? (
+          <small role="alert" style={{ color: "#b91c1c", fontWeight: 800 }}>
+            {supplementalCollectionAction.error}
+          </small>
+        ) : null}
+      </span>
+    );
+  }
+
+  function renderActionColumn(
+    title: string,
+    actions: DispatchActionOption[],
+    supplementalAction = false
+  ) {
     return (
       <div style={{ display: "grid", gap: 8, alignContent: "start" }}>
         <p className="eyebrow" style={{ marginBottom: 0 }}>
@@ -531,6 +571,7 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
               {option.event_label}
             </button>
           ))}
+          {supplementalAction ? renderSupplementalCollectionButton() : null}
         </div>
       </div>
     );
@@ -592,7 +633,11 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
             >
               {renderActionColumn("Workforce actions", workforceActions)}
               {renderActionColumn("Operations actions", operationsActions)}
-              {renderActionColumn("General actions", generalActions)}
+              {renderActionColumn(
+                "General actions",
+                generalActions,
+                Boolean(supplementalCollectionAction)
+              )}
             </div>
           </section>
 
@@ -823,6 +868,14 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
         </form>
         ) : (
           <section style={{ marginTop: 18, display: "grid", gap: 14 }}>
+            {supplementalCollectionAction ? (
+              <div style={{ display: "grid", gap: 8 }}>
+                <p className="eyebrow" style={{ marginBottom: 0 }}>
+                  General actions
+                </p>
+                <div>{renderSupplementalCollectionButton()}</div>
+              </div>
+            ) : null}
             {onReturnToDispatch ? (
               <div
                 style={{

@@ -39,6 +39,7 @@ import { DispatchRightRail } from "../components/DispatchRightRail";
 import { DispatchRouteQueue } from "../components/DispatchRouteQueue";
 import { DispatchWorkforceRail } from "../components/DispatchWorkforceRail";
 import type { ExpressDataHealth, ExpressProgress } from "@/features/operations/express/expressProgress";
+import { useSupplementalCollectionAction } from "@/features/operations/workspace/useSupplementalCollectionAction";
 
 type DispatchExpressHealth = {
   route_key: string;
@@ -109,6 +110,12 @@ export default function DispatchPage({
     setError,
   } = useDispatchWorkspaceData(slug, serviceDate);
   const deliveryPhase = dispatchDay?.status === "LOCKED";
+  const { action: supplementalCollectionAction } =
+    useSupplementalCollectionAction({
+      slug,
+      serviceDate,
+      enabled: true,
+    });
 
   useEffect(() => {
     let active = true;
@@ -990,6 +997,7 @@ export default function DispatchPage({
         onPrepareCorrectiveAction={() => {
           window.location.href = `/company/${slug}/people/corrective-actions?source=${deliveryPhase ? "delivery" : "dispatch"}&incidentDate=${serviceDate}`;
         }}
+        supplementalCollectionAction={supplementalCollectionAction}
         onClose={() => setEventOverlayOpen(false)}
         onSubmit={addManualDispatchEvent}
       />

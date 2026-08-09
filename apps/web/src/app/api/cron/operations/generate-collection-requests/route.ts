@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import { OPERATIONS_COLLECTION_PAYLOAD_VERSION, runnerGoalForRequestType } from "@/features/automation/contracts/runnerGoal";
 import { normalizeCollectionTarget } from "@/features/automation/contracts/collectionTarget";
+import { resolveOperatingDateDecision } from "@/features/operations/workspace/operationsOperatingCalendar";
 
 export const runtime = "nodejs";
 
@@ -133,20 +134,12 @@ function assignmentRunsOnOperatingCalendar(
   dayOfWeek: number
 ) {
   const payload = assignment.assignment_payload_json ?? {};
-  const rawOverrides = payload.operating_date_overrides;
-  const overrides = rawOverrides && typeof rawOverrides === "object" && !Array.isArray(rawOverrides)
-    ? rawOverrides as Record<string, unknown>
-    : {};
-  const datedOverride = overrides[operationalDate];
-
-  if (datedOverride === true || datedOverride === "OPERATING") return true;
-  if (datedOverride === false || datedOverride === "CLOSED") return false;
-
-  const operatingWeekdays = Array.isArray(payload.operating_weekdays)
-    ? payload.operating_weekdays.map(Number).filter(Number.isInteger)
-    : [];
-
-  return operatingWeekdays.length === 0 || operatingWeekdays.includes(dayOfWeek);
+  return resolveOperatingDateDecision({
+    operationalDate,
+    dayOfWeek,
+    operatingWeekdays: payload.operating_weekdays,
+    operatingDateOverrides: payload.operating_date_overrides,
+  }).operates;
 }
 
 function resolveHistoricalRange(todayIso: string, rule: unknown) {
@@ -434,6 +427,34 @@ async function loadTerminalTimeZone(
     : null;
 }
 
+async function companyUsesContinuousRunner(
+  supabase: any,
+  companyId: string
+) {
+  const { data, error } = await supabase
+    .from("operations_runner_schedule_v")
+    .select(
+      "collection_enabled,operations_pulse_enabled,runner_metadata_json"
+    )
+    .eq("company_id", companyId)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+
+  const metadata =
+    data?.runner_metadata_json &&
+    typeof data.runner_metadata_json === "object"
+      ? data.runner_metadata_json
+      : {};
+
+  return Boolean(
+    data?.collection_enabled &&
+      data?.operations_pulse_enabled &&
+      metadata.runner_version === "continuous-runner-v1"
+  );
+}
+
 async function companyHasActiveRequest(supabase: any, companyId: string) {
   const { data, error } = await supabase
     .from("operations_collection_request_v")
@@ -490,6 +511,16 @@ async function loadInDayDswRouteActivity(params: {
 export async function GET() {
   const startedAt = Date.now();
   const supabase = createSupabaseServiceRoleClient();
+
+  const { data: expiredRequestCount, error: expiryError } =
+    await supabase.rpc("expire_stale_operations_collection_requests");
+
+  if (expiryError) {
+    return NextResponse.json(
+      { ok: false, error: expiryError.message },
+      { status: 500 }
+    );
+  }
 
   const { data: companies, error: companyError } = await supabase
     .from("companies")
@@ -677,6 +708,18 @@ export async function GET() {
         continue;
       }
 
+      if (await companyUsesContinuousRunner(supabase, companyId)) {
+        results.push({
+          company_slug: companySlug,
+          status: "delegated",
+          request_type: "OPERATIONS_PULSE",
+          reason: "continuous runner owns in-day collection scheduling",
+          service_date: terminalState.todayIso,
+          timezone: terminalTimeZone,
+        });
+        continue;
+      }
+
       const dswActivity = await loadInDayDswRouteActivity({
         supabase,
         companyId,
@@ -752,6 +795,7 @@ export async function GET() {
 
   return NextResponse.json({
     ok: true,
+    cancelled_stale_request_count: Number(expiredRequestCount ?? 0),
     generated: results,
     elapsed_ms: Date.now() - startedAt,
   });
