@@ -47,7 +47,7 @@ export function DispatchWorkforceRail(props: DispatchWorkforceRailProps) {
         </span>
       </div>
 
-      <div style={{ padding: 10, display: "grid", gap: 8 }}>
+      <div className="dispatch-workforce-rail__body" style={{ padding: 10, display: "grid", gap: 8 }}>
         {intent ? (
           <div
             style={{

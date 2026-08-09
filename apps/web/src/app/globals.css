@@ -1766,6 +1766,56 @@ h1 {
   }
 }
 
+/* Tablet landscape: keep the route board wide and turn workforce into a
+   shared ribbon instead of squeezing the queue between two vertical rails. */
+@media (min-width: 1150px) and (max-width: 1480px) {
+  .dispatch-grid {
+    grid-template-columns: minmax(0, 1fr) 300px;
+    grid-template-areas:
+      "workforce workforce"
+      "queue right";
+  }
+
+  .dispatch-workforce-rail {
+    position: static;
+  }
+
+  .dispatch-workforce-rail__body {
+    grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.4fr) minmax(220px, 0.8fr);
+    align-items: start;
+  }
+
+  .dispatch-route-row {
+    grid-template-columns: 32px minmax(150px, 0.72fr) minmax(160px, 0.78fr) minmax(420px, 1.8fr) !important;
+  }
+
+  .dispatch-route-row__signals {
+    grid-template-columns: minmax(220px, 1.15fr) minmax(190px, 0.85fr) !important;
+  }
+}
+
+/* Tablet portrait: preserve the workforce-to-route workflow, then pair the
+   supporting operational panels below the full-width route board. */
+@media (min-width: 721px) and (max-width: 1149px) {
+  .dispatch-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "workforce"
+      "queue"
+      "right";
+  }
+
+  .dispatch-workforce-rail__body {
+    grid-template-columns: minmax(180px, 0.8fr) minmax(0, 1.4fr) minmax(180px, 0.8fr);
+    align-items: start;
+  }
+
+  .dispatch-right-column {
+    grid-template-columns: minmax(240px, 0.8fr) minmax(0, 1.2fr);
+    align-items: start;
+  }
+}
+
 @media (max-width: 860px) {
   .dispatch-route-row:not(.dispatch-route-row--labels) {
     grid-template-columns: 32px minmax(150px, 0.8fr) minmax(160px, 0.9fr) minmax(320px, 1.6fr) !important;
