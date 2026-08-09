@@ -20,16 +20,12 @@ class DailyPackageControlContractTests(unittest.TestCase):
 
     def test_dro_am_gate_comes_from_signed_schedule(self):
         self.assertIn(
-            'dro_am = self.schedule.get("dro_am")',
+            'dro_am = self.schedule.get("dro_am") or {}',
             self.source,
         )
-        self.assertIn('enabled = bool(dro_am.get("enabled"))', self.source)
-        self.assertIn("enabled = LEGACY_DRO_AM_ENABLED", self.source)
-        self.assertIn("start_time = LEGACY_DRO_AM_TIME", self.source)
-        self.assertIn(
-            "the signed schedule always wins",
-            self.source,
-        )
+        self.assertIn('if not dro_am.get("enabled"):', self.source)
+        self.assertNotIn("DRO_AM_ENABLED", self.source)
+        self.assertNotIn("DRO_AM_TIME", self.source)
         self.assertNotIn("DRO_AM_ENABLED", self.service_override)
         self.assertNotIn("DRO_AM_TIME", self.service_override)
 
