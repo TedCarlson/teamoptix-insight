@@ -819,6 +819,190 @@ h1 {
   padding: 8px !important;
 }
 
+.dispatch-tablet-attendance-action {
+  display: none !important;
+}
+
+.operations-action-rail__actions .dispatch-command-phase-action {
+  border-color: #059669 !important;
+  background: #059669 !important;
+  color: #fff !important;
+  box-shadow: 0 6px 16px rgba(5, 150, 105, 0.22);
+}
+
+.operations-action-rail__actions .dispatch-command-phase-action:hover {
+  border-color: #047857 !important;
+  background: #047857 !important;
+}
+
+.dispatch-attendance-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.38);
+}
+
+.dispatch-attendance-overlay {
+  width: min(640px, 100%);
+  max-height: min(780px, calc(100dvh - 32px));
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid #d6dfeb;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.24);
+}
+
+.dispatch-attendance-overlay:has(.dispatch-attendance-intent) {
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+}
+
+.dispatch-attendance-overlay > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px;
+  border-bottom: 1px solid #e6edf5;
+}
+
+.dispatch-attendance-overlay header small,
+.dispatch-attendance-intent small {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dispatch-attendance-overlay h2 {
+  margin: 3px 0 0;
+}
+
+.dispatch-attendance-overlay header p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.dispatch-attendance-overlay header button {
+  width: 36px;
+  height: 36px;
+  border: 1px solid #d6dfeb;
+  border-radius: 10px;
+  background: #fff;
+  color: #475569;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.dispatch-attendance-intent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #bfdbfe;
+  background: #eff6ff;
+}
+
+.dispatch-attendance-intent > span {
+  display: grid;
+  gap: 2px;
+}
+
+.dispatch-attendance-intent button,
+.dispatch-attendance-actions button {
+  min-height: 34px;
+  border: 1px solid #d6dfeb;
+  border-radius: 9px;
+  background: #fff;
+  padding: 0 10px;
+  color: #475569;
+  cursor: pointer;
+  font-weight: 850;
+}
+
+.dispatch-attendance-search {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e6edf5;
+}
+
+.dispatch-attendance-search input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #d6dfeb;
+  border-radius: 10px;
+  padding: 0 11px;
+  font: inherit;
+}
+
+.dispatch-attendance-list {
+  overflow-y: auto;
+  padding: 6px 12px 12px;
+}
+
+.dispatch-attendance-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 2px;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.dispatch-attendance-person {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.dispatch-attendance-person strong,
+.dispatch-attendance-person small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dispatch-attendance-person small {
+  color: #64748b;
+}
+
+.dispatch-attendance-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 7px;
+}
+
+.dispatch-attendance-actions button.is-present {
+  border-color: #86efac;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.dispatch-attendance-actions button.is-assignment {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+
+.dispatch-attendance-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.dispatch-attendance-empty {
+  margin: 0;
+  padding: 18px 4px;
+  color: #64748b;
+}
+
 .dispatch-status-strip {
   display: flex;
   gap: 8px;
@@ -1766,23 +1950,16 @@ h1 {
   }
 }
 
-/* Tablet landscape: keep the route board wide and turn workforce into a
-   shared ribbon instead of squeezing the queue between two vertical rails. */
+/* Tablet landscape: keep the route board wide and move workforce attendance
+   and assignment into the command-rail overlay. */
 @media (min-width: 1150px) and (max-width: 1480px) {
   .dispatch-grid {
     grid-template-columns: minmax(0, 1fr) 300px;
-    grid-template-areas:
-      "workforce workforce"
-      "queue right";
+    grid-template-areas: "queue right";
   }
 
   .dispatch-workforce-rail {
-    position: static;
-  }
-
-  .dispatch-workforce-rail__body {
-    grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.4fr) minmax(220px, 0.8fr);
-    align-items: start;
+    display: none;
   }
 
   .dispatch-route-row {
@@ -1794,25 +1971,29 @@ h1 {
   }
 }
 
-/* Tablet portrait: preserve the workforce-to-route workflow, then pair the
-   supporting operational panels below the full-width route board. */
+/* Tablet portrait: lead with the full-width route board, then pair the
+   supporting operational panels below it. */
 @media (min-width: 721px) and (max-width: 1149px) {
   .dispatch-grid {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "workforce"
       "queue"
       "right";
   }
 
-  .dispatch-workforce-rail__body {
-    grid-template-columns: minmax(180px, 0.8fr) minmax(0, 1.4fr) minmax(180px, 0.8fr);
-    align-items: start;
+  .dispatch-workforce-rail {
+    display: none;
   }
 
   .dispatch-right-column {
     grid-template-columns: minmax(240px, 0.8fr) minmax(0, 1.2fr);
     align-items: start;
+  }
+}
+
+@media (min-width: 721px) and (max-width: 1480px) {
+  .dispatch-tablet-attendance-action {
+    display: inline-flex !important;
   }
 }
 
@@ -1829,6 +2010,70 @@ h1 {
 /* Operations mobile workspace */
 .operations-workspace-toolbar__actions {
   justify-content: flex-end;
+}
+
+.operations-workspace-toolbar__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.operations-workspace-toolbar__status.has-signal::before {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #94a3b8;
+  content: "";
+}
+
+.operations-workspace-toolbar__status.is-active {
+  color: #047857 !important;
+}
+
+.operations-workspace-toolbar__status.is-active::before {
+  background: #10b981;
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.12);
+}
+
+.operations-workspace-toolbar__status.is-waiting {
+  color: #92400e !important;
+}
+
+.operations-workspace-toolbar__status.is-waiting::before {
+  background: #f59e0b;
+}
+
+@media (min-width: 721px) {
+  .operations-action-rail__actions {
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .operations-action-rail__actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .operations-action-rail__actions .button {
+    flex: 0 0 auto;
+    min-height: 40px !important;
+    border-color: #9aa8c3;
+    border-radius: 10px !important;
+    padding: 0 13px !important;
+    color: #253655;
+    font-weight: 850;
+    white-space: nowrap;
+  }
+
+  .operations-action-rail__actions .button-primary {
+    border-color: #2563eb;
+    color: #fff;
+  }
 }
 
 @media (max-width: 720px) {

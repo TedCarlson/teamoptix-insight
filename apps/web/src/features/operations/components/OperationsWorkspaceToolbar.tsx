@@ -2,6 +2,8 @@
 
 type OperationsWorkspaceToolbarProps = {
   lastUpdatedAt: string | null;
+  statusText?: string;
+  statusTone?: "active" | "waiting" | "neutral";
   refreshing?: boolean;
   onRefresh: () => void;
   onUpload?: () => void;
@@ -22,11 +24,19 @@ function formatLastUpdated(value: string | null) {
 }
 
 export default function OperationsWorkspaceToolbar(props: OperationsWorkspaceToolbarProps) {
-  const { lastUpdatedAt, refreshing = false, onRefresh, onUpload, actions } = props;
+  const {
+    lastUpdatedAt,
+    statusText,
+    statusTone = "neutral",
+    refreshing = false,
+    onRefresh,
+    onUpload,
+    actions,
+  } = props;
 
   return (
     <div
-      className="operations-workspace-toolbar"
+      className="operations-workspace-toolbar operations-action-rail"
       style={{
         display: "flex",
         justifyContent: "space-between",
@@ -35,11 +45,14 @@ export default function OperationsWorkspaceToolbar(props: OperationsWorkspaceToo
         marginBottom: 10,
       }}
     >
-      <span className="operations-workspace-toolbar__status" style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>
-        Last updated {formatLastUpdated(lastUpdatedAt)}
+      <span
+        className={`operations-workspace-toolbar__status${statusText ? ` has-signal is-${statusTone}` : ""}`}
+        style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}
+      >
+        {statusText ?? `Last updated ${formatLastUpdated(lastUpdatedAt)}`}
       </span>
 
-      <div className="operations-workspace-toolbar__actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div className="operations-workspace-toolbar__actions operations-action-rail__actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {actions}
         <button
           type="button"

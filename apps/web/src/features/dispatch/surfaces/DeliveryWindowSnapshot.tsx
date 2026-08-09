@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import type { DispatchRoute } from "../lib/dispatchSupport";
 import { eyebrow, panel } from "../lib/dispatchSupport";
 import OperationsIntelligenceFeed from "@/features/operations/components/OperationsIntelligenceFeed";
-import OperationsUploadCard from "@/features/operations/components/OperationsUploadCard";
 import ServiceSnapshotCard from "@/features/operations/components/ServiceSnapshotCard";
 import ExpressReportOverlay from "@/features/operations/manifests/components/ExpressReportOverlay";
 import ComplianceReportOverlay from "@/features/operations/components/ComplianceReportOverlay";
@@ -807,7 +806,7 @@ console.log(
             <h2 style={{ margin: 0, fontSize: 18 }}>Service Line Up</h2>
           </div>
 
-          <div className="delivery-window__actions" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
+          <div className="delivery-window__actions operations-action-rail__actions" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
             <button type="button" className="button" onClick={() => setComplianceReportOpen(true)} style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}>
               Compliance Report
             </button>
@@ -828,6 +827,16 @@ console.log(
                 style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}
               >
                 Refresh
+              </button>
+            ) : null}
+            {onUploadReport ? (
+              <button
+                type="button"
+                className="button button-primary"
+                onClick={onUploadReport}
+                style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}
+              >
+                Upload Report
               </button>
             ) : null}
           </div>
@@ -1101,10 +1110,6 @@ console.log(
       />
 
       <aside className="delivery-window__aside" style={{ display: "grid", gap: 12 }}>
-        {onUploadReport ? (
-          <OperationsUploadCard onUpload={onUploadReport} />
-        ) : null}
-
         <OperationsIntelligenceFeed
           slug={slug}
           serviceDate={serviceDate}

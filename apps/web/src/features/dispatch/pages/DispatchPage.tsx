@@ -33,7 +33,7 @@ import OperationsReportUploadOverlay from "@/features/operations/components/Oper
 import OperationsWorkspaceToolbar from "@/features/operations/components/OperationsWorkspaceToolbar";
 import ExpressReportOverlay from "@/features/operations/manifests/components/ExpressReportOverlay";
 import ComplianceReportOverlay from "@/features/operations/components/ComplianceReportOverlay";
-import OperationsIntelligenceFeed from "@/features/operations/components/OperationsIntelligenceFeed";
+import { DispatchAttendanceOverlay } from "../components/DispatchAttendanceOverlay";
 import { DispatchEventOverlay } from "../components/DispatchEventOverlay";
 import { DispatchRightRail } from "../components/DispatchRightRail";
 import { DispatchRouteQueue } from "../components/DispatchRouteQueue";
@@ -76,6 +76,7 @@ export default function DispatchPage({
   const [uploadOverlayOpen, setUploadOverlayOpen] = useState(false);
   const [expressReportOpen, setExpressReportOpen] = useState(false);
   const [complianceReportOpen, setComplianceReportOpen] = useState(false);
+  const [attendanceOpen, setAttendanceOpen] = useState(false);
   const persistedCalloutKeys = useRef(new Set<string>());
   const [expressHealthRows, setExpressHealthRows] = useState<DispatchExpressHealth[]>([]);
   const [expressHealthTotals, setExpressHealthTotals] = useState<DispatchExpressSignal>({
@@ -156,6 +157,23 @@ export default function DispatchPage({
     () => buildArrivedPersonIds(dispatchEvents),
     [dispatchEvents]
   );
+
+  const operationsSignal = useMemo(() => {
+    const hasPlan = droPlanRows.length > 0;
+    const hasDsw = dswRows.length > 0;
+    const planLabel = droPlanSourceFrame ? `${droPlanSourceFrame} DRO` : "DRO plan";
+
+    if (hasPlan && hasDsw) {
+      return { text: `Operations current · ${planLabel} + DSW active`, tone: "active" as const };
+    }
+    if (hasPlan) {
+      return { text: `${planLabel} ready · DSW waiting`, tone: "waiting" as const };
+    }
+    if (hasDsw) {
+      return { text: "DSW active · DRO plan waiting", tone: "waiting" as const };
+    }
+    return { text: "Awaiting operations data", tone: "neutral" as const };
+  }, [droPlanRows, droPlanSourceFrame, dswRows]);
 
   const routeSort = useMemo(
     () => createRouteSorter(routeSortKey),
@@ -834,10 +852,20 @@ export default function DispatchPage({
 
         <OperationsWorkspaceToolbar
           lastUpdatedAt={lastUpdatedAt}
+          statusText={operationsSignal.text}
+          statusTone={operationsSignal.tone}
           refreshing={loading}
           onRefresh={refreshWorkspace}
           onUpload={() => setUploadOverlayOpen(true)}
           actions={<>
+            <button
+              type="button"
+              className="button dispatch-command-phase-action"
+              onClick={() => setEventOverlayOpen(true)}
+              style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}
+            >
+              Actions
+            </button>
             <button type="button" className="button" onClick={() => setComplianceReportOpen(true)} style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}>
               Compliance Report
             </button>
@@ -848,6 +876,14 @@ export default function DispatchPage({
               style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}
             >
               Express Report
+            </button>
+            <button
+              type="button"
+              className="button dispatch-tablet-attendance-action"
+              onClick={() => setAttendanceOpen(true)}
+              style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}
+            >
+              {intent ? "Choose Worker" : "Attendance"}
             </button>
           </>}
         />
@@ -892,19 +928,11 @@ export default function DispatchPage({
             />
 
             <div className="dispatch-right-column" style={{ display: "grid", gap: 12 }}>
-              <OperationsIntelligenceFeed
-                key={`dispatch-feed-${refreshKey}-${deliveryPhase ? "delivery" : "dispatch"}`}
-                slug={slug}
-                serviceDate={serviceDate}
-                surface="dispatch"
-                frozen={false}
-              />
               <DispatchRightRail
                 summary={summary}
                 dispatchRoutes={dispatchRoutes}
                 dispatchDay={dispatchDay}
                 events={dispatchEvents}
-                onAddEvent={() => setEventOverlayOpen(true)}
                 onUndoEvent={undoDispatchEvent}
               />
             </div>
@@ -926,6 +954,22 @@ export default function DispatchPage({
         onClose={(shouldRefresh) => {
           setUploadOverlayOpen(false);
           if (shouldRefresh) refreshWorkspace();
+        }}
+      />
+
+      <DispatchAttendanceOverlay
+        open={attendanceOpen}
+        intent={intent}
+        people={allPeople}
+        availablePeople={workforce.available}
+        callouts={callouts}
+        arrivedPersonIds={arrivedPersonIds}
+        onClose={() => setAttendanceOpen(false)}
+        onToggleArrived={toggleArrived}
+        onSelectPerson={assignPerson}
+        onCancelAssign={() => {
+          setIntent(null);
+          setAttendanceOpen(false);
         }}
       />
 

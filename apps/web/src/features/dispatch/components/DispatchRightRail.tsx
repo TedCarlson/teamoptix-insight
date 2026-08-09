@@ -30,7 +30,6 @@ type DispatchRightRailProps = {
   dispatchRoutes: DispatchRoute[];
   dispatchDay: DispatchDayRow | null;
   events: DispatchEventRow[];
-  onAddEvent: () => void;
   onUndoEvent: (event: DispatchEventRow) => void;
 };
 
@@ -125,7 +124,6 @@ export function DispatchRightRail(props: DispatchRightRailProps) {
     dispatchRoutes,
     dispatchDay,
     events,
-    onAddEvent,
     onUndoEvent,
   } = props;
 
@@ -148,23 +146,6 @@ export function DispatchRightRail(props: DispatchRightRailProps) {
           <Stat label="Routes" value={summary.total} />
           <Stat label="Covered" value={summary.withDriver} />
           <Stat label="Needs Driver" value={summary.withoutDriver} warn={summary.withoutDriver > 0} />
-        </div>
-
-        <div style={{ border: "1px solid #e6edf5", borderRadius: 12, padding: 10, display: "grid", gap: 8 }}>
-          <p style={eyebrow}>Working phase</p>
-          <strong>{deliveryPhase ? "DELIVERY" : "DISPATCH"}</strong>
-
-          {dispatchDay?.locked_at ? (
-            <span style={{ color: "#64748b", fontSize: 12 }}>
-              Handed off {formatTime(dispatchDay.locked_at)}
-            </span>
-          ) : null}
-
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" style={compactButton} onClick={onAddEvent}>
-              {deliveryPhase ? "Delivery Action" : "Dispatch Action"}
-            </button>
-          </div>
         </div>
 
         <div style={{ border: "1px solid #e6edf5", borderRadius: 12, padding: 10, display: "grid", gap: 8 }}>
