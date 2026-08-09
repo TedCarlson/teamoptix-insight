@@ -131,11 +131,11 @@ export default function RunnerScheduleEditor(props: {
   return (
     <SectionCard
       eyebrow="Runner control"
-      title="Daily collection package"
+      title="Collection master switch"
     >
       <p style={{ color: "#526681", marginTop: 0, lineHeight: 1.6 }}>
-        One signed schedule controls the three daily runner jobs. Historical
-        sweeps and targeted recovery remain ticket-queue work.
+        Team Optix owns this signed master gate for the three daily runner
+        jobs. Historical sweeps and targeted recovery remain ticket-queue work.
       </p>
 
       <div
@@ -151,10 +151,10 @@ export default function RunnerScheduleEditor(props: {
         }}
       >
         <div>
-          <strong style={{ display: "block" }}>Daily package</strong>
+          <strong style={{ display: "block" }}>Collection</strong>
           <span style={{ color: "#64748b", fontSize: 12 }}>
-            Turning this off prevents new work from starting. Active work may
-            finish.
+            Collection Off prevents new work from starting. Active work may
+            finish safely.
           </span>
         </div>
         <button
@@ -177,7 +177,7 @@ export default function RunnerScheduleEditor(props: {
             })
           }
         >
-          {props.row.collection_enabled ? "Active" : "Inactive"}
+          {props.row.collection_enabled ? "Collection On" : "Collection Off"}
         </button>
       </div>
 
@@ -373,8 +373,8 @@ export default function RunnerScheduleEditor(props: {
           value={runGate.authority === "BILLING" ? "Billing & payment" : "Manual"}
         />
         <MiniStat
-          label="Effective VPS gate"
-          value={props.row.collection_enabled ? "RUN" : "REST"}
+          label="Master collection gate"
+          value={props.row.collection_enabled ? "ON" : "OFF"}
         />
         <MiniStat
           label="Runner sync"
