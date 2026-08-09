@@ -30,6 +30,17 @@ The legacy `teamoptix-donor-fcms-archive` repository remains available only as
 a rollback reference until the monorepo deployment is proven. It must not
 continue receiving production changes after cutover.
 
+The governed systemd definitions live in `runner/`:
+
+- `teamoptix-continuous-controller.service`
+- `teamoptix-continuous-controller-production.conf`
+- `teamoptix-continuous-controller-dro.conf`
+
+The unit deliberately omits `TEAMOPTIX_RUNNER_VERSION`; the controller reports
+the exact deployed Insight Git commit. Secrets and mutable runtime state remain
+outside Git in the protected environment and runtime paths referenced by the
+unit.
+
 ## Local checks
 
 From the Insight repository root:
