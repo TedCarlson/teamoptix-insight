@@ -38,8 +38,8 @@ const TARGETS: Record<string, Record<string, unknown>> = {
 
 function emptyDraft() {
   return {
-    id: "", name: "", key: "", purpose: "", requestType: "PREVIOUS_DAY_CLOSE",
-    dateMode: "YESTERDAY", reports: ["DSW"], priority: 60, retry: "MANUAL_AFTER_FAILURE",
+    id: "", name: "", key: "", purpose: "", requestType: "TARGETED_RECOVERY",
+    dateMode: "SELECTED_DATE", reports: ["DSW"], priority: 100, retry: "MANUAL_AFTER_FAILURE",
     success: "Every requested artifact is stored and accepted by its ingestion engine.", published: false,
   };
 }
@@ -57,8 +57,8 @@ function fromTemplate(template: Template) {
     name: template.template_name,
     key: template.template_key,
     purpose: template.description ?? "",
-    requestType: String(payload.request_type ?? "OPERATIONS_PULSE"),
-    dateMode: String(payload.date_mode ?? template.default_collection_mode ?? "TODAY"),
+    requestType: String(payload.request_type ?? "TARGETED_RECOVERY"),
+    dateMode: String(payload.date_mode ?? template.default_collection_mode ?? "SELECTED_DATE"),
     reports: reports.length ? reports : ["DSW"],
     priority: template.default_priority,
     retry: String(payload.retry_policy ?? "MANUAL_AFTER_FAILURE"),
@@ -72,11 +72,9 @@ function keyFromName(value: string) {
 }
 
 function dateModeForRequestType(requestType: string) {
-  if (requestType === "PREVIOUS_DAY_CLOSE") return "YESTERDAY";
-  if (requestType === "LAST_LOOK" || requestType === "OPERATIONS_PULSE") return "TODAY";
   if (requestType === "TARGETED_RECOVERY") return "SELECTED_DATE";
   if (requestType === "HISTORICAL_BACKFILL") return "SELECTED_RANGE";
-  return "TODAY";
+  return "SELECTED_DATE";
 }
 
 const initialActionState: WorkbenchActionState = { status: "idle", message: "" };
@@ -141,11 +139,11 @@ export default function AutomationWorkbench({
         <input type="hidden" name="payload" value={JSON.stringify(compiled)} />
         <input type="hidden" name="reports" value={draft.reports.join(",")} />
         <div className="automation-workbench-grid">
-          <label><span>What should this ticket be called?</span><input name="templateName" required value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Previous Day Close" /></label>
-          <label><span>What job does it perform?</span><select name="requestType" value={draft.requestType} onChange={(e) => setDraft({ ...draft, requestType: e.target.value, dateMode: dateModeForRequestType(e.target.value) })}><option value="PREVIOUS_DAY_CLOSE">Close the previous day</option><option value="OPERATIONS_PULSE">Refresh current operations</option><option value="LAST_LOOK">Run the final same-day look</option><option value="HISTORICAL_BACKFILL">Recover historical records</option><option value="TARGETED_RECOVERY">Recover a specific missing item</option></select></label>
+          <label><span>What should this ticket be called?</span><input name="templateName" required value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Recover missing DSW" /></label>
+          <label><span>What job does it perform?</span><select name="requestType" value={draft.requestType} onChange={(e) => setDraft({ ...draft, requestType: e.target.value, dateMode: dateModeForRequestType(e.target.value) })}><option value="HISTORICAL_BACKFILL">Sweep a historical range</option><option value="TARGETED_RECOVERY">Recover a specific missing item</option></select></label>
           <label className="automation-workbench-wide"><span>Why does this instruction exist?</span><textarea name="description" required rows={2} value={draft.purpose} onChange={(e) => setDraft({ ...draft, purpose: e.target.value })} placeholder="Protect the previous day's finalized operating record." /></label>
-          <label><span>Which business period?</span><select name="dateMode" value={draft.dateMode} onChange={(e) => setDraft({ ...draft, dateMode: e.target.value })}><option value="YESTERDAY">Yesterday only</option><option value="TODAY">Today</option><option value="SELECTED_DATE">One selected date</option><option value="SELECTED_RANGE">Selected historical range</option></select></label>
-          <label><span>Priority</span><select name="priority" value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: Number(e.target.value) })}><option value="40">Urgent recovery</option><option value="60">Protected daily close</option><option value="100">Normal</option><option value="150">Background</option></select></label>
+          <label><span>Which business period?</span><select name="dateMode" value={draft.dateMode} onChange={(e) => setDraft({ ...draft, dateMode: e.target.value })}><option value="SELECTED_DATE">One selected date</option><option value="SELECTED_RANGE">Selected historical range</option></select></label>
+          <label><span>Priority</span><select name="priority" value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: Number(e.target.value) })}><option value="40">Urgent recovery</option><option value="100">Normal</option><option value="150">Background</option></select></label>
         </div>
         <fieldset className="automation-workbench-reports"><legend>What should the runner collect?</legend>{REPORTS.map(([key, title]) => <label key={key}><input type="checkbox" checked={draft.reports.includes(key)} onChange={(e) => setDraft({ ...draft, reports: e.target.checked ? [...draft.reports, key] : draft.reports.filter((item) => item !== key) })} /> <span>{title}</span></label>)}</fieldset>
         <div className="automation-workbench-grid">

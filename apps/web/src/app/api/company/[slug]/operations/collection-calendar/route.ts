@@ -53,7 +53,7 @@ export async function GET(
     const { data: assignment, error } = await createSupabaseServiceRoleClient()
       .from("company_operations_ticket_assignment_v")
       .select(
-        "id,start_time,end_time,cadence_minutes,assignment_payload_json"
+        "id,start_time,end_time,assignment_payload_json"
       )
       .eq("company_id", resolved.company.id)
       .eq("operational_contract", "IN_DAY_OPERATIONS")
@@ -84,7 +84,6 @@ export async function GET(
             assignment_id: assignment.id,
             start_time: assignment.start_time,
             end_time: assignment.end_time,
-            cadence_minutes: assignment.cadence_minutes,
             operating_weekdays: payload.operating_weekdays ?? [],
             operating_date_overrides:
               payload.operating_date_overrides ?? {},

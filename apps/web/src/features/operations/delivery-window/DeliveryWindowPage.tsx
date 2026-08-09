@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import OperationsReportUploadOverlay from "@/features/operations/components/OperationsReportUploadOverlay";
 import { DeliveryWindowSnapshot } from "@/features/dispatch/surfaces/DeliveryWindowSnapshot";
 import type { DispatchRoute } from "@/features/dispatch/lib/dispatchSupport";
@@ -44,9 +45,9 @@ function sortRoutes(routes: DispatchRoute[], routeSortKey: RouteSortKey) {
 }
 
 export default function DeliveryWindowPage({ slug, serviceDate }: Props) {
+  const router = useRouter();
   const [uploadOverlayOpen, setUploadOverlayOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<string>(() => new Date().toISOString());
   const [routeSortKey, setRouteSortKey] = useState<RouteSortKey>("route_name");
 
   const { routes, loading, error } = useDeliveryWindowData(slug, serviceDate, refreshKey);
@@ -90,6 +91,10 @@ export default function DeliveryWindowPage({ slug, serviceDate }: Props) {
     setRefreshKey((current) => current + 1);
   }
 
+  function openDispatchAction(action: "actions" | "attendance") {
+    router.push(`/company/${slug}/operations/dispatch?action=${action}`);
+  }
+
   return (
     <main className="workspace-shell">
       <section className="workspace-main" style={{ paddingTop: 12 }}>
@@ -112,6 +117,8 @@ export default function DeliveryWindowPage({ slug, serviceDate }: Props) {
             routeLabelForDisplay={(route) => routeLabelForDisplay(route, routeSortKey)}
             onRefresh={refreshWorkspace}
             onUploadReport={() => setUploadOverlayOpen(true)}
+            onActions={() => openDispatchAction("actions")}
+            onAttendance={() => openDispatchAction("attendance")}
           />
         )}
       </section>

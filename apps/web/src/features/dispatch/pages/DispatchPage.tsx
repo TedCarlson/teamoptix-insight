@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   type AssignmentIntent,
   type DispatchDayRow,
@@ -69,6 +70,8 @@ export default function DispatchPage({
   slug: string;
   serviceDate: string;
 }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [assignments, setAssignments] = useState<Record<string, DispatchRoute>>({});
   const [intent, setIntent] = useState<AssignmentIntent>(null);
   const [eventOverlayOpen, setEventOverlayOpen] = useState(false);
@@ -97,7 +100,6 @@ export default function DispatchPage({
     dswRows,
     error,
     eventTypes,
-    lastUpdatedAt,
     loading,
     refreshKey,
     refreshWorkspace,
@@ -116,6 +118,20 @@ export default function DispatchPage({
       serviceDate,
       enabled: true,
     });
+
+  useEffect(() => {
+    const requestedAction = searchParams.get("action");
+    if (requestedAction !== "actions" && requestedAction !== "attendance") {
+      return;
+    }
+
+    if (requestedAction === "attendance") {
+      setAttendanceOpen(true);
+    } else {
+      setEventOverlayOpen(true);
+    }
+    router.replace(`/company/${slug}/operations/dispatch`, { scroll: false });
+  }, [router, searchParams, slug]);
 
   useEffect(() => {
     let active = true;
@@ -164,23 +180,6 @@ export default function DispatchPage({
     () => buildArrivedPersonIds(dispatchEvents),
     [dispatchEvents]
   );
-
-  const operationsSignal = useMemo(() => {
-    const hasPlan = droPlanRows.length > 0;
-    const hasDsw = dswRows.length > 0;
-    const planLabel = droPlanSourceFrame ? `${droPlanSourceFrame} DRO` : "DRO plan";
-
-    if (hasPlan && hasDsw) {
-      return { text: `Operations current · ${planLabel} + DSW active`, tone: "active" as const };
-    }
-    if (hasPlan) {
-      return { text: `${planLabel} ready · DSW waiting`, tone: "waiting" as const };
-    }
-    if (hasDsw) {
-      return { text: "DSW active · DRO plan waiting", tone: "waiting" as const };
-    }
-    return { text: "Awaiting operations data", tone: "neutral" as const };
-  }, [droPlanRows, droPlanSourceFrame, dswRows]);
 
   const routeSort = useMemo(
     () => createRouteSorter(routeSortKey),
@@ -858,41 +857,15 @@ export default function DispatchPage({
 
 
         <OperationsWorkspaceToolbar
-          lastUpdatedAt={lastUpdatedAt}
-          statusText={operationsSignal.text}
-          statusTone={operationsSignal.tone}
+          slug={slug}
           refreshing={loading}
           onRefresh={refreshWorkspace}
           onUpload={() => setUploadOverlayOpen(true)}
-          actions={<>
-            <button
-              type="button"
-              className="button dispatch-command-phase-action"
-              onClick={() => setEventOverlayOpen(true)}
-              style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}
-            >
-              Actions
-            </button>
-            <button type="button" className="button" onClick={() => setComplianceReportOpen(true)} style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}>
-              Compliance Report
-            </button>
-            <button
-              type="button"
-              className="button"
-              onClick={() => setExpressReportOpen(true)}
-              style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}
-            >
-              Express Report
-            </button>
-            <button
-              type="button"
-              className="button dispatch-tablet-attendance-action"
-              onClick={() => setAttendanceOpen(true)}
-              style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}
-            >
-              {intent ? "Choose Worker" : "Attendance"}
-            </button>
-          </>}
+          onActions={() => setEventOverlayOpen(true)}
+          onComplianceReport={() => setComplianceReportOpen(true)}
+          onExpressReport={() => setExpressReportOpen(true)}
+          onAttendance={() => setAttendanceOpen(true)}
+          attendanceLabel={intent ? "Choose Worker" : "Attendance"}
         />
 
         {error ? (

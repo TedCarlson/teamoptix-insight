@@ -7,7 +7,6 @@ type OperatingCalendarSummary = {
   assignment_id: string;
   start_time: string | null;
   end_time: string | null;
-  cadence_minutes: number | null;
   operating_weekdays: number[];
   operating_date_overrides: Record<string, "OPERATING" | "CLOSED">;
 };

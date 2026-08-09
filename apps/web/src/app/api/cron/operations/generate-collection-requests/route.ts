@@ -433,26 +433,17 @@ async function companyUsesContinuousRunner(
 ) {
   const { data, error } = await supabase
     .from("operations_runner_schedule_v")
-    .select(
-      "collection_enabled,operations_pulse_enabled,runner_metadata_json"
-    )
+    .select("id")
     .eq("company_id", companyId)
     .limit(1)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
 
-  const metadata =
-    data?.runner_metadata_json &&
-    typeof data.runner_metadata_json === "object"
-      ? data.runner_metadata_json
-      : {};
-
-  return Boolean(
-    data?.collection_enabled &&
-      data?.operations_pulse_enabled &&
-      metadata.runner_version === "continuous-runner-v1"
-  );
+  // The signed schedule owns the daily package even while its run gate is
+  // inactive. Falling back to queue-era generation here would turn REST into
+  // a new work-order signal.
+  return Boolean(data?.id);
 }
 
 async function companyHasActiveRequest(supabase: any, companyId: string) {
@@ -554,12 +545,16 @@ export async function GET() {
       }
 
       const terminalState = terminalLocalState(terminalTimeZone);
-      const manifestAssignment = await loadScheduledManifestAssignment({
-        supabase,
-        companyId,
-        currentMinutes: terminalState.currentMinutes,
-        operationalDate: terminalState.todayIso,
-      });
+      const continuousRunnerOwnsDailyPackage =
+        await companyUsesContinuousRunner(supabase, companyId);
+      const manifestAssignment = continuousRunnerOwnsDailyPackage
+        ? null
+        : await loadScheduledManifestAssignment({
+            supabase,
+            companyId,
+            currentMinutes: terminalState.currentMinutes,
+            operationalDate: terminalState.todayIso,
+          });
       const historicalAssignments = await loadScheduledHistoricalAssignments({
         supabase,
         companyId,
@@ -567,13 +562,15 @@ export async function GET() {
         operationalDate: terminalState.todayIso,
         dayOfWeek: terminalState.dayOfWeek,
       });
-      const previousDayCloseAssignment = await loadPreviousDayCloseAssignment({
-        supabase,
-        companyId,
-        currentMinutes: terminalState.currentMinutes,
-        operationalDate: terminalState.todayIso,
-        dayOfWeek: terminalState.dayOfWeek,
-      });
+      const previousDayCloseAssignment = continuousRunnerOwnsDailyPackage
+        ? null
+        : await loadPreviousDayCloseAssignment({
+            supabase,
+            companyId,
+            currentMinutes: terminalState.currentMinutes,
+            operationalDate: terminalState.todayIso,
+            dayOfWeek: terminalState.dayOfWeek,
+          });
 
       for (const assignment of historicalAssignments) {
         const assignmentPayload = governedTemplatePayload(assignment, "HISTORICAL_BACKFILL");
@@ -621,6 +618,27 @@ export async function GET() {
         results.push({ company_slug: companySlug, status: "created", request_id: request?.id, request_type: "HISTORICAL_BACKFILL", service_date_start: range.start, service_date_end: range.end, timezone: terminalTimeZone });
         continue;
       }
+
+      if (continuousRunnerOwnsDailyPackage) {
+        const { data: cancelledLegacyRequests, error: cancellationError } =
+          await supabase.rpc("cancel_continuous_runner_legacy_requests", {
+            p_company_id: companyId,
+          });
+        if (cancellationError) throw new Error(cancellationError.message);
+
+        results.push({
+          company_slug: companySlug,
+          status: "delegated",
+          request_type: "DAILY_PACKAGE",
+          reason:
+            "signed continuous-runner schedule owns Prior Day, DRO AM, and Operations Pulse",
+          cancelled_legacy_requests: cancelledLegacyRequests ?? 0,
+          service_date: terminalState.todayIso,
+          timezone: terminalTimeZone,
+        });
+        continue;
+      }
+
       const previousServiceDate = addIsoDays(
         terminalState.todayIso,
         -1
@@ -704,18 +722,6 @@ export async function GET() {
           reason: "company operating calendar marks this as a non-operational day",
           service_date: terminalState.todayIso,
           day_of_week: terminalState.dayOfWeek,
-        });
-        continue;
-      }
-
-      if (await companyUsesContinuousRunner(supabase, companyId)) {
-        results.push({
-          company_slug: companySlug,
-          status: "delegated",
-          request_type: "OPERATIONS_PULSE",
-          reason: "continuous runner owns in-day collection scheduling",
-          service_date: terminalState.todayIso,
-          timezone: terminalTimeZone,
         });
         continue;
       }

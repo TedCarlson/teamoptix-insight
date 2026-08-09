@@ -11,6 +11,12 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+const DAILY_PACKAGE_REQUEST_TYPES = new Set([
+  "PREVIOUS_DAY_CLOSE",
+  "DRO_AM",
+  "OPERATIONS_PULSE",
+]);
+
 function text(fd: FormData, key: string) {
   return String(fd.get(key) ?? "").trim();
 }
@@ -36,6 +42,11 @@ async function saveWorkOrderRule(formData: FormData) {
   const artifacts = (Array.isArray(payload.targets) ? payload.targets : []).map((target: any) => String(target?.artifact_key ?? "")).filter(Boolean);
   if (artifacts.length === 0) throw new Error("The selected ticket has no collection targets. Repair it in Automation Workbench first.");
   const requestType = String(payload.request_type ?? "OPERATIONS_PULSE");
+  if (DAILY_PACKAGE_REQUEST_TYPES.has(requestType)) {
+    throw new Error(
+      "Prior Day, DRO AM, and Operations Pulse are controlled by the signed daily-package gate, not company ticket assignments."
+    );
+  }
   const operationalContract = requestType === "PREVIOUS_DAY_CLOSE" ? "PREVIOUS_DAY_FINAL" : requestType === "HISTORICAL_BACKFILL" ? "HISTORICAL_SWEEP" : requestType === "LAST_LOOK" ? "LAST_LOOK" : "IN_DAY_OPERATIONS";
 
   const cadenceRaw = text(formData, "cadenceMinutes");
@@ -153,6 +164,9 @@ function label(value: string) {
 }
 
 function scheduleText(row: any) {
+  if (row.operational_contract === "IN_DAY_OPERATIONS") {
+    return "Legacy binding · daily package is runner-controlled";
+  }
   if (row.generation_mode === "manual") return "Ship on demand";
   if (row.generation_mode === "event_triggered") return "Event triggered";
   const payload = row.assignment_payload_json ?? {};
@@ -192,7 +206,14 @@ export default async function Page() {
                   <label><span>Published instruction</span>
                     <select name="templateId" required defaultValue="">
                       <option value="" disabled>Select instruction</option>
-                      {templates.filter((item) => item.is_active).map((item) => <option key={item.id} value={item.id}>{item.template_name}</option>)}
+                      {templates
+                        .filter((item) => {
+                          const requestType = String(
+                            item.default_payload_json?.request_type ?? ""
+                          );
+                          return item.is_active && !DAILY_PACKAGE_REQUEST_TYPES.has(requestType);
+                        })
+                        .map((item) => <option key={item.id} value={item.id}>{item.template_name}</option>)}
                     </select>
                     <small>Collection targets, date authority, and failure behavior come from this published ticket.</small>
                   </label>

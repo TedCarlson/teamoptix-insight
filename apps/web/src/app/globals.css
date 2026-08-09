@@ -819,18 +819,14 @@ h1 {
   padding: 8px !important;
 }
 
-.dispatch-tablet-attendance-action {
-  display: none !important;
-}
-
-.operations-action-rail__actions .dispatch-command-phase-action {
+.operations-action-rail__actions .operations-action-rail__primary {
   border-color: #059669 !important;
   background: #059669 !important;
   color: #fff !important;
   box-shadow: 0 6px 16px rgba(5, 150, 105, 0.22);
 }
 
-.operations-action-rail__actions .dispatch-command-phase-action:hover {
+.operations-action-rail__actions .operations-action-rail__primary:hover {
   border-color: #047857 !important;
   background: #047857 !important;
 }
@@ -1988,12 +1984,6 @@ h1 {
   .dispatch-right-column {
     grid-template-columns: minmax(240px, 0.8fr) minmax(0, 1.2fr);
     align-items: start;
-  }
-}
-
-@media (min-width: 721px) and (max-width: 1480px) {
-  .dispatch-tablet-attendance-action {
-    display: inline-flex !important;
   }
 }
 

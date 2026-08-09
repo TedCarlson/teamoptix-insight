@@ -10,11 +10,8 @@ import { easternOperationalDayBounds } from "@/lib/operationalDay";
 export const runtime = "nodejs";
 
 const ALLOWED_REQUEST_TYPES = new Set([
-  "PREVIOUS_DAY_CLOSE",
-  "LAST_LOOK",
   "HISTORICAL_BACKFILL",
   "TARGETED_RECOVERY",
-  "OPERATIONS_PULSE",
 ]);
 
 function normalizeReports(value: unknown) {
@@ -119,7 +116,7 @@ export async function GET(
         service
           .from("operations_collection_request_v")
           .select(
-            "id,company_id,request_type,request_status,error_message,started_at,completed_at,updated_at"
+            "id,company_id,request_type,request_status,error_message,claimed_by,started_at,completed_at,updated_at"
           )
           .eq("company_id", resolved.company.id)
           .gte("created_at", start.toISOString())
@@ -129,14 +126,14 @@ export async function GET(
         service
           .from("operations_runner_schedule_v")
           .select(
-            "collection_enabled,operations_pulse_enabled,operations_pulse_start_time,operations_pulse_end_time,timezone"
+            "runner_key,collection_enabled,operations_pulse_enabled,operations_pulse_start_time,operations_pulse_end_time,timezone,runner_state,runner_last_seen_at,runner_last_error,runner_metadata_json,report_config_json"
           )
           .eq("company_id", resolved.company.id)
           .maybeSingle(),
         service
           .from("company_operations_ticket_assignment_v")
           .select(
-            "id,start_time,end_time,cadence_minutes,assignment_payload_json"
+            "id,start_time,end_time,assignment_payload_json"
           )
           .eq("company_id", resolved.company.id)
           .eq("operational_contract", "IN_DAY_OPERATIONS")
@@ -186,7 +183,6 @@ export async function GET(
                 assignment_id: inDayAssignment.id,
                 start_time: inDayAssignment.start_time,
                 end_time: inDayAssignment.end_time,
-                cadence_minutes: inDayAssignment.cadence_minutes,
                 operating_weekdays:
                   assignmentPayload.operating_weekdays ?? [],
                 operating_date_overrides:
@@ -400,7 +396,10 @@ export async function POST(
     if (!ALLOWED_REQUEST_TYPES.has(requestType)) {
       return NextResponse.json(
         {
-          error: "Invalid request_type.",
+          error:
+            ["PREVIOUS_DAY_CLOSE", "DRO_AM", "OPERATIONS_PULSE", "LAST_LOOK"].includes(requestType)
+              ? "Daily collections are controlled by the signed daily-package schedule, not the ticket queue."
+              : "Invalid request_type.",
           allowed_request_types: Array.from(ALLOWED_REQUEST_TYPES),
         },
         { status: 400 }

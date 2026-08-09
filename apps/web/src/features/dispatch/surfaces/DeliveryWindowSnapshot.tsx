@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { DispatchRoute } from "../lib/dispatchSupport";
 import { eyebrow, panel } from "../lib/dispatchSupport";
-import OperationsIntelligenceFeed from "@/features/operations/components/OperationsIntelligenceFeed";
 import ServiceSnapshotCard from "@/features/operations/components/ServiceSnapshotCard";
 import ExpressReportOverlay from "@/features/operations/manifests/components/ExpressReportOverlay";
 import ComplianceReportOverlay from "@/features/operations/components/ComplianceReportOverlay";
+import OperationsWorkspaceToolbar from "@/features/operations/components/OperationsWorkspaceToolbar";
 import RouteHealthOverlay, {
   type ManifestRouteHealthCard,
 } from "@/features/operations/manifests/components/RouteHealthOverlay";
@@ -68,8 +68,10 @@ type DeliveryWindowSnapshotProps = {
   serviceDate: string;
   routes: DispatchRoute[];
   routeLabelForDisplay: (route: DispatchRoute) => string;
-  onRefresh?: () => void;
-  onUploadReport?: () => void;
+  onRefresh: () => void;
+  onUploadReport: () => void;
+  onActions: () => void;
+  onAttendance: () => void;
 };
 type RouteHealthPayload = {
   routes: ManifestRouteHealthCard[];
@@ -306,7 +308,16 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
   const [selectedRouteHealth, setSelectedRouteHealth] =
     useState<SelectedManifestRouteHealth | null>(null);
 
-  const { slug, serviceDate, routes, routeLabelForDisplay, onRefresh, onUploadReport } = props;
+  const {
+    slug,
+    serviceDate,
+    routes,
+    routeLabelForDisplay,
+    onRefresh,
+    onUploadReport,
+    onActions,
+    onAttendance,
+  } = props;
   const [payload, setPayload] = useState<DswPayload | null>(null);
   const [fccPayload, setFccPayload] = useState<FccPayload | null>(null);
   const [serviceSnapshotPayload, setServiceSnapshotPayload] = useState<any>(null);
@@ -798,47 +809,23 @@ console.log(
   );
 
   return (
-    <section className="delivery-window-grid">
+    <>
+      <OperationsWorkspaceToolbar
+        slug={slug}
+        onActions={onActions}
+        onComplianceReport={() => setComplianceReportOpen(true)}
+        onExpressReport={() => setExpressReportOpen(true)}
+        onAttendance={onAttendance}
+        onRefresh={onRefresh}
+        onUpload={onUploadReport}
+      />
+
+      <section className="delivery-window-grid">
       <section className="delivery-window__main" style={{ ...panel, padding: 14, display: "grid", gap: 10 }}>
         <div className="delivery-window__header" style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
             <p style={eyebrow}>Service</p>
             <h2 style={{ margin: 0, fontSize: 18 }}>Service Line Up</h2>
-          </div>
-
-          <div className="delivery-window__actions operations-action-rail__actions" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
-            <button type="button" className="button" onClick={() => setComplianceReportOpen(true)} style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}>
-              Compliance Report
-            </button>
-            <button
-              type="button"
-              className="button"
-              onClick={() => setExpressReportOpen(true)}
-              style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}
-            >
-              Express Report
-            </button>
-
-            {onRefresh ? (
-              <button
-                type="button"
-                className="button"
-                onClick={onRefresh}
-                style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}
-              >
-                Refresh
-              </button>
-            ) : null}
-            {onUploadReport ? (
-              <button
-                type="button"
-                className="button button-primary"
-                onClick={onUploadReport}
-                style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}
-              >
-                Upload Report
-              </button>
-            ) : null}
           </div>
         </div>
 
@@ -1110,15 +1097,10 @@ console.log(
       />
 
       <aside className="delivery-window__aside" style={{ display: "grid", gap: 12 }}>
-        <OperationsIntelligenceFeed
-          slug={slug}
-          serviceDate={serviceDate}
-          surface="delivery-window"
-        />
-
         <ServiceSnapshotCard slug={slug} serviceDate={serviceDate} />
       </aside>
-    </section>
+      </section>
+    </>
   );
 }
 

@@ -32,36 +32,41 @@ It captures architecture, security boundaries, automation dependencies, deployme
 
 # Automation
 
-## Scheduler
+## Daily Collection Control
 
-Runs from Vercel Cron.
+The Vercel application is the sole run/rest authority. It persists the daily
+package, resolves the effective gate, obtains the governed bootstrap payload,
+and signs that payload to the VPS control endpoint.
 
-Route:
+The daily package contains:
 
-/api/cron/operations/generate-collection-requests
+- Prior Day — one governed close collection when active.
+- DRO AM — one governed morning collection when active.
+- Operations Pulse — starts inside its operating window and starts the next
+  cycle immediately after each successful cycle until the window closes.
 
-Responsibilities
+Operations Pulse has no minute cadence. `PREVIOUS_SUCCESS` is its only repeat
+trigger. A dated `OPERATING` override such as Collect today is part of the
+signed schedule and releases the VPS immediately when it is already inside the
+window.
 
-- Reads automation schedules
-- Creates OPERATIONS_PULSE requests
-- Never downloads reports
+The current control authority is `MANUAL`: the Team Optix workspace chooses
+RUN or REST for each client. A future billing authority may resolve the same
+effective gate from verified payment and subscription state. It must not create
+a second scheduling path.
 
-Dependencies
+Signed control path:
 
-Tables
+1. Vercel saves the schedule or calendar override.
+2. `get_operations_runner_bootstrap` produces one schedule payload.
+3. Vercel signs and posts it to the VPS control endpoint.
+4. The VPS acknowledges the applied configuration version.
 
-- core.companies
-- core.operations_collection_request
-
-Views
-
-- public.companies
-- public.operations_collection_request_v
-
-RPC
-
-- get_operations_automation_schedule_config
-- create_operations_collection_request
+The Vercel cron route
+`/api/cron/operations/generate-collection-requests` remains responsible for
+historical sweep and other ticket-owned work. For a company with an enabled
+continuous-runner schedule it must delegate the daily package and must not
+create queued Prior Day or Operations Pulse requests.
 
 ---
 
@@ -69,16 +74,20 @@ RPC
 
 Runs on the DigitalOcean worker.
 
-Container
-
-teamoptix-automation-worker
-
 Responsibilities
 
-- Claims queued requests
-- Downloads DSW/FCC
-- Registers artifacts
-- Never performs ingest
+- Obeys the signed daily-package RUN/REST gate.
+- Owns report-collection mechanics and serial donor execution.
+- Executes Prior Day, DRO AM, and the Operations Pulse success chain.
+- Submits a terminal receipt after each runner-owned cycle; the receipt becomes
+  the audit request and registers its artifacts.
+- Claims queued requests only for ticket-owned work such as historical sweep
+  and targeted recovery.
+- Never performs ingest.
+
+Systemd service
+
+`teamoptix-continuous-controller.service`
 
 ---
 
@@ -150,13 +159,5 @@ Scheduler
 
 curl -sS https://teamoptix.io/api/cron/operations/generate-collection-requests
 
-Healthy response
-
-"ok": true
-
-status = created
-
-or
-
-status = skipped
-
+Healthy response for a continuous-runner company includes `ok: true` and a
+`delegated` daily-package result. `created` remains valid for ticket-owned work.

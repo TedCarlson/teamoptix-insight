@@ -156,6 +156,55 @@ export async function PATCH(
     }
 
     const body = await req.json().catch(() => ({}));
+    const incomingReportConfig =
+      body.report_config_json && typeof body.report_config_json === "object"
+        ? body.report_config_json
+        : {};
+    const incomingRunGate =
+      incomingReportConfig.run_gate &&
+      typeof incomingReportConfig.run_gate === "object"
+        ? incomingReportConfig.run_gate
+        : {};
+    const gateAuthority = String(
+      incomingRunGate.authority ?? "MANUAL"
+    ).toUpperCase();
+
+    if (gateAuthority !== "MANUAL") {
+      return NextResponse.json(
+        {
+          error:
+            "Billing and payment authority is prepared but not active. Keep Manual authority selected until payment-state reconciliation is deployed.",
+        },
+        { status: 409 }
+      );
+    }
+
+    const manualState =
+      String(incomingRunGate.manual_state ?? "").toUpperCase() === "ACTIVE" ||
+      (incomingRunGate.manual_state == null && Boolean(body.collection_enabled))
+        ? "ACTIVE"
+        : "INACTIVE";
+    const reportConfig = {
+      previous_day_close: ["DSW"],
+      dro_am: {
+        enabled: true,
+        start_time: "04:00",
+        reports: ["DRO"],
+      },
+      operations_pulse: [
+        "DSW",
+        "FCC",
+        "DELIVERY_MANIFEST",
+        "PICKUP_MANIFEST",
+      ],
+      operating_weekdays: [1, 2, 3, 4, 5, 6],
+      operating_date_overrides: {},
+      ...incomingReportConfig,
+      run_gate: {
+        authority: "MANUAL",
+        manual_state: manualState,
+      },
+    };
 
     const service = createSupabaseServiceRoleClient();
     const { data, error } = await service.rpc(
@@ -164,7 +213,7 @@ export async function PATCH(
         p_company_slug: slug,
         p_runner_key: OPERATIONS_RUNNER_KEY,
         p_timezone: body.timezone ?? "America/New_York",
-        p_collection_enabled: Boolean(body.collection_enabled),
+        p_collection_enabled: manualState === "ACTIVE",
         p_previous_day_close_enabled: Boolean(
           body.previous_day_close_enabled
         ),
@@ -177,17 +226,7 @@ export async function PATCH(
           body.operations_pulse_start_time ?? "07:30",
         p_operations_pulse_end_time:
           body.operations_pulse_end_time ?? "19:30",
-        p_report_config_json: body.report_config_json ?? {
-          previous_day_close: ["DSW"],
-          operations_pulse: [
-            "DSW",
-            "FCC",
-            "DELIVERY_MANIFEST",
-            "PICKUP_MANIFEST",
-          ],
-          operating_weekdays: [1, 2, 3, 4, 5, 6],
-          operating_date_overrides: {},
-        },
+        p_report_config_json: reportConfig,
         p_recovery_config_json:
           body.recovery_config_json ?? { enabled: false },
         p_historical_config_json:

@@ -43,6 +43,15 @@ export function defaultRunnerSchedule(params: {
     operations_pulse_end_time: "19:30:00",
     report_config_json: {
       previous_day_close: ["DSW"],
+      dro_am: {
+        enabled: true,
+        start_time: "04:00",
+        reports: ["DRO"],
+      },
+      run_gate: {
+        authority: "MANUAL",
+        manual_state: "INACTIVE",
+      },
       operations_pulse: [
         "DSW",
         "FCC",
@@ -76,6 +85,29 @@ export default function RunnerScheduleEditor(props: {
   const synchronized =
     props.row.applied_version >= props.row.config_version &&
     props.row.runner_state !== "ERROR";
+  const droAm = props.row.report_config_json.dro_am ?? {
+    enabled: true,
+    start_time: "04:00",
+    reports: ["DRO"],
+  };
+  const runGate = props.row.report_config_json.run_gate ?? {
+    authority: "MANUAL" as const,
+    manual_state: props.row.collection_enabled
+      ? ("ACTIVE" as const)
+      : ("INACTIVE" as const),
+  };
+
+  function setDroAm(
+    patch: Partial<NonNullable<RunnerSchedule["report_config_json"]["dro_am"]>>
+  ) {
+    props.onChange({
+      ...props.row,
+      report_config_json: {
+        ...props.row.report_config_json,
+        dro_am: { ...droAm, ...patch },
+      },
+    });
+  }
 
   function setReports(
     key: "previous_day_close" | "operations_pulse",
@@ -99,11 +131,11 @@ export default function RunnerScheduleEditor(props: {
   return (
     <SectionCard
       eyebrow="Runner control"
-      title="Collection schedule"
+      title="Daily collection package"
     >
       <p style={{ color: "#526681", marginTop: 0, lineHeight: 1.6 }}>
-        Program the VPS collection day. Operations Pulse repeats after each
-        successful delivery; it is not driven by a fixed interval.
+        One signed schedule controls the three daily runner jobs. Historical
+        sweeps and targeted recovery remain ticket-queue work.
       </p>
 
       <div
@@ -119,7 +151,7 @@ export default function RunnerScheduleEditor(props: {
         }}
       >
         <div>
-          <strong style={{ display: "block" }}>Automated collection</strong>
+          <strong style={{ display: "block" }}>Daily package</strong>
           <span style={{ color: "#64748b", fontSize: 12 }}>
             Turning this off prevents new work from starting. Active work may
             finish.
@@ -133,36 +165,62 @@ export default function RunnerScheduleEditor(props: {
             props.onChange({
               ...props.row,
               collection_enabled: !props.row.collection_enabled,
+              report_config_json: {
+                ...props.row.report_config_json,
+                run_gate: {
+                  ...runGate,
+                  manual_state: props.row.collection_enabled
+                    ? "INACTIVE"
+                    : "ACTIVE",
+                },
+              },
             })
           }
         >
-          {props.row.collection_enabled ? "Collection on" : "Collection off"}
+          {props.row.collection_enabled ? "Active" : "Inactive"}
         </button>
+      </div>
+
+      <div style={{ border: "1px solid #dbe7f3", borderRadius: 14, padding: 12, marginTop: 12 }}>
+        <strong style={{ display: "block" }}>Control authority</strong>
+        <p style={{ color: "#64748b", fontSize: 12, lineHeight: 1.5 }}>
+          Manual authority is active now. Billing authority is the next control
+          depth and will resolve this same signed run/rest gate from verified
+          payment and subscription state.
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <button type="button" className="button button-primary" disabled>
+            Manual · authoritative
+          </button>
+          <button type="button" className="button" disabled title="Billing gate wiring is not active yet.">
+            Billing &amp; payment · prepared
+          </button>
+        </div>
       </div>
 
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
           gap: 12,
           marginTop: 12,
         }}
       >
         <div style={{ border: "1px solid #dbe7f3", borderRadius: 14, padding: 12 }}>
-          <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 900 }}>
-            <input
-              type="checkbox"
-              checked={props.row.previous_day_close_enabled}
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+            <strong>Prior Day</strong>
+            <button
+              type="button"
+              className={props.row.previous_day_close_enabled ? "button button-primary" : "button"}
               disabled={props.disabled}
-              onChange={(event) =>
-                props.onChange({
-                  ...props.row,
-                  previous_day_close_enabled: event.target.checked,
-                })
-              }
-            />
-            Previous Day Close
-          </label>
+              onClick={() => props.onChange({
+                ...props.row,
+                previous_day_close_enabled: !props.row.previous_day_close_enabled,
+              })}
+            >
+              {props.row.previous_day_close_enabled ? "Active" : "Inactive"}
+            </button>
+          </div>
           <label style={{ display: "grid", gap: 5, marginTop: 12 }}>
             <span style={{ color: "#64748b", fontSize: 11, fontWeight: 900 }}>
               Clock in
@@ -197,20 +255,48 @@ export default function RunnerScheduleEditor(props: {
         </div>
 
         <div style={{ border: "1px solid #dbe7f3", borderRadius: 14, padding: 12 }}>
-          <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 900 }}>
-            <input
-              type="checkbox"
-              checked={props.row.operations_pulse_enabled}
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+            <strong>DRO AM</strong>
+            <button
+              type="button"
+              className={droAm.enabled !== false ? "button button-primary" : "button"}
               disabled={props.disabled}
-              onChange={(event) =>
-                props.onChange({
-                  ...props.row,
-                  operations_pulse_enabled: event.target.checked,
-                })
-              }
+              onClick={() => setDroAm({ enabled: droAm.enabled === false })}
+            >
+              {droAm.enabled !== false ? "Active" : "Inactive"}
+            </button>
+          </div>
+          <label style={{ display: "grid", gap: 5, marginTop: 12 }}>
+            <span style={{ color: "#64748b", fontSize: 11, fontWeight: 900 }}>
+              Clock in
+            </span>
+            <input
+              type="time"
+              value={timeValue(droAm.start_time, "04:00")}
+              disabled={props.disabled}
+              onChange={(event) => setDroAm({ start_time: event.target.value })}
             />
-            Operations Pulse
           </label>
+          <p style={{ color: "#64748b", fontSize: 12, lineHeight: 1.5, marginBottom: 0 }}>
+            Collects the morning DRO package once per operating date.
+          </p>
+        </div>
+
+        <div style={{ border: "1px solid #dbe7f3", borderRadius: 14, padding: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+            <strong>Operations Pulse</strong>
+            <button
+              type="button"
+              className={props.row.operations_pulse_enabled ? "button button-primary" : "button"}
+              disabled={props.disabled}
+              onClick={() => props.onChange({
+                ...props.row,
+                operations_pulse_enabled: !props.row.operations_pulse_enabled,
+              })}
+            >
+              {props.row.operations_pulse_enabled ? "Active" : "Inactive"}
+            </button>
+          </div>
           <div
             style={{
               display: "grid",
@@ -252,6 +338,10 @@ export default function RunnerScheduleEditor(props: {
               />
             </label>
           </div>
+          <p style={{ color: "#166534", fontSize: 12, fontWeight: 850, lineHeight: 1.5 }}>
+            Starts at clock-in, then starts the next collection immediately
+            after each successful cycle until stop time.
+          </p>
           <div style={{ display: "grid", gap: 6, marginTop: 12 }}>
             {REPORT_OPTIONS.map(([key, label]) => (
               <label key={key} style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 12 }}>
@@ -278,6 +368,14 @@ export default function RunnerScheduleEditor(props: {
           marginTop: 12,
         }}
       >
+        <MiniStat
+          label="Authority"
+          value={runGate.authority === "BILLING" ? "Billing & payment" : "Manual"}
+        />
+        <MiniStat
+          label="Effective VPS gate"
+          value={props.row.collection_enabled ? "RUN" : "REST"}
+        />
         <MiniStat
           label="Runner sync"
           value={synchronized ? "Applied" : "Pending"}

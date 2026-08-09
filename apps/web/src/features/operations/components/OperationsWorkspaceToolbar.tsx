@@ -1,38 +1,53 @@
 "use client";
 
+import { useOperationsCollectionSignal } from "@/features/operations/workspace/useOperationsCollectionSignal";
+
 type OperationsWorkspaceToolbarProps = {
-  lastUpdatedAt: string | null;
+  slug: string;
   statusText?: string;
   statusTone?: "active" | "waiting" | "neutral";
   refreshing?: boolean;
   onRefresh: () => void;
   onUpload?: () => void;
+  onActions?: () => void;
+  actionsLabel?: string;
+  onComplianceReport?: () => void;
+  onExpressReport?: () => void;
+  onAttendance?: () => void;
+  attendanceLabel?: string;
   actions?: React.ReactNode;
 };
 
-function formatLastUpdated(value: string | null) {
-  if (!value) return "Not refreshed yet";
-
-  try {
-    return new Date(value).toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  } catch {
-    return value;
-  }
-}
-
 export default function OperationsWorkspaceToolbar(props: OperationsWorkspaceToolbarProps) {
   const {
-    lastUpdatedAt,
+    slug,
     statusText,
     statusTone = "neutral",
     refreshing = false,
     onRefresh,
     onUpload,
+    onActions,
+    actionsLabel = "Actions",
+    onComplianceReport,
+    onExpressReport,
+    onAttendance,
+    attendanceLabel = "Attendance",
     actions,
   } = props;
+  const { signal: authoritativeSignal, refresh: refreshCollectionSignal } =
+    useOperationsCollectionSignal(slug);
+  const renderedStatusText =
+    authoritativeSignal?.copy ?? statusText ?? "Loading collection status…";
+  const renderedStatusTone = authoritativeSignal
+    ? authoritativeSignal.active
+      ? "active"
+      : "waiting"
+    : statusTone;
+
+  function refreshAll() {
+    void refreshCollectionSignal();
+    onRefresh();
+  }
 
   return (
     <div
@@ -46,20 +61,43 @@ export default function OperationsWorkspaceToolbar(props: OperationsWorkspaceToo
       }}
     >
       <span
-        className={`operations-workspace-toolbar__status${statusText ? ` has-signal is-${statusTone}` : ""}`}
+        className={`operations-workspace-toolbar__status${renderedStatusText ? ` has-signal is-${renderedStatusTone}` : ""}`}
         style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}
       >
-        {statusText ?? `Last updated ${formatLastUpdated(lastUpdatedAt)}`}
+        {renderedStatusText}
       </span>
 
       <div className="operations-workspace-toolbar__actions operations-action-rail__actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {onActions ? (
+          <button
+            type="button"
+            className="button operations-action-rail__primary"
+            onClick={onActions}
+          >
+            {actionsLabel}
+          </button>
+        ) : null}
+        {onComplianceReport ? (
+          <button type="button" className="button" onClick={onComplianceReport}>
+            Compliance Report
+          </button>
+        ) : null}
+        {onExpressReport ? (
+          <button type="button" className="button" onClick={onExpressReport}>
+            Express Report
+          </button>
+        ) : null}
+        {onAttendance ? (
+          <button type="button" className="button" onClick={onAttendance}>
+            {attendanceLabel}
+          </button>
+        ) : null}
         {actions}
         <button
           type="button"
           className="button"
-          onClick={onRefresh}
+          onClick={refreshAll}
           disabled={refreshing}
-          style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}
         >
           {refreshing ? "Refreshing..." : "Refresh"}
         </button>
@@ -69,7 +107,6 @@ export default function OperationsWorkspaceToolbar(props: OperationsWorkspaceToo
             type="button"
             className="button button-primary"
             onClick={onUpload}
-            style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}
           >
             Upload Report
           </button>

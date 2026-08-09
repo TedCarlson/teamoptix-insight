@@ -76,6 +76,15 @@ export type RunnerSchedule = {
   operations_pulse_end_time: string;
   report_config_json: {
     previous_day_close?: string[];
+    dro_am?: {
+      enabled?: boolean;
+      start_time?: string;
+      reports?: string[];
+    };
+    run_gate?: {
+      authority?: "MANUAL" | "BILLING";
+      manual_state?: "ACTIVE" | "INACTIVE";
+    };
     operations_pulse?: string[];
     operating_weekdays?: number[];
     operating_date_overrides?: Record<string, "OPERATING" | "CLOSED">;
@@ -186,7 +195,7 @@ export type ProtectedCollectionType =
   | "TARGETED_RECOVERY";
 
 export type CollectionOrderDraft = {
-  request_type: ProtectedCollectionType | "OPERATIONS_PULSE";
+  request_type: ProtectedCollectionType;
   service_date?: string | null;
   service_date_start?: string | null;
   service_date_end?: string | null;

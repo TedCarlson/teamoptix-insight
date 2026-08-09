@@ -27,6 +27,8 @@ import RouteHealthOverlay, {
 } from "@/features/operations/manifests/components/RouteHealthOverlay";
 import ExpressReportOverlay from "@/features/operations/manifests/components/ExpressReportOverlay";
 import ComplianceReportOverlay from "@/features/operations/components/ComplianceReportOverlay";
+import OperationsReportUploadOverlay from "@/features/operations/components/OperationsReportUploadOverlay";
+import OperationsWorkspaceToolbar from "@/features/operations/components/OperationsWorkspaceToolbar";
 import { ExpressProgressSignal } from "@/features/operations/express/ExpressProgressSignal";
 import type { ExpressDataHealth, ExpressProgress } from "@/features/operations/express/expressProgress";
 import { completionNeedsWorkspaceRefresh } from "./operationsCollectionRefresh";
@@ -78,24 +80,30 @@ type CollectionRequestSummary = {
   request_type: string;
   request_status: string;
   error_message: string | null;
+  claimed_by: string | null;
   started_at: string | null;
   completed_at: string | null;
   updated_at: string;
 };
 
 type RunnerScheduleSummary = {
+  runner_key: string;
   collection_enabled: boolean;
   operations_pulse_enabled: boolean;
   operations_pulse_start_time: string;
   operations_pulse_end_time: string;
   timezone: string;
+  runner_state: string;
+  runner_last_seen_at: string | null;
+  runner_last_error: string | null;
+  runner_metadata_json: Record<string, unknown>;
+  report_config_json: Record<string, unknown>;
 };
 
 type OperatingCalendarSummary = {
   assignment_id: string;
   start_time: string | null;
   end_time: string | null;
-  cadence_minutes: number | null;
   operating_weekdays: number[];
   operating_date_overrides: Record<string, "OPERATING" | "CLOSED">;
 };
@@ -613,6 +621,7 @@ export default function OperationsWorkspacePage({
   const [eventOverlayOpen, setEventOverlayOpen] = useState(false);
   const [savingEvent, setSavingEvent] = useState(false);
   const [attendanceOpen, setAttendanceOpen] = useState(false);
+  const [uploadOverlayOpen, setUploadOverlayOpen] = useState(false);
   const [complianceReportOpen, setComplianceReportOpen] = useState(false);
   const [expressReportOpen, setExpressReportOpen] = useState(false);
   const [routeEvidenceOpen, setRouteEvidenceOpen] = useState(false);
@@ -789,12 +798,23 @@ export default function OperationsWorkspacePage({
     (request) =>
       request.request_status === "COMPLETE" && !request.error_message
   );
-  const activeCollection = collectionRequests.find((request) =>
+  const continuousRunnerOwnsDailyPackage = Boolean(runnerSchedule);
+  const visibleCollectionRequests = collectionRequests.filter(
+    (request) =>
+      !(
+        continuousRunnerOwnsDailyPackage &&
+        request.claimed_by === null &&
+        ["PREVIOUS_DAY_CLOSE", "DRO_AM", "OPERATIONS_PULSE"].includes(
+          request.request_type
+        )
+      )
+  );
+  const activeCollection = visibleCollectionRequests.find((request) =>
     ["QUEUED", "CLAIMED", "RUNNING", "ARTIFACTS_READY", "INGESTING"].includes(
       request.request_status
     )
   );
-  const latestCollection = collectionRequests[0];
+  const latestCollection = visibleCollectionRequests[0];
 
   const operatingDateDecision = useMemo(() => {
     const operationalDate =
@@ -847,18 +867,12 @@ export default function OperationsWorkspacePage({
       };
     }
 
-    const startedAt = latestSuccessfulCollection?.started_at
-      ? new Date(latestSuccessfulCollection.started_at).getTime()
-      : Number.NaN;
-    const completedAt = latestSuccessfulCollection?.completed_at
-      ? new Date(latestSuccessfulCollection.completed_at).getTime()
-      : Number.NaN;
-    const lastCycleMs =
-      Number.isFinite(startedAt) &&
-      Number.isFinite(completedAt) &&
-      completedAt > startedAt
-        ? completedAt - startedAt
-        : 17 * 60_000;
+    if (runnerSchedule?.runner_state === "RUNNING") {
+      return {
+        active: true,
+        copy: "Collection Active · runner cycle in progress",
+      };
+    }
 
     const activeStartedAt = activeCollection?.started_at
       ? new Date(activeCollection.started_at).getTime()
@@ -868,16 +882,11 @@ export default function OperationsWorkspacePage({
         0,
         Math.floor((signalNow - activeStartedAt) / 60_000)
       );
-      const remainingMinutes = Math.ceil(
-        (activeStartedAt + lastCycleMs - signalNow) / 60_000
-      );
       const progress =
         activeCollection?.request_status === "ARTIFACTS_READY" ||
         activeCollection?.request_status === "INGESTING"
           ? "processing collected files"
-          : remainingMinutes > 0
-            ? `collection running · ~${remainingMinutes} min to next update`
-            : `collection running · ${elapsedMinutes} min elapsed`;
+          : `collection running · ${elapsedMinutes} min elapsed`;
 
       return {
         active: true,
@@ -897,24 +906,13 @@ export default function OperationsWorkspacePage({
       };
     }
 
-    const expectedAt = Number.isFinite(completedAt)
-      ? completedAt + lastCycleMs
-      : signalNow + lastCycleMs;
-    const remainingMinutes = Math.ceil((expectedAt - signalNow) / 60_000);
-    const expectation =
-      remainingMinutes > 0
-        ? `next data expected around ${updateTime(
-            new Date(expectedAt).toISOString()
-          )} · ~${remainingMinutes} min`
-        : Number.isFinite(completedAt)
-          ? `awaiting next collection · last update ${updateTime(
-              latestSuccessfulCollection?.completed_at ?? ""
-            )}`
-          : "awaiting first collection";
-
     return {
       active: true,
-      copy: `Collection Active · ${expectation}`,
+      copy: latestSuccessfulCollection?.completed_at
+        ? `Collection Active · next cycle starts on success · last update ${updateTime(
+            latestSuccessfulCollection.completed_at
+          )}`
+        : "Collection Active · runner released for continuous collection",
     };
   }, [
     activeCollection,
@@ -1663,48 +1661,25 @@ export default function OperationsWorkspacePage({
         <span>
           <h1>Operations</h1>
         </span>
-
-        <div className="ou-header-actions">
-          <button
-            type="button"
-            className="ou-report-action"
-            onClick={() => setComplianceReportOpen(true)}
-          >
-            Compliance Report
-          </button>
-          <button
-            type="button"
-            className="ou-report-action"
-            onClick={() => setExpressReportOpen(true)}
-          >
-            Express Report
-          </button>
-          <button
-            type="button"
-            className="ou-report-action"
-            onClick={refreshWorkspace}
-            disabled={loading}
-          >
-            {loading ? "Refreshing…" : "Refresh"}
-          </button>
-          <button
-            type="button"
-            className="ou-attendance-action"
-            onClick={() => setAttendanceOpen(true)}
-          >
-            Attendance
-          </button>
-          <button
-            type="button"
-            className="ou-dispatch-action"
-            onClick={() => setEventOverlayOpen(true)}
-          >
-            {dispatchDay?.status === "LOCKED"
-              ? "Delivery action"
-              : "Dispatch action"}
-          </button>
-        </div>
       </header>
+
+      <OperationsWorkspaceToolbar
+        slug={slug}
+        statusText={collectionSignal.copy}
+        statusTone={collectionSignal.active ? "active" : "waiting"}
+        refreshing={loading}
+        onActions={() => setEventOverlayOpen(true)}
+        actionsLabel={
+          dispatchDay?.status === "LOCKED"
+            ? "Delivery action"
+            : "Dispatch action"
+        }
+        onComplianceReport={() => setComplianceReportOpen(true)}
+        onExpressReport={() => setExpressReportOpen(true)}
+        onAttendance={() => setAttendanceOpen(true)}
+        onRefresh={refreshWorkspace}
+        onUpload={() => setUploadOverlayOpen(true)}
+      />
 
       {error ? <div className="ou-error">{error}</div> : null}
 
@@ -2078,6 +2053,14 @@ export default function OperationsWorkspacePage({
         onClose={() => setAttendanceOpen(false)}
         onToggle={(person, assignment) => {
           void togglePersonPresence(person, assignment);
+        }}
+      />
+
+      <OperationsReportUploadOverlay
+        open={uploadOverlayOpen}
+        onClose={(shouldRefresh) => {
+          setUploadOverlayOpen(false);
+          if (shouldRefresh) refreshWorkspace();
         }}
       />
 

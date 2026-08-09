@@ -177,7 +177,6 @@ export default function PlanningPage({ slug, todayDate: providedTodayDate }: Pro
 
   const [uploadOverlayOpen, setUploadOverlayOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<string>(() => new Date().toISOString());
   const [payload, setPayload] = useState<DroPayload | null>(null);
   const [dswPayload, setDswPayload] = useState<DswCurrentPayload | null>(null);
   const [routeSortKey, setRouteSortKey] = useState<"route_name" | "current_wa_num">("route_name");
@@ -188,7 +187,6 @@ export default function PlanningPage({ slug, todayDate: providedTodayDate }: Pro
 
   function refreshWorkspace() {
     setRefreshKey((current) => current + 1);
-    setLastUpdatedAt(new Date().toISOString());
   }
 
 
@@ -516,7 +514,7 @@ export default function PlanningPage({ slug, todayDate: providedTodayDate }: Pro
     <main className="workspace-shell">
       <section className="workspace-main" style={{ paddingTop: 12 }}>
         <OperationsWorkspaceToolbar
-          lastUpdatedAt={lastUpdatedAt}
+          slug={slug}
           onRefresh={refreshWorkspace}
           onUpload={() => setUploadOverlayOpen(true)}
         />

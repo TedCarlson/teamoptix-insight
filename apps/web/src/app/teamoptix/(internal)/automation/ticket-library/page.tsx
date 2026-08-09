@@ -48,11 +48,8 @@ async function saveTicket(_previousState: WorkbenchActionState, formData: FormDa
 
     const requestType = value(formData, "requestType");
     const dateMode = value(formData, "dateMode");
-    if (requestType === "PREVIOUS_DAY_CLOSE" && dateMode !== "YESTERDAY") {
-      throw new Error("Previous Day Close must use Yesterday only. Use Historical Recovery for a date range.");
-    }
-    if (requestType === "LAST_LOOK" && dateMode !== "TODAY") {
-      throw new Error("Last Look must use Today.");
+    if (!["HISTORICAL_BACKFILL", "TARGETED_RECOVERY"].includes(requestType)) {
+      throw new Error("The workbench is reserved for historical sweeps and targeted recovery. Daily collections use the runner control gate.");
     }
     if (requestType === "TARGETED_RECOVERY" && dateMode !== "SELECTED_DATE") {
       throw new Error("Targeted Recovery must use one selected prior date.");
@@ -192,9 +189,13 @@ async function launchCollection(formData: FormData) {
 
 export default async function Page() {
   const [templates, companies] = await Promise.all([listOperationsTicketTemplates(), listTeamOptixCompanyOptions()]);
+  const recoveryTemplates = templates.filter((template) => {
+    const requestType = String(template.default_payload_json?.request_type ?? "");
+    return ["HISTORICAL_BACKFILL", "TARGETED_RECOVERY"].includes(requestType);
+  });
   return <TeamOptixShell><main className="workspace-shell"><section className="workspace-main">
-    <header className="automation-domain-header"><span className="workspace-eyebrow">TeamOptix · Automation</span><h1>Automation Workbench</h1><p>Author operational instructions in plain language. Insight translates them into governed runner contracts.</p></header>
-    <LiveExecutionPortals companies={companies} templates={templates} launchAction={launchCollection} />
-    <AutomationWorkbench templates={templates} saveAction={saveTicket} deleteAction={deleteTicket} />
+    <header className="automation-domain-header"><span className="workspace-eyebrow">TeamOptix · Recovery work</span><h1>Collection Workbench</h1><p>Prepare historical sweeps and targeted recovery tickets. Daily collection activity is controlled separately by each client’s runner gate.</p></header>
+    <LiveExecutionPortals companies={companies} templates={recoveryTemplates} launchAction={launchCollection} />
+    <AutomationWorkbench templates={recoveryTemplates} saveAction={saveTicket} deleteAction={deleteTicket} />
   </section></main></TeamOptixShell>;
 }
