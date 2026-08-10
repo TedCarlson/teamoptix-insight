@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import type { MouseEvent } from "react";
 import IdentityPill from "@/features/access/components/IdentityPill";
 import { useAccess } from "@/features/access/AccessProvider";
+import { canAccessCompanyWorkspace } from "@/features/company/config/companyWorkspaceAccess";
 
 type CompanyBranchNavProps = {
   slug: string;
@@ -65,10 +66,8 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     Boolean(access.is_platform_owner) ||
     (membership?.relationship_type === "admin" && membership?.membership_status === "active");
   const canAccessOpportunities =
-    Boolean(access.is_platform_owner) ||
-    (membership?.membership_status === "active" &&
-      (membership.relationship_type === "admin" ||
-        membership.grants?.includes("opportunity_analysis")));
+    canAccessCompanyWorkspace(access, slug, "opportunity_analysis");
+  const canAccessFleet = canAccessCompanyWorkspace(access, slug, "fleet");
 
   const base = `/company/${slug}`;
   const announcementsBase = `${base}/announcements`;
@@ -115,6 +114,9 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
         { label: "Schedule", href: scheduleBase, match: (path) => path.startsWith(scheduleBase) },
         ...(canAccessOpportunities
           ? [{ label: "Opportunities", href: opportunitiesBase, match: (path: string) => path.startsWith(opportunitiesBase) }]
+          : []),
+        ...(canAccessFleet
+          ? [{ label: "Fleet", href: fleetBase, match: (path: string) => path.startsWith(fleetBase) }]
           : []),
       ];
 
@@ -337,6 +339,8 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
       ? homeSubItems
       : inScheduleBranch
         ? [{ label: "My Schedule", href: scheduleBase, match: (path: string) => path === scheduleBase }]
+        : inFleetBranch && canAccessFleet
+          ? fleetSubItems
         : []
     : inHomeBranch
       ? homeSubItems

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { hasCompanyWorkspaceAccess } from "@/features/company/config/companyWorkspaceAccess.server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { parseGvwrRange, suggestedFleetVehicleType, validateVin } from "@/features/fleet/lib/vin";
 
@@ -12,6 +13,11 @@ const year = (value: unknown) => {
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
+  const supabase = await getSupabaseServerClient();
+  if (!(await hasCompanyWorkspaceAccess(supabase, slug, "fleet"))) {
+    return NextResponse.json({ error: "Fleet access is required." }, { status: 403 });
+  }
+
   const body = await req.json().catch(() => ({}));
   const validation = validateVin(text(body.vin));
   if (!validation.valid) return NextResponse.json({ error: validation.error }, { status: 400 });
@@ -38,7 +44,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
 
   const gvwr = parseGvwrRange(result.GVWR);
   const suggestedType = suggestedFleetVehicleType(text(result.VehicleType), text(result.BodyClass));
-  const supabase = await getSupabaseServerClient();
   const { data: decodeId, error: recordError } = await supabase.rpc("record_company_fleet_vin_decode", {
     p_company_slug: slug,
     p_vin: validation.vin,
