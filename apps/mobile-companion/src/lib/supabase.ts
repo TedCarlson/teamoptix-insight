@@ -58,39 +58,13 @@ export type AccessMembership = {
   roster_member_id: string;
 };
 
-type LegacyAccessMembership = Omit<AccessMembership, "roster_member_id"> & {
-  company_status: string;
-  membership_status: string;
-};
-
 export async function loadDriverAccessMemberships() {
   const supabase = getSupabaseClient();
   const ensured = await supabase.rpc("ensure_access_context");
   if (ensured.error) throw ensured.error;
 
   const result = await supabase.rpc("mobile_companion_driver_access");
-  if (result.error) {
-    // Keep an already-installed development client usable while the preflight
-    // migration moves through GitHub and deployment. The server-side sync RPCs
-    // remain authoritative and still reject non-driver accounts.
-    if (result.error.code !== "PGRST202") throw result.error;
-    const legacy = await supabase.rpc("access_context");
-    if (legacy.error) throw legacy.error;
-    const record = legacy.data as { memberships?: unknown } | null;
-    if (!Array.isArray(record?.memberships)) return [];
-    return (record.memberships as LegacyAccessMembership[])
-      .filter(
-        (membership) =>
-          membership.membership_status === "active" &&
-          membership.company_status === "active",
-      )
-      .map((membership) => ({
-        company_id: membership.company_id,
-        company_name: membership.company_name,
-        company_slug: membership.company_slug,
-        roster_member_id: "SERVER_PREFLIGHT_PENDING",
-      }));
-  }
+  if (result.error) throw result.error;
   return Array.isArray(result.data)
     ? (result.data as AccessMembership[])
     : [];
