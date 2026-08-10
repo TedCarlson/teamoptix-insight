@@ -67,13 +67,16 @@ function mapSession(row: SessionRow): LocalSession {
 export class EdgeOutbox {
   private constructor(
     private readonly db: SQLite.SQLiteDatabase,
+    private readonly databaseName: string,
+    private readonly encryptionKey: string,
     readonly userId: string,
   ) {}
 
   static async open(userId: string) {
     if (!uuidPattern.test(userId)) throw new Error("Invalid authenticated user id.");
     const key = await databaseKey(userId);
-    const db = await SQLite.openDatabaseAsync(`insight-outbox-${userId}.db`);
+    const databaseName = `insight-outbox-${userId}.db`;
+    const db = await SQLite.openDatabaseAsync(databaseName);
 
     // SQLCipher must be keyed before any other database access. Expo Go does not
     // contain SQLCipher, so the cipher-version check intentionally blocks it.
@@ -150,7 +153,43 @@ export class EdgeOutbox {
       "INSERT OR REPLACE INTO outbox_meta(key, value) VALUES ('schema_version', ?)",
       String(SCHEMA_VERSION),
     );
-    return new EdgeOutbox(db, userId);
+    return new EdgeOutbox(db, databaseName, key, userId);
+  }
+
+  private async withEncryptedTransaction(
+    task: (transaction: SQLite.SQLiteDatabase) => Promise<void>,
+  ) {
+    // Expo's withExclusiveTransactionAsync opens a hidden second connection.
+    // SQLCipher keys are connection-specific, so that helper sees encrypted
+    // bytes as "not a database". Open and key our own isolated connection
+    // before beginning the transaction instead.
+    const transaction = await SQLite.openDatabaseAsync(
+      this.databaseName,
+      { useNewConnection: true },
+    );
+    let began = false;
+    try {
+      await transaction.execAsync(`PRAGMA key = '${this.encryptionKey}';`);
+      const cipher = await transaction.getFirstAsync<{ cipher_version: string }>(
+        "PRAGMA cipher_version;",
+      );
+      if (!cipher?.cipher_version) {
+        throw new Error("Encrypted outbox transaction is unavailable.");
+      }
+      await transaction.execAsync("PRAGMA foreign_keys = ON;");
+      await transaction.execAsync("BEGIN IMMEDIATE;");
+      began = true;
+      await task(transaction);
+      await transaction.execAsync("COMMIT;");
+      began = false;
+    } catch (error) {
+      if (began) {
+        await transaction.execAsync("ROLLBACK;");
+      }
+      throw error;
+    } finally {
+      await transaction.closeAsync();
+    }
   }
 
   async close() {
@@ -273,9 +312,12 @@ export class EdgeOutbox {
     );
   }
 
-  async sealNextBatch(tenantKey: string, sessionId: string) {
+  async sealNextBatch(
+    tenantKey: string,
+    sessionId: string,
+  ): Promise<PendingBatch | null> {
     let sealed: PendingBatch | null = null;
-    await this.db.withExclusiveTransactionAsync(async (transaction) => {
+    await this.withEncryptedTransaction(async (transaction) => {
       const points = await transaction.getAllAsync<{
         point_id: string;
         device_captured_at: string;
@@ -365,7 +407,7 @@ export class EdgeOutbox {
     acknowledgment: BatchAcknowledgment,
   ) {
     assertTenantBatch(tenantKey, batch.tenantKey, batch.payload);
-    await this.db.withExclusiveTransactionAsync(async (transaction) => {
+    await this.withEncryptedTransaction(async (transaction) => {
       for (const point of batch.payload.points) {
         const disposition = pointDisposition(acknowledgment, point.point_id);
         if (disposition === "PENDING") {
@@ -437,5 +479,22 @@ export class EdgeOutbox {
       pendingBatches: row?.pending_batches ?? 0,
       rejected: row?.rejected ?? 0,
     };
+  }
+
+  async recentRejectionCodes(tenantKey: string) {
+    const rows = await this.db.getAllAsync<{ rejection_code: string | null }>(
+      `SELECT rejection_code
+       FROM breadcrumb_point_outbox
+       WHERE tenant_key = ? AND state = 'REJECTED'
+       ORDER BY created_at DESC LIMIT 5`,
+      tenantKey,
+    );
+    return Array.from(
+      new Set(
+        rows
+          .map((row) => row.rejection_code)
+          .filter((code): code is string => Boolean(code)),
+      ),
+    );
   }
 }
