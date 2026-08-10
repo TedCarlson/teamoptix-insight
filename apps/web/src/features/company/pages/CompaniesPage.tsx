@@ -24,6 +24,7 @@ function label(value: string | null | undefined) {
 
 function CompanyCard(props: { membership: Membership }) {
   const { membership } = props;
+  const isActive = membership.membership_status === "active";
 
   return (
     <article className="app-card" style={{ display: "grid", gap: 14 }}>
@@ -45,12 +46,18 @@ function CompanyCard(props: { membership: Membership }) {
       </div>
 
       <div className="cta-row" style={{ marginTop: 4 }}>
-        <Link
-          className="button button-primary"
-          href={`/company/${membership.company_slug}`}
-        >
-          Enter workspace
-        </Link>
+        {isActive ? (
+          <Link
+            className="button button-primary"
+            href={`/company/${membership.company_slug}`}
+          >
+            Enter workspace
+          </Link>
+        ) : (
+          <Link className="button button-primary" href="/profile">
+            Continue onboarding
+          </Link>
+        )}
       </div>
     </article>
   );

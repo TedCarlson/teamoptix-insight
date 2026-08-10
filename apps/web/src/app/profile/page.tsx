@@ -7,6 +7,14 @@ import { useAccess } from "@/features/access/AccessProvider";
 
 type CandidateApplication = { id: string; company_name?: string | null; company_slug?: string | null; role_interest?: string | null; location_interest?: string | null; application_status: string; association_status: string; scheduling_policy: string; submitted_at: string };
 
+type PendingInvite = {
+  company_id: string;
+  company_name: string;
+  company_slug: string | null;
+  expires_at: string;
+  href: string;
+};
+
 function WorkspaceCard(props: {
   eyebrow: string;
   title: string;
@@ -28,6 +36,7 @@ export default function ProfilePage() {
   const [applications, setApplications] = useState<CandidateApplication[]>([]);
   const [candidateMessage, setCandidateMessage] = useState("");
   const [candidateError, setCandidateError] = useState("");
+  const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null);
 
   const loadApplications = useCallback(async () => {
     const response = await fetch("/api/profile/candidate-applications", { cache: "no-store", credentials: "include" });
@@ -54,6 +63,27 @@ export default function ProfilePage() {
     void start().catch((reason) => setCandidateError(reason instanceof Error ? reason.message : "Unable to load candidate paths."));
   }, [access.email, access.loading, loadApplications]);
 
+  useEffect(() => {
+    if (access.loading || !access.email) return;
+
+    async function loadPendingInvite() {
+      const response = await fetch("/api/onboarding/pending-invite", {
+        cache: "no-store",
+        credentials: "include",
+      });
+      const body = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        setPendingInvite(null);
+        return;
+      }
+
+      setPendingInvite(body?.pending_invite ?? null);
+    }
+
+    void loadPendingInvite();
+  }, [access.email, access.loading]);
+
   const name =
     access.display_name ||
     [access.first_name, access.last_name].filter(Boolean).join(" ") ||
@@ -64,16 +94,26 @@ export default function ProfilePage() {
   const membershipCount = activeMemberships.length;
   const hasMemberships = membershipCount > 0;
   const primaryMembership = activeMemberships[0] ?? null;
+  const primaryPendingMembership = access.memberships.find(
+    (membership) => membership.membership_status === "pending"
+  ) ?? null;
   const primaryCompanyHref = primaryMembership?.company_slug
     ? `/company/${primaryMembership.company_slug}/home`
     : "/companies";
   const workEntranceTitle = access.is_platform_owner
     ? "TeamOptix"
-    : primaryMembership?.company_name ?? "Company workspace";
+    : primaryMembership?.company_name
+      ?? pendingInvite?.company_name
+      ?? primaryPendingMembership?.company_name
+      ?? "Company workspace";
   const workEntranceBody = access.is_platform_owner
     ? "Enter the gated TeamOptix workspace to govern products, customers, engineering, and company operations."
     : hasMemberships
       ? "Enter your company workspace to continue your assigned work."
+      : pendingInvite
+        ? "Your company invitation is waiting for acceptance. Continue onboarding to activate workspace access."
+        : primaryPendingMembership
+          ? "Your company membership is pending. Ask a company administrator to resend the invitation if you no longer have it."
       : "When a company invites you, your workspace entrance will appear here.";
   const workEntranceHref = access.is_platform_owner ? "/teamoptix/command-center" : primaryCompanyHref;
 
@@ -136,6 +176,10 @@ export default function ProfilePage() {
                     </Link>
                   ) : null}
                 </>
+              ) : pendingInvite ? (
+                <Link className="button button-primary" href={pendingInvite.href}>
+                  Continue onboarding
+                </Link>
               ) : null
             }
           />
@@ -143,7 +187,11 @@ export default function ProfilePage() {
           <WorkspaceCard
             eyebrow="Action Center"
             title="Pending actions"
-            body={applications.length ? `${applications.length} candidate path${applications.length === 1 ? " is" : "s are"} connected to your profile. Hiring requirements and interview next steps can continue here before company membership is active.` : "Onboarding tasks, company requests, document renewals, and required acknowledgements will appear here when they need your attention."}
+            body={pendingInvite
+              ? `${pendingInvite.company_name} is waiting for you to complete onboarding and activate your workspace access.`
+              : applications.length
+                ? `${applications.length} candidate path${applications.length === 1 ? " is" : "s are"} connected to your profile. Hiring requirements and interview next steps can continue here before company membership is active.`
+                : "Onboarding tasks, company requests, document renewals, and required acknowledgements will appear here when they need your attention."}
           />
 
           <WorkspaceCard
