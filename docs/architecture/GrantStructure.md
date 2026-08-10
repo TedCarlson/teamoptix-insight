@@ -204,6 +204,7 @@ Operations
 - delivery_window
 - operations_uploads
 - reports
+- fleet
 
 Workforce
 
@@ -217,6 +218,11 @@ Business
 - grant_management
 
 Additional grants may be introduced over time as new workspaces are added.
+
+Inspections are not a workspace grant. Every active workforce user reaches the
+driver inspection workflow independently of Fleet workspace access. The Fleet
+grant governs Fleet vehicles, maintenance, inspection history, and management
+surfaces under `/company/[slug]/fleet`.
 
 ---
 

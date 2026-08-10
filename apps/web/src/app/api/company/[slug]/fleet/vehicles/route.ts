@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
+import { hasCompanyWorkspaceAccess } from "@/features/company/config/companyWorkspaceAccess.server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import { validateVin } from "@/features/fleet/lib/vin";
@@ -15,6 +16,11 @@ export const runtime = "nodejs";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
+  const supabase = await getSupabaseServerClient();
+  if (!(await hasCompanyWorkspaceAccess(supabase, slug, "fleet"))) {
+    return NextResponse.json({ error: "Fleet access is required." }, { status: 403 });
+  }
+
   const contentType = req.headers.get("content-type") ?? "";
   const form = contentType.includes("multipart/form-data") ? await req.formData() : null;
   const body: Record<string, unknown> = form
@@ -54,7 +60,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     }
   }
 
-  const supabase = await getSupabaseServerClient();
   const { data, error } = await supabase.rpc("upsert_company_fleet_vehicle", {
     p_company_slug: slug, p_vehicle_id: value(body.vehicle_id) || null, p_unit_number: unitNumber,
     p_vehicle_class_key: value(body.vehicle_id) ? value(body.vehicle_class_key) || null : null,
