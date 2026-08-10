@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
   try {
-    const supabase = await getSupabaseServerClient();
+    const supabase = getSupabaseAdminClient();
     const { searchParams } = new URL(req.url);
     const token = searchParams.get("token")?.trim();
 

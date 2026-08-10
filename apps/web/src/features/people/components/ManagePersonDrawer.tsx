@@ -271,6 +271,7 @@ export default function ManagePersonDrawer({
           >
             <div className={styles.railSection}>
               <PersonLifecycleSection
+                companySlug={companySlug}
                 person={person}
                 saving={savingStatus}
                 inviting={inviting}

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import SiteHeader from "@/features/landing/components/SiteHeader";
@@ -22,6 +23,7 @@ export default function OnboardingStartPage() {
   const [error, setError] = useState<string | null>(null);
   const [savingStepKey, setSavingStepKey] = useState<string | null>(null);
   const [sessionComplete, setSessionComplete] = useState(false);
+  const [workspaceHref, setWorkspaceHref] = useState("/profile");
   const [authChecked, setAuthChecked] = useState(false);
   const [authReady, setAuthReady] = useState(false);
 
@@ -198,6 +200,9 @@ export default function OnboardingStartPage() {
         }
 
         setSessionComplete(true);
+        if (typeof completeData?.company_slug === "string") {
+          setWorkspaceHref(`/company/${completeData.company_slug}`);
+        }
       }
     } catch {
       setError("Failed to complete onboarding step.");
@@ -319,9 +324,14 @@ export default function OnboardingStartPage() {
               </div>
 
               {sessionComplete ? (
-                <div className="hero-stat">
-                  <span className="hero-stat__label">Session status</span>
-                  <strong>Completed</strong>
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div className="hero-stat">
+                    <span className="hero-stat__label">Session status</span>
+                    <strong>Completed</strong>
+                  </div>
+                  <Link className="button button-primary" href={workspaceHref}>
+                    Open your workspace
+                  </Link>
                 </div>
               ) : null}
             </div>

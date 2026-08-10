@@ -299,7 +299,7 @@ export default function CandidateWorkflowDrawer({
         return;
       }
 
-      setInviteMessage("App invite sent.");
+      setInviteMessage("App invite sent. Workspace access can be assigned now.");
       onSaved?.({ ...person, invite_status: "Invited" });
       await onRefresh?.();
     } catch {
@@ -573,6 +573,7 @@ export default function CandidateWorkflowDrawer({
                 <p>Maintain the authoritative candidate record without leaving the workflow.</p>
               </div>
               <PersonLifecycleSection
+                companySlug={slug}
                 person={person}
                 saving={savingStatus}
                 onSave={saveStatus}
@@ -740,6 +741,11 @@ export default function CandidateWorkflowDrawer({
                 {inviting ? "Sending…" : person.invite_status === "Invited" ? "Resend app invite" : "Send app invite"}
               </button>
               {inviteMessage ? <p className={styles.success}>{inviteMessage}</p> : null}
+              {inviteMessage ? (
+                <Link className="button" href={`/company/${slug}/config/access`}>
+                  Assign workspace access
+                </Link>
+              ) : null}
             </section>
           </aside>
         </div>
