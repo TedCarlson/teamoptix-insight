@@ -545,7 +545,7 @@ export default function CompanyRosterPage() {
         ...current,
       ]);
 
-      setInviteMessage("Invite sent.");
+      setInviteMessage("Invite sent. Workspace access can be assigned now.");
       await refreshRoster();
     } catch {
       setInviteError("Failed to send invite.");

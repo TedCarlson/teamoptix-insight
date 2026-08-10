@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import type {
   RosterEmploymentStatus,
@@ -20,6 +21,7 @@ type Draft = {
 };
 
 type Props = {
+  companySlug: string;
   person: RosterRow;
   saving: boolean;
   inviting?: boolean;
@@ -34,6 +36,7 @@ function todayIso() {
 }
 
 export default function PersonLifecycleSection({
+  companySlug,
   person,
   saving,
   inviting = false,
@@ -136,9 +139,18 @@ export default function PersonLifecycleSection({
             ) : null}
 
             {inviteMessage ? (
-              <p style={{ margin: 0, color: "#0f9f6e", fontSize: 12 }}>
-                {inviteMessage}
-              </p>
+              <div style={{ display: "grid", gap: 8 }}>
+                <p style={{ margin: 0, color: "#0f9f6e", fontSize: 12 }}>
+                  {inviteMessage}
+                </p>
+                <Link
+                  className="button"
+                  href={`/company/${companySlug}/config/access`}
+                  style={{ justifySelf: "start" }}
+                >
+                  Assign workspace access
+                </Link>
+              </div>
             ) : null}
 
             {inviteError ? (
