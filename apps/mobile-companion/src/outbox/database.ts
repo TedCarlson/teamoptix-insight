@@ -4,6 +4,7 @@ import * as SQLite from "expo-sqlite";
 
 import {
   assertTenantBatch,
+  assertPointWithinDutyWindow,
   pointDisposition,
   recoverPendingBatch,
   retryDelayMs,
@@ -295,6 +296,11 @@ export class EdgeOutbox {
     if (!session || session.deviceEndedAt) {
       throw new Error("Points may only be captured during an open duty session.");
     }
+    assertPointWithinDutyWindow(
+      point.deviceCapturedAt,
+      session.deviceStartedAt,
+      session.deviceEndedAt,
+    );
     await this.db.runAsync(
       `INSERT INTO breadcrumb_point_outbox (
         point_id, session_id, tenant_key, device_captured_at, latitude,
