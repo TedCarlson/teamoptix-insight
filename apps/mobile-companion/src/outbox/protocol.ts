@@ -86,6 +86,32 @@ export function assertTenantBatch(
   }
 }
 
+export function assertPointWithinDutyWindow(
+  pointCapturedAt: string,
+  sessionStartedAt: string,
+  sessionEndedAt: string | null,
+  nowMs = Date.now(),
+) {
+  const pointMs = new Date(pointCapturedAt).getTime();
+  const startedMs = new Date(sessionStartedAt).getTime();
+  const endedMs = sessionEndedAt ? new Date(sessionEndedAt).getTime() : null;
+
+  if (!Number.isFinite(pointMs) || !Number.isFinite(startedMs)) {
+    throw new Error("The location fix has an invalid device timestamp.");
+  }
+  if (pointMs < startedMs) {
+    throw new Error(
+      "The location fix predates this duty session. Capture the point again.",
+    );
+  }
+  if (endedMs != null && pointMs > endedMs) {
+    throw new Error("The location fix occurred after this duty session ended.");
+  }
+  if (pointMs > nowMs + 15 * 60 * 1000) {
+    throw new Error("The location fix is too far in the future.");
+  }
+}
+
 export type PersistedBatchRecord = {
   batch_id: string;
   session_id: string;

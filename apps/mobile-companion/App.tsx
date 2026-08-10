@@ -14,7 +14,7 @@ import {
 
 import {
   getSupabaseClient,
-  loadAccessMemberships,
+  loadDriverAccessMemberships,
   type AccessMembership,
 } from "./src/lib/supabase";
 import { EdgeOutbox } from "./src/outbox/database";
@@ -151,6 +151,7 @@ function DutyScreen(props: {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [dutySession, setDutySession] = useState<LocalSession | null>(null);
   const [counts, setCounts] = useState(EMPTY_COUNTS);
+  const [rejectionCodes, setRejectionCodes] = useState<string[]>([]);
   const [status, setStatus] = useState("Preparing secure outbox…");
   const [busy, setBusy] = useState(false);
 
@@ -161,12 +162,14 @@ function DutyScreen(props: {
 
   const refresh = useCallback(
     async (nextOutbox: EdgeOutbox, tenantKey: string) => {
-      const [open, nextCounts] = await Promise.all([
+      const [open, nextCounts, nextRejectionCodes] = await Promise.all([
         nextOutbox.openSession(tenantKey),
         nextOutbox.counts(tenantKey),
+        nextOutbox.recentRejectionCodes(tenantKey),
       ]);
       setDutySession(open);
       setCounts(nextCounts);
+      setRejectionCodes(nextRejectionCodes);
     },
     [],
   );
@@ -177,7 +180,7 @@ function DutyScreen(props: {
     (async () => {
       try {
         opened = await EdgeOutbox.open(props.session.user.id);
-        const access = await loadAccessMemberships();
+        const access = await loadDriverAccessMemberships();
         const resumed = (
           await Promise.all(
             access.map((item) => opened!.openSession(item.company_id)),
@@ -192,7 +195,7 @@ function DutyScreen(props: {
             ? resumed
               ? "Recovered the open duty session from the encrypted outbox."
               : "Ready. Tracking starts only when you choose Start duty."
-            : "No active company membership is available.",
+            : "This account is not linked to one eligible active driver roster record.",
         );
       } catch (caught) {
         if (!disposed) setStatus(message(caught));
@@ -347,6 +350,16 @@ function DutyScreen(props: {
         <View><Text style={styles.metric}>{counts.pendingBatches}</Text><Text>Batches</Text></View>
         <View><Text style={styles.metric}>{counts.rejected}</Text><Text>Rejected</Text></View>
       </View>
+      {counts.rejected > 0 ? (
+        <View style={styles.rejectionNotice}>
+          <Text style={styles.rejectionTitle}>Server-rejected evidence</Text>
+          <Text style={styles.noteText}>
+            {rejectionCodes.length > 0
+              ? rejectionCodes.join(", ")
+              : "A rejected point is retained for review."}
+          </Text>
+        </View>
+      ) : null}
       <Button
         disabled={busy || !membership || !outbox}
         label={busy ? "Working…" : "Synchronize now"}
@@ -441,6 +454,8 @@ const styles = StyleSheet.create({
   statusHeadline: { color: colors.ink, fontSize: 20, fontWeight: "700" },
   outboxRow: { flexDirection: "row", justifyContent: "space-around", borderColor: colors.border, borderWidth: 1, borderRadius: 12, padding: 16, marginTop: 6 },
   metric: { color: colors.ink, fontSize: 24, fontWeight: "700", textAlign: "center" },
+  rejectionNotice: { backgroundColor: "#FFF4E5", borderRadius: 12, padding: 14, gap: 4 },
+  rejectionTitle: { color: colors.danger, fontSize: 14, fontWeight: "700" },
   companyList: { gap: 8 },
   companyChoice: { borderColor: colors.border, borderWidth: 1, borderRadius: 10, padding: 12 },
   companyChoiceActive: { borderColor: colors.primary, backgroundColor: colors.panel },
