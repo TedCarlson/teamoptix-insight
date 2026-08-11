@@ -4,7 +4,6 @@ import * as SQLite from "expo-sqlite";
 
 import {
   assertTenantBatch,
-  assertPointWithinDutyWindow,
   pointDisposition,
   recoverPendingBatch,
   retryDelayMs,
@@ -15,11 +14,18 @@ import type {
   BreadcrumbBatchPayload,
   BreadcrumbPoint,
   LocalSession,
+  InspectionSubmissionPayload,
+  LocalInspectionEvidence,
+  MobileOutboxCounts,
   OutboxCounts,
   PendingBatch,
+  PendingInspectionSubmission,
+  PendingMessageAcknowledgment,
+  PendingTimeOffAction,
+  TimeOffSubmissionPayload,
 } from "./types";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 3;
 const MAX_BATCH_SIZE = 100;
 const keyPattern = /^[0-9a-f]{64}$/;
 const uuidPattern = /^[0-9a-f-]{36}$/i;
@@ -149,6 +155,62 @@ export class EdgeOutbox {
       );
       CREATE INDEX IF NOT EXISTS breadcrumb_batch_pending_idx
         ON breadcrumb_batch_outbox(tenant_key, state, next_attempt_at);
+      CREATE TABLE IF NOT EXISTS inspection_draft_local (
+        tenant_key TEXT PRIMARY KEY NOT NULL,
+        draft_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS inspection_submission_outbox (
+        submission_id TEXT PRIMARY KEY NOT NULL,
+        tenant_key TEXT NOT NULL,
+        company_slug TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        evidence_json TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'PENDING'
+          CHECK (state IN ('PENDING', 'ACKNOWLEDGED')),
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at TEXT NOT NULL,
+        last_error TEXT,
+        server_inspection_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS inspection_submission_pending_idx
+        ON inspection_submission_outbox(tenant_key, state, next_attempt_at);
+      CREATE TABLE IF NOT EXISTS message_ack_outbox (
+        tenant_key TEXT NOT NULL,
+        message_id TEXT NOT NULL,
+        profile_id TEXT NOT NULL,
+        queued_at TEXT NOT NULL,
+        last_error TEXT,
+        PRIMARY KEY (tenant_key, message_id)
+      );
+      CREATE TABLE IF NOT EXISTS time_off_action_outbox (
+        action_id TEXT PRIMARY KEY NOT NULL,
+        tenant_key TEXT NOT NULL,
+        company_slug TEXT NOT NULL,
+        roster_member_id TEXT NOT NULL,
+        action_type TEXT NOT NULL CHECK (action_type IN ('SUBMIT', 'WITHDRAW')),
+        request_id TEXT,
+        payload_json TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'PENDING'
+          CHECK (state IN ('PENDING', 'ACKNOWLEDGED')),
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at TEXT NOT NULL,
+        last_error TEXT,
+        server_request_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS time_off_action_pending_idx
+        ON time_off_action_outbox(tenant_key, state, next_attempt_at);
+      CREATE TABLE IF NOT EXISTS mobile_surface_cache (
+        tenant_key TEXT NOT NULL,
+        cache_key TEXT NOT NULL,
+        value_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (tenant_key, cache_key)
+      );
     `);
     await db.runAsync(
       "INSERT OR REPLACE INTO outbox_meta(key, value) VALUES ('schema_version', ?)",
@@ -296,11 +358,6 @@ export class EdgeOutbox {
     if (!session || session.deviceEndedAt) {
       throw new Error("Points may only be captured during an open duty session.");
     }
-    assertPointWithinDutyWindow(
-      point.deviceCapturedAt,
-      session.deviceStartedAt,
-      session.deviceEndedAt,
-    );
     await this.db.runAsync(
       `INSERT INTO breadcrumb_point_outbox (
         point_id, session_id, tenant_key, device_captured_at, latitude,
@@ -502,5 +559,400 @@ export class EdgeOutbox {
           .filter((code): code is string => Boolean(code)),
       ),
     );
+  }
+
+  async saveInspectionDraft(tenantKey: string, draft: unknown) {
+    await this.db.runAsync(
+      `INSERT INTO inspection_draft_local(tenant_key, draft_json, updated_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(tenant_key) DO UPDATE SET
+         draft_json = excluded.draft_json,
+         updated_at = excluded.updated_at`,
+      tenantKey,
+      JSON.stringify(draft),
+      new Date().toISOString(),
+    );
+  }
+
+  async inspectionDraft<T>(tenantKey: string): Promise<T | null> {
+    const row = await this.db.getFirstAsync<{ draft_json: string }>(
+      "SELECT draft_json FROM inspection_draft_local WHERE tenant_key = ?",
+      tenantKey,
+    );
+    return row ? (JSON.parse(row.draft_json) as T) : null;
+  }
+
+  async clearInspectionDraft(tenantKey: string) {
+    await this.db.runAsync(
+      "DELETE FROM inspection_draft_local WHERE tenant_key = ?",
+      tenantKey,
+    );
+  }
+
+  async enqueueInspectionSubmission(
+    tenantKey: string,
+    companySlug: string,
+    payload: InspectionSubmissionPayload,
+    evidence: LocalInspectionEvidence[],
+  ) {
+    const submissionId = Crypto.randomUUID();
+    const now = new Date().toISOString();
+    await this.db.runAsync(
+      `INSERT INTO inspection_submission_outbox(
+        submission_id, tenant_key, company_slug, payload_json, evidence_json,
+        state, next_attempt_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?, ?)`,
+      submissionId,
+      tenantKey,
+      companySlug,
+      JSON.stringify(payload),
+      JSON.stringify(evidence),
+      now,
+      now,
+      now,
+    );
+    return submissionId;
+  }
+
+  async pendingInspectionSubmissions(tenantKey: string) {
+    const rows = await this.db.getAllAsync<{
+      submission_id: string;
+      tenant_key: string;
+      company_slug: string;
+      payload_json: string;
+      evidence_json: string;
+      attempt_count: number;
+      next_attempt_at: string;
+    }>(
+      `SELECT submission_id, tenant_key, company_slug, payload_json,
+              evidence_json, attempt_count, next_attempt_at
+       FROM inspection_submission_outbox
+       WHERE tenant_key = ? AND state = 'PENDING' AND next_attempt_at <= ?
+       ORDER BY created_at`,
+      tenantKey,
+      new Date().toISOString(),
+    );
+    return rows.map((row): PendingInspectionSubmission => ({
+      submissionId: row.submission_id,
+      tenantKey: row.tenant_key,
+      companySlug: row.company_slug,
+      payload: JSON.parse(row.payload_json) as InspectionSubmissionPayload,
+      evidence: JSON.parse(row.evidence_json) as LocalInspectionEvidence[],
+      attemptCount: row.attempt_count,
+      nextAttemptAt: row.next_attempt_at,
+    }));
+  }
+
+  async markInspectionAcknowledged(
+    tenantKey: string,
+    submissionId: string,
+    serverInspectionId: string,
+  ) {
+    await this.db.runAsync(
+      `UPDATE inspection_submission_outbox
+       SET state = 'ACKNOWLEDGED', server_inspection_id = ?, last_error = NULL,
+           updated_at = ?
+       WHERE tenant_key = ? AND submission_id = ?`,
+      serverInspectionId,
+      new Date().toISOString(),
+      tenantKey,
+      submissionId,
+    );
+  }
+
+  async markInspectionFailed(
+    submission: PendingInspectionSubmission,
+    error: string,
+  ) {
+    const attempts = submission.attemptCount + 1;
+    const next = new Date(Date.now() + retryDelayMs(attempts)).toISOString();
+    await this.db.runAsync(
+      `UPDATE inspection_submission_outbox
+       SET attempt_count = ?, next_attempt_at = ?, last_error = ?, updated_at = ?
+       WHERE tenant_key = ? AND submission_id = ?`,
+      attempts,
+      next,
+      error,
+      new Date().toISOString(),
+      submission.tenantKey,
+      submission.submissionId,
+    );
+  }
+
+  async enqueueMessageAcknowledgment(
+    tenantKey: string,
+    messageId: string,
+    profileId: string,
+  ) {
+    const now = new Date().toISOString();
+    await this.db.runAsync(
+      `INSERT INTO message_ack_outbox(
+        tenant_key, message_id, profile_id, queued_at, last_error
+      ) VALUES (?, ?, ?, ?, NULL)
+      ON CONFLICT(tenant_key, message_id) DO UPDATE SET
+        profile_id = excluded.profile_id,
+        queued_at = excluded.queued_at,
+        last_error = NULL`,
+      tenantKey,
+      messageId,
+      profileId,
+      now,
+    );
+  }
+
+  async pendingMessageAcknowledgments(tenantKey: string) {
+    const rows = await this.db.getAllAsync<{
+      tenant_key: string;
+      message_id: string;
+      profile_id: string;
+      queued_at: string;
+    }>(
+      `SELECT tenant_key, message_id, profile_id, queued_at
+       FROM message_ack_outbox WHERE tenant_key = ? ORDER BY queued_at`,
+      tenantKey,
+    );
+    return rows.map((row): PendingMessageAcknowledgment => ({
+      tenantKey: row.tenant_key,
+      messageId: row.message_id,
+      profileId: row.profile_id,
+      queuedAt: row.queued_at,
+    }));
+  }
+
+  async markMessageAcknowledged(tenantKey: string, messageId: string) {
+    await this.db.runAsync(
+      "DELETE FROM message_ack_outbox WHERE tenant_key = ? AND message_id = ?",
+      tenantKey,
+      messageId,
+    );
+  }
+
+  async markMessageAcknowledgmentFailed(
+    tenantKey: string,
+    messageId: string,
+    error: string,
+  ) {
+    await this.db.runAsync(
+      `UPDATE message_ack_outbox SET last_error = ?
+       WHERE tenant_key = ? AND message_id = ?`,
+      error,
+      tenantKey,
+      messageId,
+    );
+  }
+
+  async enqueueTimeOffSubmission(
+    tenantKey: string,
+    companySlug: string,
+    rosterMemberId: string,
+    payload: TimeOffSubmissionPayload,
+  ) {
+    const actionId = Crypto.randomUUID();
+    const now = new Date().toISOString();
+    await this.db.runAsync(
+      `INSERT INTO time_off_action_outbox(
+        action_id, tenant_key, company_slug, roster_member_id, action_type,
+        request_id, payload_json, state, next_attempt_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, 'SUBMIT', NULL, ?, 'PENDING', ?, ?, ?)`,
+      actionId,
+      tenantKey,
+      companySlug,
+      rosterMemberId,
+      JSON.stringify(payload),
+      now,
+      now,
+      now,
+    );
+    return actionId;
+  }
+
+  async enqueueTimeOffWithdrawal(
+    tenantKey: string,
+    companySlug: string,
+    rosterMemberId: string,
+    requestId: string,
+    intentConfirmation: TimeOffSubmissionPayload["intent_confirmation"],
+  ) {
+    const actionId = Crypto.randomUUID();
+    const now = new Date().toISOString();
+    await this.db.runAsync(
+      `INSERT INTO time_off_action_outbox(
+        action_id, tenant_key, company_slug, roster_member_id, action_type,
+        request_id, payload_json, state, next_attempt_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, 'WITHDRAW', ?, ?, 'PENDING', ?, ?, ?)`,
+      actionId,
+      tenantKey,
+      companySlug,
+      rosterMemberId,
+      requestId,
+      JSON.stringify({ intent_confirmation: intentConfirmation }),
+      now,
+      now,
+      now,
+    );
+    return actionId;
+  }
+
+  async pendingTimeOffActions(tenantKey: string) {
+    const rows = await this.db.getAllAsync<{
+      action_id: string;
+      tenant_key: string;
+      company_slug: string;
+      roster_member_id: string;
+      action_type: "SUBMIT" | "WITHDRAW";
+      request_id: string | null;
+      payload_json: string;
+      attempt_count: number;
+      created_at: string;
+      next_attempt_at: string;
+    }>(
+      `SELECT action_id, tenant_key, company_slug, roster_member_id,
+              action_type, request_id, payload_json, attempt_count, created_at,
+              next_attempt_at
+       FROM time_off_action_outbox
+       WHERE tenant_key = ? AND state = 'PENDING' AND next_attempt_at <= ?
+       ORDER BY created_at`,
+      tenantKey,
+      new Date().toISOString(),
+    );
+    return rows.map((row): PendingTimeOffAction => ({
+      actionId: row.action_id,
+      tenantKey: row.tenant_key,
+      companySlug: row.company_slug,
+      rosterMemberId: row.roster_member_id,
+      actionType: row.action_type,
+      requestId: row.request_id,
+      payload: JSON.parse(row.payload_json) as PendingTimeOffAction["payload"],
+      attemptCount: row.attempt_count,
+      createdAt: row.created_at,
+      nextAttemptAt: row.next_attempt_at,
+    }));
+  }
+
+  async allPendingTimeOffActions(tenantKey: string) {
+    const rows = await this.db.getAllAsync<{
+      action_id: string;
+      tenant_key: string;
+      company_slug: string;
+      roster_member_id: string;
+      action_type: "SUBMIT" | "WITHDRAW";
+      request_id: string | null;
+      payload_json: string;
+      attempt_count: number;
+      created_at: string;
+      next_attempt_at: string;
+    }>(
+      `SELECT action_id, tenant_key, company_slug, roster_member_id,
+              action_type, request_id, payload_json, attempt_count, created_at,
+              next_attempt_at
+       FROM time_off_action_outbox
+       WHERE tenant_key = ? AND state = 'PENDING'
+       ORDER BY created_at`,
+      tenantKey,
+    );
+    return rows.map((row): PendingTimeOffAction => ({
+      actionId: row.action_id,
+      tenantKey: row.tenant_key,
+      companySlug: row.company_slug,
+      rosterMemberId: row.roster_member_id,
+      actionType: row.action_type,
+      requestId: row.request_id,
+      payload: JSON.parse(row.payload_json) as PendingTimeOffAction["payload"],
+      attemptCount: row.attempt_count,
+      createdAt: row.created_at,
+      nextAttemptAt: row.next_attempt_at,
+    }));
+  }
+
+  async markTimeOffActionAcknowledged(
+    tenantKey: string,
+    actionId: string,
+    serverRequestId: string,
+  ) {
+    await this.db.runAsync(
+      `UPDATE time_off_action_outbox
+       SET state = 'ACKNOWLEDGED', server_request_id = ?, last_error = NULL,
+           updated_at = ?
+       WHERE tenant_key = ? AND action_id = ?`,
+      serverRequestId,
+      new Date().toISOString(),
+      tenantKey,
+      actionId,
+    );
+  }
+
+  async markTimeOffActionFailed(action: PendingTimeOffAction, error: string) {
+    const attempts = action.attemptCount + 1;
+    const next = new Date(Date.now() + retryDelayMs(attempts)).toISOString();
+    await this.db.runAsync(
+      `UPDATE time_off_action_outbox
+       SET attempt_count = ?, next_attempt_at = ?, last_error = ?, updated_at = ?
+       WHERE tenant_key = ? AND action_id = ?`,
+      attempts,
+      next,
+      error,
+      new Date().toISOString(),
+      action.tenantKey,
+      action.actionId,
+    );
+  }
+
+  async setCachedSurface(tenantKey: string, cacheKey: string, value: unknown) {
+    await this.db.runAsync(
+      `INSERT INTO mobile_surface_cache(tenant_key, cache_key, value_json, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(tenant_key, cache_key) DO UPDATE SET
+         value_json = excluded.value_json,
+         updated_at = excluded.updated_at`,
+      tenantKey,
+      cacheKey,
+      JSON.stringify(value),
+      new Date().toISOString(),
+    );
+  }
+
+  async cachedSurface<T>(tenantKey: string, cacheKey: string): Promise<T | null> {
+    const row = await this.db.getFirstAsync<{ value_json: string }>(
+      `SELECT value_json FROM mobile_surface_cache
+       WHERE tenant_key = ? AND cache_key = ?`,
+      tenantKey,
+      cacheKey,
+    );
+    return row ? (JSON.parse(row.value_json) as T) : null;
+  }
+
+  async mobileCounts(tenantKey: string): Promise<MobileOutboxCounts> {
+    const breadcrumb = await this.counts(tenantKey);
+    const row = await this.db.getFirstAsync<{
+      inspections: number;
+      acknowledgments: number;
+      time_off_actions: number;
+    }>(
+      `SELECT
+        (SELECT COUNT(*) FROM inspection_submission_outbox
+         WHERE tenant_key = ? AND state = 'PENDING') AS inspections,
+        (SELECT COUNT(*) FROM message_ack_outbox
+         WHERE tenant_key = ?) AS acknowledgments,
+        (SELECT COUNT(*) FROM time_off_action_outbox
+         WHERE tenant_key = ? AND state = 'PENDING') AS time_off_actions`,
+      tenantKey,
+      tenantKey,
+      tenantKey,
+    );
+    const pendingInspections = row?.inspections ?? 0;
+    const pendingAcknowledgments = row?.acknowledgments ?? 0;
+    const pendingTimeOffActions = row?.time_off_actions ?? 0;
+    return {
+      ...breadcrumb,
+      pendingInspections,
+      pendingAcknowledgments,
+      pendingTimeOffActions,
+      totalPending:
+        breadcrumb.queued +
+        breadcrumb.pendingBatches +
+        pendingInspections +
+        pendingAcknowledgments +
+        pendingTimeOffActions,
+    };
   }
 }
