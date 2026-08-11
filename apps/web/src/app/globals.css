@@ -4800,6 +4800,233 @@ button.payroll-ledger-status {
   white-space: nowrap;
 }
 
+/* Mobile continuity workspace */
+.mobile-workspace-page {
+  width: min(720px, calc(100% - 1.25rem));
+  display: grid;
+  gap: 1.25rem;
+  margin: 0 auto;
+  padding: 0.45rem 0 1.5rem;
+}
+
+.mobile-workspace-hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 24px;
+  padding: 1.35rem;
+  background:
+    radial-gradient(circle at 100% 0, rgba(96, 165, 250, 0.2), transparent 42%),
+    linear-gradient(145deg, #ffffff, #eff6ff);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.07);
+}
+
+.mobile-workspace-hero h1 {
+  max-width: 560px;
+  margin: 0.25rem 0 0.55rem;
+  color: #0f172a;
+  font-size: clamp(1.65rem, 7vw, 2.35rem);
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+}
+
+.mobile-workspace-hero > p:not(.mobile-workspace-eyebrow) {
+  max-width: 590px;
+  margin: 0;
+  color: #475569;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.mobile-workspace-eyebrow {
+  margin: 0;
+  color: #2563eb;
+  font-size: 0.67rem;
+  font-weight: 950;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.mobile-workspace-access-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1.1rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  padding-top: 0.9rem;
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.mobile-workspace-access-summary strong {
+  color: #1d4ed8;
+}
+
+.mobile-workspace-group {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.mobile-workspace-group__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.2rem;
+}
+
+.mobile-workspace-group__heading h2 {
+  margin: 0;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 950;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.mobile-workspace-group__heading > span {
+  min-width: 1.55rem;
+  border-radius: 999px;
+  padding: 0.18rem 0.45rem;
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.mobile-workspace-grid {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.mobile-workspace-card {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 2.75rem minmax(0, 1fr) auto;
+  grid-template-areas:
+    "icon copy arrow"
+    "icon status arrow";
+  align-items: center;
+  column-gap: 0.8rem;
+  row-gap: 0.45rem;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 18px;
+  padding: 0.9rem;
+  background: #ffffff;
+  color: inherit;
+  text-decoration: none;
+  box-shadow: 0 7px 20px rgba(15, 23, 42, 0.045);
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.mobile-workspace-card:hover,
+.mobile-workspace-card:focus-visible {
+  border-color: rgba(37, 99, 235, 0.45);
+  box-shadow: 0 12px 28px rgba(37, 99, 235, 0.1);
+  transform: translateY(-1px);
+}
+
+.mobile-workspace-card__icon {
+  grid-area: icon;
+  width: 2.75rem;
+  height: 2.75rem;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.mobile-workspace-card__copy {
+  min-width: 0;
+  grid-area: copy;
+  display: grid;
+  gap: 0.18rem;
+}
+
+.mobile-workspace-card__copy strong {
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+
+.mobile-workspace-card__copy small {
+  color: #64748b;
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.mobile-workspace-readiness {
+  width: max-content;
+  grid-area: status;
+  border-radius: 999px;
+  padding: 0.23rem 0.5rem;
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+}
+
+.mobile-workspace-readiness--mobile_bridge {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.mobile-workspace-readiness--web_workspace {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.mobile-workspace-card__arrow {
+  grid-area: arrow;
+  color: #94a3b8;
+  font-size: 1.5rem;
+  font-weight: 500;
+}
+
+.mobile-workspace-note,
+.mobile-workspace-empty {
+  border: 1px dashed rgba(100, 116, 139, 0.32);
+  border-radius: 18px;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.6);
+  color: #475569;
+}
+
+.mobile-workspace-note strong,
+.mobile-workspace-empty strong {
+  color: #334155;
+  font-size: 0.82rem;
+}
+
+.mobile-workspace-note p,
+.mobile-workspace-empty p,
+.mobile-workspace-loading {
+  margin: 0.25rem 0 0;
+  color: #64748b;
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.mobile-workspace-back {
+  display: inline-block;
+  margin-bottom: 1rem;
+  color: #1d4ed8;
+  font-size: 0.78rem;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+@media (min-width: 640px) {
+  .mobile-workspace-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mobile-schedule-bridge .mobile-workspace-group:first-of-type .mobile-workspace-card {
+    max-width: calc(50% - 0.325rem);
+  }
+}
+
 .app-drawer__section > .app-drawer__item,
 .app-drawer__section > .app-drawer__item-group {
   width: calc(100% - 1.35rem);
