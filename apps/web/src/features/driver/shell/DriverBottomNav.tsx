@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { BarChart3, CalendarDays, ClipboardCheck, Home, MessageSquareText } from "lucide-react";
+import { BarChart3, CalendarDays, ClipboardCheck, Grid2X2, Home, MessageSquareText } from "lucide-react";
 import { usePathname } from "next/navigation";
+import { useAccess } from "@/features/access/AccessProvider";
+import { hasMobileWorkspaceAccess } from "@/features/mobile-workspace/mobileWorkspace";
 
 type DriverBottomNavProps = {
   slug: string;
 };
 
-const navItems = [
+const driverNavItems = [
   {
     key: "home",
     label: "Home",
@@ -43,12 +45,35 @@ const navItems = [
 
 export function DriverBottomNav({ slug }: DriverBottomNavProps) {
   const pathname = usePathname();
+  const access = useAccess();
+  const hasWorkspaceTools = hasMobileWorkspaceAccess(access, slug);
+  const navItems = hasWorkspaceTools
+    ? [
+        driverNavItems[0],
+        driverNavItems[1],
+        {
+          ...driverNavItems[2],
+          href: (companySlug: string) => `/company/${companySlug}/mobile/schedule`,
+        },
+        driverNavItems[3],
+        {
+          key: "tools",
+          label: "Tools",
+          Icon: Grid2X2,
+          href: (companySlug: string) => `/company/${companySlug}/mobile`,
+        },
+      ]
+    : driverNavItems;
 
   return (
     <nav className="driver-bottom-nav" aria-label="Driver navigation">
       {navItems.map((item) => {
         const href = item.href(slug);
-        const active = pathname === href;
+        const active = item.key === "tools"
+          ? pathname === href
+          : item.key === "schedule" && hasWorkspaceTools
+            ? pathname === href || pathname?.startsWith(`/company/${slug}/schedule`)
+            : pathname === href;
         const Icon = item.Icon;
 
         return (

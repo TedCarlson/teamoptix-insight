@@ -24,7 +24,9 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const pathname = usePathname() ?? "";
   const isDriverShellRoute =
     pathname === `/company/${slug}/home` ||
-    pathname.startsWith(`/company/${slug}/driver/`);
+    pathname.startsWith(`/company/${slug}/driver/`) ||
+    pathname === `/company/${slug}/mobile` ||
+    pathname.startsWith(`/company/${slug}/mobile/`);
 
   const access = useAccess();
   const [legalActionCount, setLegalActionCount] = useState(0);
@@ -68,6 +70,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const canAccessOpportunities =
     canAccessCompanyWorkspace(access, slug, "opportunity_analysis");
   const canAccessFleet = canAccessCompanyWorkspace(access, slug, "fleet");
+  const canAccessSchedule = canAccessCompanyWorkspace(access, slug, "schedule");
 
   const base = `/company/${slug}`;
   const announcementsBase = `${base}/announcements`;
@@ -105,13 +108,21 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
         },
         { label: "Operations", href: operationsBase, match: (path) => path.startsWith(operationsBase) || path.startsWith(`${base}/dispatch`) || path === `${base}/prior-day` },
         { label: "People", href: peopleBase, match: (path) => path.startsWith(peopleBase) || path.startsWith(`${base}/hiring`) },
-        { label: "Schedule", href: scheduleBase, match: (path) => path.startsWith(scheduleBase) },
+        {
+          label: "Schedule",
+          href: canAccessSchedule ? scheduleBase : `${base}/driver/schedule`,
+          match: (path) => path.startsWith(scheduleBase) || path.startsWith(`${base}/driver/schedule`),
+        },
         { label: "Fleet", href: fleetBase, match: (path) => path.startsWith(fleetBase) },
         { label: "Routes", href: `${base}/routes`, match: (path) => path.startsWith(`${base}/routes`) },
       ]
     : [
         { label: "Home", href: homeBase, match: (path) => path === homeBase || path.startsWith(announcementsBase) },
-        { label: "Schedule", href: scheduleBase, match: (path) => path.startsWith(scheduleBase) },
+        {
+          label: "Schedule",
+          href: canAccessSchedule ? scheduleBase : `${base}/driver/schedule`,
+          match: (path) => path.startsWith(scheduleBase) || path.startsWith(`${base}/driver/schedule`),
+        },
         ...(canAccessOpportunities
           ? [{ label: "Opportunities", href: opportunitiesBase, match: (path: string) => path.startsWith(opportunitiesBase) }]
           : []),
@@ -338,7 +349,9 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     ? inHomeBranch
       ? homeSubItems
       : inScheduleBranch
-        ? [{ label: "My Schedule", href: scheduleBase, match: (path: string) => path === scheduleBase }]
+        ? canAccessSchedule
+          ? scheduleSubItems
+          : []
         : inFleetBranch && canAccessFleet
           ? fleetSubItems
         : []
