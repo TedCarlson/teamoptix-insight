@@ -10,47 +10,27 @@ import {
   View,
 } from "react-native";
 
-import type {
-  CompanyWorkspaceGrantKey,
-  DriverAccessContext,
-  ManagerAccessContext,
-} from "../domain/access";
+import type { DriverAccessContext, ManagerAccessContext } from "../domain/access";
 import type {
   ManagerCoverageStatus,
   ManagerScheduleDay,
   ManagerScheduleSnapshot,
   ManagerTimeOffRequest,
 } from "../domain/managerSchedule";
+import {
+  managerWorkspaceSuite,
+  managerWorkspaceSuites,
+  type ManagerOperationsPhase,
+  type ManagerOperationsRoute,
+  type ManagerWorkspaceKey,
+  type ManagerWorkspaceSnapshot,
+  type ManagerWorkspaceSuite,
+  type ManagerWorkspaceTone,
+} from "../domain/managerWorkspace";
 import { AppHeader, Card, PrimaryButton, Screen, sharedStyles } from "../components/ui";
 import { colors } from "../theme";
 
 export type ManagerTabKey = "today" | "schedule" | "workspaces" | "messages";
-
-type WorkspaceDestination = {
-  grant: CompanyWorkspaceGrantKey;
-  code: string;
-  label: string;
-  detail: string;
-  path: string;
-  group: "Operations" | "Workforce" | "Business & Admin";
-};
-
-const destinations: WorkspaceDestination[] = [
-  { grant: "schedule", code: "SC", label: "Schedule", detail: "Coverage, overrides, and workbench", path: "/schedule", group: "Operations" },
-  { grant: "dispatch", code: "DP", label: "Dispatch", detail: "Dispatch posture and route assignments", path: "/operations/dispatch", group: "Operations" },
-  { grant: "routes", code: "RT", label: "Routes", detail: "Route records and route setup", path: "/routes", group: "Operations" },
-  { grant: "planning", code: "PL", label: "Planning", detail: "Operations planning workspace", path: "/operations/planning", group: "Operations" },
-  { grant: "delivery_window", code: "DW", label: "Delivery Window", detail: "In-day service and completion", path: "/operations/delivery-window", group: "Operations" },
-  { grant: "operations_uploads", code: "UP", label: "Operations Uploads", detail: "DSW, DRO, and FCC reports", path: "/operations", group: "Operations" },
-  { grant: "reports", code: "RP", label: "Ops Reports", detail: "Previous-day operational reporting", path: "/prior-day", group: "Operations" },
-  { grant: "fleet", code: "FL", label: "Fleet", detail: "Vehicles, maintenance, and inspections", path: "/fleet", group: "Operations" },
-  { grant: "roster", code: "RO", label: "Roster", detail: "Active and former workforce records", path: "/people/roster", group: "Workforce" },
-  { grant: "hiring", code: "HR", label: "Hiring", detail: "Candidate pipeline and interviews", path: "/hiring", group: "Workforce" },
-  { grant: "payroll", code: "PY", label: "Payroll", detail: "Summaries, compliance, and time tracking", path: "/payroll/summary", group: "Business & Admin" },
-  { grant: "admin_config", code: "AD", label: "Company Config", detail: "Company and operations settings", path: "/config", group: "Business & Admin" },
-  { grant: "grant_management", code: "AC", label: "Access Management", detail: "People and workspace grants", path: "/config/access", group: "Business & Admin" },
-  { grant: "opportunity_analysis", code: "OA", label: "Opportunity Analysis", detail: "Prospective service opportunities", path: "/opportunity-analysis", group: "Business & Admin" },
-];
 
 function AccessTile(props: {
   code: string;
@@ -111,7 +91,7 @@ export function ManagerHomeScreen(props: {
 }) {
   const hasSchedule = props.context.grants.includes("schedule");
   const hasOperations = props.context.grants.some((grant) =>
-    ["dispatch", "routes", "planning", "delivery_window", "operations_uploads", "reports"].includes(grant),
+    ["dispatch", "planning", "delivery_window", "operations_uploads", "reports"].includes(grant),
   );
   return (
     <Screen>
@@ -525,56 +505,383 @@ export function ManagerScheduleScreen(props: {
 export function ManagerWorkspacesScreen(props: {
   context: ManagerAccessContext;
   onOpenNativeSchedule: () => void;
-  onOpenWeb: (path: string) => void;
+  onOpenSuite: (key: ManagerWorkspaceKey) => void;
   onSettings: () => void;
 }) {
-  const allowed = destinations.filter((destination) => props.context.grants.includes(destination.grant));
-  const groups = ["Operations", "Workforce", "Business & Admin"] as const;
+  const suites = managerWorkspaceSuites(props.context);
   return (
     <ScrollView contentContainerStyle={styles.workspacePage} showsVerticalScrollIndicator={false}>
       <AppHeader companyName={props.context.company_name} eyebrow="INSIGHT · MANAGER" onSettings={props.onSettings} title="Workspaces" />
-      <Text style={sharedStyles.muted}>Your company grants control every destination shown here.</Text>
-      {groups.map((group) => {
-        const items = allowed.filter((destination) => destination.group === group);
-        if (items.length === 0) return null;
-        return (
-          <View key={group} style={styles.workspaceGroup}>
-            <View style={styles.sectionHeading}>
-              <Text style={styles.sectionLabel}>{group}</Text>
-              <Text style={styles.sectionMeta}>{items.length}</Text>
-            </View>
-            {items.map((destination) => (
-              <AccessTile
-                code={destination.code}
-                detail={destination.detail}
-                key={destination.grant}
-                label={destination.label}
-                onPress={() => destination.grant === "schedule"
-                  ? props.onOpenNativeSchedule()
-                  : props.onOpenWeb(destination.path)}
-                trailing={destination.grant === "schedule" ? "NATIVE" : "WEB"}
-              />
-            ))}
-          </View>
-        );
-      })}
+      <Text style={sharedStyles.muted}>Every destination is grant-matched. Native read layers come first; browser workspaces remain available as fallback.</Text>
+      <View style={styles.nativeBanner}>
+        <Text style={styles.nativeBannerLabel}>MC-8 · PASS 1</Text>
+        <Text style={styles.nativeBannerTitle}>Manager surface suite</Text>
+        <Text style={styles.nativeBannerDetail}>{suites.length + (props.context.grants.includes("schedule") ? 1 : 0)} native workspace{(suites.length + (props.context.grants.includes("schedule") ? 1 : 0)) === 1 ? "" : "s"} in your scope</Text>
+      </View>
+      <View style={styles.workspaceGroup}>
+        <View style={styles.sectionHeading}>
+          <Text style={styles.sectionLabel}>Native workspaces</Text>
+          <Text style={styles.sectionMeta}>READ LAYER</Text>
+        </View>
+        {props.context.grants.includes("schedule") ? (
+          <AccessTile code="SC" detail="Coverage, overrides, and workbench" label="Schedule" onPress={props.onOpenNativeSchedule} trailing="NATIVE" />
+        ) : null}
+        {suites.map((suite) => (
+          <AccessTile
+            code={suite.code}
+            detail={suite.detail}
+            key={suite.key}
+            label={suite.label}
+            onPress={() => props.onOpenSuite(suite.key)}
+            trailing="NATIVE"
+          />
+        ))}
+      </View>
     </ScrollView>
+  );
+}
+
+function metricStyle(tone: ManagerWorkspaceTone | undefined) {
+  if (tone === "danger") return styles.metricDanger;
+  if (tone === "warning") return styles.metricWarning;
+  if (tone === "success") return styles.metricSuccess;
+  return styles.metricDefault;
+}
+
+function readAccentStyle(tone: ManagerWorkspaceTone | undefined) {
+  if (tone === "danger") return styles.readAccentDanger;
+  if (tone === "warning") return styles.readAccentWarning;
+  if (tone === "success") return styles.readAccentSuccess;
+  return styles.readAccentDefault;
+}
+
+function WorkspaceSnapshotView(props: {
+  error: string | null;
+  loading: boolean;
+  onRetry: () => void;
+  snapshot: ManagerWorkspaceSnapshot | null;
+}) {
+  const [selectedFilter, setSelectedFilter] = useState("all");
+  const filters = props.snapshot?.filters ?? [];
+  const effectiveFilter = filters.some((filter) => filter.key === selectedFilter)
+    ? selectedFilter
+    : filters[0]?.key ?? "all";
+  const visibleItems = (props.snapshot?.items ?? []).filter(
+    (item) => effectiveFilter === "all" || item.filterKeys?.includes(effectiveFilter),
+  );
+
+  if (props.loading) {
+    return (
+      <View style={styles.loadingCard}>
+        <ActivityIndicator color={colors.primary} />
+        <Text style={sharedStyles.muted}>Loading the governed read layer…</Text>
+      </View>
+    );
+  }
+  if (props.error) {
+    return (
+      <Card tone="danger">
+        <Text style={sharedStyles.bodyStrong}>This read layer is unavailable</Text>
+        <Text style={sharedStyles.muted}>{props.error}</Text>
+        <PrimaryButton compact label="Retry" onPress={props.onRetry} secondary />
+      </Card>
+    );
+  }
+  if (!props.snapshot) return null;
+  return (
+    <>
+      {props.snapshot.description ? <Text style={styles.readDescription}>{props.snapshot.description}</Text> : null}
+      {props.snapshot.statusText ? (
+        <View style={styles.readStatus}>
+          <View style={styles.successDot} />
+          <Text style={styles.readStatusText}>{props.snapshot.statusText}</Text>
+        </View>
+      ) : null}
+      <View style={styles.metricBand}>
+        {props.snapshot.metrics.map((metric) => (
+          <View key={metric.label} style={[styles.metricCard, metricStyle(metric.tone)]}>
+            <Text numberOfLines={1} style={styles.metricLabel}>{metric.label}</Text>
+            <Text adjustsFontSizeToFit minimumFontScale={0.72} numberOfLines={1} style={styles.metricValue}>{metric.value}</Text>
+          </View>
+        ))}
+      </View>
+      {filters.length > 1 ? (
+        <ScrollView contentContainerStyle={styles.readFilters} horizontal showsHorizontalScrollIndicator={false}>
+          {filters.map((filter) => {
+            const active = filter.key === effectiveFilter;
+            const count = filter.key === "all"
+              ? props.snapshot?.items.length ?? 0
+              : props.snapshot?.items.filter((item) => item.filterKeys?.includes(filter.key)).length ?? 0;
+            return (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                key={filter.key}
+                onPress={() => setSelectedFilter(filter.key)}
+                style={({ pressed }) => [styles.readFilter, active && styles.readFilterActive, pressed && styles.pressed]}
+              >
+                <Text style={[styles.readFilterText, active && styles.readFilterTextActive]}>{filter.label}</Text>
+                <View style={[styles.readFilterCount, active && styles.readFilterCountActive]}>
+                  <Text style={[styles.readFilterCountText, active && styles.readFilterCountTextActive]}>{count}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
+      <View style={styles.sectionHeading}>
+        <Text style={styles.sectionLabel}>{props.snapshot.sectionLabel}</Text>
+        <Text style={styles.sectionMeta}>{visibleItems.length}</Text>
+      </View>
+      {visibleItems.length === 0 ? (
+        <Card>
+          <Text style={sharedStyles.bodyStrong}>Nothing to review</Text>
+          <Text style={sharedStyles.muted}>{props.snapshot.items.length === 0 ? props.snapshot.emptyMessage : "No records match this view."}</Text>
+        </Card>
+      ) : visibleItems.map((item) => (
+        <View key={item.id} style={styles.readCard}>
+          <View style={[styles.readAccent, readAccentStyle(item.tone)]} />
+          <View style={styles.readCardHeader}>
+            <Text numberOfLines={1} style={styles.readEyebrow}>{item.eyebrow || "Current"}</Text>
+            {item.meta ? <Text numberOfLines={1} style={styles.readMeta}>{item.meta}</Text> : null}
+          </View>
+          <Text style={styles.readCardTitle}>{item.title}</Text>
+          <Text numberOfLines={3} style={styles.readCardDetail}>{item.detail}</Text>
+          {item.facts?.length ? (
+            <View style={styles.readFacts}>
+              {item.facts.map((fact) => (
+                <View key={`${item.id}-${fact.label}`} style={styles.readFact}>
+                  <Text numberOfLines={1} style={styles.readFactLabel}>{fact.label}</Text>
+                  <Text numberOfLines={2} style={styles.readFactValue}>{fact.value}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+          {item.chips?.length ? (
+            <View style={styles.readChips}>
+              {item.chips.map((chip) => (
+                <View key={`${item.id}-${chip}`} style={styles.readChip}>
+                  <Text style={styles.readChipText}>{chip}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      ))}
+    </>
+  );
+}
+
+const operationsPhaseCopy: Record<ManagerOperationsPhase, { label: string; tone: "active" | "complete" | "attention" }> = {
+  unassigned: { label: "Unassigned", tone: "attention" },
+  waiting: { label: "Waiting", tone: "attention" },
+  arrived: { label: "Arrived", tone: "active" },
+  on_job: { label: "On job", tone: "active" },
+  end_of_day: { label: "End of day", tone: "complete" },
+};
+
+function OperationsControl(props: { label: string; onPress: () => void; primary?: boolean }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={props.onPress}
+      style={({ pressed }) => [styles.operationsControl, props.primary && styles.operationsControlPrimary, pressed && styles.pressed]}
+    >
+      <Text style={[styles.operationsControlText, props.primary && styles.operationsControlTextPrimary]}>{props.label}</Text>
+    </Pressable>
+  );
+}
+
+function OperationsMetric(props: { label: string; value: string; express?: ManagerOperationsRoute }) {
+  return (
+    <View style={[styles.operationsMetric, props.express && props.express.expressOpen > 0 && styles.operationsMetricRisk]}>
+      {props.express ? (
+        <Text numberOfLines={1} style={styles.operationsMetricValue}>
+          <Text style={styles.expressComplete}>{props.express.expressComplete}</Text>
+          <Text style={styles.expressDivider}> / </Text>
+          <Text style={styles.expressAttempted}>{props.express.expressAttempted}</Text>
+          <Text style={styles.expressDivider}> / </Text>
+          <Text style={styles.expressOpen}>{props.express.expressOpen}</Text>
+        </Text>
+      ) : <Text numberOfLines={1} style={styles.operationsMetricValue}>{props.value}</Text>}
+      <Text style={styles.operationsMetricLabel}>{props.label}</Text>
+    </View>
+  );
+}
+
+function OperationsRouteCard(props: { route: ManagerOperationsRoute }) {
+  const presentation = operationsPhaseCopy[props.route.phase];
+  const routeIdentity = props.route.workArea && !props.route.routeName.includes(props.route.workArea)
+    ? `${props.route.routeName} · ${props.route.workArea}`
+    : props.route.routeName;
+  const stopsPercent = props.route.plannedStops > 0
+    ? Math.min(100, Math.round((props.route.completedStops / props.route.plannedStops) * 100))
+    : props.route.progressPercent;
+  return (
+    <View style={[
+      styles.operationsRouteCard,
+      presentation.tone === "active" && styles.operationsRouteCardActive,
+      presentation.tone === "complete" && styles.operationsRouteCardComplete,
+      presentation.tone === "attention" && styles.operationsRouteCardAttention,
+    ]}>
+      <View style={styles.operationsRouteHeading}>
+        <Text numberOfLines={1} style={styles.operationsRouteIdentity}>{routeIdentity}</Text>
+        <View style={styles.operationsPostureBlock}>
+          <Text style={[
+            styles.operationsPosture,
+            presentation.tone === "complete" && styles.operationsPostureComplete,
+            presentation.tone === "attention" && styles.operationsPostureAttention,
+          ]}>● {presentation.label}</Text>
+          {props.route.phase === "end_of_day" ? (
+            <Text style={styles.operationsPostureMeta}>{stopsPercent}% stops{props.route.ilsPercent == null ? "" : ` · ${props.route.ilsPercent.toFixed(1).replace(/\.0$/, "")}% ILS`}</Text>
+          ) : null}
+        </View>
+      </View>
+      <Text numberOfLines={1} style={styles.operationsDriver}>{props.route.driverName || "Needs driver"}</Text>
+      <View style={styles.operationsMetrics}>
+        <OperationsMetric label="Stops" value={`${props.route.completedStops}/${props.route.plannedStops || "—"}`} />
+        <OperationsMetric label="Packages" value={`${props.route.completedPackages}/${props.route.plannedPackages || "—"}`} />
+        <OperationsMetric label="PU" value={`${props.route.completedPickups}/${props.route.plannedPickups}`} />
+        <OperationsMetric express={props.route} label="Express" value="" />
+      </View>
+      <View style={styles.operationsProgress}>
+        <View style={[styles.operationsProgressFill, { width: `${props.route.progressPercent}%` }]} />
+        <Text style={[styles.operationsProgressTruck, { left: `${Math.min(94, props.route.progressPercent)}%` }]}>▰</Text>
+        <Text style={styles.operationsProgressFlag}>🏁</Text>
+      </View>
+    </View>
+  );
+}
+
+type OperationsFilter = "all" | "on_job" | "end_of_day" | "attention";
+
+function OperationsReadSurface(props: {
+  loading: boolean;
+  error: string | null;
+  snapshot: ManagerWorkspaceSnapshot | null;
+  onOpenWeb: () => void;
+  onRefresh: () => void;
+}) {
+  const [filter, setFilter] = useState<OperationsFilter>("all");
+  if (props.loading || props.error || !props.snapshot?.operations) {
+    return <WorkspaceSnapshotView error={props.error} loading={props.loading} onRetry={props.onRefresh} snapshot={props.snapshot} />;
+  }
+  const operations = props.snapshot.operations;
+  const counts: Record<OperationsFilter, number> = {
+    all: operations.routes.length,
+    on_job: operations.routes.filter((route) => route.phase === "on_job").length,
+    end_of_day: operations.routes.filter((route) => route.phase === "end_of_day").length,
+    attention: operations.routes.filter((route) => !["on_job", "end_of_day"].includes(route.phase)).length,
+  };
+  const visibleRoutes = operations.routes.filter((route) => {
+    if (filter === "all") return true;
+    if (filter === "attention") return !["on_job", "end_of_day"].includes(route.phase);
+    return route.phase === filter;
+  });
+  const filters: Array<{ key: OperationsFilter; label: string }> = [
+    { key: "all", label: "All" },
+    { key: "on_job", label: "On job" },
+    { key: "end_of_day", label: "End of day" },
+    { key: "attention", label: "Attention" },
+  ];
+  return (
+    <>
+      <ScrollView contentContainerStyle={styles.operationsControls} horizontal showsHorizontalScrollIndicator={false}>
+        <OperationsControl label="Action" onPress={props.onOpenWeb} primary />
+        <OperationsControl label="Compliance Report" onPress={props.onOpenWeb} />
+        <OperationsControl label="Express Report" onPress={props.onOpenWeb} />
+        <OperationsControl label="Attendance" onPress={props.onOpenWeb} />
+        <OperationsControl label="Refresh" onPress={props.onRefresh} />
+      </ScrollView>
+      <View style={styles.operationsStatus}>
+        <Text style={styles.operationsStatusTitle}>{operations.routes.length} routes · {operations.serviceDate}</Text>
+        <Text style={styles.operationsStatusDetail}>{operations.terminalCode ? `${operations.terminalCode} terminal · ` : ""}{operations.statusText}</Text>
+      </View>
+      <ScrollView contentContainerStyle={styles.operationsFilters} horizontal showsHorizontalScrollIndicator={false}>
+        {filters.filter((item) => item.key === "all" || counts[item.key] > 0).map((item) => (
+          <Pressable key={item.key} onPress={() => setFilter(item.key)} style={[styles.operationsFilter, filter === item.key && styles.operationsFilterActive]}>
+            <Text style={[styles.operationsFilterText, filter === item.key && styles.operationsFilterTextActive]}>{item.label}</Text>
+            <View style={[styles.operationsFilterCount, filter === item.key && styles.operationsFilterCountActive]}><Text style={[styles.operationsFilterCountText, filter === item.key && styles.operationsFilterCountTextActive]}>{counts[item.key]}</Text></View>
+          </Pressable>
+        ))}
+      </ScrollView>
+      <View style={styles.operationsRouteStack}>
+        {visibleRoutes.length ? visibleRoutes.map((route) => <OperationsRouteCard key={route.id} route={route} />) : (
+          <Card><Text style={sharedStyles.bodyStrong}>No matching routes</Text><Text style={sharedStyles.muted}>Choose another operating filter.</Text></Card>
+        )}
+      </View>
+    </>
+  );
+}
+
+export function ManagerWorkspaceDetailScreen(props: {
+  context: ManagerAccessContext;
+  error: string | null;
+  loading: boolean;
+  onBack: () => void;
+  onOpenWeb: (path: string) => void;
+  onRefresh: () => void;
+  onSettings: () => void;
+  snapshot: ManagerWorkspaceSnapshot | null;
+  suite: ManagerWorkspaceSuite;
+}) {
+  return (
+    <Screen>
+      <AppHeader companyName={props.context.company_name} eyebrow="INSIGHT · MANAGER" onSettings={props.onSettings} title={props.suite.label} />
+      <Pressable onPress={props.onBack}><Text style={styles.back}>‹ Workspaces</Text></Pressable>
+      {props.suite.key === "operations" ? (
+        <OperationsReadSurface error={props.error} loading={props.loading} onOpenWeb={() => props.onOpenWeb(props.suite.fallbackPath)} onRefresh={props.onRefresh} snapshot={props.snapshot} />
+      ) : (
+        <WorkspaceSnapshotView error={props.error} loading={props.loading} onRetry={props.onRefresh} snapshot={props.snapshot} />
+      )}
+      {props.suite.key !== "operations" ? (
+        <>
+          <View style={styles.sectionHeading}>
+            <Text style={styles.sectionLabel}>Surfaces</Text>
+            <Text style={styles.sectionMeta}>READ ONLY</Text>
+          </View>
+          {props.suite.children.map((child) => (
+            <AccessTile
+              code={child.code}
+              detail={child.detail}
+              key={child.label}
+              label={child.label}
+              onPress={() => props.onOpenWeb(child.path)}
+              trailing="WEB FALLBACK"
+            />
+          ))}
+          <Card>
+            <Text style={sharedStyles.bodyStrong}>Pass 1 boundary</Text>
+            <Text style={sharedStyles.muted}>This native surface is optimized for mobile review. The browser fallback preserves full desktop controls until its management client moves into Pass 2.</Text>
+            <PrimaryButton compact label="Open full web workspace" onPress={() => props.onOpenWeb(props.suite.fallbackPath)} secondary />
+          </Card>
+        </>
+      ) : null}
+    </Screen>
   );
 }
 
 export function ManagerMessagesScreen(props: {
   context: ManagerAccessContext;
+  error: string | null;
+  loading: boolean;
   onOpenWeb: (path: string) => void;
+  onRefresh: () => void;
   onSettings: () => void;
+  snapshot: ManagerWorkspaceSnapshot | null;
 }) {
+  const suite = managerWorkspaceSuite("messages", props.context);
   return (
     <Screen>
       <AppHeader companyName={props.context.company_name} eyebrow="INSIGHT · MANAGER" onSettings={props.onSettings} title="Messages" />
-      <Text style={sharedStyles.muted}>Author and publish company updates through the existing governed messaging workspace.</Text>
-      <AccessTile code="MS" detail="Author, review, and ship company updates" label="Company messaging" onPress={() => props.onOpenWeb("/announcements")} trailing="WEB" />
+      <Text style={sharedStyles.muted}>Review published updates, drafts, and acknowledgment requirements from the native manager layer.</Text>
+      <WorkspaceSnapshotView error={props.error} loading={props.loading} onRetry={props.onRefresh} snapshot={props.snapshot} />
+      {suite?.children.map((child) => (
+        <AccessTile code={child.code} detail={child.detail} key={child.label} label={child.label} onPress={() => props.onOpenWeb(child.path)} trailing="WEB FALLBACK" />
+      ))}
       <Card>
-        <Text style={sharedStyles.bodyStrong}>Native authoring is next</Text>
-        <Text style={sharedStyles.muted}>The web workspace remains the authority until message composition is rebuilt for native interaction.</Text>
+        <Text style={sharedStyles.bodyStrong}>Authoring enters Pass 2</Text>
+        <Text style={sharedStyles.muted}>Message composition and publishing remain governed browser actions while this pass locks the native read experience.</Text>
       </Card>
     </Screen>
   );
@@ -686,6 +993,91 @@ const styles = StyleSheet.create({
   noteInput: { minHeight: 112, padding: 14, borderWidth: 1, borderColor: colors.border, borderRadius: 15, color: colors.ink, fontSize: 15, lineHeight: 22, textAlignVertical: "top" },
   workspacePage: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 28, gap: 14, backgroundColor: colors.white },
   workspaceGroup: { gap: 10 },
+  nativeBanner: { gap: 6, padding: 18, borderRadius: 18, backgroundColor: colors.ink },
+  nativeBannerLabel: { color: "#8DD3EF", fontSize: 10, fontWeight: "900", letterSpacing: 1.3 },
+  nativeBannerTitle: { color: colors.white, fontSize: 20, fontWeight: "800" },
+  nativeBannerDetail: { color: "#D6E1EC", fontSize: 13, lineHeight: 19 },
+  metricBand: { flexDirection: "row", gap: 8 },
+  metricCard: { flex: 1, minHeight: 78, justifyContent: "center", gap: 6, padding: 11, borderWidth: 1, borderRadius: 14 },
+  metricDefault: { borderColor: colors.border, backgroundColor: colors.panel },
+  metricSuccess: { borderColor: colors.success, backgroundColor: "#EAF6F1" },
+  metricWarning: { borderColor: colors.warning, backgroundColor: colors.paleWarning },
+  metricDanger: { borderColor: colors.danger, backgroundColor: colors.paleDanger },
+  metricLabel: { color: colors.muted, fontSize: 9, fontWeight: "800", textTransform: "uppercase" },
+  metricValue: { color: colors.ink, fontSize: 18, fontWeight: "900" },
+  readDescription: { color: colors.muted, fontSize: 13, lineHeight: 20 },
+  readStatus: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 13, paddingVertical: 10, borderWidth: 1, borderColor: colors.border, borderRadius: 13, backgroundColor: colors.panel },
+  readStatusText: { flex: 1, color: colors.ink, fontSize: 11, fontWeight: "700" },
+  readFilters: { gap: 8, paddingRight: 20 },
+  readFilter: { minHeight: 36, flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 11, borderWidth: 1, borderColor: colors.border, borderRadius: 999, backgroundColor: colors.white },
+  readFilterActive: { borderColor: colors.primary, backgroundColor: colors.palePrimary },
+  readFilterText: { color: colors.muted, fontSize: 11, fontWeight: "800" },
+  readFilterTextActive: { color: colors.primary },
+  readFilterCount: { minWidth: 21, height: 21, alignItems: "center", justifyContent: "center", paddingHorizontal: 5, borderRadius: 999, backgroundColor: colors.panel },
+  readFilterCountActive: { backgroundColor: colors.primary },
+  readFilterCountText: { color: colors.muted, fontSize: 9, fontWeight: "900" },
+  readFilterCountTextActive: { color: colors.white },
+  readCard: { position: "relative", gap: 9, padding: 15, paddingTop: 17, overflow: "hidden", borderWidth: 1, borderColor: colors.border, borderRadius: 18, backgroundColor: colors.white },
+  readAccent: { position: "absolute", top: 0, left: 0, right: 0, height: 4 },
+  readAccentDefault: { backgroundColor: colors.primary },
+  readAccentSuccess: { backgroundColor: colors.success },
+  readAccentWarning: { backgroundColor: colors.warning },
+  readAccentDanger: { backgroundColor: colors.danger },
+  readCardHeader: { minHeight: 18, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  readEyebrow: { flex: 1, color: colors.primary, fontSize: 9, fontWeight: "900", letterSpacing: 0.9, textTransform: "uppercase" },
+  readMeta: { maxWidth: "46%", color: colors.muted, fontSize: 9, fontWeight: "700", textAlign: "right" },
+  readCardTitle: { color: colors.ink, fontSize: 18, fontWeight: "900" },
+  readCardDetail: { color: colors.muted, fontSize: 13, lineHeight: 19 },
+  readFacts: { flexDirection: "row", gap: 7 },
+  readFact: { flex: 1, minWidth: 0, gap: 4, padding: 9, borderRadius: 11, backgroundColor: colors.panel },
+  readFactLabel: { color: colors.muted, fontSize: 8, fontWeight: "800", textTransform: "uppercase" },
+  readFactValue: { color: colors.ink, fontSize: 11, fontWeight: "800", lineHeight: 15 },
+  readChips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  readChip: { paddingHorizontal: 8, paddingVertical: 5, borderRadius: 999, backgroundColor: colors.palePrimary },
+  readChipText: { color: colors.primary, fontSize: 9, fontWeight: "800" },
+  operationsControls: { gap: 8, paddingRight: 20 },
+  operationsControl: { minHeight: 40, justifyContent: "center", paddingHorizontal: 14, borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.white },
+  operationsControlPrimary: { borderColor: colors.success, backgroundColor: colors.success },
+  operationsControlText: { color: colors.ink, fontSize: 12, fontWeight: "800" },
+  operationsControlTextPrimary: { color: colors.white },
+  operationsStatus: { gap: 3, padding: 13, borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.white },
+  operationsStatusTitle: { color: colors.ink, fontSize: 13, fontWeight: "900" },
+  operationsStatusDetail: { color: colors.primary, fontSize: 11, fontWeight: "700" },
+  operationsFilters: { gap: 8, paddingRight: 20 },
+  operationsFilter: { minHeight: 36, flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 11, borderWidth: 1, borderColor: colors.border, borderRadius: 999, backgroundColor: colors.white },
+  operationsFilterActive: { borderColor: colors.primary, backgroundColor: colors.palePrimary },
+  operationsFilterText: { color: colors.muted, fontSize: 11, fontWeight: "800" },
+  operationsFilterTextActive: { color: colors.primary },
+  operationsFilterCount: { minWidth: 21, height: 21, alignItems: "center", justifyContent: "center", paddingHorizontal: 5, borderRadius: 999, backgroundColor: colors.panel },
+  operationsFilterCountActive: { backgroundColor: colors.primary },
+  operationsFilterCountText: { color: colors.muted, fontSize: 9, fontWeight: "900" },
+  operationsFilterCountTextActive: { color: colors.white },
+  operationsRouteStack: { gap: 11 },
+  operationsRouteCard: { gap: 11, padding: 14, paddingBottom: 10, overflow: "hidden", borderWidth: 1, borderColor: colors.border, borderRadius: 18, backgroundColor: colors.white },
+  operationsRouteCardActive: { borderColor: "#D9C9F6", backgroundColor: "#FAF7FF" },
+  operationsRouteCardComplete: { borderColor: "#CBE5DA", backgroundColor: "#F2FAF6" },
+  operationsRouteCardAttention: { borderColor: "#E9C999", backgroundColor: "#FFF9EF" },
+  operationsRouteHeading: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 },
+  operationsRouteIdentity: { flex: 1, color: colors.ink, fontSize: 17, fontWeight: "900" },
+  operationsPostureBlock: { maxWidth: 122, alignItems: "flex-end", gap: 2 },
+  operationsPosture: { color: "#7140C6", fontSize: 12, fontWeight: "800" },
+  operationsPostureComplete: { color: colors.success },
+  operationsPostureAttention: { color: colors.warning },
+  operationsPostureMeta: { color: colors.success, fontSize: 8, fontWeight: "800", textAlign: "right" },
+  operationsDriver: { color: colors.ink, fontSize: 15, fontWeight: "800" },
+  operationsMetrics: { flexDirection: "row", gap: 6 },
+  operationsMetric: { flex: 1, minWidth: 0, alignItems: "center", justifyContent: "center", gap: 2, paddingHorizontal: 3, paddingVertical: 8, borderWidth: 1, borderColor: "#E5EAF0", borderRadius: 11, backgroundColor: "rgba(255,255,255,0.82)" },
+  operationsMetricRisk: { borderColor: "#F0B66C" },
+  operationsMetricValue: { color: colors.ink, fontSize: 12, fontWeight: "900" },
+  operationsMetricLabel: { color: colors.muted, fontSize: 8, fontWeight: "700" },
+  expressComplete: { color: colors.success },
+  expressAttempted: { color: "#6D4BC3" },
+  expressOpen: { color: colors.danger },
+  expressDivider: { color: colors.muted },
+  operationsProgress: { height: 10, justifyContent: "center", overflow: "hidden", borderRadius: 999, backgroundColor: "#DDE4EC" },
+  operationsProgressFill: { position: "absolute", left: 0, top: 0, bottom: 0, backgroundColor: colors.primary },
+  operationsProgressTruck: { position: "absolute", color: colors.white, fontSize: 8, transform: [{ rotate: "-5deg" }] },
+  operationsProgressFlag: { position: "absolute", right: 1, fontSize: 8 },
   footer: { height: 74, flexDirection: "row", borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.white },
   footerItem: { flex: 1, alignItems: "center", justifyContent: "center", gap: 3 },
   footerCode: { color: colors.muted, fontSize: 12, fontWeight: "700" },
