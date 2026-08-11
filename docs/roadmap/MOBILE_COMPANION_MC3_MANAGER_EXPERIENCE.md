@@ -164,6 +164,20 @@ MC-3 uses a consistent mobile grammar across domains:
 
 The app should resolve grants once at context selection, then enforce authority again at every data and mutation boundary.
 
+## Approved design checkpoint — 2026-08-11
+
+The implementation reference is the [Insight Mobile Companion Figma file](https://www.figma.com/design/R4UM3y6Be7b0intKPLSUrE/Insight-Mobile-Companion?node-id=62-14). The approved MC-7 manager foundation currently includes:
+
+| Figma frame | Node | Decision represented |
+| --- | --- | --- |
+| Manager Today / Full Grant | `62:15` | Grant-matched manager landing surface and priority work |
+| Manager Schedule / Manager Only | `68:49` | Direct manager scheduling entry for a single-role manager |
+| Manager Schedule / Dual Role Bridge | `69:84` | Explicit My Schedule / Manage Schedule choice for dual-role users |
+| Manager Coverage | `78:113` | Mobile day rail, coverage posture, exceptions, and action entry |
+| Account / Role Context | `83:163` | Company, role, grants, and deliberate context switching |
+
+These frames establish the information architecture and interaction grammar for MC-3A and the opening of MC-3B. Later workspace frames should extend this system rather than introduce a separate manager navigation model.
+
 ## Delivery sequence
 
 ### MC-3A — Manager foundation
