@@ -32,6 +32,10 @@ import {
   synchronizeMobileOutbox,
 } from "./src/data/mobile";
 import {
+  loadManagerScheduleSnapshot,
+  reviewManagerTimeOffRequest,
+} from "./src/data/managerSchedule";
+import {
   scheduleForDate,
   type DriverMessage,
   type DriverSchedule,
@@ -44,6 +48,12 @@ import {
   isManagerAccessContext,
   type MobileAccessContext,
 } from "./src/domain/access";
+import {
+  addScheduleDays,
+  managerWeekStart,
+  type ManagerScheduleSnapshot,
+  type ManagerTimeOffRequest,
+} from "./src/domain/managerSchedule";
 import {
   getSupabaseClient,
   loadMobileAccessContexts,
@@ -74,6 +84,7 @@ import {
   ManagerMessagesScreen,
   ManagerScheduleScreen,
   ManagerWorkspacesScreen,
+  type ManagerScheduleSurface,
   type ManagerTabKey,
 } from "./src/screens/ManagerScreens";
 import { colors } from "./src/theme";
@@ -193,7 +204,12 @@ function AuthenticatedApp(props: { session: Session }) {
   const [selectedMessage, setSelectedMessage] = useState<DriverMessage | null>(null);
   const [tab, setTab] = useState<TabKey>("home");
   const [managerTab, setManagerTab] = useState<ManagerTabKey>("today");
-  const [managerScheduleOpen, setManagerScheduleOpen] = useState(false);
+  const [managerScheduleSurface, setManagerScheduleSurface] = useState<ManagerScheduleSurface>("bridge");
+  const [managerScheduleWeek, setManagerScheduleWeek] = useState(() => managerWeekStart());
+  const [managerScheduleSnapshot, setManagerScheduleSnapshot] = useState<ManagerScheduleSnapshot | null>(null);
+  const [managerScheduleLoading, setManagerScheduleLoading] = useState(false);
+  const [managerScheduleError, setManagerScheduleError] = useState<string | null>(null);
+  const [managerScheduleReviewBusy, setManagerScheduleReviewBusy] = useState(false);
   const [month, setMonth] = useState(new Date());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [notificationBusy, setNotificationBusy] = useState(false);
@@ -221,6 +237,21 @@ function AuthenticatedApp(props: { session: Session }) {
     [contexts, dutySession?.tenantKey],
   );
   const syncMembership = membership ?? dutyMembership;
+
+  const refreshManagerSchedule = useCallback(async () => {
+    if (!managerContext || !managerContext.grants.includes("schedule")) return;
+    try {
+      setManagerScheduleLoading(true);
+      setManagerScheduleError(null);
+      setManagerScheduleSnapshot(null);
+      const snapshot = await loadManagerScheduleSnapshot(managerContext, managerScheduleWeek);
+      setManagerScheduleSnapshot(snapshot);
+    } catch (caught) {
+      setManagerScheduleError(errorMessage(caught));
+    } finally {
+      setManagerScheduleLoading(false);
+    }
+  }, [managerContext, managerScheduleWeek]);
 
   const refreshLocal = useCallback(async (nextOutbox: EdgeOutbox, companyId: string) => {
     const [session, nextCounts] = await Promise.all([
@@ -306,6 +337,11 @@ function AuthenticatedApp(props: { session: Session }) {
       setStatus(`Some live data is unavailable: ${errorMessage(caught)}`);
     });
   }, [membership, outbox, profileId, refreshLocal, refreshRemote]);
+
+  useEffect(() => {
+    if (!managerContext || managerTab !== "schedule") return;
+    void refreshManagerSchedule();
+  }, [managerContext, managerTab, refreshManagerSchedule]);
 
   useEffect(() => {
     if (!membership) {
@@ -555,7 +591,34 @@ function AuthenticatedApp(props: { session: Session }) {
       setTab(driverTab);
     } else {
       setManagerTab("today");
-      setManagerScheduleOpen(false);
+      setManagerScheduleSurface("bridge");
+      setManagerScheduleWeek(managerWeekStart());
+      setManagerScheduleSnapshot(null);
+      setManagerScheduleError(null);
+    }
+  }
+
+  async function reviewManagerRequest(
+    request: ManagerTimeOffRequest,
+    decision: "APPROVED" | "DENIED",
+    note: string,
+  ) {
+    if (!managerContext) return;
+    try {
+      setManagerScheduleReviewBusy(true);
+      setManagerScheduleError(null);
+      await reviewManagerTimeOffRequest({
+        context: managerContext,
+        requestId: request.id,
+        decision,
+        managerNote: note,
+      });
+      await refreshManagerSchedule();
+    } catch (caught) {
+      setManagerScheduleError(errorMessage(caught));
+      throw caught;
+    } finally {
+      setManagerScheduleReviewBusy(false);
     }
   }
 
@@ -635,7 +698,7 @@ function AuthenticatedApp(props: { session: Session }) {
             <ManagerHomeScreen
               context={managerContext}
               onOpenOperations={() => setManagerTab("workspaces")}
-              onOpenSchedule={() => { setManagerTab("schedule"); setManagerScheduleOpen(false); }}
+              onOpenSchedule={() => { setManagerTab("schedule"); setManagerScheduleSurface("bridge"); }}
               onOpenWorkspaces={() => setManagerTab("workspaces")}
               onSettings={() => setSettingsOpen(true)}
             />
@@ -644,20 +707,29 @@ function AuthenticatedApp(props: { session: Session }) {
             <ManagerScheduleScreen
               context={managerContext}
               driverContext={companyDriverContext}
-              manageOpen={managerScheduleOpen}
-              onBackToBridge={() => setManagerScheduleOpen(false)}
-              onManage={() => setManagerScheduleOpen(true)}
+              error={managerScheduleError}
+              loading={managerScheduleLoading}
+              reviewBusy={managerScheduleReviewBusy}
+              snapshot={managerScheduleSnapshot}
+              surface={managerScheduleSurface}
+              onBack={() => setManagerScheduleSurface((current) => current === "overview" ? "bridge" : "overview")}
+              onManage={() => setManagerScheduleSurface("overview")}
               onMySchedule={() => {
                 if (companyDriverContext) selectContext(companyDriverContext.context_key, "schedule");
               }}
+              onNextWeek={() => setManagerScheduleWeek((current) => addScheduleDays(current, 7))}
               onOpenWeb={(path) => void openCompanyWeb(path)}
+              onPreviousWeek={() => setManagerScheduleWeek((current) => addScheduleDays(current, -7))}
+              onRefresh={() => void refreshManagerSchedule()}
+              onReviewRequest={reviewManagerRequest}
               onSettings={() => setSettingsOpen(true)}
+              onSurface={setManagerScheduleSurface}
             />
           ) : null}
           {managerTab === "workspaces" ? (
             <ManagerWorkspacesScreen
               context={managerContext}
-              onOpenNativeSchedule={() => { setManagerTab("schedule"); setManagerScheduleOpen(false); }}
+              onOpenNativeSchedule={() => { setManagerTab("schedule"); setManagerScheduleSurface("bridge"); }}
               onOpenWeb={(path) => void openCompanyWeb(path)}
               onSettings={() => setSettingsOpen(true)}
             />
@@ -675,7 +747,7 @@ function AuthenticatedApp(props: { session: Session }) {
           onAccount={() => setSettingsOpen(true)}
           onTab={(nextTab) => {
             setManagerTab(nextTab);
-            if (nextTab !== "schedule") setManagerScheduleOpen(false);
+            if (nextTab !== "schedule") setManagerScheduleSurface("bridge");
           }}
         />
         <AccountModal

@@ -1,11 +1,27 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import {
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
 import type {
   CompanyWorkspaceGrantKey,
   DriverAccessContext,
   ManagerAccessContext,
 } from "../domain/access";
-import { AppHeader, Card, Screen, sharedStyles } from "../components/ui";
+import type {
+  ManagerCoverageStatus,
+  ManagerScheduleDay,
+  ManagerScheduleSnapshot,
+  ManagerTimeOffRequest,
+} from "../domain/managerSchedule";
+import { AppHeader, Card, PrimaryButton, Screen, sharedStyles } from "../components/ui";
 import { colors } from "../theme";
 
 export type ManagerTabKey = "today" | "schedule" | "workspaces" | "messages";
@@ -130,39 +146,356 @@ export function ManagerHomeScreen(props: {
   );
 }
 
-const scheduleSurfaces = [
-  { code: "CA", label: "Calendar", detail: "Daily coverage and route demand", path: "/schedule" },
-  { code: "OV", label: "Overrides", detail: "Time off, call-outs, add-ins, and changes", path: "/schedule/overrides" },
-  { code: "WB", label: "Workbench", detail: "Build and commit the future schedule", path: "/schedule/generated" },
-  { code: "PS", label: "Presets", detail: "Reusable work-pattern presets", path: "/schedule/presets" },
-];
+export type ManagerScheduleSurface = "bridge" | "overview" | "coverage" | "overrides" | "workbench";
+
+function readableDate(value: string, options?: Intl.DateTimeFormatOptions) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-US", options ?? { month: "short", day: "numeric" })
+    .format(new Date(year, month - 1, day, 12));
+}
+
+function dayInitial(value: string) {
+  return readableDate(value, { weekday: "narrow" });
+}
+
+function statusTone(status: ManagerCoverageStatus) {
+  if (status === "GAP") return styles.statusGap;
+  if (status === "TIGHT") return styles.statusTight;
+  return styles.statusCovered;
+}
+
+function WeekNavigator(props: {
+  snapshot: ManagerScheduleSnapshot | null;
+  onNextWeek: () => void;
+  onPreviousWeek: () => void;
+}) {
+  return (
+    <View style={styles.weekNavigator}>
+      <Pressable accessibilityLabel="Previous week" onPress={props.onPreviousWeek} style={styles.weekArrow}>
+        <Text style={styles.weekArrowText}>‹</Text>
+      </Pressable>
+      <View style={styles.weekCopy}>
+        <Text style={styles.weekEyebrow}>OPERATING WEEK</Text>
+        <Text style={styles.weekTitle}>
+          {props.snapshot
+            ? `${readableDate(props.snapshot.weekStart)} – ${readableDate(props.snapshot.weekEnd)}`
+            : "Loading week…"}
+        </Text>
+      </View>
+      <Pressable accessibilityLabel="Next week" onPress={props.onNextWeek} style={styles.weekArrow}>
+        <Text style={styles.weekArrowText}>›</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function ScheduleLoading(props: { error: string | null; loading: boolean; onRetry: () => void }) {
+  if (props.loading) {
+    return (
+      <View style={styles.loadingCard}>
+        <ActivityIndicator color={colors.primary} />
+        <Text style={sharedStyles.muted}>Resolving coverage and manager requests…</Text>
+      </View>
+    );
+  }
+  if (props.error) {
+    return (
+      <Card tone="danger">
+        <Text style={sharedStyles.bodyStrong}>Schedule data needs another try</Text>
+        <Text style={sharedStyles.muted}>{props.error}</Text>
+        <PrimaryButton compact label="Retry" onPress={props.onRetry} secondary />
+      </Card>
+    );
+  }
+  return null;
+}
+
+function PostureCard(props: { snapshot: ManagerScheduleSnapshot }) {
+  const gaps = props.snapshot.days.filter((day) => day.status === "GAP").length;
+  const tight = props.snapshot.days.filter((day) => day.status === "TIGHT").length;
+  const routes = Math.max(...props.snapshot.days.map((day) => day.routeDemand), 0);
+  return (
+    <View style={styles.pulse}>
+      <View style={styles.pulseHeader}>
+        <Text style={styles.pulseLabel}>Week posture</Text>
+        <View style={[styles.postureChip, gaps > 0 ? styles.postureChipDanger : styles.postureChipSuccess]}>
+          <View style={[styles.successDot, gaps > 0 && styles.dangerDot]} />
+          <Text style={[styles.successText, gaps > 0 && styles.dangerText]}>
+            {gaps > 0 ? `${gaps} gap${gaps === 1 ? "" : "s"}` : tight > 0 ? `${tight} tight` : "Covered"}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.pulseStats}>
+        <View style={styles.pulseStat}><Text style={styles.pulseStatLabel}>Drivers</Text><Text style={styles.pulseStatValue}>{Math.max(...props.snapshot.days.map((day) => day.scheduledDrivers), 0)}</Text></View>
+        <View style={styles.pulseStat}><Text style={styles.pulseStatLabel}>Routes</Text><Text style={styles.pulseStatValue}>{routes}</Text></View>
+        <View style={styles.pulseStat}><Text style={styles.pulseStatLabel}>PTO</Text><Text style={styles.pulseStatValue}>{props.snapshot.pendingRequests.length} pending</Text></View>
+      </View>
+    </View>
+  );
+}
+
+function CoverageRail(props: { days: ManagerScheduleDay[] }) {
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.coverageRail}>
+      {props.days.map((day) => (
+        <View key={day.serviceDate} style={[styles.coverageDay, statusTone(day.status)]}>
+          <Text style={styles.coverageDayLabel}>{dayInitial(day.serviceDate)}</Text>
+          <Text style={styles.coverageDayDate}>{readableDate(day.serviceDate, { day: "numeric" })}</Text>
+          <Text style={styles.coverageDelta}>{day.capacityDelta > 0 ? `+${day.capacityDelta}` : day.capacityDelta}</Text>
+          <Text style={styles.coverageStatus}>{day.status}</Text>
+        </View>
+      ))}
+    </ScrollView>
+  );
+}
+
+function TimeOffReviewModal(props: {
+  request: ManagerTimeOffRequest | null;
+  busy: boolean;
+  error: string | null;
+  onClose: () => void;
+  onSubmit: (decision: "APPROVED" | "DENIED", note: string) => Promise<void>;
+}) {
+  const [decision, setDecision] = useState<"APPROVED" | "DENIED" | null>(null);
+  const [note, setNote] = useState("");
+
+  function close() {
+    if (props.busy) return;
+    setDecision(null);
+    setNote("");
+    props.onClose();
+  }
+
+  async function submit() {
+    if (!decision) return;
+    try {
+      await props.onSubmit(decision, note);
+      setDecision(null);
+      setNote("");
+    } catch {
+      // The parent keeps the review open and surfaces the governed RPC error.
+    }
+  }
+
+  return (
+    <Modal animationType="slide" onRequestClose={close} presentationStyle="pageSheet" visible={Boolean(props.request)}>
+      <ScrollView contentContainerStyle={styles.reviewSheet} keyboardShouldPersistTaps="handled">
+        <View style={styles.reviewHeader}>
+          <View>
+            <Text style={sharedStyles.eyebrow}>SCHEDULE · REVIEW</Text>
+            <Text style={sharedStyles.h1}>Time off</Text>
+          </View>
+          <Pressable disabled={props.busy} onPress={close}><Text style={styles.done}>Cancel</Text></Pressable>
+        </View>
+        {props.request ? (
+          <>
+            <Card tone="primary">
+              <Text style={sharedStyles.bodyStrong}>{props.request.full_name}</Text>
+              <Text style={sharedStyles.muted}>
+                {readableDate(props.request.start_date)} – {readableDate(props.request.end_date)} · {props.request.day_count} day{props.request.day_count === 1 ? "" : "s"}
+              </Text>
+              {props.request.request_note ? <Text style={styles.requestQuote}>“{props.request.request_note}”</Text> : null}
+            </Card>
+            <Text style={sharedStyles.eyebrow}>DECISION</Text>
+            <View style={styles.decisionRow}>
+              <Pressable onPress={() => setDecision("APPROVED")} style={[styles.decisionButton, decision === "APPROVED" && styles.decisionApprove]}>
+                <Text style={[styles.decisionText, decision === "APPROVED" && styles.decisionTextActive]}>Approve</Text>
+              </Pressable>
+              <Pressable onPress={() => setDecision("DENIED")} style={[styles.decisionButton, decision === "DENIED" && styles.decisionDeny]}>
+                <Text style={[styles.decisionText, decision === "DENIED" && styles.decisionTextActive]}>Deny</Text>
+              </Pressable>
+            </View>
+            <Text style={sharedStyles.eyebrow}>MANAGER NOTE · OPTIONAL</Text>
+            <TextInput
+              editable={!props.busy}
+              maxLength={500}
+              multiline
+              onChangeText={setNote}
+              placeholder="Add context for the employee"
+              placeholderTextColor={colors.muted}
+              style={styles.noteInput}
+              value={note}
+            />
+            {props.error ? (
+              <Card tone="danger">
+                <Text style={sharedStyles.bodyStrong}>This decision was not applied</Text>
+                <Text style={sharedStyles.muted}>{props.error}</Text>
+              </Card>
+            ) : null}
+            <Card>
+              <Text style={sharedStyles.bodyStrong}>Schedule authority</Text>
+              <Text style={sharedStyles.muted}>
+                Approval creates the governed time-off override and repaints the affected schedule. Denial records the decision without changing coverage.
+              </Text>
+            </Card>
+            <PrimaryButton
+              danger={decision === "DENIED"}
+              disabled={!decision || props.busy}
+              label={props.busy ? "Updating schedule…" : decision === "APPROVED" ? "Approve and update schedule" : decision === "DENIED" ? "Deny request" : "Choose a decision"}
+              onPress={() => void submit()}
+            />
+          </>
+        ) : null}
+      </ScrollView>
+    </Modal>
+  );
+}
 
 export function ManagerScheduleScreen(props: {
   context: ManagerAccessContext;
   driverContext: DriverAccessContext | null;
-  manageOpen: boolean;
-  onBackToBridge: () => void;
+  error: string | null;
+  loading: boolean;
+  reviewBusy: boolean;
+  snapshot: ManagerScheduleSnapshot | null;
+  surface: ManagerScheduleSurface;
+  onBack: () => void;
   onManage: () => void;
   onMySchedule: () => void;
+  onNextWeek: () => void;
   onOpenWeb: (path: string) => void;
+  onPreviousWeek: () => void;
+  onRefresh: () => void;
+  onReviewRequest: (request: ManagerTimeOffRequest, decision: "APPROVED" | "DENIED", note: string) => Promise<void>;
   onSettings: () => void;
+  onSurface: (surface: ManagerScheduleSurface) => void;
 }) {
-  if (props.manageOpen) {
+  const [reviewRequest, setReviewRequest] = useState<ManagerTimeOffRequest | null>(null);
+
+  if (props.surface !== "bridge") {
+    const title = props.surface === "overview"
+      ? "Schedule"
+      : props.surface === "coverage"
+        ? "Coverage"
+        : props.surface === "overrides"
+          ? "Overrides"
+          : "Workbench";
     return (
       <Screen>
-        <AppHeader companyName={props.context.company_name} eyebrow="INSIGHT · MANAGER" onSettings={props.onSettings} title="Schedule" />
-        <Pressable onPress={props.onBackToBridge}><Text style={styles.back}>‹ Personal or management</Text></Pressable>
-        <View style={styles.sectionHeading}>
-          <Text style={styles.sectionLabel}>Manage schedule</Text>
-          <Text style={styles.sectionMeta}>PRIMARY TOOLS</Text>
-        </View>
-        {scheduleSurfaces.map((surface) => (
-          <AccessTile key={surface.label} {...surface} onPress={() => props.onOpenWeb(surface.path)} trailing="WEB" />
-        ))}
-        <Card>
-          <Text style={sharedStyles.bodyStrong}>Mobile bridge</Text>
-          <Text style={sharedStyles.muted}>These governed Schedule workspaces open in the secure web app while their native layouts are built.</Text>
-        </Card>
+        <AppHeader companyName={props.context.company_name} eyebrow="INSIGHT · MANAGER" onSettings={props.onSettings} title={title} />
+        <Pressable onPress={props.onBack}><Text style={styles.back}>‹ {props.surface === "overview" ? "Personal or management" : "Schedule"}</Text></Pressable>
+        <WeekNavigator snapshot={props.snapshot} onNextWeek={props.onNextWeek} onPreviousWeek={props.onPreviousWeek} />
+        <ScheduleLoading error={props.error} loading={props.loading} onRetry={props.onRefresh} />
+
+        {props.snapshot && props.surface === "overview" ? (
+          <>
+            <PostureCard snapshot={props.snapshot} />
+            <View style={styles.sectionHeading}>
+              <Text style={styles.sectionLabel}>Manage schedule</Text>
+              <Text style={styles.sectionMeta}>NATIVE TOOLS</Text>
+            </View>
+            <AccessTile code="CA" detail="Daily supply, route demand, and risk" label="Coverage" onPress={() => props.onSurface("coverage")} trailing="NATIVE" />
+            <AccessTile attention={props.snapshot.pendingRequests.length > 0} code="OV" detail={`${props.snapshot.pendingRequests.length} time-off request${props.snapshot.pendingRequests.length === 1 ? "" : "s"} need review`} label="Overrides" onPress={() => props.onSurface("overrides")} trailing="NATIVE" />
+            <AccessTile code="WB" detail="Open routes, standby drivers, and next actions" label="Workbench" onPress={() => props.onSurface("workbench")} trailing="NATIVE" />
+          </>
+        ) : null}
+
+        {props.snapshot && props.surface === "coverage" ? (
+          <>
+            <PostureCard snapshot={props.snapshot} />
+            <CoverageRail days={props.snapshot.days} />
+            <View style={styles.sectionHeading}>
+              <Text style={styles.sectionLabel}>Needs attention</Text>
+              <Text style={styles.sectionMeta}>{props.snapshot.days.filter((day) => day.status !== "COVERED").length}</Text>
+            </View>
+            {props.snapshot.days.filter((day) => day.status !== "COVERED").map((day) => (
+              <Card key={day.serviceDate} tone={day.status === "GAP" ? "danger" : undefined}>
+                <View style={styles.cardHeaderRow}>
+                  <View>
+                    <Text style={sharedStyles.bodyStrong}>{readableDate(day.serviceDate, { weekday: "long", month: "short", day: "numeric" })}</Text>
+                    <Text style={sharedStyles.muted}>{day.scheduledDrivers} drivers · {day.routeDemand} routes</Text>
+                  </View>
+                  <View style={[styles.statusPill, statusTone(day.status)]}><Text style={styles.statusPillText}>{day.status}</Text></View>
+                </View>
+                <Text style={sharedStyles.muted}>
+                  {day.openRoutes.length > 0
+                    ? `Open: ${day.openRoutes.map((route) => route.current_wa_num || route.route_name || "Unnamed").join(", ")}`
+                    : "Every demanded route has an assignment; no contingency remains."}
+                </Text>
+              </Card>
+            ))}
+            {props.snapshot.days.every((day) => day.status === "COVERED") ? (
+              <Card><Text style={sharedStyles.bodyStrong}>No coverage risks this week</Text><Text style={sharedStyles.muted}>Every operating day has positive driver contingency.</Text></Card>
+            ) : null}
+          </>
+        ) : null}
+
+        {props.snapshot && props.surface === "overrides" ? (
+          <>
+            <View style={styles.sectionHeading}>
+              <Text style={styles.sectionLabel}>Pending time off</Text>
+              <Text style={styles.sectionMeta}>{props.snapshot.pendingRequests.length} REVIEW</Text>
+            </View>
+            {props.snapshot.pendingRequests.map((request) => (
+              <Pressable key={request.id} onPress={() => setReviewRequest(request)} style={({ pressed }) => [styles.requestCard, pressed && styles.pressed]}>
+                <View style={styles.requestAvatar}><Text style={styles.requestAvatarText}>{request.full_name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2)}</Text></View>
+                <View style={styles.accessCopy}>
+                  <Text style={sharedStyles.bodyStrong}>{request.full_name}</Text>
+                  <Text style={styles.detail}>{readableDate(request.start_date)} – {readableDate(request.end_date)} · {request.day_count} day{request.day_count === 1 ? "" : "s"}</Text>
+                </View>
+                <Text style={styles.reviewAction}>REVIEW</Text>
+              </Pressable>
+            ))}
+            {props.snapshot.pendingRequests.length === 0 ? (
+              <Card><Text style={sharedStyles.bodyStrong}>Queue clear</Text><Text style={sharedStyles.muted}>There are no pending time-off requests.</Text></Card>
+            ) : null}
+            <View style={styles.sectionHeading}>
+              <Text style={styles.sectionLabel}>Active this week</Text>
+              <Text style={styles.sectionMeta}>{props.snapshot.activeOverrides.length}</Text>
+            </View>
+            {props.snapshot.activeOverrides.map((override) => (
+              <Card key={override.id}>
+                <View style={styles.cardHeaderRow}>
+                  <View style={styles.accessCopy}>
+                    <Text style={sharedStyles.bodyStrong}>{override.full_name}</Text>
+                    <Text style={sharedStyles.muted}>{readableDate(override.start_date)} – {readableDate(override.end_date)}</Text>
+                  </View>
+                  <Text style={styles.overrideType}>{override.override_type.replaceAll("_", " ")}</Text>
+                </View>
+              </Card>
+            ))}
+          </>
+        ) : null}
+
+        {props.snapshot && props.surface === "workbench" ? (
+          <>
+            <PostureCard snapshot={props.snapshot} />
+            <View style={styles.sectionHeading}>
+              <Text style={styles.sectionLabel}>Week actions</Text>
+              <Text style={styles.sectionMeta}>LIVE MODEL</Text>
+            </View>
+            {props.snapshot.days.map((day) => (
+              <View key={day.serviceDate} style={styles.workbenchRow}>
+                <View style={[styles.workbenchDate, statusTone(day.status)]}>
+                  <Text style={styles.coverageDayLabel}>{dayInitial(day.serviceDate)}</Text>
+                  <Text style={styles.workbenchDay}>{readableDate(day.serviceDate, { day: "numeric" })}</Text>
+                </View>
+                <View style={styles.accessCopy}>
+                  <Text style={sharedStyles.bodyStrong}>{day.openRoutes.length} open · {day.standbyDrivers.length} standby</Text>
+                  <Text style={styles.detail}>{day.assignedDrivers} assigned of {day.routeDemand} demanded routes</Text>
+                </View>
+                <Text style={styles.delta}>{day.capacityDelta > 0 ? `+${day.capacityDelta}` : day.capacityDelta}</Text>
+              </View>
+            ))}
+            <Card>
+              <Text style={sharedStyles.bodyStrong}>Commit controls are being adapted</Text>
+              <Text style={sharedStyles.muted}>This native workbench is authoritative for posture and review. Complex bulk schedule edits remain available as a browser fallback during the first pass.</Text>
+              <PrimaryButton compact label="Open web fallback" onPress={() => props.onOpenWeb("/schedule/generated")} secondary />
+            </Card>
+          </>
+        ) : null}
+
+        <TimeOffReviewModal
+          busy={props.reviewBusy}
+          error={props.error}
+          onClose={() => setReviewRequest(null)}
+          onSubmit={async (decision, note) => {
+            if (!reviewRequest) return;
+            await props.onReviewRequest(reviewRequest, decision, note);
+            setReviewRequest(null);
+          }}
+          request={reviewRequest}
+        />
       </Screen>
     );
   }
@@ -298,8 +631,13 @@ const styles = StyleSheet.create({
   pulseHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   pulseLabel: { color: colors.white, fontSize: 12 },
   successChip: { flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, backgroundColor: colors.white },
+  postureChip: { flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999 },
+  postureChipSuccess: { backgroundColor: colors.white },
+  postureChipDanger: { backgroundColor: colors.paleWarning },
   successDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.success },
+  dangerDot: { backgroundColor: colors.warning },
   successText: { color: colors.success, fontSize: 11 },
+  dangerText: { color: colors.warning },
   pulseStats: { flexDirection: "row", gap: 8 },
   pulseStat: { flex: 1, minHeight: 58, justifyContent: "center", gap: 4, padding: 10, borderRadius: 10, backgroundColor: colors.primary },
   pulseStatLabel: { color: colors.white, fontSize: 10 },
@@ -307,6 +645,45 @@ const styles = StyleSheet.create({
   snapshot: { gap: 8, padding: 16, borderRadius: 18, backgroundColor: colors.ink },
   snapshotDetail: { color: colors.white, fontSize: 14, lineHeight: 20 },
   back: { color: colors.primary, fontSize: 14, fontWeight: "700", paddingVertical: 4 },
+  weekNavigator: { minHeight: 66, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderWidth: 1, borderColor: colors.border, borderRadius: 16, backgroundColor: colors.white },
+  weekArrow: { width: 48, minHeight: 64, alignItems: "center", justifyContent: "center" },
+  weekArrowText: { color: colors.primary, fontSize: 30, lineHeight: 32 },
+  weekCopy: { flex: 1, alignItems: "center", gap: 3 },
+  weekEyebrow: { color: colors.primary, fontSize: 9, fontWeight: "800", letterSpacing: 1.1 },
+  weekTitle: { color: colors.ink, fontSize: 15, fontWeight: "700" },
+  loadingCard: { minHeight: 110, alignItems: "center", justifyContent: "center", gap: 12, borderRadius: 18, backgroundColor: colors.panel },
+  coverageRail: { gap: 8, paddingVertical: 2 },
+  coverageDay: { width: 66, minHeight: 104, alignItems: "center", justifyContent: "center", gap: 3, borderWidth: 1, borderRadius: 15 },
+  coverageDayLabel: { color: colors.muted, fontSize: 11, fontWeight: "800" },
+  coverageDayDate: { color: colors.ink, fontSize: 18, fontWeight: "800" },
+  coverageDelta: { color: colors.ink, fontSize: 15, fontWeight: "800" },
+  coverageStatus: { color: colors.muted, fontSize: 8, fontWeight: "800" },
+  statusCovered: { borderColor: colors.success, backgroundColor: "#EAF6F1" },
+  statusTight: { borderColor: colors.warning, backgroundColor: colors.paleWarning },
+  statusGap: { borderColor: colors.danger, backgroundColor: colors.paleDanger },
+  cardHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  statusPill: { paddingHorizontal: 9, paddingVertical: 6, borderWidth: 1, borderRadius: 999 },
+  statusPillText: { color: colors.ink, fontSize: 9, fontWeight: "800" },
+  requestCard: { minHeight: 92, flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderWidth: 1, borderColor: colors.border, borderRadius: 16, backgroundColor: colors.white },
+  requestAvatar: { width: 46, height: 46, alignItems: "center", justifyContent: "center", borderRadius: 15, backgroundColor: colors.paleWarning },
+  requestAvatarText: { color: colors.warning, fontSize: 13, fontWeight: "800" },
+  reviewAction: { color: colors.warning, fontSize: 10, fontWeight: "900", letterSpacing: 0.7 },
+  overrideType: { color: colors.primary, fontSize: 10, fontWeight: "800" },
+  workbenchRow: { minHeight: 80, flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 16, backgroundColor: colors.white },
+  workbenchDate: { width: 48, height: 54, alignItems: "center", justifyContent: "center", borderWidth: 1, borderRadius: 12 },
+  workbenchDay: { color: colors.ink, fontSize: 17, fontWeight: "800" },
+  delta: { minWidth: 32, color: colors.ink, fontSize: 18, fontWeight: "900", textAlign: "right" },
+  reviewSheet: { paddingHorizontal: 24, paddingTop: 28, paddingBottom: 48, gap: 18, backgroundColor: colors.white },
+  reviewHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
+  done: { color: colors.primary, fontSize: 16, fontWeight: "800", paddingVertical: 8 },
+  requestQuote: { color: colors.ink, fontSize: 14, fontStyle: "italic", lineHeight: 21 },
+  decisionRow: { flexDirection: "row", gap: 10 },
+  decisionButton: { flex: 1, minHeight: 58, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 15, backgroundColor: colors.white },
+  decisionApprove: { borderColor: colors.success, backgroundColor: "#EAF6F1" },
+  decisionDeny: { borderColor: colors.danger, backgroundColor: colors.paleDanger },
+  decisionText: { color: colors.muted, fontSize: 15, fontWeight: "800" },
+  decisionTextActive: { color: colors.ink },
+  noteInput: { minHeight: 112, padding: 14, borderWidth: 1, borderColor: colors.border, borderRadius: 15, color: colors.ink, fontSize: 15, lineHeight: 22, textAlignVertical: "top" },
   workspacePage: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 28, gap: 14, backgroundColor: colors.white },
   workspaceGroup: { gap: 10 },
   footer: { height: 74, flexDirection: "row", borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.white },
