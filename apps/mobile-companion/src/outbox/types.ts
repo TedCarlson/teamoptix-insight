@@ -65,3 +65,81 @@ export type OutboxCounts = {
   pendingBatches: number;
   rejected: number;
 };
+
+export type InspectionResult = "PASS" | "DEFECT" | "NOT_APPLICABLE";
+
+export type InspectionItemPayload = {
+  section_key: string;
+  item_key: string;
+  item_label: string;
+  result: InspectionResult;
+  notes: string;
+  media_paths: string[];
+};
+
+export type LocalInspectionEvidence = {
+  itemKey: string;
+  base64: string;
+  contentType: "image/jpeg";
+  sizeBytes: number;
+  sha256: string;
+};
+
+export type InspectionSubmissionPayload = {
+  vehicle_id: string;
+  inspection_type: "PRE_TRIP" | "POST_TRIP" | "MID_ROUTE";
+  odometer_miles: number;
+  safe_to_operate: boolean;
+  driver_notes: string;
+  route_name: string;
+  items: InspectionItemPayload[];
+};
+
+export type PendingInspectionSubmission = {
+  submissionId: string;
+  tenantKey: string;
+  companySlug: string;
+  payload: InspectionSubmissionPayload;
+  evidence: LocalInspectionEvidence[];
+  attemptCount: number;
+  nextAttemptAt: string;
+};
+
+export type PendingMessageAcknowledgment = {
+  messageId: string;
+  tenantKey: string;
+  profileId: string;
+  queuedAt: string;
+};
+
+export type IntentConfirmation = {
+  method: "MATCH_CODE";
+  confirmed_at: string;
+  client: "INSIGHT_MOBILE_COMPANION";
+};
+
+export type TimeOffSubmissionPayload = {
+  requested_dates: string[];
+  request_note: string;
+  intent_confirmation: IntentConfirmation;
+};
+
+export type PendingTimeOffAction = {
+  actionId: string;
+  tenantKey: string;
+  companySlug: string;
+  rosterMemberId: string;
+  actionType: "SUBMIT" | "WITHDRAW";
+  requestId: string | null;
+  payload: TimeOffSubmissionPayload | { intent_confirmation: IntentConfirmation };
+  attemptCount: number;
+  createdAt: string;
+  nextAttemptAt: string;
+};
+
+export type MobileOutboxCounts = OutboxCounts & {
+  pendingInspections: number;
+  pendingAcknowledgments: number;
+  pendingTimeOffActions: number;
+  totalPending: number;
+};

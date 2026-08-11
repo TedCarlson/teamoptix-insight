@@ -3,14 +3,31 @@ import * as Location from "expo-location";
 
 import type { BreadcrumbPoint } from "../outbox/types";
 
+export async function requirePreciseForegroundLocation() {
+  const permission = await Location.requestForegroundPermissionsAsync();
+  if (!permission.granted) {
+    throw new Error(
+      "Start Duty requires While Using the App location access. You can still use the rest of Mobile Companion.",
+    );
+  }
+  if (permission.ios?.accuracy === "reduced") {
+    throw new Error(
+      "Start Duty requires Precise Location. Turn Precise Location on in iPhone Settings, then try again.",
+    );
+  }
+  if (permission.android?.accuracy === "coarse") {
+    throw new Error(
+      "Start Duty requires precise location access. Update the app permission, then try again.",
+    );
+  }
+  return permission;
+}
+
 export async function captureForegroundPoint(
   sessionId: string,
   tenantKey: string,
 ): Promise<BreadcrumbPoint> {
-  const permission = await Location.requestForegroundPermissionsAsync();
-  if (!permission.granted) {
-    throw new Error("Foreground location permission was not granted.");
-  }
+  await requirePreciseForegroundLocation();
 
   const location = await Location.getCurrentPositionAsync({
     accuracy: Location.Accuracy.High,

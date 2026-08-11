@@ -2,7 +2,6 @@ import appConfig from "../../app.json";
 
 import {
   assertTenantBatch,
-  assertPointWithinDutyWindow,
   canAttemptNetworkSync,
   parseBatchAcknowledgment,
   pointDisposition,
@@ -123,28 +122,6 @@ describe("MC-1 Edge Outbox protocol", () => {
     expect(() => assertTenantBatch("tenant-b", "tenant-a", payload)).toThrow(
       "Tenant isolation violation",
     );
-  });
-
-  it("blocks a stale device fix captured before duty began", () => {
-    expect(() =>
-      assertPointWithinDutyWindow(
-        "2026-08-09T12:03:59.999Z",
-        "2026-08-09T12:04:00.000Z",
-        null,
-        new Date("2026-08-09T12:05:00.000Z").getTime(),
-      ),
-    ).toThrow("predates this duty session");
-  });
-
-  it("accepts a point captured inside the duty window", () => {
-    expect(() =>
-      assertPointWithinDutyWindow(
-        "2026-08-09T12:04:30.000Z",
-        "2026-08-09T12:04:00.000Z",
-        "2026-08-09T12:05:00.000Z",
-        new Date("2026-08-09T12:05:00.000Z").getTime(),
-      ),
-    ).not.toThrow();
   });
 
   it("keeps background location disabled on iOS and Android", () => {

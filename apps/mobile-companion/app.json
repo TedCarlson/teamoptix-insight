@@ -42,9 +42,21 @@
           "isAndroidBackgroundLocationEnabled": false,
           "isAndroidForegroundServiceEnabled": false
         }
-      ]
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Insight Mobile Companion to attach vehicle inspection evidence from your photo library.",
+          "cameraPermission": "Allow Insight Mobile Companion to capture vehicle inspection evidence.",
+          "microphonePermission": false
+        }
+      ],
+      "./plugins/with-optional-push-entitlement"
     ],
     "extra": {
+      "notifications": {
+        "remoteRegistrationEnabled": false
+      },
       "eas": {
         "projectId": "7acf7c55-2503-4015-aa33-94cf0b935347"
       }

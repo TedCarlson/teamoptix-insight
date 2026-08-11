@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DriverTimeOffRequestDrawer } from "@/features/company-user/components/DriverTimeOffRequestDrawer";
 import {
   resolveTimeOffRequestedDates,
@@ -207,6 +207,7 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
   const [requestDrawerOpen, setRequestDrawerOpen] = useState(false);
   const [requestSaving, setRequestSaving] = useState(false);
   const [intentOpen, setIntentOpen] = useState(false);
+  const requestSubmissionId = useRef<string | null>(null);
 
   async function loadDriverRequests() {
     const requestRes = await fetch(
@@ -317,8 +318,15 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
+          device_submission_id:
+            requestSubmissionId.current ??= crypto.randomUUID(),
           requested_dates: resolveTimeOffRequestedDates(selectedDates, timeOffSelectionMode),
           request_note: requestNote,
+          intent_confirmation: {
+            method: "MATCH_CODE",
+            confirmed_at: new Date().toISOString(),
+            client: "INSIGHT_WEB",
+          },
         }),
       });
 
@@ -336,6 +344,7 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
       setSelectedDates([]);
       setTimeOffSelectionMode("RANGE");
       setRequestNote("");
+      requestSubmissionId.current = null;
       setRequestDrawerOpen(false);
       setIntentOpen(false);
     } catch {
@@ -448,9 +457,9 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
             setRequestDrawerOpen(false);
             setSelectedDates([]);
             setTimeOffSelectionMode("RANGE");
-      setTimeOffSelectionMode("RANGE");
             setRequestNote("");
             setRequestError(null);
+            requestSubmissionId.current = null;
           }}
           onSubmit={() => {
             setIntentOpen(true);

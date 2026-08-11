@@ -1,70 +1,87 @@
-import { StatusBar } from "expo-status-bar";
 import type { Session } from "@supabase/supabase-js";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { StatusBar } from "expo-status-bar";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  AppState,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
+import {
+  AccountModal,
+  Footer,
+  PrimaryButton,
+  type TabKey,
+} from "./src/components/ui";
+import { IntentVerificationModal } from "./src/components/IntentVerificationModal";
+import {
+  loadDriverMessages,
+  loadDriverSchedule,
+  loadDriverTimeOffRequests,
+  loadFleetVehicles,
+  loadProfileId,
+  synchronizeMobileOutbox,
+} from "./src/data/mobile";
+import {
+  scheduleForDate,
+  type DriverMessage,
+  type DriverSchedule,
+  type DriverTimeOffRequest,
+  type FleetVehicle,
+} from "./src/domain/mobile";
 import {
   getSupabaseClient,
   loadDriverAccessMemberships,
   type AccessMembership,
 } from "./src/lib/supabase";
+import {
+  deactivatePushDevice,
+  pushRegistrationState,
+  registerPushDevice,
+  type PushRegistrationState,
+} from "./src/notifications/push";
 import { EdgeOutbox } from "./src/outbox/database";
-import type { LocalSession, OutboxCounts } from "./src/outbox/types";
-import { syncOutbox } from "./src/sync/syncOutbox";
+import type {
+  InspectionSubmissionPayload,
+  LocalInspectionEvidence,
+  LocalSession,
+  MobileOutboxCounts,
+  IntentConfirmation,
+} from "./src/outbox/types";
+import { HomeScreen } from "./src/screens/HomeScreen";
+import { InspectionScreen } from "./src/screens/InspectionScreen";
+import { MessagesScreen } from "./src/screens/MessagesScreen";
+import { ScheduleScreen } from "./src/screens/ScheduleScreen";
+import { ScorecardScreen } from "./src/screens/ScorecardScreen";
+import { colors } from "./src/theme";
 import {
   captureForegroundPoint,
-  captureSyntheticPoint,
+  requirePreciseForegroundLocation,
 } from "./src/tracking/location";
 
-const EMPTY_COUNTS: OutboxCounts = {
+const EMPTY_MOBILE_COUNTS: MobileOutboxCounts = {
   queued: 0,
   pendingBatches: 0,
   rejected: 0,
+  pendingInspections: 0,
+  pendingAcknowledgments: 0,
+  pendingTimeOffActions: 0,
+  totalPending: 0,
 };
 
-function message(error: unknown) {
+function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-function Button(props: {
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-  secondary?: boolean;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      disabled={props.disabled}
-      onPress={props.onPress}
-      style={({ pressed }) => [
-        styles.button,
-        props.secondary && styles.buttonSecondary,
-        (pressed || props.disabled) && styles.buttonDimmed,
-      ]}
-    >
-      <Text
-        style={[
-          styles.buttonText,
-          props.secondary && styles.buttonSecondaryText,
-        ]}
-      >
-        {props.label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function SignInScreen(props: { onSignedIn: (session: Session) => void }) {
+function SignInScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -72,310 +89,651 @@ function SignInScreen(props: { onSignedIn: (session: Session) => void }) {
   const [error, setError] = useState<string | null>(null);
 
   async function signIn() {
-    setBusy(true);
-    setError(null);
     try {
+      setBusy(true);
+      setError(null);
       const result = await getSupabaseClient().auth.signInWithPassword({
         email: email.trim(),
         password,
       });
       if (result.error) throw result.error;
       if (!result.data.session) throw new Error("Sign-in did not return a session.");
-      props.onSignedIn(result.data.session);
     } catch (caught) {
-      setError(message(caught));
+      setError(errorMessage(caught));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
-      <Text style={styles.brand}>INSIGHT</Text>
-      <Text style={styles.title}>Mobile Companion</Text>
-      <Text style={styles.lead}>Use your existing Insight account.</Text>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      style={styles.flex}
+    >
+      <ScrollView
+        contentContainerStyle={styles.signInPage}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={styles.brand}>INSIGHT</Text>
+        <Text style={styles.signInTitle}>Mobile Companion</Text>
+        <Text style={styles.signInLead}>Use your existing Insight account.</Text>
 
-      <Text style={styles.label}>Email</Text>
-      <TextInput
-        autoCapitalize="none"
-        autoComplete="email"
-        keyboardType="email-address"
-        onChangeText={setEmail}
-        placeholder="name@company.com"
-        style={styles.input}
-        value={email}
-      />
-
-      <Text style={styles.label}>Password</Text>
-      <View style={styles.passwordRow}>
+        <Text style={styles.label}>Email</Text>
         <TextInput
           autoCapitalize="none"
-          autoComplete="current-password"
-          onChangeText={setPassword}
-          secureTextEntry={!showPassword}
-          style={styles.passwordInput}
-          value={password}
+          autoComplete="email"
+          keyboardType="email-address"
+          onChangeText={setEmail}
+          placeholder="name@company.com"
+          placeholderTextColor={colors.muted}
+          style={styles.input}
+          value={email}
         />
-        <Pressable onPress={() => setShowPassword((current) => !current)}>
-          <Text style={styles.show}>{showPassword ? "Hide" : "Show"}</Text>
-        </Pressable>
-      </View>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      <Button
-        disabled={busy || !email.trim() || !password}
-        label={busy ? "Signing in…" : "Sign in"}
-        onPress={signIn}
-      />
+        <Text style={styles.label}>Password</Text>
+        <View style={styles.passwordRow}>
+          <TextInput
+            autoCapitalize="none"
+            autoComplete="current-password"
+            onChangeText={setPassword}
+            secureTextEntry={!showPassword}
+            style={styles.passwordInput}
+            value={password}
+          />
+          <Pressable onPress={() => setShowPassword((current) => !current)}>
+            <Text style={styles.show}>{showPassword ? "Hide" : "Show"}</Text>
+          </Pressable>
+        </View>
 
-      <View style={styles.note}>
-        <Text style={styles.noteTitle}>Insight remains the authority</Text>
-        <Text style={styles.noteText}>
-          Your company and roster access come from your existing Insight profile.
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+        <PrimaryButton
+          disabled={busy || !email.trim() || !password}
+          label={busy ? "Signing in…" : "Sign in"}
+          onPress={() => void signIn()}
+        />
+
+        <Text style={styles.authorityNote}>
+          Your access is managed through your existing Insight account.
         </Text>
-      </View>
-      <Text style={styles.footnote}>
-        Your first sign-in requires connectivity. After that, duty points can be
-        held securely on this device and synchronized later.
+        <Text style={styles.signInFootnote}>
+          Internet is required for first sign-in. After sign-in, supported work can be saved offline and synced later.
+        </Text>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+function AccessGateScreen(props: {
+  email: string;
+  memberships: AccessMembership[];
+  onSelect: (contextKey: string) => void;
+  onSignOut: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const filtered = props.memberships.filter((membership) => {
+    const needle = query.trim().toLowerCase();
+    return !needle || `${membership.driver_name} ${membership.company_name}`.toLowerCase().includes(needle);
+  });
+
+  return (
+    <ScrollView contentContainerStyle={styles.gatePage}>
+      <Text style={styles.brand}>INSIGHT</Text>
+      <Text style={styles.signInTitle}>Choose a driver gate</Text>
+      <Text style={styles.signInLead}>{props.email}</Text>
+      <Text style={styles.gateNote}>
+        Driver gates use normal operational authority. Admin demo gates exercise the app without creating operational employee, vehicle, inspection, acknowledgment, or schedule request records.
       </Text>
+      {props.memberships.length > 6 ? (
+        <TextInput
+          autoCapitalize="words"
+          onChangeText={setQuery}
+          placeholder="Search driver or company"
+          placeholderTextColor={colors.muted}
+          style={styles.input}
+          value={query}
+        />
+      ) : null}
+      <View style={styles.gateList}>
+        {filtered.map((membership) => (
+          <Pressable
+            accessibilityRole="button"
+            key={`${membership.access_mode}:${membership.context_key}`}
+            onPress={() => props.onSelect(membership.context_key)}
+            style={({ pressed }) => [styles.gateChoice, pressed && styles.pressed]}
+          >
+            <View style={styles.gateCopy}>
+              <Text style={styles.gateDriver}>{membership.driver_name}</Text>
+              <Text style={styles.gateCompany}>{membership.company_name}</Text>
+            </View>
+            <Text style={membership.access_mode === "ADMIN_DEMO" ? styles.demoBadge : styles.driverBadge}>
+              {membership.access_mode === "ADMIN_DEMO" ? "ADMIN DEMO" : "DRIVER"}
+            </Text>
+          </Pressable>
+        ))}
+        {filtered.length === 0 ? (
+          <Text style={styles.gateNote}>No driver gates match that search.</Text>
+        ) : null}
+      </View>
+      <PrimaryButton label="Sign out" onPress={props.onSignOut} secondary />
     </ScrollView>
   );
 }
 
-function DutyScreen(props: {
-  session: Session;
-  onSignedOut: () => void;
-}) {
+function AuthenticatedApp(props: { session: Session }) {
   const [outbox, setOutbox] = useState<EdgeOutbox | null>(null);
   const [memberships, setMemberships] = useState<AccessMembership[]>([]);
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+  const [selectedContextKey, setSelectedContextKey] = useState<string>("");
+  const [profileId, setProfileId] = useState<string>("");
   const [dutySession, setDutySession] = useState<LocalSession | null>(null);
-  const [counts, setCounts] = useState(EMPTY_COUNTS);
-  const [rejectionCodes, setRejectionCodes] = useState<string[]>([]);
-  const [status, setStatus] = useState("Preparing secure outbox…");
+  const [counts, setCounts] = useState<MobileOutboxCounts>(EMPTY_MOBILE_COUNTS);
+  const [messages, setMessages] = useState<DriverMessage[]>([]);
+  const [schedule, setSchedule] = useState<DriverSchedule | null>(null);
+  const [timeOffRequests, setTimeOffRequests] = useState<DriverTimeOffRequest[]>([]);
+  const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
+  const [selectedMessage, setSelectedMessage] = useState<DriverMessage | null>(null);
+  const [tab, setTab] = useState<TabKey>("home");
+  const [month, setMonth] = useState(new Date());
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [notificationBusy, setNotificationBusy] = useState(false);
+  const [notificationError, setNotificationError] = useState<string | null>(null);
+  const [notificationState, setNotificationState] = useState<PushRegistrationState>("CHECKING");
+  const [dutyIntent, setDutyIntent] = useState<"START" | "STOP" | null>(null);
   const [busy, setBusy] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [status, setStatus] = useState<string | null>("Preparing your secure Mobile Companion workspace…");
+  const [messageNotice, setMessageNotice] = useState<string | null>(null);
+  const [scheduleNotice, setScheduleNotice] = useState<string | null>(null);
+  const [lastSynchronizedAt, setLastSynchronizedAt] = useState<Date | null>(null);
+  const syncingRef = useRef(false);
 
   const membership = useMemo(
-    () => memberships.find((item) => item.company_id === selectedCompanyId) ?? null,
-    [memberships, selectedCompanyId],
+    () => memberships.find((item) => item.context_key === selectedContextKey) ?? null,
+    [memberships, selectedContextKey],
   );
 
-  const refresh = useCallback(
-    async (nextOutbox: EdgeOutbox, tenantKey: string) => {
-      const [open, nextCounts, nextRejectionCodes] = await Promise.all([
-        nextOutbox.openSession(tenantKey),
-        nextOutbox.counts(tenantKey),
-        nextOutbox.recentRejectionCodes(tenantKey),
-      ]);
-      setDutySession(open);
-      setCounts(nextCounts);
-      setRejectionCodes(nextRejectionCodes);
-    },
-    [],
-  );
+  const refreshLocal = useCallback(async (nextOutbox: EdgeOutbox, companyId: string) => {
+    const [session, nextCounts] = await Promise.all([
+      nextOutbox.openSession(companyId),
+      nextOutbox.mobileCounts(companyId),
+    ]);
+    setDutySession(session);
+    setCounts(nextCounts);
+  }, []);
+
+  const refreshRemote = useCallback(async (
+    nextOutbox: EdgeOutbox,
+    nextMembership: AccessMembership,
+    nextProfileId: string,
+  ) => {
+    const [messageResult, scheduleResult, vehicleResult, timeOffResult] = await Promise.allSettled([
+      loadDriverMessages(nextMembership, nextProfileId, nextOutbox),
+      loadDriverSchedule(nextMembership, nextOutbox),
+      loadFleetVehicles(nextMembership, nextOutbox),
+      loadDriverTimeOffRequests(nextMembership, nextOutbox),
+    ]);
+    if (messageResult.status === "fulfilled") setMessages(messageResult.value);
+    if (scheduleResult.status === "fulfilled") setSchedule(scheduleResult.value);
+    if (vehicleResult.status === "fulfilled") setVehicles(vehicleResult.value);
+    if (timeOffResult.status === "fulfilled") setTimeOffRequests(timeOffResult.value);
+    const failures = [messageResult, scheduleResult, vehicleResult, timeOffResult].filter(
+      (result) => result.status === "rejected",
+    );
+    if (failures.length > 0) {
+      setStatus("Some live data is unavailable. Saved driver data remains available where possible.");
+    }
+  }, []);
 
   useEffect(() => {
-    let disposed = false;
+    let active = true;
     let opened: EdgeOutbox | null = null;
-    (async () => {
+    void (async () => {
       try {
         opened = await EdgeOutbox.open(props.session.user.id);
-        const access = await loadDriverAccessMemberships();
-        const resumed = (
-          await Promise.all(
-            access.map((item) => opened!.openSession(item.company_id)),
-          )
-        ).find((item) => item !== null);
-        if (disposed) return;
+        const [access, nextProfileId] = await Promise.all([
+          loadDriverAccessMemberships(),
+          loadProfileId(),
+        ]);
+        const recovered = (
+          await Promise.all(access.map((item) => opened!.openSession(item.context_key)))
+        ).find(Boolean);
+        if (!active) return;
         setOutbox(opened);
         setMemberships(access);
-        setSelectedCompanyId(resumed?.tenantKey ?? access[0]?.company_id ?? null);
+        setProfileId(nextProfileId);
+        setSelectedContextKey(
+          recovered?.tenantKey ?? (access.length === 1 ? access[0].context_key : ""),
+        );
         setStatus(
           access.length > 0
-            ? resumed
-              ? "Recovered the open duty session from the encrypted outbox."
-              : "Ready. Tracking starts only when you choose Start duty."
-            : "This account is not linked to one eligible active driver roster record.",
+            ? recovered
+              ? "Recovered your active duty session from the encrypted device outbox."
+              : null
+            : "This account has no eligible Mobile Companion driver or admin demo gates.",
         );
       } catch (caught) {
-        if (!disposed) setStatus(message(caught));
+        if (active) setStatus(errorMessage(caught));
       }
     })();
     return () => {
-      disposed = true;
-      void opened?.close();
+      active = false;
+      // Fast Refresh can tear down this tree while an earlier background read
+      // is still settling. Cleanup must never surface as an unhandled promise.
+      void opened?.close().catch(() => undefined);
     };
   }, [props.session.user.id]);
 
   useEffect(() => {
-    if (!outbox || !selectedCompanyId) return;
-    void refresh(outbox, selectedCompanyId).catch((caught) =>
-      setStatus(message(caught)),
-    );
-  }, [outbox, refresh, selectedCompanyId]);
+    if (!outbox || !membership || !profileId) return;
+    setMessages([]);
+    setSchedule(null);
+    setVehicles([]);
+    setTimeOffRequests([]);
+    void refreshLocal(outbox, membership.context_key).catch((caught) => {
+      setStatus(`Saved device data is temporarily unavailable: ${errorMessage(caught)}`);
+    });
+    void refreshRemote(outbox, membership, profileId).catch((caught) => {
+      setStatus(`Some live data is unavailable: ${errorMessage(caught)}`);
+    });
+  }, [membership, outbox, profileId, refreshLocal, refreshRemote]);
 
-  async function run(action: () => Promise<void>) {
-    if (!outbox || !membership) return;
-    setBusy(true);
+  useEffect(() => {
+    if (!membership) return;
+    setNotificationError(null);
+    setNotificationState("CHECKING");
+    void pushRegistrationState()
+      .then(setNotificationState)
+      .catch((caught) => {
+        setNotificationState("ERROR");
+        setNotificationError(errorMessage(caught));
+      });
+  }, [membership]);
+
+  const synchronize = useCallback(async () => {
+    if (!outbox || !membership || syncingRef.current) return null;
     try {
-      await action();
-      await refresh(outbox, membership.company_id);
+      syncingRef.current = true;
+      setSyncing(true);
+      const open = await outbox.openSession(membership.context_key);
+      if (open) await outbox.sealNextBatch(membership.context_key, open.sessionId);
+      const summary = await synchronizeMobileOutbox(outbox, membership);
+      await refreshLocal(outbox, membership.context_key);
+      if (summary.online && !summary.error) {
+        setLastSynchronizedAt(new Date());
+        setStatus(null);
+        if (profileId) await refreshRemote(outbox, membership, profileId);
+      } else if (summary.error) {
+        setStatus(`Sync paused safely: ${summary.error}`);
+      }
+      return summary;
     } catch (caught) {
-      setStatus(message(caught));
+      setStatus(`Sync paused safely: ${errorMessage(caught)}`);
+      return null;
+    } finally {
+      syncingRef.current = false;
+      setSyncing(false);
+    }
+  }, [membership, outbox, profileId, refreshLocal, refreshRemote]);
+
+  useEffect(() => {
+    if (!outbox || !membership) return;
+    void synchronize();
+    const interval = setInterval(() => void synchronize(), 60_000);
+    const listener = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") void synchronize();
+    });
+    return () => {
+      clearInterval(interval);
+      listener.remove();
+    };
+  }, [membership, outbox, synchronize]);
+
+  async function startDuty() {
+    if (!outbox || !membership || busy) return;
+    try {
+      setBusy(true);
+      setStatus(null);
+      await requirePreciseForegroundLocation();
+      const started = await outbox.startSession(
+        membership.context_key,
+        membership.company_slug,
+      );
+      try {
+        const point = await captureForegroundPoint(started.sessionId, membership.context_key);
+        await outbox.enqueuePoint(point);
+      } catch (caught) {
+        await outbox.stopSession(membership.context_key, started.sessionId);
+        throw caught;
+      }
+      setDutySession(started);
+      setStatus(membership.access_mode === "ADMIN_DEMO"
+        ? "Demo duty started. Location evidence is isolated from operational driver records."
+        : "Duty started. Foreground location evidence was saved on this device.");
+      await refreshLocal(outbox, membership.context_key);
+      void synchronize();
+    } catch (caught) {
+      setStatus(errorMessage(caught));
     } finally {
       setBusy(false);
     }
   }
 
-  function startDuty() {
-    void run(async () => {
-      const started = await outbox!.startSession(
-        membership!.company_id,
-        membership!.company_slug,
-      );
-      setDutySession(started);
-      setStatus("Duty session started. No point is captured automatically.");
-    });
-  }
-
-  function stopDuty() {
-    if (!dutySession) return;
-    void run(async () => {
-      await outbox!.sealNextBatch(membership!.company_id, dutySession.sessionId);
-      await outbox!.stopSession(membership!.company_id, dutySession.sessionId);
-      setDutySession(null);
-      setStatus("Duty session stopped. Evidence remains queued until acknowledged.");
-    });
-  }
-
-  function capture(realLocation: boolean) {
-    if (!dutySession) return;
-    void run(async () => {
-      const point = realLocation
-        ? await captureForegroundPoint(dutySession.sessionId, membership!.company_id)
-        : captureSyntheticPoint(dutySession.sessionId, membership!.company_id);
-      await outbox!.enqueuePoint(point);
-      setStatus(
-        realLocation
-          ? "Foreground point saved to the encrypted outbox."
-          : "Synthetic development point saved to the encrypted outbox.",
-      );
-    });
-  }
-
-  function synchronize() {
-    void run(async () => {
-      if (dutySession) {
-        await outbox!.sealNextBatch(membership!.company_id, dutySession.sessionId);
-      }
-      const summary = await syncOutbox(outbox!, membership!.company_id);
-      if (!summary.online) {
-        setStatus("Offline. Nothing was removed; the outbox will be ready later.");
-      } else if (summary.error) {
-        setStatus(`Sync paused safely: ${summary.error}`);
-      } else {
-        setStatus(
-          `Acknowledged ${summary.sessionsAcknowledged} session(s) and ${summary.batchesAcknowledged} batch(es).`,
+  async function stopDuty() {
+    if (!outbox || !membership || !dutySession) return;
+    const stoppingSession = dutySession;
+    setDutySession(null);
+    setStatus("Stopping duty and saving the final device state…");
+    try {
+      try {
+        const point = await captureForegroundPoint(
+          stoppingSession.sessionId,
+          membership.context_key,
         );
+        await outbox.enqueuePoint(point);
+      } catch {
+        // Stop Duty is never blocked by a missing final foreground point.
       }
-    });
+      await outbox.sealNextBatch(membership.context_key, stoppingSession.sessionId);
+      await outbox.stopSession(membership.context_key, stoppingSession.sessionId);
+      await refreshLocal(outbox, membership.context_key);
+      setStatus(membership.access_mode === "ADMIN_DEMO"
+        ? "Demo duty stopped. Test evidence remains isolated from operational records."
+        : "Duty stopped. Any unsent evidence is saved securely on this device.");
+      void synchronize();
+    } catch (caught) {
+      setStatus(`Duty was closed locally. ${errorMessage(caught)}`);
+    }
+  }
+
+  async function acknowledgeMessage(message: DriverMessage) {
+    if (!outbox || !membership || !profileId) return;
+    try {
+      setBusy(true);
+      await outbox.enqueueMessageAcknowledgment(
+        membership.context_key,
+        message.id,
+        profileId,
+      );
+      const optimistic = { ...message, acknowledged: true, acknowledged_at: null };
+      setMessages((current) => current.map((item) => item.id === message.id ? optimistic : item));
+      setSelectedMessage(optimistic);
+      setMessageNotice("Acknowledgment saved. It will synchronize automatically.");
+      await refreshLocal(outbox, membership.context_key);
+      const summary = await synchronize();
+      if (summary?.online && !summary.error) {
+        setMessageNotice(membership.access_mode === "ADMIN_DEMO"
+          ? "Acknowledgment recorded in the isolated demo ledger."
+          : "Acknowledgment recorded by Insight.");
+      }
+    } catch (caught) {
+      setMessageNotice(errorMessage(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitInspection(
+    payload: InspectionSubmissionPayload,
+    evidence: LocalInspectionEvidence[],
+  ) {
+    if (!outbox || !membership) throw new Error("The encrypted outbox is unavailable.");
+    await outbox.enqueueInspectionSubmission(
+      membership.context_key,
+      membership.company_slug,
+      payload,
+      evidence,
+    );
+    await refreshLocal(outbox, membership.context_key);
+    const summary = await synchronize();
+    return summary?.online && !summary.error && summary.inspectionsAcknowledged > 0
+      ? "submitted" as const
+      : "offline" as const;
+  }
+
+  async function submitTimeOffRequest(
+    dates: string[],
+    note: string,
+    intent: IntentConfirmation,
+  ) {
+    if (!outbox || !membership) throw new Error("The encrypted outbox is unavailable.");
+    try {
+      setBusy(true);
+      setScheduleNotice(null);
+      await outbox.enqueueTimeOffSubmission(
+        membership.context_key,
+        membership.company_slug,
+        membership.roster_member_id,
+        {
+          requested_dates: dates,
+          request_note: note,
+          intent_confirmation: intent,
+        },
+      );
+      await refreshLocal(outbox, membership.context_key);
+      const summary = await synchronize();
+      setScheduleNotice(
+        summary?.online && !summary.error && summary.timeOffActionsAcknowledged > 0
+          ? membership.access_mode === "ADMIN_DEMO"
+            ? "Demo request recorded without changing the operational schedule."
+            : "Time-off request submitted for leadership review."
+          : "Saved on this device — waiting to submit.",
+      );
+      if (profileId) await refreshRemote(outbox, membership, profileId);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function withdrawTimeOffRequest(
+    request: DriverTimeOffRequest,
+    intent: IntentConfirmation,
+  ) {
+    if (!outbox || !membership) throw new Error("The encrypted outbox is unavailable.");
+    try {
+      setBusy(true);
+      setScheduleNotice(null);
+      await outbox.enqueueTimeOffWithdrawal(
+        membership.context_key,
+        membership.company_slug,
+        membership.roster_member_id,
+        request.id,
+        intent,
+      );
+      setTimeOffRequests((current) => current.map((item) => item.id === request.id
+        ? { ...item, status: "WITHDRAWN" }
+        : item));
+      await refreshLocal(outbox, membership.context_key);
+      const summary = await synchronize();
+      setScheduleNotice(
+        summary?.online && !summary.error && summary.timeOffActionsAcknowledged > 0
+          ? membership.access_mode === "ADMIN_DEMO"
+            ? "Demo request withdrawn in the isolated test ledger."
+            : "Time-off request withdrawn."
+          : "Withdrawal saved on this device — waiting to submit.",
+      );
+      if (profileId) await refreshRemote(outbox, membership, profileId);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function changeTab(nextTab: TabKey) {
+    if (nextTab !== "messages") setSelectedMessage(null);
+    setTab(nextTab);
+  }
+
+  async function enableNotifications() {
+    if (!membership || notificationBusy) return;
+    try {
+      setNotificationBusy(true);
+      setNotificationError(null);
+      await registerPushDevice(membership);
+      setNotificationState("REGISTERED");
+    } catch (caught) {
+      const nextState = await pushRegistrationState().catch(() => "ERROR" as const);
+      setNotificationState(nextState === "READY" ? "ERROR" : nextState);
+      setNotificationError(errorMessage(caught));
+    } finally {
+      setNotificationBusy(false);
+    }
   }
 
   async function signOut() {
+    setSettingsOpen(false);
+    await deactivatePushDevice().catch(() => undefined);
     await getSupabaseClient().auth.signOut();
-    props.onSignedOut();
   }
 
-  return (
-    <ScrollView contentContainerStyle={styles.page}>
-      <Text style={styles.brand}>INSIGHT</Text>
-      <Text style={styles.title}>Duty & outbox</Text>
-      <Text style={styles.lead}>
-        {props.session.user.email ?? "Authenticated Insight user"}
-      </Text>
-
-      {memberships.length > 1 ? (
-        <View style={styles.companyList}>
-          {memberships.map((item) => (
-            <Pressable
-              disabled={Boolean(dutySession)}
-              key={item.company_id}
-              onPress={() => setSelectedCompanyId(item.company_id)}
-              style={[
-                styles.companyChoice,
-                item.company_id === selectedCompanyId && styles.companyChoiceActive,
-              ]}
-            >
-              <Text>{item.company_name}</Text>
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
-
-      <View style={styles.statusCard}>
-        <Text style={styles.noteTitle}>{membership?.company_name ?? "No company"}</Text>
-        <Text style={styles.statusHeadline}>
-          {dutySession ? "Duty tracking is active" : "Duty tracking is off"}
-        </Text>
-        <Text style={styles.noteText}>{status}</Text>
+  if (!outbox || !profileId) {
+    return (
+      <View style={styles.loadingPage}>
+        <ActivityIndicator color={colors.primary} />
+        <Text style={styles.loadingText}>{status ?? "Loading Mobile Companion…"}</Text>
+        {memberships.length === 0 && outbox ? (
+          <PrimaryButton label="Sign out" onPress={() => void signOut()} secondary />
+        ) : null}
       </View>
+    );
+  }
 
-      {dutySession ? (
-        <>
-          <Button
-            disabled={busy}
-            label="Capture foreground point"
-            onPress={() => capture(true)}
-          />
-          {__DEV__ ? (
-            <Button
-              disabled={busy}
-              label="Add synthetic test point"
-              onPress={() => capture(false)}
-              secondary
-            />
-          ) : null}
-          <Button disabled={busy} label="Stop duty" onPress={stopDuty} secondary />
-        </>
-      ) : (
-        <Button
-          disabled={busy || !membership}
-          label="Start duty"
-          onPress={startDuty}
+  if (!membership) {
+    if (memberships.length > 0) {
+      return (
+        <AccessGateScreen
+          email={props.session.user.email ?? "Authenticated Insight user"}
+          memberships={memberships}
+          onSelect={setSelectedContextKey}
+          onSignOut={() => void signOut()}
         />
-      )}
-
-      <View style={styles.outboxRow}>
-        <View><Text style={styles.metric}>{counts.queued}</Text><Text>Queued</Text></View>
-        <View><Text style={styles.metric}>{counts.pendingBatches}</Text><Text>Batches</Text></View>
-        <View><Text style={styles.metric}>{counts.rejected}</Text><Text>Rejected</Text></View>
+      );
+    }
+    return (
+      <View style={styles.loadingPage}>
+        <Text style={styles.loadingText}>
+          {status ?? "This account has no eligible Mobile Companion driver or admin demo gates."}
+        </Text>
+        <PrimaryButton label="Sign out" onPress={() => void signOut()} secondary />
       </View>
-      {counts.rejected > 0 ? (
-        <View style={styles.rejectionNotice}>
-          <Text style={styles.rejectionTitle}>Server-rejected evidence</Text>
-          <Text style={styles.noteText}>
-            {rejectionCodes.length > 0
-              ? rejectionCodes.join(", ")
-              : "A rejected point is retained for review."}
+    );
+  }
+
+  const routeName = scheduleForDate(schedule, new Date()).route;
+  const unreadMessages = messages.filter(
+    (message) => message.requires_ack && !message.acknowledged,
+  ).length;
+
+  return (
+    <View style={styles.flex}>
+      {membership.access_mode === "ADMIN_DEMO" ? (
+        <View style={styles.demoBanner}>
+          <Text style={styles.demoBannerTitle}>ADMIN DEMO</Text>
+          <Text numberOfLines={1} style={styles.demoBannerDetail}>
+            {membership.driver_name} · isolated test evidence
           </Text>
         </View>
       ) : null}
-      <Button
-        disabled={busy || !membership || !outbox}
-        label={busy ? "Working…" : "Synchronize now"}
-        onPress={synchronize}
-        secondary
-      />
-
-      <View style={styles.note}>
-        <Text style={styles.noteTitle}>Observation only</Text>
-        <Text style={styles.noteText}>
-          Device evidence does not automatically establish payroll, vehicle,
-          carrier, or delivery truth. Background location is not enabled.
-        </Text>
+      <View style={styles.content}>
+        {tab === "home" ? (
+          <HomeScreen
+            busy={busy}
+            companyName={membership.company_name}
+            dutySession={dutySession}
+            onOpenMessages={() => changeTab("messages")}
+            onOpenSchedule={() => changeTab("schedule")}
+            onSettings={() => setSettingsOpen(true)}
+            onStartDuty={() => setDutyIntent("START")}
+            onStopDuty={() => setDutyIntent("STOP")}
+            schedule={schedule}
+            status={status}
+            unreadMessages={unreadMessages}
+          />
+        ) : null}
+        {tab === "messages" ? (
+          <MessagesScreen
+            busy={busy}
+            companyName={membership.company_name}
+            messages={messages}
+            notice={messageNotice}
+            onAcknowledge={(message) => void acknowledgeMessage(message)}
+            onSelect={setSelectedMessage}
+            onSettings={() => setSettingsOpen(true)}
+            selectedMessage={selectedMessage}
+          />
+        ) : null}
+        {tab === "schedule" ? (
+          <ScheduleScreen
+            busy={busy}
+            companyName={membership.company_name}
+            month={month}
+            notice={scheduleNotice}
+            onMonth={setMonth}
+            onSettings={() => setSettingsOpen(true)}
+            onSubmitRequest={submitTimeOffRequest}
+            onWithdrawRequest={withdrawTimeOffRequest}
+            requests={timeOffRequests}
+            schedule={schedule}
+          />
+        ) : null}
+        {tab === "inspect" ? (
+          <InspectionScreen
+            companyName={membership.company_name}
+            contextKey={membership.context_key}
+            demoMode={membership.access_mode === "ADMIN_DEMO"}
+            onSettings={() => setSettingsOpen(true)}
+            onSubmit={submitInspection}
+            outbox={outbox}
+            routeName={routeName}
+            vehicles={vehicles}
+          />
+        ) : null}
+        {tab === "scorecard" ? (
+          <ScorecardScreen
+            companyName={membership.company_name}
+            onSettings={() => setSettingsOpen(true)}
+          />
+        ) : null}
       </View>
-      <Pressable onPress={signOut}><Text style={styles.signOut}>Sign out</Text></Pressable>
-    </ScrollView>
+      <Footer
+        activeTab={tab}
+        counts={counts}
+        lastSynchronizedAt={lastSynchronizedAt}
+        onSync={() => void synchronize()}
+        onTab={changeTab}
+        syncing={syncing}
+      />
+      <AccountModal
+        email={props.session.user.email ?? "Authenticated Insight user"}
+        memberships={memberships}
+        notificationBusy={notificationBusy}
+        notificationError={notificationError}
+        notificationState={notificationState}
+        onClose={() => setSettingsOpen(false)}
+        onEnableNotifications={() => void enableNotifications()}
+        onSelectContext={(contextKey) => {
+          if (!dutySession) {
+            setSelectedContextKey(contextKey);
+            setSettingsOpen(false);
+            setTab("home");
+          }
+        }}
+        onSignOut={() => void signOut()}
+        selectedContextKey={membership.context_key}
+        visible={settingsOpen}
+      />
+      {dutyIntent ? (
+        <IntentVerificationModal
+          actionLabel={dutyIntent === "START" ? "start duty" : "stop duty"}
+          busy={busy}
+          onCancel={() => setDutyIntent(null)}
+          onConfirm={() => {
+            const action = dutyIntent;
+            setDutyIntent(null);
+            if (action === "START") void startDuty();
+            else void stopDuty();
+          }}
+          visible
+        />
+      ) : null}
+    </View>
   );
 }
 
@@ -392,72 +750,63 @@ export default function App() {
       });
       return () => data.subscription.unsubscribe();
     } catch (caught) {
-      setConfigurationError(message(caught));
+      setConfigurationError(errorMessage(caught));
       setSession(null);
       return undefined;
     }
   }, []);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="dark" />
-      {configurationError ? (
-        <View style={styles.page}>
-          <Text style={styles.title}>Configuration needed</Text>
-          <Text style={styles.error}>{configurationError}</Text>
-          <Text style={styles.noteText}>Copy .env.example to .env and add the existing Insight values.</Text>
-        </View>
-      ) : session === undefined ? (
-        <View style={styles.loading}><ActivityIndicator /></View>
-      ) : session ? (
-        <DutyScreen session={session} onSignedOut={() => setSession(null)} />
-      ) : (
-        <SignInScreen onSignedIn={setSession} />
-      )}
-    </SafeAreaView>
+    <SafeAreaProvider>
+      <SafeAreaView edges={["top", "bottom"]} style={styles.safeArea}>
+        <StatusBar style="dark" />
+        {configurationError ? (
+          <View style={styles.configurationPage}>
+            <Text style={styles.signInTitle}>Configuration needed</Text>
+            <Text style={styles.error}>{configurationError}</Text>
+          </View>
+        ) : session === undefined ? (
+          <View style={styles.loadingPage}><ActivityIndicator color={colors.primary} /></View>
+        ) : session ? (
+          <AuthenticatedApp session={session} />
+        ) : (
+          <SignInScreen />
+        )}
+      </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 
-const colors = {
-  ink: "#152236",
-  muted: "#5C6778",
-  border: "#CAD1DB",
-  panel: "#F3F6F9",
-  primary: "#146C94",
-  danger: "#A13434",
-  white: "#FFFFFF",
-};
-
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.white },
-  loading: { flex: 1, alignItems: "center", justifyContent: "center" },
-  page: { flexGrow: 1, padding: 24, gap: 12, backgroundColor: colors.white },
-  brand: { color: colors.primary, fontSize: 13, fontWeight: "800", letterSpacing: 2 },
-  title: { color: colors.ink, fontSize: 30, fontWeight: "700" },
-  lead: { color: colors.muted, fontSize: 16, marginBottom: 18 },
-  label: { color: colors.ink, fontSize: 14, fontWeight: "600", marginTop: 4 },
-  input: { height: 52, borderColor: colors.border, borderRadius: 10, borderWidth: 1, paddingHorizontal: 14, fontSize: 16 },
+  flex: { flex: 1 },
+  content: { flex: 1, backgroundColor: colors.white },
+  demoBanner: { minHeight: 34, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.paleWarning, borderBottomColor: colors.warning, borderBottomWidth: 1 },
+  demoBannerTitle: { color: colors.warning, fontSize: 11, fontWeight: "900", letterSpacing: 1 },
+  demoBannerDetail: { flex: 1, color: colors.ink, fontSize: 12, fontWeight: "600" },
+  loadingPage: { flex: 1, alignItems: "center", justifyContent: "center", gap: 14, padding: 24 },
+  loadingText: { color: colors.muted, fontSize: 14, lineHeight: 20, textAlign: "center" },
+  configurationPage: { flex: 1, justifyContent: "center", padding: 24, gap: 14 },
+  signInPage: { flexGrow: 1, justifyContent: "center", padding: 24, gap: 12, backgroundColor: colors.white },
+  brand: { color: colors.primary, fontSize: 18, fontWeight: "900", letterSpacing: 3 },
+  signInTitle: { color: colors.ink, fontSize: 36, fontWeight: "800", lineHeight: 43 },
+  signInLead: { color: colors.muted, fontSize: 20, lineHeight: 28, marginBottom: 20 },
+  label: { color: colors.ink, fontSize: 15, fontWeight: "700", marginTop: 4 },
+  input: { height: 52, borderColor: colors.border, borderRadius: 10, borderWidth: 1, paddingHorizontal: 14, fontSize: 16, color: colors.ink },
   passwordRow: { height: 52, borderColor: colors.border, borderRadius: 10, borderWidth: 1, paddingHorizontal: 14, flexDirection: "row", alignItems: "center" },
-  passwordInput: { flex: 1, fontSize: 16 },
-  show: { color: colors.primary, fontWeight: "700", padding: 8 },
-  button: { minHeight: 52, borderRadius: 10, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", paddingHorizontal: 16 },
-  buttonSecondary: { backgroundColor: colors.white, borderColor: colors.primary, borderWidth: 1 },
-  buttonDimmed: { opacity: 0.55 },
-  buttonText: { color: colors.white, fontSize: 16, fontWeight: "700" },
-  buttonSecondaryText: { color: colors.primary },
-  note: { backgroundColor: colors.panel, borderRadius: 12, padding: 16, marginTop: 8, gap: 6 },
-  noteTitle: { color: colors.ink, fontSize: 15, fontWeight: "700" },
-  noteText: { color: colors.muted, fontSize: 14, lineHeight: 20 },
-  footnote: { color: colors.muted, fontSize: 13, lineHeight: 19 },
-  error: { color: colors.danger, fontSize: 14 },
-  statusCard: { backgroundColor: colors.panel, borderRadius: 12, padding: 18, gap: 7 },
-  statusHeadline: { color: colors.ink, fontSize: 20, fontWeight: "700" },
-  outboxRow: { flexDirection: "row", justifyContent: "space-around", borderColor: colors.border, borderWidth: 1, borderRadius: 12, padding: 16, marginTop: 6 },
-  metric: { color: colors.ink, fontSize: 24, fontWeight: "700", textAlign: "center" },
-  rejectionNotice: { backgroundColor: "#FFF4E5", borderRadius: 12, padding: 14, gap: 4 },
-  rejectionTitle: { color: colors.danger, fontSize: 14, fontWeight: "700" },
-  companyList: { gap: 8 },
-  companyChoice: { borderColor: colors.border, borderWidth: 1, borderRadius: 10, padding: 12 },
-  companyChoiceActive: { borderColor: colors.primary, backgroundColor: colors.panel },
-  signOut: { color: colors.primary, fontWeight: "700", textAlign: "center", padding: 14 },
+  passwordInput: { flex: 1, fontSize: 16, color: colors.ink },
+  show: { color: colors.primary, fontWeight: "800", padding: 8 },
+  error: { color: colors.danger, fontSize: 14, lineHeight: 20 },
+  authorityNote: { color: colors.muted, fontSize: 13, lineHeight: 18, textAlign: "center" },
+  signInFootnote: { color: colors.muted, fontSize: 12, lineHeight: 17, textAlign: "center", marginTop: 46 },
+  gatePage: { flexGrow: 1, padding: 24, paddingTop: 50, gap: 12, backgroundColor: colors.white },
+  gateNote: { color: colors.muted, fontSize: 14, lineHeight: 20, marginBottom: 8 },
+  gateList: { gap: 10, marginBottom: 10 },
+  gateChoice: { minHeight: 72, borderColor: colors.border, borderWidth: 1, borderRadius: 12, padding: 14, flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: colors.white },
+  gateCopy: { flex: 1 },
+  gateDriver: { color: colors.ink, fontSize: 16, lineHeight: 21, fontWeight: "800" },
+  gateCompany: { color: colors.muted, fontSize: 13, lineHeight: 18 },
+  demoBadge: { color: colors.warning, backgroundColor: colors.paleWarning, borderRadius: 10, overflow: "hidden", paddingHorizontal: 9, paddingVertical: 5, fontSize: 10, fontWeight: "900" },
+  driverBadge: { color: colors.primary, backgroundColor: colors.palePrimary, borderRadius: 10, overflow: "hidden", paddingHorizontal: 9, paddingVertical: 5, fontSize: 10, fontWeight: "900" },
+  pressed: { opacity: 0.55 },
 });

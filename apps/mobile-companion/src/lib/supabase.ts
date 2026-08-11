@@ -56,16 +56,29 @@ export type AccessMembership = {
   company_name: string;
   company_slug: string;
   roster_member_id: string;
+  driver_name: string;
+  access_mode: "DRIVER" | "ADMIN_DEMO";
+  context_key: string;
 };
+
+type AccessGateRow = Omit<AccessMembership, "context_key">;
+
+export function accessContextKey(access: AccessGateRow) {
+  return access.access_mode === "ADMIN_DEMO"
+    ? `${access.company_id}:${access.roster_member_id}`
+    : access.company_id;
+}
 
 export async function loadDriverAccessMemberships() {
   const supabase = getSupabaseClient();
   const ensured = await supabase.rpc("ensure_access_context");
   if (ensured.error) throw ensured.error;
 
-  const result = await supabase.rpc("mobile_companion_driver_access");
+  const result = await supabase.rpc("mobile_companion_access_gate");
   if (result.error) throw result.error;
-  return Array.isArray(result.data)
-    ? (result.data as AccessMembership[])
-    : [];
+  if (!Array.isArray(result.data)) return [];
+  return (result.data as AccessGateRow[]).map((access) => ({
+    ...access,
+    context_key: accessContextKey(access),
+  }));
 }
