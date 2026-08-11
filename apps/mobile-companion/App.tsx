@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   AppState,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -17,6 +18,7 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 import {
   AccountModal,
+  ContextResolverScreen,
   Footer,
   PrimaryButton,
   type TabKey,
@@ -27,7 +29,6 @@ import {
   loadDriverSchedule,
   loadDriverTimeOffRequests,
   loadFleetVehicles,
-  loadProfileId,
   synchronizeMobileOutbox,
 } from "./src/data/mobile";
 import {
@@ -38,8 +39,14 @@ import {
   type FleetVehicle,
 } from "./src/domain/mobile";
 import {
+  driverContextForCompany,
+  isDriverAccessContext,
+  isManagerAccessContext,
+  type MobileAccessContext,
+} from "./src/domain/access";
+import {
   getSupabaseClient,
-  loadDriverAccessMemberships,
+  loadMobileAccessContexts,
   type AccessMembership,
 } from "./src/lib/supabase";
 import {
@@ -61,6 +68,14 @@ import { InspectionScreen } from "./src/screens/InspectionScreen";
 import { MessagesScreen } from "./src/screens/MessagesScreen";
 import { ScheduleScreen } from "./src/screens/ScheduleScreen";
 import { ScorecardScreen } from "./src/screens/ScorecardScreen";
+import {
+  ManagerFooter,
+  ManagerHomeScreen,
+  ManagerMessagesScreen,
+  ManagerScheduleScreen,
+  ManagerWorkspacesScreen,
+  type ManagerTabKey,
+} from "./src/screens/ManagerScreens";
 import { colors } from "./src/theme";
 import {
   captureForegroundPoint,
@@ -163,67 +178,12 @@ function SignInScreen() {
   );
 }
 
-function AccessGateScreen(props: {
-  email: string;
-  memberships: AccessMembership[];
-  onSelect: (contextKey: string) => void;
-  onSignOut: () => void;
-}) {
-  const [query, setQuery] = useState("");
-  const filtered = props.memberships.filter((membership) => {
-    const needle = query.trim().toLowerCase();
-    return !needle || `${membership.driver_name} ${membership.company_name}`.toLowerCase().includes(needle);
-  });
-
-  return (
-    <ScrollView contentContainerStyle={styles.gatePage}>
-      <Text style={styles.brand}>INSIGHT</Text>
-      <Text style={styles.signInTitle}>Choose a driver gate</Text>
-      <Text style={styles.signInLead}>{props.email}</Text>
-      <Text style={styles.gateNote}>
-        Driver gates use normal operational authority. Admin demo gates exercise the app without creating operational employee, vehicle, inspection, acknowledgment, or schedule request records.
-      </Text>
-      {props.memberships.length > 6 ? (
-        <TextInput
-          autoCapitalize="words"
-          onChangeText={setQuery}
-          placeholder="Search driver or company"
-          placeholderTextColor={colors.muted}
-          style={styles.input}
-          value={query}
-        />
-      ) : null}
-      <View style={styles.gateList}>
-        {filtered.map((membership) => (
-          <Pressable
-            accessibilityRole="button"
-            key={`${membership.access_mode}:${membership.context_key}`}
-            onPress={() => props.onSelect(membership.context_key)}
-            style={({ pressed }) => [styles.gateChoice, pressed && styles.pressed]}
-          >
-            <View style={styles.gateCopy}>
-              <Text style={styles.gateDriver}>{membership.driver_name}</Text>
-              <Text style={styles.gateCompany}>{membership.company_name}</Text>
-            </View>
-            <Text style={membership.access_mode === "ADMIN_DEMO" ? styles.demoBadge : styles.driverBadge}>
-              {membership.access_mode === "ADMIN_DEMO" ? "ADMIN DEMO" : "DRIVER"}
-            </Text>
-          </Pressable>
-        ))}
-        {filtered.length === 0 ? (
-          <Text style={styles.gateNote}>No driver gates match that search.</Text>
-        ) : null}
-      </View>
-      <PrimaryButton label="Sign out" onPress={props.onSignOut} secondary />
-    </ScrollView>
-  );
-}
-
 function AuthenticatedApp(props: { session: Session }) {
   const [outbox, setOutbox] = useState<EdgeOutbox | null>(null);
-  const [memberships, setMemberships] = useState<AccessMembership[]>([]);
+  const [contexts, setContexts] = useState<MobileAccessContext[]>([]);
   const [selectedContextKey, setSelectedContextKey] = useState<string>("");
   const [profileId, setProfileId] = useState<string>("");
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [dutySession, setDutySession] = useState<LocalSession | null>(null);
   const [counts, setCounts] = useState<MobileOutboxCounts>(EMPTY_MOBILE_COUNTS);
   const [messages, setMessages] = useState<DriverMessage[]>([]);
@@ -232,6 +192,8 @@ function AuthenticatedApp(props: { session: Session }) {
   const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<DriverMessage | null>(null);
   const [tab, setTab] = useState<TabKey>("home");
+  const [managerTab, setManagerTab] = useState<ManagerTabKey>("today");
+  const [managerScheduleOpen, setManagerScheduleOpen] = useState(false);
   const [month, setMonth] = useState(new Date());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [notificationBusy, setNotificationBusy] = useState(false);
@@ -246,10 +208,19 @@ function AuthenticatedApp(props: { session: Session }) {
   const [lastSynchronizedAt, setLastSynchronizedAt] = useState<Date | null>(null);
   const syncingRef = useRef(false);
 
-  const membership = useMemo(
-    () => memberships.find((item) => item.context_key === selectedContextKey) ?? null,
-    [memberships, selectedContextKey],
+  const selectedContext = useMemo(
+    () => contexts.find((item) => item.context_key === selectedContextKey) ?? null,
+    [contexts, selectedContextKey],
   );
+  const membership = isDriverAccessContext(selectedContext) ? selectedContext : null;
+  const managerContext = isManagerAccessContext(selectedContext) ? selectedContext : null;
+  const dutyMembership = useMemo(
+    () => contexts.find((item): item is AccessMembership =>
+      isDriverAccessContext(item) && item.context_key === dutySession?.tenantKey,
+    ) ?? null,
+    [contexts, dutySession?.tenantKey],
+  );
+  const syncMembership = membership ?? dutyMembership;
 
   const refreshLocal = useCallback(async (nextOutbox: EdgeOutbox, companyId: string) => {
     const [session, nextCounts] = await Promise.all([
@@ -289,26 +260,26 @@ function AuthenticatedApp(props: { session: Session }) {
     void (async () => {
       try {
         opened = await EdgeOutbox.open(props.session.user.id);
-        const [access, nextProfileId] = await Promise.all([
-          loadDriverAccessMemberships(),
-          loadProfileId(),
-        ]);
+        const access = await loadMobileAccessContexts();
+        const driverContexts = access.contexts.filter(isDriverAccessContext);
         const recovered = (
-          await Promise.all(access.map((item) => opened!.openSession(item.context_key)))
+          await Promise.all(driverContexts.map((item) => opened!.openSession(item.context_key)))
         ).find(Boolean);
         if (!active) return;
         setOutbox(opened);
-        setMemberships(access);
-        setProfileId(nextProfileId);
+        setContexts(access.contexts);
+        setProfileId(access.profileId);
+        setDisplayName(access.displayName);
         setSelectedContextKey(
-          recovered?.tenantKey ?? (access.length === 1 ? access[0].context_key : ""),
+          recovered?.tenantKey
+          ?? (access.contexts.length === 1 ? access.contexts[0].context_key : ""),
         );
         setStatus(
-          access.length > 0
+          access.contexts.length > 0
             ? recovered
               ? "Recovered your active duty session from the encrypted device outbox."
               : null
-            : "This account has no eligible Mobile Companion driver or admin demo gates.",
+            : "This account has no eligible Mobile Companion roles or workspace grants.",
         );
       } catch (caught) {
         if (active) setStatus(errorMessage(caught));
@@ -337,7 +308,11 @@ function AuthenticatedApp(props: { session: Session }) {
   }, [membership, outbox, profileId, refreshLocal, refreshRemote]);
 
   useEffect(() => {
-    if (!membership) return;
+    if (!membership) {
+      setNotificationError(null);
+      setNotificationState("UNSUPPORTED");
+      return;
+    }
     setNotificationError(null);
     setNotificationState("CHECKING");
     void pushRegistrationState()
@@ -349,18 +324,20 @@ function AuthenticatedApp(props: { session: Session }) {
   }, [membership]);
 
   const synchronize = useCallback(async () => {
-    if (!outbox || !membership || syncingRef.current) return null;
+    if (!outbox || !syncMembership || syncingRef.current) return null;
     try {
       syncingRef.current = true;
       setSyncing(true);
-      const open = await outbox.openSession(membership.context_key);
-      if (open) await outbox.sealNextBatch(membership.context_key, open.sessionId);
-      const summary = await synchronizeMobileOutbox(outbox, membership);
-      await refreshLocal(outbox, membership.context_key);
+      const open = await outbox.openSession(syncMembership.context_key);
+      if (open) await outbox.sealNextBatch(syncMembership.context_key, open.sessionId);
+      const summary = await synchronizeMobileOutbox(outbox, syncMembership);
+      await refreshLocal(outbox, syncMembership.context_key);
       if (summary.online && !summary.error) {
         setLastSynchronizedAt(new Date());
         setStatus(null);
-        if (profileId) await refreshRemote(outbox, membership, profileId);
+        if (profileId && membership?.context_key === syncMembership.context_key) {
+          await refreshRemote(outbox, syncMembership, profileId);
+        }
       } else if (summary.error) {
         setStatus(`Sync paused safely: ${summary.error}`);
       }
@@ -372,10 +349,10 @@ function AuthenticatedApp(props: { session: Session }) {
       syncingRef.current = false;
       setSyncing(false);
     }
-  }, [membership, outbox, profileId, refreshLocal, refreshRemote]);
+  }, [membership?.context_key, outbox, profileId, refreshLocal, refreshRemote, syncMembership]);
 
   useEffect(() => {
-    if (!outbox || !membership) return;
+    if (!outbox || !syncMembership) return;
     void synchronize();
     const interval = setInterval(() => void synchronize(), 60_000);
     const listener = AppState.addEventListener("change", (nextState) => {
@@ -385,7 +362,7 @@ function AuthenticatedApp(props: { session: Session }) {
       clearInterval(interval);
       listener.remove();
     };
-  }, [membership, outbox, synchronize]);
+  }, [outbox, synchronize, syncMembership]);
 
   async function startDuty() {
     if (!outbox || !membership || busy) return;
@@ -561,6 +538,38 @@ function AuthenticatedApp(props: { session: Session }) {
     setTab(nextTab);
   }
 
+  function selectContext(contextKey: string, driverTab: TabKey = "home") {
+    const next = contexts.find((context) => context.context_key === contextKey);
+    if (!next) return;
+    if (
+      dutySession
+      && next.role === "DRIVER"
+      && next.context_key !== dutySession.tenantKey
+    ) {
+      setStatus("Return to the active driver context and stop duty before choosing another driver gate.");
+      return;
+    }
+    setSelectedContextKey(contextKey);
+    setSettingsOpen(false);
+    if (next.role === "DRIVER") {
+      setTab(driverTab);
+    } else {
+      setManagerTab("today");
+      setManagerScheduleOpen(false);
+    }
+  }
+
+  async function openCompanyWeb(path: string) {
+    if (!managerContext) return;
+    const base = (process.env.EXPO_PUBLIC_WEB_APP_URL ?? "https://teamoptix.io").replace(/\/$/, "");
+    const url = `${base}/company/${managerContext.company_slug}${path}`;
+    try {
+      await Linking.openURL(url);
+    } catch (caught) {
+      setStatus(`Unable to open the web workspace: ${errorMessage(caught)}`);
+    }
+  }
+
   async function enableNotifications() {
     if (!membership || notificationBusy) return;
     try {
@@ -588,20 +597,21 @@ function AuthenticatedApp(props: { session: Session }) {
       <View style={styles.loadingPage}>
         <ActivityIndicator color={colors.primary} />
         <Text style={styles.loadingText}>{status ?? "Loading Mobile Companion…"}</Text>
-        {memberships.length === 0 && outbox ? (
+        {contexts.length === 0 && outbox ? (
           <PrimaryButton label="Sign out" onPress={() => void signOut()} secondary />
         ) : null}
       </View>
     );
   }
 
-  if (!membership) {
-    if (memberships.length > 0) {
+  if (!selectedContext) {
+    if (contexts.length > 0) {
       return (
-        <AccessGateScreen
+        <ContextResolverScreen
+          contexts={contexts}
+          displayName={displayName}
           email={props.session.user.email ?? "Authenticated Insight user"}
-          memberships={memberships}
-          onSelect={setSelectedContextKey}
+          onSelectContext={selectContext}
           onSignOut={() => void signOut()}
         />
       );
@@ -609,12 +619,83 @@ function AuthenticatedApp(props: { session: Session }) {
     return (
       <View style={styles.loadingPage}>
         <Text style={styles.loadingText}>
-          {status ?? "This account has no eligible Mobile Companion driver or admin demo gates."}
+          {status ?? "This account has no eligible Mobile Companion roles or workspace grants."}
         </Text>
         <PrimaryButton label="Sign out" onPress={() => void signOut()} secondary />
       </View>
     );
   }
+
+  if (managerContext) {
+    const companyDriverContext = driverContextForCompany(contexts, managerContext.company_id);
+    return (
+      <View style={styles.flex}>
+        <View style={styles.content}>
+          {managerTab === "today" ? (
+            <ManagerHomeScreen
+              context={managerContext}
+              onOpenOperations={() => setManagerTab("workspaces")}
+              onOpenSchedule={() => { setManagerTab("schedule"); setManagerScheduleOpen(false); }}
+              onOpenWorkspaces={() => setManagerTab("workspaces")}
+              onSettings={() => setSettingsOpen(true)}
+            />
+          ) : null}
+          {managerTab === "schedule" ? (
+            <ManagerScheduleScreen
+              context={managerContext}
+              driverContext={companyDriverContext}
+              manageOpen={managerScheduleOpen}
+              onBackToBridge={() => setManagerScheduleOpen(false)}
+              onManage={() => setManagerScheduleOpen(true)}
+              onMySchedule={() => {
+                if (companyDriverContext) selectContext(companyDriverContext.context_key, "schedule");
+              }}
+              onOpenWeb={(path) => void openCompanyWeb(path)}
+              onSettings={() => setSettingsOpen(true)}
+            />
+          ) : null}
+          {managerTab === "workspaces" ? (
+            <ManagerWorkspacesScreen
+              context={managerContext}
+              onOpenNativeSchedule={() => { setManagerTab("schedule"); setManagerScheduleOpen(false); }}
+              onOpenWeb={(path) => void openCompanyWeb(path)}
+              onSettings={() => setSettingsOpen(true)}
+            />
+          ) : null}
+          {managerTab === "messages" ? (
+            <ManagerMessagesScreen
+              context={managerContext}
+              onOpenWeb={(path) => void openCompanyWeb(path)}
+              onSettings={() => setSettingsOpen(true)}
+            />
+          ) : null}
+        </View>
+        <ManagerFooter
+          activeTab={managerTab}
+          onAccount={() => setSettingsOpen(true)}
+          onTab={(nextTab) => {
+            setManagerTab(nextTab);
+            if (nextTab !== "schedule") setManagerScheduleOpen(false);
+          }}
+        />
+        <AccountModal
+          contexts={contexts}
+          email={props.session.user.email ?? "Authenticated Insight user"}
+          notificationBusy={notificationBusy}
+          notificationError={notificationError}
+          notificationState={notificationState}
+          onClose={() => setSettingsOpen(false)}
+          onEnableNotifications={() => void enableNotifications()}
+          onSelectContext={selectContext}
+          onSignOut={() => void signOut()}
+          selectedContextKey={managerContext.context_key}
+          visible={settingsOpen}
+        />
+      </View>
+    );
+  }
+
+  if (!membership) return null;
 
   const routeName = scheduleForDate(schedule, new Date()).route;
   const unreadMessages = messages.filter(
@@ -701,20 +782,14 @@ function AuthenticatedApp(props: { session: Session }) {
         syncing={syncing}
       />
       <AccountModal
+        contexts={contexts}
         email={props.session.user.email ?? "Authenticated Insight user"}
-        memberships={memberships}
         notificationBusy={notificationBusy}
         notificationError={notificationError}
         notificationState={notificationState}
         onClose={() => setSettingsOpen(false)}
         onEnableNotifications={() => void enableNotifications()}
-        onSelectContext={(contextKey) => {
-          if (!dutySession) {
-            setSelectedContextKey(contextKey);
-            setSettingsOpen(false);
-            setTab("home");
-          }
-        }}
+        onSelectContext={selectContext}
         onSignOut={() => void signOut()}
         selectedContextKey={membership.context_key}
         visible={settingsOpen}
@@ -799,14 +874,4 @@ const styles = StyleSheet.create({
   error: { color: colors.danger, fontSize: 14, lineHeight: 20 },
   authorityNote: { color: colors.muted, fontSize: 13, lineHeight: 18, textAlign: "center" },
   signInFootnote: { color: colors.muted, fontSize: 12, lineHeight: 17, textAlign: "center", marginTop: 46 },
-  gatePage: { flexGrow: 1, padding: 24, paddingTop: 50, gap: 12, backgroundColor: colors.white },
-  gateNote: { color: colors.muted, fontSize: 14, lineHeight: 20, marginBottom: 8 },
-  gateList: { gap: 10, marginBottom: 10 },
-  gateChoice: { minHeight: 72, borderColor: colors.border, borderWidth: 1, borderRadius: 12, padding: 14, flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: colors.white },
-  gateCopy: { flex: 1 },
-  gateDriver: { color: colors.ink, fontSize: 16, lineHeight: 21, fontWeight: "800" },
-  gateCompany: { color: colors.muted, fontSize: 13, lineHeight: 18 },
-  demoBadge: { color: colors.warning, backgroundColor: colors.paleWarning, borderRadius: 10, overflow: "hidden", paddingHorizontal: 9, paddingVertical: 5, fontSize: 10, fontWeight: "900" },
-  driverBadge: { color: colors.primary, backgroundColor: colors.palePrimary, borderRadius: 10, overflow: "hidden", paddingHorizontal: 9, paddingVertical: 5, fontSize: 10, fontWeight: "900" },
-  pressed: { opacity: 0.55 },
 });

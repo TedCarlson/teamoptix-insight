@@ -1,14 +1,18 @@
-import type { ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 
-import type { AccessMembership } from "../lib/supabase";
+import {
+  isManagerAccessContext,
+  type MobileAccessContext,
+} from "../domain/access";
 import type { PushRegistrationState } from "../notifications/push";
 import type { MobileOutboxCounts } from "../outbox/types";
 import { colors } from "../theme";
@@ -172,9 +176,201 @@ export function Footer(props: {
   );
 }
 
+function contextTitle(context: MobileAccessContext) {
+  if (context.role === "MANAGER") return "Manager";
+  return context.access_mode === "ADMIN_DEMO"
+    ? `Driver demo · ${context.driver_name}`
+    : "Driver";
+}
+
+function contextDetail(context: MobileAccessContext) {
+  if (context.role === "MANAGER") {
+    return context.title?.trim()
+      || `${context.grants.length} workspace${context.grants.length === 1 ? "" : "s"} in scope`;
+  }
+  return context.access_mode === "ADMIN_DEMO"
+    ? "Isolated driver test experience"
+    : "My schedule, route, and inspections";
+}
+
+function identityInitials(value: string) {
+  const normalized = value.split("@")[0].replace(/[^a-z0-9]+/gi, " ").trim();
+  const parts = normalized.split(/\s+/).filter(Boolean);
+  if (parts.length > 1) return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  return (parts[0] ?? "IN").slice(0, 2).toUpperCase();
+}
+
+function ContextChoice(props: {
+  context: MobileAccessContext;
+  active?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={props.onPress}
+      style={({ pressed }) => [
+        styles.contextChoice,
+        props.active && styles.contextChoiceActive,
+        pressed && styles.pressed,
+      ]}
+    >
+      <View style={styles.contextCode}>
+        <Text style={styles.contextCodeText}>{props.context.role === "MANAGER" ? "MG" : "DR"}</Text>
+      </View>
+      <View style={styles.choiceCopy}>
+        <Text style={styles.bodyStrong}>{contextTitle(props.context)}</Text>
+        <Text style={styles.choiceDetail}>{contextDetail(props.context)}</Text>
+      </View>
+      {props.active ? (
+        <View style={styles.activeChip}>
+          <View style={styles.activeDot} />
+          <Text style={styles.activeChipText}>ACTIVE</Text>
+        </View>
+      ) : (
+        <Text style={styles.contextArrow}>›</Text>
+      )}
+    </Pressable>
+  );
+}
+
+function DriverContextList(props: {
+  contexts: MobileAccessContext[];
+  selectedContextKey?: string;
+  onSelect: (contextKey: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(props.contexts.length <= 4);
+  const [query, setQuery] = useState("");
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return props.contexts;
+    return props.contexts.filter((context) =>
+      `${contextTitle(context)} ${context.company_name}`.toLowerCase().includes(needle),
+    );
+  }, [props.contexts, query]);
+
+  if (!expanded) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => setExpanded(true)}
+        style={({ pressed }) => [styles.driverGateSummary, pressed && styles.pressed]}
+      >
+        <View>
+          <Text style={styles.bodyStrong}>Driver demo gates</Text>
+          <Text style={styles.choiceDetail}>{props.contexts.length} isolated driver experiences</Text>
+        </View>
+        <Text style={styles.contextArrow}>›</Text>
+      </Pressable>
+    );
+  }
+
+  return (
+    <View style={styles.contextList}>
+      {props.contexts.length > 4 ? (
+        <View style={styles.driverListTools}>
+          <TextInput
+            autoCapitalize="words"
+            onChangeText={setQuery}
+            placeholder="Search driver or company"
+            placeholderTextColor={colors.muted}
+            style={sharedStyles.input}
+            value={query}
+          />
+          <Pressable onPress={() => { setExpanded(false); setQuery(""); }}>
+            <Text style={styles.collapseAction}>Collapse driver gates</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {filtered.map((context) => (
+        <ContextChoice
+          active={props.selectedContextKey === context.context_key}
+          context={context}
+          key={context.context_key}
+          onPress={() => props.onSelect(context.context_key)}
+        />
+      ))}
+      {filtered.length === 0 ? <Text style={styles.bodyMuted}>No driver gates match.</Text> : null}
+    </View>
+  );
+}
+
+export function ContextResolverScreen(props: {
+  contexts: MobileAccessContext[];
+  displayName: string | null;
+  email: string;
+  onSelectContext: (contextKey: string) => void;
+  onSignOut: () => void;
+}) {
+  const managers = props.contexts.filter(isManagerAccessContext);
+  const drivers = props.contexts.filter((context) => context.role === "DRIVER");
+  const companies = new Set(props.contexts.map((context) => context.company_id));
+
+  return (
+    <View style={styles.resolverScrim}>
+      <View style={styles.resolverSheet}>
+        <ScrollView
+          contentContainerStyle={styles.resolverContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View>
+            <Text style={styles.brand}>INSIGHT</Text>
+            <Text style={styles.resolverTitle}>Choose context</Text>
+          </View>
+          <View style={styles.identityCard}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{identityInitials(props.displayName ?? props.email)}</Text>
+            </View>
+            <View style={styles.choiceCopy}>
+              <Text style={styles.bodyStrong}>{props.email}</Text>
+              {props.displayName ? <Text style={styles.choiceDetail}>{props.displayName}</Text> : null}
+            </View>
+          </View>
+          {managers.length > 0 ? (
+            <View style={styles.modalSection}>
+              <View style={styles.sectionHeadingRow}>
+                <Text style={styles.sectionTitle}>Manager access</Text>
+                <Text style={styles.sectionMeta}>{managers.length} SCOPE{managers.length === 1 ? "" : "S"}</Text>
+              </View>
+              {managers.map((context) => (
+                <ContextChoice
+                  context={context}
+                  key={context.context_key}
+                  onPress={() => props.onSelectContext(context.context_key)}
+                />
+              ))}
+            </View>
+          ) : null}
+          {drivers.length > 0 ? (
+            <View style={styles.modalSection}>
+              <Text style={styles.sectionTitle}>Driver access</Text>
+              <DriverContextList contexts={drivers} onSelect={props.onSelectContext} />
+            </View>
+          ) : null}
+          <View style={styles.guidanceCard}>
+            <Text style={styles.bodyStrong}>Context controls the workspace</Text>
+            <Text style={styles.choiceDetail}>Navigation and data change. Your access grants do not.</Text>
+          </View>
+          <View style={styles.scopeCard}>
+            <View>
+              <Text style={styles.sectionMeta}>COMPANY SCOPE</Text>
+              <Text style={styles.bodyStrong}>{companies.size} active</Text>
+            </View>
+            <Text style={styles.brand}>{props.contexts.length} CONTEXT{props.contexts.length === 1 ? "" : "S"}</Text>
+          </View>
+        </ScrollView>
+        <View style={styles.pinnedActions}>
+          <PrimaryButton danger label="Sign out" onPress={props.onSignOut} secondary />
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export function AccountModal(props: {
   visible: boolean;
-  memberships: AccessMembership[];
+  contexts: MobileAccessContext[];
   selectedContextKey: string;
   email: string;
   onSelectContext: (contextKey: string) => void;
@@ -185,6 +381,8 @@ export function AccountModal(props: {
   notificationError: string | null;
   notificationState: PushRegistrationState;
 }) {
+  const managers = props.contexts.filter(isManagerAccessContext);
+  const drivers = props.contexts.filter((context) => context.role === "DRIVER");
   const notificationCopy = props.notificationState === "REGISTERED"
     ? "This device is registered for Insight updates."
     : props.notificationState === "READY"
@@ -208,51 +406,60 @@ export function AccountModal(props: {
           </View>
           <Pressable onPress={props.onClose}><Text style={styles.close}>Done</Text></Pressable>
         </View>
-        <Text style={styles.company}>{props.email}</Text>
-        {props.memberships.length > 1 ? (
-          <View style={styles.modalSection}>
-            <Text style={styles.sectionTitle}>Driver gate</Text>
-            {props.memberships.map((membership) => (
-              <Pressable
-                key={`${membership.access_mode}:${membership.context_key}`}
-                onPress={() => props.onSelectContext(membership.context_key)}
-                style={[
-                  styles.companyChoice,
-                  props.selectedContextKey === membership.context_key && styles.companyChoiceActive,
-                ]}
-              >
-                <View style={styles.choiceCopy}>
-                  <Text style={styles.bodyStrong}>{membership.driver_name}</Text>
-                  <Text style={styles.choiceDetail}>
-                    {membership.company_name} · {membership.access_mode === "ADMIN_DEMO" ? "Admin demo" : "Driver"}
-                  </Text>
-                </View>
-                {props.selectedContextKey === membership.context_key ? <Text style={styles.brand}>ACTIVE</Text> : null}
-              </Pressable>
-            ))}
+        <ScrollView
+          contentContainerStyle={styles.modalScrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.identityCard}>
+            <View style={styles.avatar}><Text style={styles.avatarText}>{identityInitials(props.email)}</Text></View>
+            <Text style={[styles.bodyStrong, styles.choiceCopy]}>{props.email}</Text>
           </View>
-        ) : null}
-        <Card>
-          <Text style={styles.sectionTitle}>Notifications</Text>
-          <Text style={styles.bodyMuted}>{notificationCopy}</Text>
-          {props.notificationError ? <Text style={sharedStyles.danger}>{props.notificationError}</Text> : null}
-          {props.notificationState !== "REGISTERED"
-            && props.notificationState !== "UNSUPPORTED" ? (
-              <PrimaryButton
-                compact
-                disabled={props.notificationBusy || props.notificationState === "CHECKING"}
-                label={props.notificationBusy ? "Registering…" : "Register this device"}
-                onPress={props.onEnableNotifications}
+          {managers.length > 0 ? (
+            <View style={styles.modalSection}>
+              <Text style={styles.sectionTitle}>Manager access</Text>
+              {managers.map((context) => (
+                <ContextChoice
+                  active={props.selectedContextKey === context.context_key}
+                  context={context}
+                  key={context.context_key}
+                  onPress={() => props.onSelectContext(context.context_key)}
+                />
+              ))}
+            </View>
+          ) : null}
+          {drivers.length > 0 ? (
+            <View style={styles.modalSection}>
+              <Text style={styles.sectionTitle}>Driver access</Text>
+              <DriverContextList
+                contexts={drivers}
+                onSelect={props.onSelectContext}
+                selectedContextKey={props.selectedContextKey}
               />
-            ) : null}
-        </Card>
-        <Card>
-          <Text style={styles.sectionTitle}>Observation only</Text>
-          <Text style={styles.bodyMuted}>
-            Device evidence does not automatically establish payroll, vehicle, carrier, or delivery truth.
-          </Text>
-        </Card>
-        <PrimaryButton danger label="Sign out" onPress={props.onSignOut} secondary />
+            </View>
+          ) : null}
+          <View style={styles.guidanceCard}>
+            <Text style={styles.bodyStrong}>Context changes the workspace</Text>
+            <Text style={styles.choiceDetail}>Navigation and data change. Your access grants do not.</Text>
+          </View>
+          <Card>
+            <Text style={styles.sectionTitle}>Notifications</Text>
+            <Text style={styles.bodyMuted}>{notificationCopy}</Text>
+            {props.notificationError ? <Text style={sharedStyles.danger}>{props.notificationError}</Text> : null}
+            {props.notificationState !== "REGISTERED"
+              && props.notificationState !== "UNSUPPORTED" ? (
+                <PrimaryButton
+                  compact
+                  disabled={props.notificationBusy || props.notificationState === "CHECKING"}
+                  label={props.notificationBusy ? "Registering…" : "Register this device"}
+                  onPress={props.onEnableNotifications}
+                />
+              ) : null}
+          </Card>
+        </ScrollView>
+        <View style={styles.pinnedActions}>
+          <PrimaryButton danger label="Sign out" onPress={props.onSignOut} secondary />
+        </View>
       </View>
     </Modal>
   );
@@ -322,16 +529,41 @@ const styles = StyleSheet.create({
   navItem: { flex: 1, alignItems: "center", justifyContent: "center" },
   navLabel: { color: colors.muted, fontSize: 12 },
   navLabelActive: { color: colors.primary, fontWeight: "700" },
-  modalPage: { flex: 1, padding: 24, paddingTop: 56, gap: 18, backgroundColor: colors.white },
-  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  modalPage: { flex: 1, backgroundColor: colors.white },
+  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 24, paddingTop: 48, paddingBottom: 16 },
+  modalScrollContent: { paddingHorizontal: 24, paddingBottom: 24, gap: 14 },
   modalTitle: { color: colors.ink, fontSize: 30, fontWeight: "800" },
   close: { color: colors.primary, fontSize: 16, fontWeight: "800", padding: 8 },
   modalSection: { gap: 8 },
   sectionTitle: { color: colors.ink, fontSize: 16, fontWeight: "800" },
+  sectionHeadingRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  sectionMeta: { color: colors.muted, fontSize: 12, lineHeight: 16 },
   companyChoice: { borderColor: colors.border, borderWidth: 1, borderRadius: 10, padding: 14, flexDirection: "row", justifyContent: "space-between" },
   companyChoiceActive: { borderColor: colors.primary, backgroundColor: colors.palePrimary },
   choiceCopy: { flex: 1, paddingRight: 12 },
   choiceDetail: { color: colors.muted, fontSize: 12, lineHeight: 17, marginTop: 2 },
   bodyStrong: { color: colors.ink, fontSize: 15, fontWeight: "700" },
   bodyMuted: { color: colors.muted, fontSize: 14, lineHeight: 20 },
+  resolverScrim: { flex: 1, backgroundColor: colors.ink, paddingTop: 80 },
+  resolverSheet: { flex: 1, backgroundColor: colors.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: "hidden" },
+  resolverContent: { padding: 16, paddingTop: 32, paddingBottom: 24, gap: 16 },
+  resolverTitle: { color: colors.ink, fontSize: 24, fontWeight: "800", lineHeight: 30, marginTop: 8 },
+  identityCard: { minHeight: 78, flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.palePrimary },
+  avatar: { width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.primary, backgroundColor: colors.white },
+  avatarText: { color: colors.primary, fontSize: 14, fontWeight: "700" },
+  contextList: { gap: 10 },
+  contextChoice: { minHeight: 94, flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderWidth: 1, borderColor: colors.border, borderRadius: 16, backgroundColor: colors.white },
+  contextChoiceActive: { borderColor: colors.primary, backgroundColor: colors.palePrimary },
+  contextCode: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: colors.palePrimary },
+  contextCodeText: { color: colors.primary, fontSize: 12 },
+  contextArrow: { color: colors.primary, fontSize: 24, fontWeight: "700" },
+  activeChip: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 999, borderWidth: 1, borderColor: colors.success, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: colors.white },
+  activeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.success },
+  activeChipText: { color: colors.success, fontSize: 11 },
+  driverGateSummary: { minHeight: 72, flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.white },
+  driverListTools: { gap: 8 },
+  collapseAction: { color: colors.primary, fontSize: 13, fontWeight: "700", paddingVertical: 4 },
+  guidanceCard: { gap: 4, padding: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.panel },
+  scopeCard: { minHeight: 64, flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.white },
+  pinnedActions: { paddingHorizontal: 24, paddingVertical: 16, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.white },
 });

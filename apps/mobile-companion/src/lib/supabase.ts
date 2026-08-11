@@ -4,6 +4,15 @@ import { AppState } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
+import {
+  buildMobileAccessContexts,
+  driverAccessContextKey,
+  type AccessContextResponse,
+  type DriverAccessContext,
+  type DriverAccessGate,
+  type MobileAccessContext,
+} from "../domain/access";
+
 const AUTH_STORAGE_KEY = "insight.mobile.auth.v1";
 let client: SupabaseClient | null = null;
 let appStateListenerInstalled = false;
@@ -51,34 +60,42 @@ export function getSupabaseClient() {
   return client;
 }
 
-export type AccessMembership = {
-  company_id: string;
-  company_name: string;
-  company_slug: string;
-  roster_member_id: string;
-  driver_name: string;
-  access_mode: "DRIVER" | "ADMIN_DEMO";
-  context_key: string;
-};
+export type AccessMembership = DriverAccessContext;
 
-type AccessGateRow = Omit<AccessMembership, "context_key">;
+type AccessGateRow = DriverAccessGate;
 
 export function accessContextKey(access: AccessGateRow) {
-  return access.access_mode === "ADMIN_DEMO"
-    ? `${access.company_id}:${access.roster_member_id}`
-    : access.company_id;
+  return driverAccessContextKey(access);
 }
 
-export async function loadDriverAccessMemberships() {
+export type MobileAccessPayload = {
+  contexts: MobileAccessContext[];
+  profileId: string;
+  displayName: string | null;
+};
+
+export async function loadMobileAccessContexts(): Promise<MobileAccessPayload> {
   const supabase = getSupabaseClient();
   const ensured = await supabase.rpc("ensure_access_context");
   if (ensured.error) throw ensured.error;
 
-  const result = await supabase.rpc("mobile_companion_access_gate");
-  if (result.error) throw result.error;
-  if (!Array.isArray(result.data)) return [];
-  return (result.data as AccessGateRow[]).map((access) => ({
-    ...access,
-    context_key: accessContextKey(access),
-  }));
+  const [accessResult, gateResult] = await Promise.all([
+    supabase.rpc("access_context"),
+    supabase.rpc("mobile_companion_access_gate"),
+  ]);
+  if (accessResult.error) throw accessResult.error;
+  if (gateResult.error) throw gateResult.error;
+
+  const access = accessResult.data as AccessContextResponse | null;
+  const profileId = access?.profile_id;
+  if (!profileId) throw new Error("Your active Insight profile is unavailable.");
+  const gates = Array.isArray(gateResult.data)
+    ? gateResult.data as AccessGateRow[]
+    : [];
+
+  return {
+    contexts: buildMobileAccessContexts(access, gates),
+    profileId,
+    displayName: access?.display_name ?? null,
+  };
 }
