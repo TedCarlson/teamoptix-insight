@@ -35,6 +35,7 @@ import {
   loadManagerScheduleSnapshot,
   reviewManagerTimeOffRequest,
 } from "./src/data/managerSchedule";
+import { loadManagerWorkspaceSnapshot } from "./src/data/managerWorkspace";
 import {
   scheduleForDate,
   type DriverMessage,
@@ -54,6 +55,11 @@ import {
   type ManagerScheduleSnapshot,
   type ManagerTimeOffRequest,
 } from "./src/domain/managerSchedule";
+import {
+  managerWorkspaceSuite,
+  type ManagerWorkspaceKey,
+  type ManagerWorkspaceSnapshot,
+} from "./src/domain/managerWorkspace";
 import {
   getSupabaseClient,
   loadMobileAccessContexts,
@@ -83,6 +89,7 @@ import {
   ManagerHomeScreen,
   ManagerMessagesScreen,
   ManagerScheduleScreen,
+  ManagerWorkspaceDetailScreen,
   ManagerWorkspacesScreen,
   type ManagerScheduleSurface,
   type ManagerTabKey,
@@ -104,7 +111,19 @@ const EMPTY_MOBILE_COUNTS: MobileOutboxCounts = {
 };
 
 function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object") {
+    const value = error as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown };
+    const parts = [value.message, value.details, value.hint]
+      .filter((part): part is string => typeof part === "string" && part.trim().length > 0);
+    if (parts.length) return parts.join(" · ");
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return "The request failed without a readable error message.";
+    }
+  }
+  return String(error);
 }
 
 function SignInScreen() {
@@ -210,6 +229,10 @@ function AuthenticatedApp(props: { session: Session }) {
   const [managerScheduleLoading, setManagerScheduleLoading] = useState(false);
   const [managerScheduleError, setManagerScheduleError] = useState<string | null>(null);
   const [managerScheduleReviewBusy, setManagerScheduleReviewBusy] = useState(false);
+  const [managerWorkspaceKey, setManagerWorkspaceKey] = useState<ManagerWorkspaceKey | null>(null);
+  const [managerWorkspaceSnapshot, setManagerWorkspaceSnapshot] = useState<ManagerWorkspaceSnapshot | null>(null);
+  const [managerWorkspaceLoading, setManagerWorkspaceLoading] = useState(false);
+  const [managerWorkspaceError, setManagerWorkspaceError] = useState<string | null>(null);
   const [month, setMonth] = useState(new Date());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [notificationBusy, setNotificationBusy] = useState(false);
@@ -252,6 +275,21 @@ function AuthenticatedApp(props: { session: Session }) {
       setManagerScheduleLoading(false);
     }
   }, [managerContext, managerScheduleWeek]);
+
+  const refreshManagerWorkspace = useCallback(async (key: ManagerWorkspaceKey) => {
+    if (!managerContext) return;
+    try {
+      setManagerWorkspaceLoading(true);
+      setManagerWorkspaceError(null);
+      setManagerWorkspaceSnapshot(null);
+      const snapshot = await loadManagerWorkspaceSnapshot(managerContext, key);
+      setManagerWorkspaceSnapshot(snapshot);
+    } catch (caught) {
+      setManagerWorkspaceError(errorMessage(caught));
+    } finally {
+      setManagerWorkspaceLoading(false);
+    }
+  }, [managerContext]);
 
   const refreshLocal = useCallback(async (nextOutbox: EdgeOutbox, companyId: string) => {
     const [session, nextCounts] = await Promise.all([
@@ -342,6 +380,16 @@ function AuthenticatedApp(props: { session: Session }) {
     if (!managerContext || managerTab !== "schedule") return;
     void refreshManagerSchedule();
   }, [managerContext, managerTab, refreshManagerSchedule]);
+
+  useEffect(() => {
+    if (!managerContext) return;
+    const key = managerTab === "messages"
+      ? "messages"
+      : managerTab === "workspaces"
+        ? managerWorkspaceKey
+        : null;
+    if (key) void refreshManagerWorkspace(key);
+  }, [managerContext, managerTab, managerWorkspaceKey, refreshManagerWorkspace]);
 
   useEffect(() => {
     if (!membership) {
@@ -595,6 +643,9 @@ function AuthenticatedApp(props: { session: Session }) {
       setManagerScheduleWeek(managerWeekStart());
       setManagerScheduleSnapshot(null);
       setManagerScheduleError(null);
+      setManagerWorkspaceKey(null);
+      setManagerWorkspaceSnapshot(null);
+      setManagerWorkspaceError(null);
     }
   }
 
@@ -691,13 +742,14 @@ function AuthenticatedApp(props: { session: Session }) {
 
   if (managerContext) {
     const companyDriverContext = driverContextForCompany(contexts, managerContext.company_id);
+    const activeManagerSuite = managerWorkspaceKey ? managerWorkspaceSuite(managerWorkspaceKey, managerContext) : null;
     return (
       <View style={styles.flex}>
         <View style={styles.content}>
           {managerTab === "today" ? (
             <ManagerHomeScreen
               context={managerContext}
-              onOpenOperations={() => setManagerTab("workspaces")}
+              onOpenOperations={() => { setManagerTab("workspaces"); setManagerWorkspaceKey("operations"); }}
               onOpenSchedule={() => { setManagerTab("schedule"); setManagerScheduleSurface("bridge"); }}
               onOpenWorkspaces={() => setManagerTab("workspaces")}
               onSettings={() => setSettingsOpen(true)}
@@ -727,18 +779,36 @@ function AuthenticatedApp(props: { session: Session }) {
             />
           ) : null}
           {managerTab === "workspaces" ? (
-            <ManagerWorkspacesScreen
-              context={managerContext}
-              onOpenNativeSchedule={() => { setManagerTab("schedule"); setManagerScheduleSurface("bridge"); }}
-              onOpenWeb={(path) => void openCompanyWeb(path)}
-              onSettings={() => setSettingsOpen(true)}
-            />
+            activeManagerSuite ? (
+              <ManagerWorkspaceDetailScreen
+                context={managerContext}
+                error={managerWorkspaceError}
+                loading={managerWorkspaceLoading}
+                onBack={() => { setManagerWorkspaceKey(null); setManagerWorkspaceSnapshot(null); setManagerWorkspaceError(null); }}
+                onOpenWeb={(path) => void openCompanyWeb(path)}
+                onRefresh={() => void refreshManagerWorkspace(activeManagerSuite.key)}
+                onSettings={() => setSettingsOpen(true)}
+                snapshot={managerWorkspaceSnapshot}
+                suite={activeManagerSuite}
+              />
+            ) : (
+              <ManagerWorkspacesScreen
+                context={managerContext}
+                onOpenNativeSchedule={() => { setManagerTab("schedule"); setManagerScheduleSurface("bridge"); }}
+                onOpenSuite={setManagerWorkspaceKey}
+                onSettings={() => setSettingsOpen(true)}
+              />
+            )
           ) : null}
           {managerTab === "messages" ? (
             <ManagerMessagesScreen
               context={managerContext}
+              error={managerWorkspaceError}
+              loading={managerWorkspaceLoading}
               onOpenWeb={(path) => void openCompanyWeb(path)}
+              onRefresh={() => void refreshManagerWorkspace("messages")}
               onSettings={() => setSettingsOpen(true)}
+              snapshot={managerWorkspaceSnapshot}
             />
           ) : null}
         </View>
@@ -748,6 +818,9 @@ function AuthenticatedApp(props: { session: Session }) {
           onTab={(nextTab) => {
             setManagerTab(nextTab);
             if (nextTab !== "schedule") setManagerScheduleSurface("bridge");
+            if (nextTab === "workspaces") setManagerWorkspaceKey(null);
+            setManagerWorkspaceSnapshot(null);
+            setManagerWorkspaceError(null);
           }}
         />
         <AccountModal
