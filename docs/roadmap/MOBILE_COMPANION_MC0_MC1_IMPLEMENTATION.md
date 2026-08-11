@@ -1,14 +1,24 @@
 # Insight Mobile Companion — MC-0 / MC-1 Implementation
 
 **Implemented:** August 9, 2026
-**Activation status:** Implemented, not active
-**Expo build status:** Not created
 
-The database migrations and SQL regression were validated against an isolated,
-schema-only copy of the linked Supabase schema. No production write or Expo/EAS
-build was performed. The separate
-`SUPABASE_MIGRATION_ALIGNMENT_AUDIT_2026-08-09.md` records the exact repository,
-local Docker, and linked Supabase states plus the historical clean-replay gaps.
+**Last verified:** August 10, 2026
+
+**Activation status:** Implemented, not active
+
+**Device build status:** Local iOS development build installed and tested; no
+EAS cloud builds consumed; Android device parity remains pending
+
+The MC-0, MC-1, and driver-preflight migrations are committed to GitHub `main`,
+applied to the linked Supabase project, and ledger-aligned through
+`20260809162000`. GitHub CI, the Supabase alignment guard, and Vercel passed on
+the merged implementation. A SQLCipher-enabled development build was installed
+locally through Xcode on a physical iPhone using an Apple Personal Team. No EAS
+cloud build was created.
+
+The separate `SUPABASE_MIGRATION_ALIGNMENT_AUDIT_2026-08-09.md` preserves the
+historical alignment investigation. It should not be read as the current
+deployment state.
 
 ## Governed boundary
 
@@ -29,8 +39,9 @@ privacy, retention, and rollout gates are accepted.
 
 `apps/mobile-companion` is an Expo SDK 57 React Native application for iOS and
 Android. It reuses Supabase authentication plus Insight's existing
-`ensure_access_context` and `access_context` authority. There is no separate
-mobile identity or roster source.
+`ensure_access_context` profile bootstrap and the fail-closed
+`mobile_companion_driver_access` preflight. There is no separate mobile identity
+or roster source. Ordinary company membership does not enable duty tracking.
 
 The outbox uses:
 
@@ -42,9 +53,14 @@ The outbox uses:
 - retry scheduling that never deletes unacknowledged evidence;
 - server-persisted acknowledgments for exact duplicate batch submissions.
 
-Expo Go is intentionally rejected because it does not contain SQLCipher. A
-development build will be needed for on-device testing, but no build has been
-created by this implementation.
+Expo's exclusive transaction helper opens an isolated SQLite connection, while
+SQLCipher keys are connection-specific. The outbox therefore opens and keys its
+own transaction connection before `BEGIN IMMEDIATE`; a regression test protects
+that device-discovered requirement.
+
+Expo Go remains intentionally unsupported because it does not contain this
+app's SQLCipher configuration. The installed native development build is the
+supported MC-1 device-test shell.
 
 Only user-initiated foreground location or development-only synthetic points
 exist in MC-1. Both iOS and Android background-location settings are explicitly
@@ -82,32 +98,51 @@ MC-1 is accepted when:
 8. A signed-in user cannot read, seal, apply, or synchronize another company's
    outbox rows or another user's encrypted database.
 
-## Verification matrix before activation
+## Verification evidence before activation
 
-| Scenario | Automated contract check | Required device check |
-| --- | --- | --- |
-| Offline persistence | Immutable persisted-payload recovery | Capture in airplane mode, force quit, relaunch |
-| Restart recovery | Stored point/batch IDs survive hydration | Reboot each platform before sync |
-| Partial failure | Per-point disposition test | Submit a test batch containing one invalid point |
-| Duplicate batch | Duplicate acknowledgment test | Replay identical payload after a lost response |
-| Tenant isolation | Cross-tenant application rejection test | Switch companies and inspect independent counts |
-| Background permission | Expo configuration test | Confirm OS settings show only while-in-use access |
-| Platform parity | Shared TypeScript implementation | Complete the same script on current iOS and Android |
+| Scenario | Automated evidence | Physical-device evidence | Status |
+| --- | --- | --- | --- |
+| Encrypted queue and batch sealing | SQLCipher connection-order regression | Repeated iPhone start/capture/stop cycles completed without plaintext fallback | Passed on iOS |
+| Explicit acknowledgment | Acknowledgment parser and disposition tests | Eligible demo driver synchronized one session and one batch; pending counts returned to zero | Passed on iOS |
+| Offline persistence | Immutable persisted-payload recovery | Airplane mode, force quit, and relaunch script still required | Pending device script |
+| Restart recovery | Stored identifiers survive hydration | Full device reboot before synchronization still required | Pending device script |
+| Partial failure | Per-point disposition test | Server retained one invalid point and acknowledged the valid session/batch | Passed on iOS |
+| Stale foreground fix | Duty-window validation test | Historical iOS fix outside the session was diagnosed; later valid cycle added no rejection | Passed on iOS |
+| Duplicate batch | Duplicate acknowledgment test | Replay after a deliberately lost response still required | Pending device script |
+| Tenant/user isolation | Tenant assertions and user-specific encrypted database | Account switching preserved separate counts and evidence; multi-company switching remains to test | Partially passed on iOS |
+| Driver preflight | Exact eligible-roster SQL contract | Eligible demo driver passed; explicit ineligible-account relaunch check remains | Partially passed on iOS |
+| Background permission | Expo configuration test | Confirm iOS and Android settings expose no background permission | Pending settings review |
+| Platform parity | Shared TypeScript implementation | iOS happy path passed; Android emulator and physical-device pass remain | Android pending |
 
-The device checks require the first development builds and test accounts. They
-remain a release gate; this repository change does not claim they have run.
+Nine Mobile Companion Jest tests and the TypeScript check pass as of the last
+verification date. These results prove the iOS happy path, but they do not mark
+the Switchboard objects `ACTIVE`.
 
-## Smallest safe rollout sequence
+## Device-discovered failures resolved
 
-1. Apply and inspect the MC-0 Switchboard migration.
-2. Apply the schema/RPC migration in a non-production Supabase environment and
-   run tenant/idempotency SQL scenarios.
-3. Link the existing Expo project locally and set environment secrets without
-   committing them.
-4. Create one iOS and one Android development build; do not distribute them.
-5. Run the verification matrix with synthetic points, then foreground points.
-6. Review retention, privacy notice, support, and incident handling.
-7. Mark Switchboard entries `ACTIVE` only after explicit approval.
+1. The SQLCipher batch transaction originally failed with `file is not a
+   database` because a helper opened an unkeyed connection. The transaction now
+   explicitly opens, keys, verifies, commits, and closes its own connection.
+2. A foreground iOS location fix could predate a newly opened duty session. The
+   app now blocks that fix locally and asks the driver to capture again.
+3. General company membership was too broad for duty preflight. The app now
+   requires the same eligible INTERNAL Active/Trainee roster authority used by
+   synchronization and fails closed if that preflight is unavailable.
+
+## Remaining MC-1 closeout sequence
+
+1. Run the iOS airplane-mode, force-quit, reboot, and duplicate-response-loss
+   scripts without deleting the retained historical rejection.
+2. Run the same happy-path and recovery scripts on Android, first in an emulator
+   and then on one physical device before rollout.
+3. Confirm OS settings expose only while-in-use location access on both
+   platforms.
+4. Complete a multi-company tenant-switch test and an explicit ineligible-user
+   preflight test.
+5. Approve retention, privacy notice, support, and incident-handling behavior.
+6. Replace the development-focused Duty & Outbox presentation with the approved
+   Driver Home surface while retaining diagnostics under Settings.
+7. Mark Switchboard entries `ACTIVE` only after explicit product approval.
 
 ## Later roadmap — not built
 
