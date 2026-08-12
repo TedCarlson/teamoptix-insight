@@ -255,7 +255,7 @@ async function loadWalkOns(context: ManagerAccessContext): Promise<ManagerWorksp
   return {
     metrics: [
       { label: "Active", value: String(active.length), tone: "success" },
-      { label: "Assignments", value: String(assignments.filter((row) => row.assignment_status === "ACTIVE").length) },
+      { label: "Assignments", value: String(assignments.filter((assignment) => assignment.status === "ACTIVE").length) },
       { label: "Needs payroll", value: String(needsPayroll), tone: needsPayroll ? "warning" : "success" },
     ],
     description: "Support identities, source workforce units, dispatch history, and payroll posture.",
