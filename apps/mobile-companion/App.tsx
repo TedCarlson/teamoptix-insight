@@ -46,6 +46,7 @@ import {
 import { loadManagerRouteEvidence, recordManagerDeliveryAction } from "./src/data/managerOperations";
 import { loadManagerWorkspaceSnapshot } from "./src/data/managerWorkspace";
 import { updateManagerCandidateStage } from "./src/data/managerPeople";
+import { createManagerFleetWorkOrder, updateManagerFleetWorkOrder } from "./src/data/managerFleet";
 import { loadManagerOperationsChildSnapshot } from "./src/data/managerOperationsChildren";
 import {
   manageManagerWalkOnIdentity,
@@ -77,6 +78,7 @@ import type {
   ManagerDispatchSnapshot,
 } from "./src/domain/managerDispatch";
 import type { ManagerDeliveryActionDraft } from "./src/domain/managerOperations";
+import type { ManagerFleetWorkOrderDraft } from "./src/domain/managerFleet";
 import type {
   ManagerMessageDraft,
   ManagerMessagesSnapshot,
@@ -272,6 +274,7 @@ function AuthenticatedApp(props: { session: Session }) {
   const [managerWorkspaceLoading, setManagerWorkspaceLoading] = useState(false);
   const [managerWorkspaceError, setManagerWorkspaceError] = useState<string | null>(null);
   const [managerPeopleBusy, setManagerPeopleBusy] = useState(false);
+  const [managerFleetBusy, setManagerFleetBusy] = useState(false);
   const [managerWorkspaceChildKey, setManagerWorkspaceChildKey] = useState<ManagerWorkspaceChildKey | null>(null);
   const [managerWorkspaceChildSnapshot, setManagerWorkspaceChildSnapshot] = useState<ManagerWorkspaceSnapshot | null>(null);
   const [managerWorkspaceChildLoading, setManagerWorkspaceChildLoading] = useState(false);
@@ -960,6 +963,38 @@ function AuthenticatedApp(props: { session: Session }) {
     }
   }
 
+  async function submitManagerFleetWorkOrder(draft: ManagerFleetWorkOrderDraft) {
+    if (!managerContext) return;
+    try {
+      setManagerFleetBusy(true);
+      setManagerWorkspaceError(null);
+      await createManagerFleetWorkOrder(managerContext, draft);
+      await refreshManagerWorkspace("fleet");
+    } catch (caught) {
+      const message = errorMessage(caught);
+      setManagerWorkspaceError(message);
+      throw new Error(message);
+    } finally {
+      setManagerFleetBusy(false);
+    }
+  }
+
+  async function submitManagerFleetWorkOrderStatus(workOrderId: string, status: string) {
+    if (!managerContext) return;
+    try {
+      setManagerFleetBusy(true);
+      setManagerWorkspaceError(null);
+      await updateManagerFleetWorkOrder(managerContext, workOrderId, status);
+      await refreshManagerWorkspace("fleet");
+    } catch (caught) {
+      const message = errorMessage(caught);
+      setManagerWorkspaceError(message);
+      throw new Error(message);
+    } finally {
+      setManagerFleetBusy(false);
+    }
+  }
+
   async function openCompanyWeb(path: string) {
     if (!managerContext) return;
     const base = (process.env.EXPO_PUBLIC_WEB_APP_URL ?? "https://teamoptix.io").replace(/\/$/, "");
@@ -1109,6 +1144,7 @@ function AuthenticatedApp(props: { session: Session }) {
                 dispatchSnapshot={managerDispatchSnapshot}
                 error={managerWorkspaceError}
                 loading={managerWorkspaceLoading}
+                fleetBusy={managerFleetBusy}
                 peopleBusy={managerPeopleBusy}
                 onBack={() => { setManagerWorkspaceKey(null); setManagerWorkspaceChildKey(null); setManagerWorkspaceSnapshot(null); setManagerWorkspaceError(null); setManagerDispatchSnapshot(null); setManagerDispatchError(null); }}
                 onOpenChild={(key) => {
@@ -1125,6 +1161,8 @@ function AuthenticatedApp(props: { session: Session }) {
                 onSubmitDelivery={submitManagerDeliveryAction}
                 onSubmitDispatch={submitManagerDispatchAction}
                 onSubmitCandidateStage={submitManagerCandidateStage}
+                onSubmitFleetWorkOrder={submitManagerFleetWorkOrder}
+                onSubmitFleetWorkOrderStatus={submitManagerFleetWorkOrderStatus}
                 onSubmitWalkOn={submitManagerWalkOnAction}
                 snapshot={managerWorkspaceSnapshot}
                 suite={activeManagerSuite}

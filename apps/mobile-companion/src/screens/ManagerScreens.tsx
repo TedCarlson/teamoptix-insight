@@ -40,6 +40,11 @@ import type {
   ManagerPerson,
 } from "../domain/managerPeople";
 import type {
+  ManagerFleetSnapshot,
+  ManagerFleetVehicle,
+  ManagerFleetWorkOrderDraft,
+} from "../domain/managerFleet";
+import type {
   ManagerCapacitySignal,
   ManagerScheduleDay,
   ManagerScheduleSnapshot,
@@ -1281,12 +1286,84 @@ function PeopleReadSurface(props: {
   );
 }
 
+type FleetSurfaceKey = "readiness" | "vehicles" | "defects" | "work" | "inspections";
+
+function FleetVehicleModal(props: { onClose: () => void; onOpenWeb: (path: string) => void; snapshot: ManagerFleetSnapshot; vehicle: ManagerFleetVehicle }) {
+  const defects = props.snapshot.defects.filter((row) => row.vehicleId === props.vehicle.id);
+  const orders = props.snapshot.workOrders.filter((row) => row.vehicleId === props.vehicle.id);
+  const inspections = props.snapshot.inspections.filter((row) => row.vehicleId === props.vehicle.id).slice(0, 5);
+  return <Modal animationType="slide" onRequestClose={props.onClose} presentationStyle="pageSheet" visible>
+    <ScrollView contentContainerStyle={styles.peopleModal}>
+      <View style={[styles.reviewHeader, styles.modalHeaderClearance]}><View><Text style={styles.nativeBannerLabel}>FLEET · GOVERNED UNIT</Text><Text style={styles.drawerTitle}>Unit {props.vehicle.unitNumber}</Text><Text style={styles.detail}>{props.vehicle.description}</Text></View><Pressable onPress={props.onClose}><Text style={styles.done}>Close</Text></Pressable></View>
+      <View style={styles.peopleFacts}>{[
+        ["Status", peopleStatusLabel(props.vehicle.status)], ["Route", props.vehicle.route || "—"], ["Driver", props.vehicle.driverName || "—"],
+        ["Odometer", props.vehicle.odometerMiles == null ? "—" : props.vehicle.odometerMiles.toLocaleString()], ["GVWR", props.vehicle.gvwrLbs == null ? "Unverified" : `${props.vehicle.gvwrLbs.toLocaleString()} lb`], ["Weight evidence", peopleStatusLabel(props.vehicle.gvwrStatus)],
+      ].map(([label, value]) => <View key={label} style={styles.peopleFact}><Text style={styles.peopleFactLabel}>{label}</Text><Text style={styles.peopleFactValue}>{value}</Text></View>)}</View>
+      <View style={styles.sectionHeading}><Text style={styles.sectionLabel}>Open maintenance</Text><Text style={styles.sectionMeta}>{defects.length + orders.length}</Text></View>
+      {defects.map((row) => <Card key={row.id}><Text style={sharedStyles.bodyStrong}>{row.summary}</Text><Text style={styles.detail}>{peopleStatusLabel(row.severity)} · {peopleStatusLabel(row.status)}</Text></Card>)}
+      {orders.filter((row) => !["COMPLETED", "CANCELLED"].includes(row.status)).map((row) => <Card key={row.id}><Text style={sharedStyles.bodyStrong}>WO #{row.number} · {row.title}</Text><Text style={styles.detail}>{peopleStatusLabel(row.priority)} · {peopleStatusLabel(row.status)}</Text></Card>)}
+      <View style={styles.sectionHeading}><Text style={styles.sectionLabel}>Recent inspections</Text><Text style={styles.sectionMeta}>{inspections.length}</Text></View>
+      {inspections.map((row) => <Card key={row.id}><Text style={sharedStyles.bodyStrong}>{peopleStatusLabel(row.inspectionType)}</Text><Text style={styles.detail}>{readableDate(row.startedAt, { month: "short", day: "numeric" })} · {row.driverName || "Leadership"} · {row.defectCount} defects</Text></Card>)}
+      <PrimaryButton compact label="Open full vehicle workspace" onPress={() => props.onOpenWeb("/fleet/vehicles")} secondary />
+    </ScrollView>
+  </Modal>;
+}
+
+function FleetWorkOrderModal(props: { busy: boolean; onClose: () => void; onSubmit: (draft: ManagerFleetWorkOrderDraft) => Promise<void>; snapshot: ManagerFleetSnapshot }) {
+  const [vehicleId, setVehicleId] = useState(""); const [defectId, setDefectId] = useState<string | null>(null);
+  const [title, setTitle] = useState(""); const [scope, setScope] = useState("");
+  const [priority, setPriority] = useState<ManagerFleetWorkOrderDraft["priority"]>("ROUTINE"); const [intentOpen, setIntentOpen] = useState(false); const [error, setError] = useState<string | null>(null);
+  async function submit() { try { setError(null); await props.onSubmit({ vehicleId, defectId, title, scope, priority }); setIntentOpen(false); props.onClose(); } catch (caught) { setIntentOpen(false); setError(caught instanceof Error ? caught.message : "The work order could not be created."); } }
+  return <Modal animationType="slide" onRequestClose={props.onClose} presentationStyle="pageSheet" visible><ScrollView contentContainerStyle={styles.peopleModal} keyboardShouldPersistTaps="handled">
+    <View style={[styles.reviewHeader, styles.modalHeaderClearance]}><View><Text style={styles.nativeBannerLabel}>FLEET · WORK CONTROL</Text><Text style={styles.drawerTitle}>Open work order</Text></View><Pressable disabled={props.busy} onPress={props.onClose}><Text style={styles.done}>Close</Text></Pressable></View>
+    <Text style={styles.drawerStepLabel}>Vehicle</Text><View style={styles.drawerActionGroup}>{props.snapshot.vehicles.map((vehicle) => <Pressable key={vehicle.id} onPress={() => { setVehicleId(vehicle.id); setDefectId(null); }} style={[styles.drawerChoice, vehicleId === vehicle.id && styles.drawerChoiceSelected]}><Text style={styles.drawerChoiceTitle}>Unit {vehicle.unitNumber}</Text><Text style={styles.detail}>{vehicle.description}</Text></Pressable>)}</View>
+    {vehicleId ? <><Text style={styles.drawerStepLabel}>Source defect · optional</Text><View style={styles.drawerActionGroup}><Pressable onPress={() => setDefectId(null)} style={[styles.drawerChoice, defectId === null && styles.drawerChoiceSelected]}><Text style={styles.drawerChoiceTitle}>Manual work</Text></Pressable>{props.snapshot.defects.filter((row) => row.vehicleId === vehicleId && ["OPEN", "TRIAGED"].includes(row.status)).map((row) => <Pressable key={row.id} onPress={() => { setDefectId(row.id); if (!title) setTitle(row.summary); }} style={[styles.drawerChoice, defectId === row.id && styles.drawerChoiceSelected]}><Text style={styles.drawerChoiceTitle}>{row.summary}</Text><Text style={styles.detail}>{peopleStatusLabel(row.severity)}</Text></Pressable>)}</View></> : null}
+    <TextInput onChangeText={setTitle} placeholder="Scope title" placeholderTextColor={colors.muted} style={styles.drawerSearch} value={title} />
+    <TextInput multiline onChangeText={setScope} placeholder="Scope of work" placeholderTextColor={colors.muted} style={styles.noteInput} value={scope} />
+    <ScrollView contentContainerStyle={styles.readFilters} horizontal showsHorizontalScrollIndicator={false}>{(["ROUTINE", "DUE_SOON", "URGENT", "OUT_OF_SERVICE", "ROADSIDE"] as const).map((item) => <Pressable key={item} onPress={() => setPriority(item)} style={[styles.readFilter, priority === item && styles.readFilterActive]}><Text style={[styles.readFilterText, priority === item && styles.readFilterTextActive]}>{peopleStatusLabel(item)}</Text></Pressable>)}</ScrollView>
+    {error ? <Text style={styles.peopleUrgentText}>{error}</Text> : null}<PrimaryButton compact disabled={!vehicleId || !title.trim() || props.busy} label={props.busy ? "Opening…" : "Review work order"} onPress={() => setIntentOpen(true)} />
+  </ScrollView>{intentOpen ? <IntentVerificationModal actionLabel="work order creation" busy={props.busy} onCancel={() => setIntentOpen(false)} onConfirm={() => void submit()} visible /> : null}</Modal>;
+}
+
+function FleetReadSurface(props: { busy: boolean; error: string | null; loading: boolean; onOpenWeb: (path: string) => void; onRefresh: () => void; onSubmitWorkOrder: (draft: ManagerFleetWorkOrderDraft) => Promise<void>; onSubmitWorkOrderStatus: (id: string, status: string) => Promise<void>; snapshot: ManagerWorkspaceSnapshot | null }) {
+  const fleet = props.snapshot?.fleet; const [surface, setSurface] = useState<FleetSurfaceKey>("readiness"); const [vehicleId, setVehicleId] = useState<string | null>(null); const [workOpen, setWorkOpen] = useState(false); const [intent, setIntent] = useState<{ id: string; status: string } | null>(null); const [actionError, setActionError] = useState<string | null>(null);
+  if (props.loading || props.error || !fleet) return <WorkspaceSnapshotView error={props.error} loading={props.loading} onRetry={props.onRefresh} snapshot={props.snapshot} />;
+  const selectedVehicle = fleet.vehicles.find((row) => row.id === vehicleId) ?? null;
+  const surfaces: Array<{ key: FleetSurfaceKey; label: string }> = [{ key: "readiness", label: "Ready" }, { key: "vehicles", label: "Units" }, { key: "defects", label: "Defects" }, { key: "work", label: "Work" }, { key: "inspections", label: "Inspections" }];
+  const rows = surface === "defects" ? fleet.defects : surface === "work" ? fleet.workOrders : surface === "inspections" ? fleet.inspections : [];
+  async function submitStatus() {
+    if (!intent) return;
+    try {
+      setActionError(null);
+      await props.onSubmitWorkOrderStatus(intent.id, intent.status);
+      setIntent(null);
+    } catch (caught) {
+      setIntent(null);
+      setActionError(caught instanceof Error ? caught.message : "The work order could not be updated.");
+    }
+  }
+  return <>
+    <View style={styles.peopleHero}><View><Text style={styles.nativeBannerLabel}>FLEET AUTHORITY</Text><Text style={styles.peopleHeroDate}>{fleet.dispatchReady} of {fleet.totalVehicles} dispatch ready</Text></View><Text style={styles.peopleHeroMeta}>{fleet.unavailable} unavailable</Text></View>
+    <ScrollView contentContainerStyle={styles.readFilters} horizontal showsHorizontalScrollIndicator={false}>{surfaces.map((item) => <Pressable key={item.key} onPress={() => setSurface(item.key)} style={[styles.readFilter, surface === item.key && styles.readFilterActive]}><Text style={[styles.readFilterText, surface === item.key && styles.readFilterTextActive]}>{item.label}</Text></Pressable>)}</ScrollView>
+    {actionError ? <Card tone="danger"><Text style={sharedStyles.bodyStrong}>{actionError}</Text></Card> : null}
+    {surface === "readiness" ? <><View style={styles.peopleMetrics}><PeopleMetric label="Ready" value={fleet.dispatchReady} /><PeopleMetric label="Spare" value={fleet.spareVehicles} /><PeopleMetric attention={fleet.openDefects > 0} label="Defects" value={fleet.openDefects} /><PeopleMetric attention={fleet.openWorkOrders > 0} label="Work" value={fleet.openWorkOrders} /></View><Card><Text style={sharedStyles.bodyStrong}>Weight evidence</Text><Text style={sharedStyles.muted}>{fleet.verifiedGvwr} verified · {fleet.missingGvwr} missing GVWR records. Classification evidence remains observational until reviewed in Fleet.</Text></Card></> : null}
+    {(surface === "readiness" || surface === "vehicles") ? fleet.vehicles.map((vehicle) => <Pressable key={vehicle.id} onPress={() => setVehicleId(vehicle.id)} style={[styles.peopleCard, vehicle.openDefectCount + vehicle.openWorkOrderCount > 0 && styles.peopleCardAttention]}><View style={styles.peopleAvatar}><Text style={styles.peopleAvatarText}>{vehicle.unitNumber.slice(-3)}</Text></View><View style={styles.accessCopy}><Text style={styles.peopleCardTitle}>Unit {vehicle.unitNumber}</Text><Text style={styles.detail}>{vehicle.description} · {peopleStatusLabel(vehicle.status)}</Text><Text style={styles.detail}>{vehicle.route || "No route"} · {vehicle.openDefectCount} defects · {vehicle.openWorkOrderCount} work orders</Text></View><Text style={styles.peopleCardArrow}>›</Text></Pressable>) : null}
+    {surface === "defects" ? fleet.defects.map((row) => <Card key={row.id}><Text style={sharedStyles.bodyStrong}>Unit {row.unitNumber} · {row.summary}</Text><Text style={styles.detail}>{peopleStatusLabel(row.severity)} · {peopleStatusLabel(row.status)} · {readableDate(row.reportedAt, { month: "short", day: "numeric" })}</Text></Card>) : null}
+    {surface === "work" ? <><PrimaryButton compact label="Open work order" onPress={() => setWorkOpen(true)} />{fleet.workOrders.map((row) => <Card key={row.id}><Text style={sharedStyles.bodyStrong}>WO #{row.number} · Unit {row.unitNumber}</Text><Text style={styles.detail}>{row.title} · {peopleStatusLabel(row.priority)} · {peopleStatusLabel(row.status)}</Text>{!["COMPLETED", "CANCELLED"].includes(row.status) ? <View style={styles.drawerActionGroup}>{row.status !== "IN_PROGRESS" ? <PrimaryButton compact disabled={props.busy} label="Start work" onPress={() => setIntent({ id: row.id, status: "IN_PROGRESS" })} secondary /> : null}<PrimaryButton compact disabled={props.busy} label="Complete & certify" onPress={() => setIntent({ id: row.id, status: "COMPLETED" })} /></View> : null}</Card>)}</> : null}
+    {surface === "inspections" ? rows.map((item) => { const row = item as ManagerFleetSnapshot["inspections"][number]; return <Card key={row.id}><Text style={sharedStyles.bodyStrong}>Unit {row.unitNumber} · {peopleStatusLabel(row.inspectionType)}</Text><Text style={styles.detail}>{readableDate(row.startedAt, { month: "short", day: "numeric", year: "numeric" })} · {row.driverName || "Leadership"} · {row.defectCount} defects</Text></Card>; }) : null}
+    {selectedVehicle ? <FleetVehicleModal onClose={() => setVehicleId(null)} onOpenWeb={props.onOpenWeb} snapshot={fleet} vehicle={selectedVehicle} /> : null}
+    {workOpen ? <FleetWorkOrderModal busy={props.busy} onClose={() => setWorkOpen(false)} onSubmit={props.onSubmitWorkOrder} snapshot={fleet} /> : null}
+    {intent ? <IntentVerificationModal actionLabel={intent.status === "COMPLETED" ? "repair certification" : "work-order status"} busy={props.busy} onCancel={() => setIntent(null)} onConfirm={() => void submitStatus()} visible /> : null}
+  </>;
+}
+
 export function ManagerWorkspaceDetailScreen(props: {
   context: ManagerAccessContext;
   dispatchBusy: boolean;
   dispatchError: string | null;
   dispatchLoading: boolean;
   dispatchSnapshot: ManagerDispatchSnapshot | null;
+  fleetBusy: boolean;
   peopleBusy: boolean;
   error: string | null;
   loading: boolean;
@@ -1302,6 +1379,8 @@ export function ManagerWorkspaceDetailScreen(props: {
   onSubmitDispatch: (draft: ManagerDispatchActionDraft) => Promise<void>;
   onSubmitWalkOn: (draft: ManagerWalkOnAssignmentDraft) => Promise<void>;
   onSubmitCandidateStage: (rosterMemberId: string, stageKey: string, note: string) => Promise<void>;
+  onSubmitFleetWorkOrder: (draft: ManagerFleetWorkOrderDraft) => Promise<void>;
+  onSubmitFleetWorkOrderStatus: (id: string, status: string) => Promise<void>;
   snapshot: ManagerWorkspaceSnapshot | null;
   suite: ManagerWorkspaceSuite;
 }) {
@@ -1337,6 +1416,8 @@ export function ManagerWorkspaceDetailScreen(props: {
           onSubmitCandidateStage={props.onSubmitCandidateStage}
           snapshot={props.snapshot}
         />
+      ) : props.suite.key === "fleet" ? (
+        <FleetReadSurface busy={props.fleetBusy} error={props.error} loading={props.loading} onOpenWeb={props.onOpenWeb} onRefresh={props.onRefresh} onSubmitWorkOrder={props.onSubmitFleetWorkOrder} onSubmitWorkOrderStatus={props.onSubmitFleetWorkOrderStatus} snapshot={props.snapshot} />
       ) : (
         <WorkspaceSnapshotView error={props.error} loading={props.loading} onRetry={props.onRefresh} snapshot={props.snapshot} />
       )}
@@ -1360,7 +1441,7 @@ export function ManagerWorkspaceDetailScreen(props: {
           })}
         </>
       ) : null}
-      {props.suite.key !== "operations" && props.suite.key !== "people" ? (
+      {props.suite.key !== "operations" && props.suite.key !== "people" && props.suite.key !== "fleet" ? (
         <>
           <View style={styles.sectionHeading}>
             <Text style={styles.sectionLabel}>Surfaces</Text>
@@ -1390,6 +1471,7 @@ export function ManagerWorkspaceDetailScreen(props: {
           <PrimaryButton compact label="Open full People workspace" onPress={() => props.onOpenWeb(props.suite.fallbackPath)} secondary />
         </Card>
       ) : null}
+      {props.suite.key === "fleet" ? <Card><Text style={sharedStyles.bodyStrong}>Fleet administration boundary</Text><Text style={sharedStyles.muted}>Every driver can submit inspections without Fleet authority. Vehicle intake, VIN evidence, cost entry, and dense compliance controls remain in the full web workspace.</Text><PrimaryButton compact label="Open full Fleet workspace" onPress={() => props.onOpenWeb(props.suite.fallbackPath)} secondary /></Card> : null}
     </Screen>
   );
 }
