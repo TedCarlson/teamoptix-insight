@@ -44,6 +44,15 @@ import type {
   ManagerFleetVehicle,
   ManagerFleetWorkOrderDraft,
 } from "../domain/managerFleet";
+import {
+  MANAGER_ROUTE_DAYS,
+  emptyManagerRouteDraft,
+  managerRouteDraft,
+  validateManagerRouteDraft,
+  type ManagerRoute,
+  type ManagerRouteDraft,
+  type ManagerRoutesSnapshot,
+} from "../domain/managerRoutes";
 import type {
   ManagerCapacitySignal,
   ManagerScheduleDay,
@@ -1357,6 +1366,56 @@ function FleetReadSurface(props: { busy: boolean; error: string | null; loading:
   </>;
 }
 
+type RoutesSurfaceKey = "directory" | "pattern" | "thresholds" | "history";
+
+function ManagerRouteCard(props: { onPress: () => void; route: ManagerRoute; showHistory?: boolean }) {
+  const activeDays = MANAGER_ROUTE_DAYS.filter((day) => props.route.runs[day.key]).map((day) => day.label.slice(0, 1)).join("  ");
+  return <Pressable onPress={props.onPress} style={styles.peopleCard}>
+    <View style={styles.peopleAvatar}><Text style={styles.peopleAvatarText}>{props.route.currentWaNumber?.slice(-3) || props.route.routeName.slice(-3)}</Text></View>
+    <View style={styles.accessCopy}>
+      <Text style={styles.peopleCardTitle}>{props.route.currentWaNumber || props.route.routeName}</Text>
+      <Text style={styles.detail}>{props.route.routeName}{props.route.routeLocation ? ` · ${props.route.routeLocation}` : ""} · {peopleStatusLabel(props.route.routeType)}</Text>
+      <Text style={styles.detail}>{activeDays || "No run days"} · {props.route.rotationName || "No rotation"}</Text>
+      {props.showHistory ? <Text style={styles.detail}>{props.route.effectiveStart} → {props.route.effectiveEnd || "Current"} · {props.route.isActive ? "Active" : "Inactive"}</Text> : null}
+    </View>
+    <Text style={styles.peopleCardArrow}>›</Text>
+  </Pressable>;
+}
+
+function ManagerRouteEditor(props: { busy: boolean; initial: ManagerRouteDraft; mode: "create" | "edit" | "clone"; onClose: () => void; onSubmit: (draft: ManagerRouteDraft) => Promise<void> }) {
+  const [draft, setDraft] = useState(props.initial); const [intentOpen, setIntentOpen] = useState(false); const [error, setError] = useState<string | null>(null);
+  const validation = validateManagerRouteDraft(draft);
+  async function submit() { try { setError(null); await props.onSubmit(draft); setIntentOpen(false); props.onClose(); } catch (caught) { setIntentOpen(false); setError(caught instanceof Error ? caught.message : "The route could not be saved."); } }
+  return <Modal animationType="slide" onRequestClose={props.onClose} presentationStyle="pageSheet" visible><ScrollView contentContainerStyle={styles.peopleModal} keyboardShouldPersistTaps="handled">
+    <View style={[styles.reviewHeader, styles.modalHeaderClearance]}><View><Text style={styles.nativeBannerLabel}>ROUTES · VERSIONED BASELINE</Text><Text style={styles.drawerTitle}>{props.mode === "create" ? "Add route" : props.mode === "clone" ? "Clone prior route" : "Edit route"}</Text><Text style={styles.detail}>Saving preserves the prior baseline row and creates the next effective version.</Text></View><Pressable disabled={props.busy} onPress={props.onClose}><Text style={styles.done}>Close</Text></Pressable></View>
+    <View style={styles.drawerStep}><Text style={styles.drawerStepLabel}>Route identity</Text><TextInput onChangeText={(value) => setDraft((current) => ({ ...current, routeName: value }))} placeholder="Route name" placeholderTextColor={colors.muted} style={styles.drawerSearch} value={draft.routeName} /><TextInput onChangeText={(value) => setDraft((current) => ({ ...current, currentWaNumber: value }))} placeholder="Current WA# · optional" placeholderTextColor={colors.muted} style={styles.drawerSearch} value={draft.currentWaNumber} /><TextInput onChangeText={(value) => setDraft((current) => ({ ...current, routeLocation: value }))} placeholder="Location · optional" placeholderTextColor={colors.muted} style={styles.drawerSearch} value={draft.routeLocation} /><TextInput onChangeText={(value) => setDraft((current) => ({ ...current, rotationName: value }))} placeholder="Rotation · optional" placeholderTextColor={colors.muted} style={styles.drawerSearch} value={draft.rotationName} /></View>
+    <Text style={styles.drawerStepLabel}>Route type</Text><View style={styles.phaseSelector}>{(["CORE", "PEAK", "OVERFLOW"] as const).map((value) => <Pressable key={value} onPress={() => setDraft((current) => ({ ...current, routeType: value }))} style={[styles.phaseOption, draft.routeType === value && styles.phaseOptionActive]}><Text style={[styles.phaseOptionText, draft.routeType === value && styles.phaseOptionTextActive]}>{peopleStatusLabel(value)}</Text></Pressable>)}</View>
+    <Text style={styles.drawerStepLabel}>Operating days</Text><View style={styles.drawerActionGroup}>{MANAGER_ROUTE_DAYS.map((day) => <Pressable key={day.key} onPress={() => setDraft((current) => ({ ...current, runs: { ...current.runs, [day.key]: !current.runs[day.key] } }))} style={[styles.readFilter, draft.runs[day.key] && styles.readFilterActive]}><Text style={[styles.readFilterText, draft.runs[day.key] && styles.readFilterTextActive]}>{day.label}</Text></Pressable>)}</View>
+    <View style={styles.drawerStep}><Text style={styles.drawerStepLabel}>Thresholds · optional</Text><TextInput keyboardType="number-pad" onChangeText={(value) => setDraft((current) => ({ ...current, thresholdStops: value }))} placeholder="Threshold stops" placeholderTextColor={colors.muted} style={styles.drawerSearch} value={draft.thresholdStops} /><TextInput keyboardType="decimal-pad" onChangeText={(value) => setDraft((current) => ({ ...current, thresholdRate: value }))} placeholder="Threshold rate" placeholderTextColor={colors.muted} style={styles.drawerSearch} value={draft.thresholdRate} /></View>
+    {props.mode === "edit" ? <Pressable onPress={() => setDraft((current) => ({ ...current, isActive: !current.isActive }))} style={[styles.drawerChoice, draft.isActive && styles.drawerChoiceSelected]}><Text style={styles.drawerChoiceTitle}>{draft.isActive ? "Active route" : "Deactivate route"}</Text><Text style={styles.detail}>{draft.isActive ? "Included in the current baseline" : "Creates an inactive successor and preserves history"}</Text></Pressable> : null}
+    <Card tone={validation || error ? "danger" : "primary"}><Text style={sharedStyles.bodyStrong}>{error || validation || "Route baseline is ready for review."}</Text><Text style={sharedStyles.muted}>The server rechecks the Routes grant, company, terminal, and current version.</Text></Card>
+    <PrimaryButton disabled={Boolean(validation) || props.busy} label={props.busy ? "Saving…" : "Review route change"} onPress={() => setIntentOpen(true)} />
+  </ScrollView>{intentOpen ? <IntentVerificationModal actionLabel="route baseline change" busy={props.busy} onCancel={() => setIntentOpen(false)} onConfirm={() => void submit()} visible /> : null}</Modal>;
+}
+
+function RoutesReadSurface(props: { busy: boolean; error: string | null; loading: boolean; onRefresh: () => void; onSubmit: (routeId: string | null, draft: ManagerRouteDraft) => Promise<void>; snapshot: ManagerWorkspaceSnapshot | null }) {
+  const routes = props.snapshot?.routes; const [surface, setSurface] = useState<RoutesSurfaceKey>("directory"); const [query, setQuery] = useState(""); const [editing, setEditing] = useState<{ routeId: string | null; mode: "create" | "edit" | "clone"; draft: ManagerRouteDraft } | null>(null);
+  if (props.loading || props.error || !routes) return <WorkspaceSnapshotView error={props.error} loading={props.loading} onRetry={props.onRefresh} snapshot={props.snapshot} />;
+  const normalized = query.trim().toLowerCase();
+  const source = surface === "history" ? routes.history : routes.activeRoutes;
+  const visible = source.filter((route) => (!normalized || [route.routeName, route.currentWaNumber, route.routeLocation, route.routeType, route.rotationName].some((value) => value?.toLowerCase().includes(normalized))) && (surface !== "thresholds" || route.thresholdStops != null));
+  const surfaces: Array<{ key: RoutesSurfaceKey; label: string }> = [{ key: "directory", label: "Directory" }, { key: "pattern", label: "Run pattern" }, { key: "thresholds", label: "Thresholds" }, { key: "history", label: "History" }];
+  return <>
+    <View style={styles.peopleHero}><View><Text style={styles.nativeBannerLabel}>ROUTES AUTHORITY</Text><Text style={styles.peopleHeroDate}>{routes.activeRoutes.length} active routes</Text></View><Text style={styles.peopleHeroMeta}>{routes.coreCount} core · {routes.thresholdCount} thresholds</Text></View>
+    <ScrollView contentContainerStyle={styles.readFilters} horizontal showsHorizontalScrollIndicator={false}>{surfaces.map((item) => <Pressable key={item.key} onPress={() => setSurface(item.key)} style={[styles.readFilter, surface === item.key && styles.readFilterActive]}><Text style={[styles.readFilterText, surface === item.key && styles.readFilterTextActive]}>{item.label}</Text></Pressable>)}</ScrollView>
+    <TextInput onChangeText={setQuery} placeholder="Search route, WA#, location, type" placeholderTextColor={colors.muted} style={styles.drawerSearch} value={query} />
+    <PrimaryButton compact label="Add route" onPress={() => setEditing({ routeId: null, mode: "create", draft: emptyManagerRouteDraft() })} />
+    <View style={styles.sectionHeading}><Text style={styles.sectionLabel}>{surfaces.find((item) => item.key === surface)?.label}</Text><Text style={styles.sectionMeta}>{visible.length}</Text></View>
+    {visible.length ? visible.map((route) => <View key={route.id}><ManagerRouteCard onPress={() => { const draft = managerRouteDraft(route); if (surface === "history") draft.isActive = true; setEditing({ routeId: surface === "history" ? null : route.id, mode: surface === "history" ? "clone" : "edit", draft }); }} route={route} showHistory={surface === "history"} />{surface === "thresholds" ? <Text style={styles.detail}>{route.thresholdStops} stops{route.thresholdRate == null ? "" : ` · $${route.thresholdRate.toFixed(2)}`}</Text> : null}</View>) : <Card><Text style={sharedStyles.bodyStrong}>No matching routes</Text><Text style={sharedStyles.muted}>Adjust the search or active route surface.</Text></Card>}
+    {editing ? <ManagerRouteEditor busy={props.busy} initial={editing.draft} mode={editing.mode} onClose={() => setEditing(null)} onSubmit={(draft) => props.onSubmit(editing.routeId, draft)} /> : null}
+  </>;
+}
+
 export function ManagerWorkspaceDetailScreen(props: {
   context: ManagerAccessContext;
   dispatchBusy: boolean;
@@ -1364,6 +1423,7 @@ export function ManagerWorkspaceDetailScreen(props: {
   dispatchLoading: boolean;
   dispatchSnapshot: ManagerDispatchSnapshot | null;
   fleetBusy: boolean;
+  routesBusy: boolean;
   peopleBusy: boolean;
   error: string | null;
   loading: boolean;
@@ -1381,6 +1441,7 @@ export function ManagerWorkspaceDetailScreen(props: {
   onSubmitCandidateStage: (rosterMemberId: string, stageKey: string, note: string) => Promise<void>;
   onSubmitFleetWorkOrder: (draft: ManagerFleetWorkOrderDraft) => Promise<void>;
   onSubmitFleetWorkOrderStatus: (id: string, status: string) => Promise<void>;
+  onSubmitRoute: (routeId: string | null, draft: ManagerRouteDraft) => Promise<void>;
   snapshot: ManagerWorkspaceSnapshot | null;
   suite: ManagerWorkspaceSuite;
 }) {
@@ -1418,6 +1479,8 @@ export function ManagerWorkspaceDetailScreen(props: {
         />
       ) : props.suite.key === "fleet" ? (
         <FleetReadSurface busy={props.fleetBusy} error={props.error} loading={props.loading} onOpenWeb={props.onOpenWeb} onRefresh={props.onRefresh} onSubmitWorkOrder={props.onSubmitFleetWorkOrder} onSubmitWorkOrderStatus={props.onSubmitFleetWorkOrderStatus} snapshot={props.snapshot} />
+      ) : props.suite.key === "routes" ? (
+        <RoutesReadSurface busy={props.routesBusy} error={props.error} loading={props.loading} onRefresh={props.onRefresh} onSubmit={props.onSubmitRoute} snapshot={props.snapshot} />
       ) : (
         <WorkspaceSnapshotView error={props.error} loading={props.loading} onRetry={props.onRefresh} snapshot={props.snapshot} />
       )}
