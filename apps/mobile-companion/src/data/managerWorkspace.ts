@@ -34,11 +34,13 @@ function completeSnapshot(
     description: value.description,
     filters: value.filters,
     statusText: value.statusText,
+    serviceDate: value.serviceDate,
+    availableDates: value.availableDates,
     operations: value.operations,
   };
 }
 
-async function authoritativeOperationsDate(context: ManagerAccessContext) {
+export async function authoritativeOperationsDate(context: ManagerAccessContext) {
   const result = await getSupabaseClient().rpc("mobile_companion_terminal_time_authority", {
     p_company_slug: context.company_slug,
   });

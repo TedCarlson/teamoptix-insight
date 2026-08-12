@@ -10,6 +10,7 @@ export type ManagerWorkspaceChild = {
   label: string;
   detail: string;
   path: string;
+  mobileVisible?: boolean;
   requiredGrant?: CompanyWorkspaceGrantKey;
 };
 
@@ -86,6 +87,8 @@ export type ManagerWorkspaceSnapshot = {
   description?: string;
   filters?: ManagerWorkspaceFilter[];
   statusText?: string;
+  serviceDate?: string;
+  availableDates?: string[];
   operations?: ManagerOperationsSnapshot;
 };
 
@@ -94,12 +97,12 @@ export const MANAGER_WORKSPACE_SUITES: ManagerWorkspaceSuite[] = [
     key: "operations",
     code: "OP",
     label: "Operations",
-    detail: "Operating posture, dispatch, service, planning, reports, and walk-ons",
+    detail: "Operating posture, planning, reports, and walk-ons",
     grants: ["dispatch", "planning", "delivery_window", "reports"],
     fallbackPath: "/operations",
     children: [
-      { key: "dispatch", code: "DP", label: "Dispatch", detail: "Assignments, attendance, route changes, and handoff", path: "/operations/dispatch", requiredGrant: "dispatch" },
-      { key: "service", code: "SV", label: "Service", detail: "On-route progress, exceptions, and delivery actions", path: "/operations/service", requiredGrant: "delivery_window" },
+      { key: "dispatch", code: "DP", label: "Dispatch", detail: "Assignments, attendance, route changes, and handoff", path: "/operations/dispatch", mobileVisible: false, requiredGrant: "dispatch" },
+      { key: "service", code: "SV", label: "Service", detail: "On-route progress, exceptions, and delivery evidence", path: "/operations/service", requiredGrant: "delivery_window" },
       { key: "planning", code: "PL", label: "Planning", detail: "Forecast, demand, and readiness intelligence", path: "/operations/planning", requiredGrant: "planning" },
       { key: "reports", code: "RP", label: "Ops Reports", detail: "Select a service date and review prior-day facts", path: "/prior-day", requiredGrant: "reports" },
       { key: "walk_ons", code: "WO", label: "Walk Ons", detail: "Support identities, dated assignments, and pay treatment", path: "/operations/walk-ons", requiredGrant: "dispatch" },
@@ -182,7 +185,7 @@ export function managerWorkspaceSuites(context: ManagerAccessContext) {
   ).map((suite) => ({
     ...suite,
     children: suite.children.filter(
-      (child) => !child.requiredGrant || context.grants.includes(child.requiredGrant),
+      (child) => child.mobileVisible !== false && (!child.requiredGrant || context.grants.includes(child.requiredGrant)),
     ),
   }));
 }
@@ -190,11 +193,16 @@ export function managerWorkspaceSuites(context: ManagerAccessContext) {
 export function managerWorkspaceSuite(key: ManagerWorkspaceKey, context?: ManagerAccessContext) {
   const suite = MANAGER_WORKSPACE_SUITES.find((candidate) => candidate.key === key);
   if (!suite) return null;
-  if (!context) return suite;
+  if (!context) {
+    return {
+      ...suite,
+      children: suite.children.filter((child) => child.mobileVisible !== false),
+    };
+  }
   return {
     ...suite,
     children: suite.children.filter(
-      (child) => !child.requiredGrant || context.grants.includes(child.requiredGrant),
+      (child) => child.mobileVisible !== false && (!child.requiredGrant || context.grants.includes(child.requiredGrant)),
     ),
   };
 }

@@ -41,6 +41,7 @@ import {
 } from "./src/data/managerDispatch";
 import { loadManagerRouteEvidence, recordManagerDeliveryAction } from "./src/data/managerOperations";
 import { loadManagerWorkspaceSnapshot } from "./src/data/managerWorkspace";
+import { loadManagerOperationsChildSnapshot } from "./src/data/managerOperationsChildren";
 import {
   scheduleForDate,
   type DriverMessage,
@@ -100,6 +101,7 @@ import {
   ManagerDispatchScreen,
   ManagerHomeScreen,
   ManagerMessagesScreen,
+  ManagerOperationsChildScreen,
   ManagerScheduleScreen,
   ManagerWorkspaceDetailScreen,
   ManagerWorkspacesScreen,
@@ -246,6 +248,9 @@ function AuthenticatedApp(props: { session: Session }) {
   const [managerWorkspaceLoading, setManagerWorkspaceLoading] = useState(false);
   const [managerWorkspaceError, setManagerWorkspaceError] = useState<string | null>(null);
   const [managerWorkspaceChildKey, setManagerWorkspaceChildKey] = useState<ManagerWorkspaceChildKey | null>(null);
+  const [managerWorkspaceChildSnapshot, setManagerWorkspaceChildSnapshot] = useState<ManagerWorkspaceSnapshot | null>(null);
+  const [managerWorkspaceChildLoading, setManagerWorkspaceChildLoading] = useState(false);
+  const [managerWorkspaceChildError, setManagerWorkspaceChildError] = useState<string | null>(null);
   const [managerDispatchSnapshot, setManagerDispatchSnapshot] = useState<ManagerDispatchSnapshot | null>(null);
   const [managerDispatchLoading, setManagerDispatchLoading] = useState(false);
   const [managerDispatchError, setManagerDispatchError] = useState<string | null>(null);
@@ -321,6 +326,24 @@ function AuthenticatedApp(props: { session: Session }) {
       setManagerDispatchLoading(false);
     }
   }, [managerContext]);
+
+  const refreshManagerOperationsChild = useCallback(async (serviceDate?: string) => {
+    if (!managerContext || !managerWorkspaceChildKey || managerWorkspaceChildKey === "dispatch") return;
+    try {
+      setManagerWorkspaceChildLoading(true);
+      setManagerWorkspaceChildError(null);
+      const snapshot = await loadManagerOperationsChildSnapshot(
+        managerContext,
+        managerWorkspaceChildKey,
+        serviceDate,
+      );
+      setManagerWorkspaceChildSnapshot(snapshot);
+    } catch (caught) {
+      setManagerWorkspaceChildError(errorMessage(caught));
+    } finally {
+      setManagerWorkspaceChildLoading(false);
+    }
+  }, [managerContext, managerWorkspaceChildKey]);
 
   const refreshLocal = useCallback(async (nextOutbox: EdgeOutbox, companyId: string) => {
     const [session, nextCounts] = await Promise.all([
@@ -427,6 +450,12 @@ function AuthenticatedApp(props: { session: Session }) {
     if (!managerContext?.grants.includes("dispatch") || managerTab !== "workspaces" || (!operationsParentOpen && managerWorkspaceChildKey !== "dispatch")) return;
     void refreshManagerDispatch();
   }, [managerContext, managerTab, managerWorkspaceChildKey, managerWorkspaceKey, refreshManagerDispatch]);
+
+  useEffect(() => {
+    if (managerTab !== "workspaces" || managerWorkspaceKey !== "operations" || !managerWorkspaceChildKey || managerWorkspaceChildKey === "dispatch") return;
+    setManagerWorkspaceChildSnapshot(null);
+    void refreshManagerOperationsChild();
+  }, [managerTab, managerWorkspaceChildKey, managerWorkspaceKey, refreshManagerOperationsChild]);
 
   useEffect(() => {
     if (!membership) {
@@ -684,6 +713,8 @@ function AuthenticatedApp(props: { session: Session }) {
       setManagerWorkspaceSnapshot(null);
       setManagerWorkspaceError(null);
       setManagerWorkspaceChildKey(null);
+      setManagerWorkspaceChildSnapshot(null);
+      setManagerWorkspaceChildError(null);
       setManagerDispatchSnapshot(null);
       setManagerDispatchError(null);
     }
@@ -864,6 +895,23 @@ function AuthenticatedApp(props: { session: Session }) {
                 onSubmit={submitManagerDispatchAction}
                 snapshot={managerDispatchSnapshot}
               />
+            ) : managerWorkspaceChildKey && managerWorkspaceKey === "operations" ? (
+              <ManagerOperationsChildScreen
+                childKey={managerWorkspaceChildKey}
+                context={managerContext}
+                error={managerWorkspaceChildError}
+                loading={managerWorkspaceChildLoading}
+                onBack={() => {
+                  setManagerWorkspaceChildKey(null);
+                  setManagerWorkspaceChildSnapshot(null);
+                  setManagerWorkspaceChildError(null);
+                }}
+                onOpenWeb={(path) => void openCompanyWeb(path)}
+                onRefresh={() => void refreshManagerOperationsChild(managerWorkspaceChildSnapshot?.serviceDate)}
+                onServiceDate={(value) => void refreshManagerOperationsChild(value)}
+                onSettings={() => setSettingsOpen(true)}
+                snapshot={managerWorkspaceChildSnapshot}
+              />
             ) : activeManagerSuite ? (
               <ManagerWorkspaceDetailScreen
                 context={managerContext}
@@ -874,7 +922,11 @@ function AuthenticatedApp(props: { session: Session }) {
                 error={managerWorkspaceError}
                 loading={managerWorkspaceLoading}
                 onBack={() => { setManagerWorkspaceKey(null); setManagerWorkspaceChildKey(null); setManagerWorkspaceSnapshot(null); setManagerWorkspaceError(null); setManagerDispatchSnapshot(null); setManagerDispatchError(null); }}
-                onOpenChild={setManagerWorkspaceChildKey}
+                onOpenChild={(key) => {
+                  setManagerWorkspaceChildSnapshot(null);
+                  setManagerWorkspaceChildError(null);
+                  setManagerWorkspaceChildKey(key);
+                }}
                 onLoadRouteEvidence={(routeKey) => loadManagerRouteEvidence(managerContext, routeKey)}
                 onOpenWeb={(path) => void openCompanyWeb(path)}
                 onRefresh={() => void refreshManagerWorkspace(activeManagerSuite.key)}
@@ -889,7 +941,7 @@ function AuthenticatedApp(props: { session: Session }) {
               <ManagerWorkspacesScreen
                 context={managerContext}
                 onOpenNativeSchedule={() => { setManagerTab("schedule"); setManagerScheduleSurface("bridge"); }}
-                onOpenSuite={(key) => { setManagerWorkspaceKey(key); setManagerWorkspaceChildKey(null); setManagerDispatchSnapshot(null); setManagerDispatchError(null); }}
+                onOpenSuite={(key) => { setManagerWorkspaceKey(key); setManagerWorkspaceChildKey(null); setManagerWorkspaceChildSnapshot(null); setManagerWorkspaceChildError(null); setManagerDispatchSnapshot(null); setManagerDispatchError(null); }}
                 onSettings={() => setSettingsOpen(true)}
               />
             )
@@ -912,7 +964,7 @@ function AuthenticatedApp(props: { session: Session }) {
           onTab={(nextTab) => {
             setManagerTab(nextTab);
             if (nextTab !== "schedule") setManagerScheduleSurface("bridge");
-            if (nextTab === "workspaces") { setManagerWorkspaceKey(null); setManagerWorkspaceChildKey(null); }
+            if (nextTab === "workspaces") { setManagerWorkspaceKey(null); setManagerWorkspaceChildKey(null); setManagerWorkspaceChildSnapshot(null); setManagerWorkspaceChildError(null); }
             setManagerWorkspaceSnapshot(null);
             setManagerWorkspaceError(null);
           }}
