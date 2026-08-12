@@ -48,17 +48,84 @@ export type ManagerScheduleOverride = {
   manager_note: string | null;
 };
 
-export type ManagerCoverageStatus = "COVERED" | "TIGHT" | "GAP";
+export type ManagerSchedulePreset = {
+  id: string;
+  preset_code: string;
+  works_s: boolean;
+  works_u: boolean;
+  works_m: boolean;
+  works_t: boolean;
+  works_w: boolean;
+  works_h: boolean;
+  works_f: boolean;
+  uses_rotation: boolean;
+};
+
+export type ManagerScheduleBaseline = {
+  id: string;
+  roster_member_id: string;
+  preset_id: string | null;
+  rotation_mode: string | null;
+  anchor_date: string | null;
+  effective_start: string | null;
+  rotation_works_s: boolean | null;
+  rotation_works_u: boolean | null;
+  rotation_works_m: boolean | null;
+  rotation_works_t: boolean | null;
+  rotation_works_w: boolean | null;
+  rotation_works_h: boolean | null;
+  rotation_works_f: boolean | null;
+  default_route_s: string | null;
+  default_route_u: string | null;
+  default_route_m: string | null;
+  default_route_t: string | null;
+  default_route_w: string | null;
+  default_route_h: string | null;
+  default_route_f: string | null;
+};
+
+export type ManagerScheduleRosterMember = {
+  roster_member_id: string;
+  full_name: string | null;
+  worker_type: string | null;
+  employment_status: string | null;
+};
+
+export type ManagerScheduleWorkbenchRow = {
+  rosterMemberId: string;
+  fullName: string;
+  workerType: string | null;
+  employmentStatus: string | null;
+  baselineId: string | null;
+  presetId: string | null;
+  presetCode: string | null;
+  rotationMode: string | null;
+  anchorDate: string | null;
+  effectiveStart: string | null;
+  defaultRoutes: string[];
+  schedulePending: boolean;
+};
+
+export type ManagerCapacitySignal =
+  | "NO_OPERATION"
+  | "SERVICE_RISK"
+  | "NO_CONTINGENCY"
+  | "TARGET_RANGE"
+  | "LABOR_HIGH"
+  | "PROFITABILITY_RISK";
 
 export type ManagerScheduleDay = {
   serviceDate: string;
   scheduledDrivers: number;
   routeDemand: number;
   assignedDrivers: number;
+  assignedRoutes: number;
   openRoutes: ManagerScheduleRoute[];
   standbyDrivers: ManagerScheduleRow[];
+  baselineScheduledOffDrivers: ManagerScheduleRow[];
+  overrideOffRows: ManagerScheduleRow[];
   capacityDelta: number;
-  status: ManagerCoverageStatus;
+  signal: ManagerCapacitySignal;
 };
 
 export type ManagerScheduleSnapshot = {
@@ -67,6 +134,8 @@ export type ManagerScheduleSnapshot = {
   days: ManagerScheduleDay[];
   pendingRequests: ManagerTimeOffRequest[];
   activeOverrides: ManagerScheduleOverride[];
+  workbenchRows: ManagerScheduleWorkbenchRow[];
+  presets: ManagerSchedulePreset[];
   generatedAt: string;
 };
 
@@ -130,10 +199,87 @@ function routeAliases(route: ManagerScheduleRoute) {
   return [route.route_name, route.current_wa_num].map(normalizeRoute).filter(Boolean);
 }
 
-export function coverageStatus(delta: number): ManagerCoverageStatus {
-  if (delta < 0) return "GAP";
-  if (delta === 0) return "TIGHT";
-  return "COVERED";
+export function capacitySignal(
+  delta: number,
+  workforce: number,
+  routeDemand: number,
+): ManagerCapacitySignal {
+  if (workforce === 0 && routeDemand === 0) return "NO_OPERATION";
+  if (delta < 0) return "SERVICE_RISK";
+  if (delta === 0) return "NO_CONTINGENCY";
+  if (delta <= 2) return "TARGET_RANGE";
+  if (delta <= 5) return "LABOR_HIGH";
+  return "PROFITABILITY_RISK";
+}
+
+export function capacitySignalLabel(signal: ManagerCapacitySignal) {
+  if (signal === "NO_OPERATION") return "No operation";
+  if (signal === "SERVICE_RISK") return "Service risk";
+  if (signal === "NO_CONTINGENCY") return "No contingency";
+  if (signal === "TARGET_RANGE") return "Target range";
+  if (signal === "LABOR_HIGH") return "Labor high";
+  return "Profitability risk";
+}
+
+export function resolveBaselineScheduledOffDrivers(rows: ManagerScheduleRow[]) {
+  return rows.filter(
+    (row) => !row.planned_on && !row.override_type && isDriverSeatWorker(row.worker_type),
+  );
+}
+
+export function resolveOverrideOffRows(rows: ManagerScheduleRow[]) {
+  return rows.filter((row) => !row.planned_on && Boolean(row.override_type));
+}
+
+function cleanName(value: string | null | undefined) {
+  return value?.trim() || "Roster member";
+}
+
+export function buildManagerScheduleWorkbenchRows(params: {
+  roster: ManagerScheduleRosterMember[];
+  baselines: ManagerScheduleBaseline[];
+  presets: ManagerSchedulePreset[];
+}): ManagerScheduleWorkbenchRow[] {
+  const baselineByRosterId = new Map<string, ManagerScheduleBaseline>();
+  for (const baseline of params.baselines) {
+    if (!baselineByRosterId.has(baseline.roster_member_id)) {
+      baselineByRosterId.set(baseline.roster_member_id, baseline);
+    }
+  }
+  const presetById = new Map(params.presets.map((preset) => [preset.id, preset]));
+
+  return params.roster.map((member) => {
+    const baseline = baselineByRosterId.get(member.roster_member_id) ?? null;
+    const preset = baseline?.preset_id
+      ? presetById.get(baseline.preset_id) ?? null
+      : null;
+    const defaultRoutes = baseline
+      ? [
+        baseline.default_route_s,
+        baseline.default_route_u,
+        baseline.default_route_m,
+        baseline.default_route_t,
+        baseline.default_route_w,
+        baseline.default_route_h,
+        baseline.default_route_f,
+      ].map(normalizeRoute).filter((value, index, values) => Boolean(value) && values.indexOf(value) === index)
+      : [];
+
+    return {
+      rosterMemberId: member.roster_member_id,
+      fullName: cleanName(member.full_name),
+      workerType: member.worker_type,
+      employmentStatus: member.employment_status,
+      baselineId: baseline?.id ?? null,
+      presetId: baseline?.preset_id ?? null,
+      presetCode: preset?.preset_code ?? null,
+      rotationMode: baseline?.rotation_mode ?? null,
+      anchorDate: baseline?.anchor_date ?? null,
+      effectiveStart: baseline?.effective_start ?? null,
+      defaultRoutes,
+      schedulePending: !baseline?.preset_id,
+    };
+  });
 }
 
 export function resolveManagerScheduleDay(params: {
@@ -149,10 +295,15 @@ export function resolveManagerScheduleDay(params: {
   );
   const assignedDrivers = scheduledDrivers.filter((row) => Boolean(normalizeRoute(row.route_name)));
   const assignedRouteNames = new Set(assignedDrivers.map((row) => normalizeRoute(row.route_name)));
+  const assignedRoutes = demandedRoutes.filter(
+    (route) => routeAliases(route).some((alias) => assignedRouteNames.has(alias)),
+  );
   const openRoutes = demandedRoutes.filter(
     (route) => !routeAliases(route).some((alias) => assignedRouteNames.has(alias)),
   );
   const standbyDrivers = scheduledDrivers.filter((row) => !normalizeRoute(row.route_name));
+  const baselineScheduledOffDrivers = resolveBaselineScheduledOffDrivers(params.rows);
+  const overrideOffRows = resolveOverrideOffRows(params.rows);
   const capacityDelta = scheduledDrivers.length - demandedRoutes.length;
 
   return {
@@ -160,10 +311,13 @@ export function resolveManagerScheduleDay(params: {
     scheduledDrivers: scheduledDrivers.length,
     routeDemand: demandedRoutes.length,
     assignedDrivers: assignedDrivers.length,
+    assignedRoutes: assignedRoutes.length,
     openRoutes,
     standbyDrivers,
+    baselineScheduledOffDrivers,
+    overrideOffRows,
     capacityDelta,
-    status: coverageStatus(capacityDelta),
+    signal: capacitySignal(capacityDelta, scheduledDrivers.length, demandedRoutes.length),
   };
 }
 
@@ -173,6 +327,9 @@ export function buildManagerScheduleSnapshot(params: {
   rows: ManagerScheduleRow[];
   requests: ManagerTimeOffRequest[];
   overrides: ManagerScheduleOverride[];
+  roster?: ManagerScheduleRosterMember[];
+  baselines?: ManagerScheduleBaseline[];
+  presets?: ManagerSchedulePreset[];
 }): ManagerScheduleSnapshot {
   const days = Array.from({ length: 7 }, (_, index) => {
     const serviceDate = addScheduleDays(params.weekStart, index);
@@ -188,6 +345,12 @@ export function buildManagerScheduleSnapshot(params: {
     days,
     pendingRequests: params.requests.filter((request) => request.status === "PENDING"),
     activeOverrides: params.overrides,
+    workbenchRows: buildManagerScheduleWorkbenchRows({
+      roster: params.roster ?? [],
+      baselines: params.baselines ?? [],
+      presets: params.presets ?? [],
+    }),
+    presets: params.presets ?? [],
     generatedAt: new Date().toISOString(),
   };
 }

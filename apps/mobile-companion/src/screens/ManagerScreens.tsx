@@ -27,11 +27,12 @@ import {
   type ManagerRouteEvidenceSnapshot,
 } from "../domain/managerOperations";
 import type {
-  ManagerCoverageStatus,
+  ManagerCapacitySignal,
   ManagerScheduleDay,
   ManagerScheduleSnapshot,
   ManagerTimeOffRequest,
 } from "../domain/managerSchedule";
+import { capacitySignalLabel } from "../domain/managerSchedule";
 import {
   validateManagerWalkOnAssignment,
   validateManagerWalkOnIdentity,
@@ -161,7 +162,7 @@ export function ManagerHomeScreen(props: {
   );
 }
 
-export type ManagerScheduleSurface = "bridge" | "overview" | "coverage" | "overrides" | "workbench";
+export type ManagerScheduleSurface = "bridge" | "overview" | "calendar" | "workbench" | "overrides" | "presets";
 
 function readableDate(value: string, options?: Intl.DateTimeFormatOptions) {
   const [year, month, day] = value.split("-").map(Number);
@@ -173,9 +174,10 @@ function dayInitial(value: string) {
   return readableDate(value, { weekday: "narrow" });
 }
 
-function statusTone(status: ManagerCoverageStatus) {
-  if (status === "GAP") return styles.statusGap;
-  if (status === "TIGHT") return styles.statusTight;
+function statusTone(signal: ManagerCapacitySignal) {
+  if (signal === "SERVICE_RISK" || signal === "PROFITABILITY_RISK") return styles.statusGap;
+  if (signal === "NO_CONTINGENCY" || signal === "LABOR_HIGH") return styles.statusTight;
+  if (signal === "NO_OPERATION") return styles.statusNeutral;
   return styles.statusCovered;
 }
 
@@ -209,7 +211,7 @@ function ScheduleLoading(props: { error: string | null; loading: boolean; onRetr
     return (
       <View style={styles.loadingCard}>
         <ActivityIndicator color={colors.primary} />
-        <Text style={sharedStyles.muted}>Resolving coverage and manager requests…</Text>
+        <Text style={sharedStyles.muted}>Resolving schedule authority and operating facts…</Text>
       </View>
     );
   }
@@ -226,17 +228,21 @@ function ScheduleLoading(props: { error: string | null; loading: boolean; onRetr
 }
 
 function PostureCard(props: { snapshot: ManagerScheduleSnapshot }) {
-  const gaps = props.snapshot.days.filter((day) => day.status === "GAP").length;
-  const tight = props.snapshot.days.filter((day) => day.status === "TIGHT").length;
+  const risks = props.snapshot.days.filter(
+    (day) => day.signal === "SERVICE_RISK" || day.signal === "PROFITABILITY_RISK",
+  ).length;
+  const cautions = props.snapshot.days.filter(
+    (day) => day.signal === "NO_CONTINGENCY" || day.signal === "LABOR_HIGH",
+  ).length;
   const routes = Math.max(...props.snapshot.days.map((day) => day.routeDemand), 0);
   return (
     <View style={styles.pulse}>
       <View style={styles.pulseHeader}>
         <Text style={styles.pulseLabel}>Week posture</Text>
-        <View style={[styles.postureChip, gaps > 0 ? styles.postureChipDanger : styles.postureChipSuccess]}>
-          <View style={[styles.successDot, gaps > 0 && styles.dangerDot]} />
-          <Text style={[styles.successText, gaps > 0 && styles.dangerText]}>
-            {gaps > 0 ? `${gaps} gap${gaps === 1 ? "" : "s"}` : tight > 0 ? `${tight} tight` : "Covered"}
+        <View style={[styles.postureChip, risks > 0 ? styles.postureChipDanger : styles.postureChipSuccess]}>
+          <View style={[styles.successDot, risks > 0 && styles.dangerDot]} />
+          <Text style={[styles.successText, risks > 0 && styles.dangerText]}>
+            {risks > 0 ? `${risks} risk day${risks === 1 ? "" : "s"}` : cautions > 0 ? `${cautions} caution day${cautions === 1 ? "" : "s"}` : "Target posture"}
           </Text>
         </View>
       </View>
@@ -253,11 +259,11 @@ function CoverageRail(props: { days: ManagerScheduleDay[] }) {
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.coverageRail}>
       {props.days.map((day) => (
-        <View key={day.serviceDate} style={[styles.coverageDay, statusTone(day.status)]}>
+        <View key={day.serviceDate} style={[styles.coverageDay, statusTone(day.signal)]}>
           <Text style={styles.coverageDayLabel}>{dayInitial(day.serviceDate)}</Text>
           <Text style={styles.coverageDayDate}>{readableDate(day.serviceDate, { day: "numeric" })}</Text>
           <Text style={styles.coverageDelta}>{day.capacityDelta > 0 ? `+${day.capacityDelta}` : day.capacityDelta}</Text>
-          <Text style={styles.coverageStatus}>{day.status}</Text>
+          <Text style={styles.coverageStatus}>{capacitySignalLabel(day.signal)}</Text>
         </View>
       ))}
     </ScrollView>
@@ -368,7 +374,6 @@ export function ManagerScheduleScreen(props: {
   onManage: () => void;
   onMySchedule: () => void;
   onNextWeek: () => void;
-  onOpenWeb: (path: string) => void;
   onPreviousWeek: () => void;
   onRefresh: () => void;
   onReviewRequest: (request: ManagerTimeOffRequest, decision: "APPROVED" | "DENIED", note: string) => Promise<void>;
@@ -380,11 +385,13 @@ export function ManagerScheduleScreen(props: {
   if (props.surface !== "bridge") {
     const title = props.surface === "overview"
       ? "Schedule"
-      : props.surface === "coverage"
-        ? "Coverage"
+      : props.surface === "calendar"
+        ? "Calendar"
         : props.surface === "overrides"
           ? "Overrides"
-          : "Workbench";
+          : props.surface === "presets"
+            ? "Presets"
+            : "Workbench";
     return (
       <Screen>
         <AppHeader companyName={props.context.company_name} eyebrow="INSIGHT · MANAGER" onSettings={props.onSettings} title={title} />
@@ -399,39 +406,38 @@ export function ManagerScheduleScreen(props: {
               <Text style={styles.sectionLabel}>Manage schedule</Text>
               <Text style={styles.sectionMeta}>NATIVE TOOLS</Text>
             </View>
-            <AccessTile code="CA" detail="Daily supply, route demand, and risk" label="Coverage" onPress={() => props.onSurface("coverage")} trailing="NATIVE" />
+            <AccessTile code="CA" detail="Daily workforce, route demand, off rows, and operating signals" label="Calendar" onPress={() => props.onSurface("calendar")} trailing="NATIVE" />
+            <AccessTile code="WB" detail={`${props.snapshot.workbenchRows.filter((row) => row.schedulePending).length} people need a schedule baseline`} label="Workbench" onPress={() => props.onSurface("workbench")} trailing="NATIVE" />
             <AccessTile attention={props.snapshot.pendingRequests.length > 0} code="OV" detail={`${props.snapshot.pendingRequests.length} time-off request${props.snapshot.pendingRequests.length === 1 ? "" : "s"} need review`} label="Overrides" onPress={() => props.onSurface("overrides")} trailing="NATIVE" />
-            <AccessTile code="WB" detail="Open routes, standby drivers, and next actions" label="Workbench" onPress={() => props.onSurface("workbench")} trailing="NATIVE" />
+            <AccessTile code="PR" detail={`${props.snapshot.presets.length} active schedule pattern${props.snapshot.presets.length === 1 ? "" : "s"}`} label="Presets" onPress={() => props.onSurface("presets")} trailing="NATIVE" />
           </>
         ) : null}
 
-        {props.snapshot && props.surface === "coverage" ? (
+        {props.snapshot && props.surface === "calendar" ? (
           <>
             <PostureCard snapshot={props.snapshot} />
             <CoverageRail days={props.snapshot.days} />
             <View style={styles.sectionHeading}>
-              <Text style={styles.sectionLabel}>Needs attention</Text>
-              <Text style={styles.sectionMeta}>{props.snapshot.days.filter((day) => day.status !== "COVERED").length}</Text>
+              <Text style={styles.sectionLabel}>Operating days</Text>
+              <Text style={styles.sectionMeta}>WEB-ALIGNED</Text>
             </View>
-            {props.snapshot.days.filter((day) => day.status !== "COVERED").map((day) => (
-              <Card key={day.serviceDate} tone={day.status === "GAP" ? "danger" : undefined}>
+            {props.snapshot.days.map((day) => (
+              <Card key={day.serviceDate} tone={day.signal === "SERVICE_RISK" || day.signal === "PROFITABILITY_RISK" ? "danger" : undefined}>
                 <View style={styles.cardHeaderRow}>
                   <View>
                     <Text style={sharedStyles.bodyStrong}>{readableDate(day.serviceDate, { weekday: "long", month: "short", day: "numeric" })}</Text>
                     <Text style={sharedStyles.muted}>{day.scheduledDrivers} drivers · {day.routeDemand} routes</Text>
                   </View>
-                  <View style={[styles.statusPill, statusTone(day.status)]}><Text style={styles.statusPillText}>{day.status}</Text></View>
+                  <View style={[styles.statusPill, statusTone(day.signal)]}><Text style={styles.statusPillText}>{capacitySignalLabel(day.signal)}</Text></View>
                 </View>
                 <Text style={sharedStyles.muted}>
                   {day.openRoutes.length > 0
                     ? `Open: ${day.openRoutes.map((route) => route.current_wa_num || route.route_name || "Unnamed").join(", ")}`
-                    : "Every demanded route has an assignment; no contingency remains."}
+                    : `${day.assignedRoutes} of ${day.routeDemand} demanded routes assigned.`}
                 </Text>
+                <Text style={sharedStyles.muted}>{day.standbyDrivers.length} standby · {day.baselineScheduledOffDrivers.length} scheduled off · {day.overrideOffRows.length} override off</Text>
               </Card>
             ))}
-            {props.snapshot.days.every((day) => day.status === "COVERED") ? (
-              <Card><Text style={sharedStyles.bodyStrong}>No coverage risks this week</Text><Text style={sharedStyles.muted}>Every operating day has positive driver contingency.</Text></Card>
-            ) : null}
           </>
         ) : null}
 
@@ -474,29 +480,59 @@ export function ManagerScheduleScreen(props: {
 
         {props.snapshot && props.surface === "workbench" ? (
           <>
-            <PostureCard snapshot={props.snapshot} />
             <View style={styles.sectionHeading}>
-              <Text style={styles.sectionLabel}>Week actions</Text>
-              <Text style={styles.sectionMeta}>LIVE MODEL</Text>
+              <Text style={styles.sectionLabel}>People and baselines</Text>
+              <Text style={styles.sectionMeta}>{props.snapshot.workbenchRows.length}</Text>
             </View>
-            {props.snapshot.days.map((day) => (
-              <View key={day.serviceDate} style={styles.workbenchRow}>
-                <View style={[styles.workbenchDate, statusTone(day.status)]}>
-                  <Text style={styles.coverageDayLabel}>{dayInitial(day.serviceDate)}</Text>
-                  <Text style={styles.workbenchDay}>{readableDate(day.serviceDate, { day: "numeric" })}</Text>
+            {props.snapshot.workbenchRows.map((row) => (
+              <View key={row.rosterMemberId} style={styles.workbenchRow}>
+                <View style={[styles.workbenchDate, row.schedulePending ? styles.statusTight : styles.statusCovered]}>
+                  <Text style={styles.workbenchInitials}>{row.fullName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2)}</Text>
                 </View>
                 <View style={styles.accessCopy}>
-                  <Text style={sharedStyles.bodyStrong}>{day.openRoutes.length} open · {day.standbyDrivers.length} standby</Text>
-                  <Text style={styles.detail}>{day.assignedDrivers} assigned of {day.routeDemand} demanded routes</Text>
+                  <Text style={sharedStyles.bodyStrong}>{row.fullName}</Text>
+                  <Text style={styles.detail}>{row.presetCode ?? "No preset"} · {row.rotationMode ?? "No rotation"}</Text>
+                  <Text style={styles.detail}>{row.defaultRoutes.length > 0 ? `Routes ${row.defaultRoutes.join(", ")}` : "No default routes"}</Text>
                 </View>
-                <Text style={styles.delta}>{day.capacityDelta > 0 ? `+${day.capacityDelta}` : day.capacityDelta}</Text>
+                <Text style={row.schedulePending ? styles.pendingText : styles.readyText}>{row.schedulePending ? "PENDING" : "READY"}</Text>
               </View>
             ))}
             <Card>
-              <Text style={sharedStyles.bodyStrong}>Commit controls are being adapted</Text>
-              <Text style={sharedStyles.muted}>This native workbench is authoritative for posture and review. Complex bulk schedule edits remain available as a browser fallback during the first pass.</Text>
-              <PrimaryButton compact label="Open web fallback" onPress={() => props.onOpenWeb("/schedule/generated")} secondary />
+              <Text style={sharedStyles.bodyStrong}>Authoritative baseline read model</Text>
+              <Text style={sharedStyles.muted}>This view uses the same active roster, baseline, preset, rotation, effective-date, and default-route records as the web Schedule workbench.</Text>
             </Card>
+          </>
+        ) : null}
+
+        {props.snapshot && props.surface === "presets" ? (
+          <>
+            <View style={styles.sectionHeading}>
+              <Text style={styles.sectionLabel}>Active patterns</Text>
+              <Text style={styles.sectionMeta}>{props.snapshot.presets.length}</Text>
+            </View>
+            {props.snapshot.presets.map((preset) => {
+              const days = [
+                preset.works_s && "Sat",
+                preset.works_u && "Sun",
+                preset.works_m && "Mon",
+                preset.works_t && "Tue",
+                preset.works_w && "Wed",
+                preset.works_h && "Thu",
+                preset.works_f && "Fri",
+              ].filter(Boolean).join(" · ");
+              return (
+                <Card key={preset.id}>
+                  <View style={styles.cardHeaderRow}>
+                    <Text style={sharedStyles.bodyStrong}>{preset.preset_code}</Text>
+                    <Text style={styles.readyText}>{preset.uses_rotation ? "ROTATION" : "WEEKLY"}</Text>
+                  </View>
+                  <Text style={sharedStyles.muted}>{days || "No active days"}</Text>
+                </Card>
+              );
+            })}
+            {props.snapshot.presets.length === 0 ? (
+              <Card><Text style={sharedStyles.bodyStrong}>No active presets</Text><Text style={sharedStyles.muted}>The authoritative Schedule preset library is empty.</Text></Card>
+            ) : null}
           </>
         ) : null}
 
@@ -524,7 +560,7 @@ export function ManagerScheduleScreen(props: {
       {props.driverContext ? (
         <AccessTile code="ME" detail="Assignments and personal time-off requests" label="My Schedule" onPress={props.onMySchedule} />
       ) : null}
-      <AccessTile attention code="MG" detail="Coverage, overrides, and workbench" label="Manage Schedule" onPress={props.onManage} />
+      <AccessTile attention code="MG" detail="Calendar, workbench, overrides, and presets" label="Manage Schedule" onPress={props.onManage} />
       <View style={styles.snapshot}>
         <Text style={styles.pulseLabel}>Manager snapshot</Text>
         <Text style={styles.snapshotDetail}>Schedule management access is active for this company.</Text>
@@ -2686,6 +2722,7 @@ const styles = StyleSheet.create({
   statusCovered: { borderColor: colors.success, backgroundColor: "#EAF6F1" },
   statusTight: { borderColor: colors.warning, backgroundColor: colors.paleWarning },
   statusGap: { borderColor: colors.danger, backgroundColor: colors.paleDanger },
+  statusNeutral: { borderColor: colors.border, backgroundColor: colors.panel },
   cardHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   statusPill: { paddingHorizontal: 9, paddingVertical: 6, borderWidth: 1, borderRadius: 999 },
   statusPillText: { color: colors.ink, fontSize: 9, fontWeight: "800" },
@@ -2697,6 +2734,9 @@ const styles = StyleSheet.create({
   workbenchRow: { minHeight: 80, flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 16, backgroundColor: colors.white },
   workbenchDate: { width: 48, height: 54, alignItems: "center", justifyContent: "center", borderWidth: 1, borderRadius: 12 },
   workbenchDay: { color: colors.ink, fontSize: 17, fontWeight: "800" },
+  workbenchInitials: { color: colors.ink, fontSize: 14, fontWeight: "800" },
+  pendingText: { color: colors.warning, fontSize: 9, fontWeight: "900", letterSpacing: 0.5 },
+  readyText: { color: colors.success, fontSize: 9, fontWeight: "900", letterSpacing: 0.5 },
   delta: { minWidth: 32, color: colors.ink, fontSize: 18, fontWeight: "900", textAlign: "right" },
   reviewSheet: { paddingHorizontal: 24, paddingTop: 28, paddingBottom: 48, gap: 18, backgroundColor: colors.white },
   reviewHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },

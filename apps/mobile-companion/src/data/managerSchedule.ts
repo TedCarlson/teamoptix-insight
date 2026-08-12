@@ -2,8 +2,11 @@ import type { ManagerAccessContext } from "../domain/access";
 import {
   addScheduleDays,
   buildManagerScheduleSnapshot,
+  type ManagerScheduleBaseline,
   type ManagerScheduleOverride,
+  type ManagerSchedulePreset,
   type ManagerScheduleRoute,
+  type ManagerScheduleRosterMember,
   type ManagerScheduleRow,
   type ManagerTimeOffRequest,
 } from "../domain/managerSchedule";
@@ -21,11 +24,7 @@ type ProjectionRow = {
   override_id: string | null;
 };
 
-type RosterIdentity = {
-  roster_member_id: string;
-  full_name: string | null;
-  worker_type: string | null;
-};
+type RosterIdentity = ManagerScheduleRosterMember;
 
 type RequestRow = Omit<ManagerTimeOffRequest, "full_name" | "worker_type">;
 type OverrideRow = Omit<ManagerScheduleOverride, "full_name">;
@@ -41,7 +40,16 @@ export async function loadManagerScheduleSnapshot(
   const supabase = getSupabaseClient();
   const weekEnd = addScheduleDays(weekStart, 6);
 
-  const [factsResult, projectionResult, routesResult, requestsResult, overridesResult] = await Promise.all([
+  const [
+    factsResult,
+    projectionResult,
+    routesResult,
+    requestsResult,
+    overridesResult,
+    rosterResult,
+    baselinesResult,
+    presetsResult,
+  ] = await Promise.all([
     supabase
       .from("schedule_day_fact_view")
       .select("service_date, roster_member_id, full_name, worker_type, planned_on, route_name, override_type")
@@ -75,6 +83,25 @@ export async function loadManagerScheduleSnapshot(
       .lte("start_date", weekEnd)
       .gte("end_date", weekStart)
       .order("start_date"),
+    supabase
+      .from("company_roster_view")
+      .select("roster_member_id, full_name, worker_type, employment_status")
+      .eq("company_id", context.company_id)
+      .in("employment_status", ["Active", "Trainee"])
+      .order("full_name"),
+    supabase
+      .from("schedule_baseline")
+      .select("id, roster_member_id, preset_id, rotation_mode, anchor_date, effective_start, rotation_works_s, rotation_works_u, rotation_works_m, rotation_works_t, rotation_works_w, rotation_works_h, rotation_works_f, default_route_s, default_route_u, default_route_m, default_route_t, default_route_w, default_route_h, default_route_f")
+      .eq("company_id", context.company_id)
+      .eq("is_active", true)
+      .is("effective_end", null)
+      .order("updated_at", { ascending: false }),
+    supabase
+      .from("schedule_preset")
+      .select("id, preset_code, works_s, works_u, works_m, works_t, works_w, works_h, works_f, uses_rotation")
+      .eq("company_id", context.company_id)
+      .eq("is_active", true)
+      .order("preset_code"),
   ]);
 
   if (factsResult.error) throw factsResult.error;
@@ -82,35 +109,24 @@ export async function loadManagerScheduleSnapshot(
   if (routesResult.error) throw routesResult.error;
   if (requestsResult.error) throw requestsResult.error;
   if (overridesResult.error) throw overridesResult.error;
+  if (rosterResult.error) throw rosterResult.error;
+  if (baselinesResult.error) throw baselinesResult.error;
+  if (presetsResult.error) throw presetsResult.error;
 
   const factRows = (factsResult.data ?? []) as FactRow[];
   const projectionRows = (projectionResult.data ?? []) as ProjectionRow[];
   const requestRows = (requestsResult.data ?? []) as RequestRow[];
   const overrideRows = (overridesResult.data ?? []) as OverrideRow[];
+  const rosterRows = (rosterResult.data ?? []) as RosterIdentity[];
   const knownFactKeys = new Set(
     factRows.map((row) => `${row.service_date}:${row.roster_member_id}`),
   );
   const missingProjectionRows = projectionRows.filter(
     (row) => !knownFactKeys.has(`${row.service_date}:${row.roster_member_id}`),
   );
-  const rosterIds = Array.from(new Set([
-    ...missingProjectionRows.map((row) => row.roster_member_id),
-    ...requestRows.map((row) => row.roster_member_id),
-    ...overrideRows.map((row) => row.roster_member_id),
-  ])).filter(Boolean);
-
-  let identities = new Map<string, RosterIdentity>();
-  if (rosterIds.length > 0) {
-    const rosterResult = await supabase
-      .from("company_roster_view")
-      .select("roster_member_id, full_name, worker_type")
-      .eq("company_id", context.company_id)
-      .in("roster_member_id", rosterIds);
-    if (rosterResult.error) throw rosterResult.error;
-    identities = new Map(
-      ((rosterResult.data ?? []) as RosterIdentity[]).map((row) => [row.roster_member_id, row]),
-    );
-  }
+  const identities = new Map(
+    rosterRows.map((row) => [row.roster_member_id, row]),
+  );
 
   const overrideTypes = new Map(overrideRows.map((row) => [row.id, row.override_type]));
   const rows: ManagerScheduleRow[] = [
@@ -147,6 +163,9 @@ export async function loadManagerScheduleSnapshot(
     rows,
     requests,
     overrides,
+    roster: rosterRows,
+    baselines: (baselinesResult.data ?? []) as ManagerScheduleBaseline[],
+    presets: (presetsResult.data ?? []) as ManagerSchedulePreset[],
   });
 }
 
