@@ -34,6 +34,12 @@ import {
   type ManagerRouteEvidenceSnapshot,
 } from "../domain/managerOperations";
 import type {
+  ManagerCandidateStage,
+  ManagerPeopleComplianceSignal,
+  ManagerPeopleSnapshot,
+  ManagerPerson,
+} from "../domain/managerPeople";
+import type {
   ManagerCapacitySignal,
   ManagerScheduleDay,
   ManagerScheduleSnapshot,
@@ -987,12 +993,301 @@ function OperationsReadSurface(props: {
   );
 }
 
+type PeopleSurfaceKey = "briefing" | "roster" | "hiring";
+type PeopleRosterFilter = "all" | "active" | "trainee" | "candidate" | "former" | "attention";
+
+function peopleInitials(name: string) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "—";
+}
+
+function peopleStatusLabel(value: string) {
+  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function complianceCopy(signal: ManagerPeopleComplianceSignal) {
+  if (signal.status === "missing") return "Missing";
+  if (signal.status === "expired") return `Expired${signal.daysRemaining == null ? "" : ` ${Math.abs(signal.daysRemaining)}d ago`}`;
+  return `${signal.daysRemaining ?? 0}d remaining`;
+}
+
+function PeopleMetric(props: { label: string; value: number; attention?: boolean }) {
+  return (
+    <View style={[styles.peopleMetric, props.attention && styles.peopleMetricAttention]}>
+      <Text style={styles.peopleMetricValue}>{props.value}</Text>
+      <Text numberOfLines={1} style={styles.peopleMetricLabel}>{props.label}</Text>
+    </View>
+  );
+}
+
+function PeoplePersonCard(props: { person: ManagerPerson; onPress: () => void }) {
+  const candidate = props.person.employmentStatus === "Candidate";
+  return (
+    <Pressable
+      accessibilityHint="Opens this person's governed mobile workspace"
+      accessibilityRole="button"
+      onPress={props.onPress}
+      style={({ pressed }) => [styles.peopleCard, props.person.complianceSignals.length > 0 && styles.peopleCardAttention, pressed && styles.pressed]}
+    >
+      <View style={styles.peopleAvatar}><Text style={styles.peopleAvatarText}>{peopleInitials(props.person.fullName)}</Text></View>
+      <View style={styles.accessCopy}>
+        <View style={styles.peopleCardHeading}>
+          <Text numberOfLines={1} style={styles.peopleCardTitle}>{props.person.fullName}</Text>
+          <Text style={styles.peopleCardArrow}>›</Text>
+        </View>
+        <Text numberOfLines={1} style={styles.detail}>
+          {candidate ? props.person.candidateStageLabel || "New candidate" : props.person.jobTitle || props.person.workerType || peopleStatusLabel(props.person.employmentStatus)}
+        </Text>
+        <View style={styles.peopleChips}>
+          <View style={styles.peopleChip}><Text style={styles.peopleChipText}>{peopleStatusLabel(props.person.employmentStatus)}</Text></View>
+          {props.person.marketCode ? <View style={styles.peopleChip}><Text style={styles.peopleChipText}>{props.person.marketCode}</Text></View> : null}
+          {props.person.complianceSignals.length ? <View style={styles.peopleChipAttention}><Text style={styles.peopleChipAttentionText}>{props.person.complianceSignals.length} compliance</Text></View> : null}
+        </View>
+        {candidate && props.person.requiredChecklistTotal > 0 ? (
+          <View style={styles.peopleProgressTrack}><View style={[styles.peopleProgressFill, { width: `${props.person.candidateProgress}%` }]} /></View>
+        ) : null}
+      </View>
+    </Pressable>
+  );
+}
+
+function PeoplePersonModal(props: {
+  busy: boolean;
+  onClose: () => void;
+  onOpenWeb: (path: string) => void;
+  onSubmitCandidateStage: (rosterMemberId: string, stageKey: string, note: string) => Promise<void>;
+  person: ManagerPerson;
+  snapshot: ManagerPeopleSnapshot;
+}) {
+  const [stageKey, setStageKey] = useState("");
+  const [note, setNote] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+  const [intentOpen, setIntentOpen] = useState(false);
+  const candidate = props.person.employmentStatus === "Candidate";
+  const availableStages = props.snapshot.stages.filter((stage) =>
+    stage.key !== props.person.candidateStageKey && !["candidate_created", "invited"].includes(stage.key),
+  );
+  const selectedStage = availableStages.find((stage) => stage.key === stageKey) ?? null;
+
+  async function submitStage() {
+    if (!selectedStage || props.busy) {
+      setFormError("Choose the next candidate stage.");
+      return;
+    }
+    try {
+      setFormError(null);
+      await props.onSubmitCandidateStage(props.person.id, selectedStage.key, note);
+      setIntentOpen(false);
+      props.onClose();
+    } catch (caught) {
+      setIntentOpen(false);
+      setFormError(caught instanceof Error ? caught.message : "The candidate stage could not be updated.");
+    }
+  }
+
+  const facts = [
+    ["Email", props.person.email],
+    ["Phone", props.person.phone],
+    ["Reports to", props.person.reportsToName],
+    ["Hire date", props.person.hireDate ? readableDate(props.person.hireDate, { month: "short", day: "numeric", year: "numeric" }) : null],
+    ["Separation", props.person.separationDate ? readableDate(props.person.separationDate, { month: "short", day: "numeric", year: "numeric" }) : null],
+    ["Invite", props.person.inviteStatus],
+    ["FX ID", props.person.fxId],
+    ["DSW ID", props.person.dswid],
+  ].filter((fact): fact is [string, string] => Boolean(fact[1]));
+
+  return (
+    <Modal animationType="slide" onRequestClose={props.onClose} presentationStyle="pageSheet" visible>
+      <ScrollView contentContainerStyle={styles.peopleModal} keyboardShouldPersistTaps="handled">
+        <View style={[styles.reviewHeader, styles.modalHeaderClearance]}>
+          <View style={styles.accessCopy}>
+            <Text style={styles.nativeBannerLabel}>PEOPLE · GOVERNED RECORD</Text>
+            <Text style={styles.drawerTitle}>{props.person.fullName}</Text>
+            <Text style={styles.detail}>{props.person.jobTitle || props.person.workerType || peopleStatusLabel(props.person.employmentStatus)}</Text>
+          </View>
+          <Pressable disabled={props.busy} onPress={props.onClose}><Text style={styles.done}>Close</Text></Pressable>
+        </View>
+
+        <View style={styles.peopleFacts}>
+          {facts.map(([label, value]) => (
+            <View key={label} style={styles.peopleFact}><Text style={styles.peopleFactLabel}>{label}</Text><Text style={styles.peopleFactValue}>{value}</Text></View>
+          ))}
+        </View>
+
+        <View style={styles.sectionHeading}><Text style={styles.sectionLabel}>Compliance posture</Text><Text style={styles.sectionMeta}>{props.person.complianceSignals.length || "CLEAR"}</Text></View>
+        {props.person.complianceSignals.length ? props.person.complianceSignals.map((signal) => (
+          <View key={signal.key} style={[styles.peopleCompliance, signal.status === "warning" ? styles.peopleComplianceWarning : styles.peopleComplianceUrgent]}>
+            <View style={styles.accessCopy}><Text style={styles.drawerChoiceTitle}>{signal.label}</Text><Text style={styles.detail}>{signal.expirationDate ? readableDate(signal.expirationDate, { month: "short", day: "numeric", year: "numeric" }) : "No expiration on file"}</Text></View>
+            <Text style={signal.status === "warning" ? styles.peopleWarningText : styles.peopleUrgentText}>{complianceCopy(signal)}</Text>
+          </View>
+        )) : <Card><Text style={sharedStyles.bodyStrong}>No current compliance alerts</Text><Text style={sharedStyles.muted}>The mobile threshold view matches the authoritative People posture.</Text></Card>}
+
+        {candidate ? (
+          <>
+            <View style={styles.sectionHeading}><Text style={styles.sectionLabel}>Hiring workflow</Text><Text style={styles.sectionMeta}>{props.person.candidateProgress}% READY</Text></View>
+            <View style={styles.peopleHiringCard}>
+              <Text style={sharedStyles.bodyStrong}>{props.person.candidateStageLabel || "New candidate"}</Text>
+              <Text style={styles.detail}>{props.person.requiredChecklistComplete} of {props.person.requiredChecklistTotal} required readiness items complete</Text>
+              <View style={styles.peopleProgressTrack}><View style={[styles.peopleProgressFill, { width: `${props.person.candidateProgress}%` }]} /></View>
+            </View>
+            {props.snapshot.canManageHiring && !props.person.candidateStageTerminal ? (
+              <View style={styles.drawerStep}>
+                <Text style={styles.drawerStepLabel}>Change candidate stage</Text>
+                <View style={styles.drawerActionGroup}>
+                  {availableStages.map((stage: ManagerCandidateStage) => (
+                    <Pressable key={stage.key} onPress={() => { setStageKey(stage.key); setFormError(null); }} style={[styles.drawerChoice, stageKey === stage.key && styles.drawerChoiceSelected, stage.isTerminal && styles.drawerChoiceDanger]}>
+                      <View style={styles.accessCopy}><Text style={styles.drawerChoiceTitle}>{stage.label}</Text><Text style={styles.detail}>{stage.isTerminal ? "This closes the active candidate workflow." : "Moves the existing candidate workflow forward."}</Text></View>
+                      {stageKey === stage.key ? <Text style={styles.drawerSelectedMark}>SELECTED</Text> : null}
+                    </Pressable>
+                  ))}
+                </View>
+                <TextInput multiline onChangeText={setNote} placeholder="Optional manager note" placeholderTextColor={colors.muted} style={styles.noteInput} value={note} />
+                {formError ? <Text style={styles.peopleUrgentText}>{formError}</Text> : null}
+                <PrimaryButton compact disabled={!selectedStage || props.busy} label={props.busy ? "Updating…" : "Review stage change"} onPress={() => setIntentOpen(true)} />
+              </View>
+            ) : null}
+          </>
+        ) : null}
+
+        <Card>
+          <Text style={sharedStyles.bodyStrong}>Full People administration</Text>
+          <Text style={sharedStyles.muted}>Invitations, activation, imports, reports, and dense policy editing remain in the existing web workspace.</Text>
+          <PrimaryButton
+            compact
+            label="Open full person workspace"
+            onPress={() => props.onOpenWeb(
+              props.person.employmentStatus === "Former"
+                ? `/people/former/${props.person.id}`
+                : props.person.employmentStatus === "Candidate"
+                  ? "/hiring"
+                  : `/people/active/${props.person.id}`,
+            )}
+            secondary
+          />
+        </Card>
+      </ScrollView>
+      {intentOpen && selectedStage ? (
+        <IntentVerificationModal
+          actionLabel={`${selectedStage.isTerminal ? "terminal " : ""}candidate stage`}
+          busy={props.busy}
+          onCancel={() => setIntentOpen(false)}
+          onConfirm={() => void submitStage()}
+          visible
+        />
+      ) : null}
+    </Modal>
+  );
+}
+
+function PeopleReadSurface(props: {
+  busy: boolean;
+  error: string | null;
+  loading: boolean;
+  onOpenWeb: (path: string) => void;
+  onRefresh: () => void;
+  onSubmitCandidateStage: (rosterMemberId: string, stageKey: string, note: string) => Promise<void>;
+  snapshot: ManagerWorkspaceSnapshot | null;
+}) {
+  const peopleSnapshot = props.snapshot?.people ?? null;
+  const initialSurface: PeopleSurfaceKey = peopleSnapshot?.canViewRoster ? "briefing" : "hiring";
+  const [surface, setSurface] = useState<PeopleSurfaceKey>(initialSurface);
+  const [filter, setFilter] = useState<PeopleRosterFilter>("all");
+  const [query, setQuery] = useState("");
+  const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
+  if (props.loading || props.error || !peopleSnapshot) {
+    return <WorkspaceSnapshotView error={props.error} loading={props.loading} onRetry={props.onRefresh} snapshot={props.snapshot} />;
+  }
+  const availableSurfaces: Array<{ key: PeopleSurfaceKey; label: string }> = [
+    ...(peopleSnapshot.canViewRoster ? [{ key: "briefing" as const, label: "Today" }, { key: "roster" as const, label: "Roster" }] : []),
+    ...(peopleSnapshot.canManageHiring ? [{ key: "hiring" as const, label: "Hiring" }] : []),
+  ];
+  const effectiveSurface = availableSurfaces.some((item) => item.key === surface) ? surface : availableSurfaces[0]?.key ?? "briefing";
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredPeople = peopleSnapshot.people.filter((person) => {
+    if (normalizedQuery && ![person.fullName, person.email, person.jobTitle, person.workerType, person.marketCode].some((value) => value?.toLowerCase().includes(normalizedQuery))) return false;
+    if (effectiveSurface === "hiring" && person.employmentStatus !== "Candidate") return false;
+    if (effectiveSurface !== "roster") return true;
+    if (filter === "all") return true;
+    if (filter === "attention") return person.complianceSignals.length > 0;
+    if (filter === "candidate") return person.employmentStatus === "Candidate";
+    if (filter === "former") return person.employmentStatus === "Former" || Boolean(person.separationDate);
+    if (filter === "trainee") return person.employmentStatus === "Trainee" || person.workerType?.toLowerCase().includes("trainee");
+    return person.employmentStatus === "Active";
+  });
+  const selectedPerson = peopleSnapshot.people.find((person) => person.id === selectedPersonId) ?? null;
+  const todayInterviews = peopleSnapshot.interviews.filter((interview) => {
+    if (!interview.startsAt) return false;
+    return new Intl.DateTimeFormat("en-CA", { timeZone: peopleSnapshot.timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(interview.startsAt)) === peopleSnapshot.serviceDate;
+  });
+  const attentionPeople = peopleSnapshot.people.filter((person) => person.complianceSignals.length > 0).slice(0, 5);
+  const rosterFilters: Array<{ key: PeopleRosterFilter; label: string }> = [
+    { key: "all", label: "All" }, { key: "active", label: "Active" }, { key: "trainee", label: "Trainees" },
+    { key: "candidate", label: "Candidates" }, { key: "former", label: "Former" }, { key: "attention", label: "Attention" },
+  ];
+
+  return (
+    <>
+      <View style={styles.peopleHero}>
+        <View><Text style={styles.nativeBannerLabel}>PEOPLE AUTHORITY</Text><Text style={styles.peopleHeroDate}>{readableDate(peopleSnapshot.serviceDate, { weekday: "long", month: "long", day: "numeric" })}</Text></View>
+        <Text style={styles.peopleHeroMeta}>{peopleSnapshot.people.length} governed records</Text>
+      </View>
+      <View style={styles.peopleTabs}>
+        {availableSurfaces.map((item) => (
+          <Pressable accessibilityRole="tab" accessibilityState={{ selected: item.key === effectiveSurface }} key={item.key} onPress={() => setSurface(item.key)} style={[styles.peopleTab, item.key === effectiveSurface && styles.peopleTabActive]}>
+            <Text style={[styles.peopleTabText, item.key === effectiveSurface && styles.peopleTabTextActive]}>{item.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {effectiveSurface === "briefing" ? (
+        <>
+          <View style={styles.peopleMetrics}>
+            <PeopleMetric label="Scheduled" value={peopleSnapshot.scheduledToday} />
+            <PeopleMetric label="Off" value={peopleSnapshot.offToday} />
+            <PeopleMetric attention={peopleSnapshot.timeAwayToday > 0} label="Time away" value={peopleSnapshot.timeAwayToday} />
+            <PeopleMetric attention={peopleSnapshot.interviewsToday > 0} label="Interviews" value={peopleSnapshot.interviewsToday} />
+          </View>
+          <View style={styles.sectionHeading}><Text style={styles.sectionLabel}>Today’s interviews</Text><Text style={styles.sectionMeta}>{todayInterviews.length}</Text></View>
+          {todayInterviews.length ? todayInterviews.map((interview) => (
+            <View key={interview.id} style={styles.peopleInterview}>
+              <View style={styles.peopleAvatar}><Text style={styles.peopleAvatarText}>{peopleInitials(interview.personName)}</Text></View>
+              <View style={styles.accessCopy}><Text style={styles.drawerChoiceTitle}>{interview.personName}</Text><Text style={styles.detail}>{formatEventTime(interview.startsAt, peopleSnapshot.timeZone)} · {peopleStatusLabel(interview.status)}{interview.provider ? ` · ${interview.provider}` : ""}</Text></View>
+            </View>
+          )) : <Card><Text style={sharedStyles.bodyStrong}>No interviews today</Text><Text style={sharedStyles.muted}>The hiring calendar has no interviews on the active operating date.</Text></Card>}
+          <View style={styles.sectionHeading}><Text style={styles.sectionLabel}>Compliance attention</Text><Text style={styles.sectionMeta}>{attentionPeople.length}</Text></View>
+          {attentionPeople.length ? attentionPeople.map((person) => <PeoplePersonCard key={person.id} onPress={() => setSelectedPersonId(person.id)} person={person} />) : <Card><Text style={sharedStyles.bodyStrong}>No immediate compliance alerts</Text><Text style={sharedStyles.muted}>No missing, expired, or 60-day credentials appear in this mobile briefing.</Text></Card>}
+        </>
+      ) : (
+        <>
+          {effectiveSurface === "hiring" ? (
+            <View style={styles.peopleMetrics}>
+              <PeopleMetric label="Candidates" value={filteredPeople.length} />
+              <PeopleMetric label="Ready" value={filteredPeople.filter((person) => person.candidateProgress === 100).length} />
+              <PeopleMetric label="Interviews" value={peopleSnapshot.interviews.length} />
+            </View>
+          ) : null}
+          <TextInput onChangeText={setQuery} placeholder={effectiveSurface === "hiring" ? "Search candidates" : "Search name, role, email, or market"} placeholderTextColor={colors.muted} style={styles.drawerSearch} value={query} />
+          {effectiveSurface === "roster" ? (
+            <ScrollView contentContainerStyle={styles.readFilters} horizontal showsHorizontalScrollIndicator={false}>
+              {rosterFilters.map((item) => <Pressable key={item.key} onPress={() => setFilter(item.key)} style={[styles.readFilter, filter === item.key && styles.readFilterActive]}><Text style={[styles.readFilterText, filter === item.key && styles.readFilterTextActive]}>{item.label}</Text></Pressable>)}
+            </ScrollView>
+          ) : null}
+          <View style={styles.sectionHeading}><Text style={styles.sectionLabel}>{effectiveSurface === "hiring" ? "Candidate pipeline" : "Company roster"}</Text><Text style={styles.sectionMeta}>{filteredPeople.length}</Text></View>
+          {filteredPeople.length ? filteredPeople.map((person) => <PeoplePersonCard key={person.id} onPress={() => setSelectedPersonId(person.id)} person={person} />) : <Card><Text style={sharedStyles.bodyStrong}>No matching records</Text><Text style={sharedStyles.muted}>Adjust the search or filter without changing the authoritative roster.</Text></Card>}
+        </>
+      )}
+
+      {selectedPerson ? <PeoplePersonModal busy={props.busy} onClose={() => setSelectedPersonId(null)} onOpenWeb={props.onOpenWeb} onSubmitCandidateStage={props.onSubmitCandidateStage} person={selectedPerson} snapshot={peopleSnapshot} /> : null}
+    </>
+  );
+}
+
 export function ManagerWorkspaceDetailScreen(props: {
   context: ManagerAccessContext;
   dispatchBusy: boolean;
   dispatchError: string | null;
   dispatchLoading: boolean;
   dispatchSnapshot: ManagerDispatchSnapshot | null;
+  peopleBusy: boolean;
   error: string | null;
   loading: boolean;
   onBack: () => void;
@@ -1006,6 +1301,7 @@ export function ManagerWorkspaceDetailScreen(props: {
   onSubmitDelivery: (draft: ManagerDeliveryActionDraft) => Promise<void>;
   onSubmitDispatch: (draft: ManagerDispatchActionDraft) => Promise<void>;
   onSubmitWalkOn: (draft: ManagerWalkOnAssignmentDraft) => Promise<void>;
+  onSubmitCandidateStage: (rosterMemberId: string, stageKey: string, note: string) => Promise<void>;
   snapshot: ManagerWorkspaceSnapshot | null;
   suite: ManagerWorkspaceSuite;
 }) {
@@ -1031,6 +1327,16 @@ export function ManagerWorkspaceDetailScreen(props: {
           onSubmitWalkOn={props.onSubmitWalkOn}
           snapshot={props.snapshot}
         />
+      ) : props.suite.key === "people" ? (
+        <PeopleReadSurface
+          busy={props.peopleBusy}
+          error={props.error}
+          loading={props.loading}
+          onOpenWeb={props.onOpenWeb}
+          onRefresh={props.onRefresh}
+          onSubmitCandidateStage={props.onSubmitCandidateStage}
+          snapshot={props.snapshot}
+        />
       ) : (
         <WorkspaceSnapshotView error={props.error} loading={props.loading} onRetry={props.onRefresh} snapshot={props.snapshot} />
       )}
@@ -1054,7 +1360,7 @@ export function ManagerWorkspaceDetailScreen(props: {
           })}
         </>
       ) : null}
-      {props.suite.key !== "operations" ? (
+      {props.suite.key !== "operations" && props.suite.key !== "people" ? (
         <>
           <View style={styles.sectionHeading}>
             <Text style={styles.sectionLabel}>Surfaces</Text>
@@ -1076,6 +1382,13 @@ export function ManagerWorkspaceDetailScreen(props: {
             <PrimaryButton compact label="Open full web workspace" onPress={() => props.onOpenWeb(props.suite.fallbackPath)} secondary />
           </Card>
         </>
+      ) : null}
+      {props.suite.key === "people" ? (
+        <Card>
+          <Text style={sharedStyles.bodyStrong}>Full People administration</Text>
+          <Text style={sharedStyles.muted}>Bulk import, reporting, invitation delivery, activation, and policy configuration remain in the shared web workspace.</Text>
+          <PrimaryButton compact label="Open full People workspace" onPress={() => props.onOpenWeb(props.suite.fallbackPath)} secondary />
+        </Card>
       ) : null}
     </Screen>
   );
@@ -2958,6 +3271,45 @@ const styles = StyleSheet.create({
   nativeBannerLabel: { color: "#8DD3EF", fontSize: 10, fontWeight: "900", letterSpacing: 1.3 },
   nativeBannerTitle: { color: colors.white, fontSize: 20, fontWeight: "800" },
   nativeBannerDetail: { color: "#D6E1EC", fontSize: 13, lineHeight: 19 },
+  peopleHero: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 12, padding: 17, borderRadius: 18, backgroundColor: colors.ink },
+  peopleHeroDate: { color: colors.white, fontSize: 18, fontWeight: "900", marginTop: 5 },
+  peopleHeroMeta: { color: "#D6E1EC", fontSize: 10, fontWeight: "800", textAlign: "right" },
+  peopleTabs: { flexDirection: "row", gap: 6, padding: 5, borderRadius: 15, backgroundColor: colors.panel },
+  peopleTab: { flex: 1, minHeight: 42, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "transparent", borderRadius: 11 },
+  peopleTabActive: { borderColor: colors.primary, backgroundColor: colors.white },
+  peopleTabText: { color: colors.muted, fontSize: 12, fontWeight: "800" },
+  peopleTabTextActive: { color: colors.primary },
+  peopleMetrics: { flexDirection: "row", gap: 7 },
+  peopleMetric: { flex: 1, minWidth: 0, minHeight: 70, alignItems: "center", justifyContent: "center", gap: 4, paddingHorizontal: 4, borderWidth: 1, borderColor: colors.border, borderRadius: 13, backgroundColor: colors.panel },
+  peopleMetricAttention: { borderColor: colors.warning, backgroundColor: colors.paleWarning },
+  peopleMetricValue: { color: colors.ink, fontSize: 20, fontWeight: "900" },
+  peopleMetricLabel: { color: colors.muted, fontSize: 8, fontWeight: "800", textTransform: "uppercase" },
+  peopleCard: { minHeight: 94, flexDirection: "row", alignItems: "center", gap: 12, padding: 13, borderWidth: 1, borderColor: colors.border, borderRadius: 16, backgroundColor: colors.white },
+  peopleCardAttention: { borderColor: "#E9C999", backgroundColor: "#FFFBF5" },
+  peopleAvatar: { width: 46, height: 46, alignItems: "center", justifyContent: "center", borderRadius: 14, backgroundColor: colors.palePrimary },
+  peopleAvatarText: { color: colors.primary, fontSize: 13, fontWeight: "900" },
+  peopleCardHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  peopleCardTitle: { flex: 1, color: colors.ink, fontSize: 15, fontWeight: "900" },
+  peopleCardArrow: { color: colors.primary, fontSize: 22, fontWeight: "800" },
+  peopleChips: { flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 8 },
+  peopleChip: { paddingHorizontal: 7, paddingVertical: 4, borderRadius: 999, backgroundColor: colors.palePrimary },
+  peopleChipText: { color: colors.primary, fontSize: 8, fontWeight: "800" },
+  peopleChipAttention: { paddingHorizontal: 7, paddingVertical: 4, borderRadius: 999, backgroundColor: colors.paleWarning },
+  peopleChipAttentionText: { color: colors.warning, fontSize: 8, fontWeight: "900" },
+  peopleProgressTrack: { height: 7, overflow: "hidden", borderRadius: 999, backgroundColor: "#DDE4EC", marginTop: 9 },
+  peopleProgressFill: { height: "100%", borderRadius: 999, backgroundColor: colors.success },
+  peopleInterview: { minHeight: 70, flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.white },
+  peopleModal: { paddingHorizontal: 22, paddingTop: 26, paddingBottom: 48, gap: 18, backgroundColor: colors.white },
+  peopleFacts: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  peopleFact: { width: "48%", minHeight: 62, justifyContent: "center", gap: 5, padding: 11, borderRadius: 12, backgroundColor: colors.panel },
+  peopleFactLabel: { color: colors.muted, fontSize: 8, fontWeight: "900", textTransform: "uppercase" },
+  peopleFactValue: { color: colors.ink, fontSize: 12, fontWeight: "800", lineHeight: 16 },
+  peopleCompliance: { minHeight: 70, flexDirection: "row", alignItems: "center", gap: 10, padding: 12, borderWidth: 1, borderRadius: 14 },
+  peopleComplianceWarning: { borderColor: colors.warning, backgroundColor: colors.paleWarning },
+  peopleComplianceUrgent: { borderColor: colors.danger, backgroundColor: colors.paleDanger },
+  peopleWarningText: { color: colors.warning, fontSize: 10, fontWeight: "900", textAlign: "right" },
+  peopleUrgentText: { color: colors.danger, fontSize: 10, fontWeight: "900", textAlign: "right" },
+  peopleHiringCard: { gap: 7, padding: 14, borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.panel },
   metricBand: { flexDirection: "row", gap: 8 },
   metricCard: { flex: 1, minHeight: 78, justifyContent: "center", gap: 6, padding: 11, borderWidth: 1, borderRadius: 14 },
   metricDefault: { borderColor: colors.border, backgroundColor: colors.panel },

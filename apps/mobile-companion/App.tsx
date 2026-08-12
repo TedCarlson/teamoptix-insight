@@ -45,6 +45,7 @@ import {
 } from "./src/data/managerDispatch";
 import { loadManagerRouteEvidence, recordManagerDeliveryAction } from "./src/data/managerOperations";
 import { loadManagerWorkspaceSnapshot } from "./src/data/managerWorkspace";
+import { updateManagerCandidateStage } from "./src/data/managerPeople";
 import { loadManagerOperationsChildSnapshot } from "./src/data/managerOperationsChildren";
 import {
   manageManagerWalkOnIdentity,
@@ -270,6 +271,7 @@ function AuthenticatedApp(props: { session: Session }) {
   const [managerWorkspaceSnapshot, setManagerWorkspaceSnapshot] = useState<ManagerWorkspaceSnapshot | null>(null);
   const [managerWorkspaceLoading, setManagerWorkspaceLoading] = useState(false);
   const [managerWorkspaceError, setManagerWorkspaceError] = useState<string | null>(null);
+  const [managerPeopleBusy, setManagerPeopleBusy] = useState(false);
   const [managerWorkspaceChildKey, setManagerWorkspaceChildKey] = useState<ManagerWorkspaceChildKey | null>(null);
   const [managerWorkspaceChildSnapshot, setManagerWorkspaceChildSnapshot] = useState<ManagerWorkspaceSnapshot | null>(null);
   const [managerWorkspaceChildLoading, setManagerWorkspaceChildLoading] = useState(false);
@@ -932,6 +934,32 @@ function AuthenticatedApp(props: { session: Session }) {
     }
   }
 
+  async function submitManagerCandidateStage(
+    rosterMemberId: string,
+    stageKey: string,
+    note: string,
+  ) {
+    if (!managerContext || !managerWorkspaceSnapshot?.people) return;
+    try {
+      setManagerPeopleBusy(true);
+      setManagerWorkspaceError(null);
+      await updateManagerCandidateStage({
+        context: managerContext,
+        snapshot: managerWorkspaceSnapshot.people,
+        rosterMemberId,
+        stageKey,
+        note,
+      });
+      await refreshManagerWorkspace("people");
+    } catch (caught) {
+      const message = errorMessage(caught);
+      setManagerWorkspaceError(message);
+      throw new Error(message);
+    } finally {
+      setManagerPeopleBusy(false);
+    }
+  }
+
   async function openCompanyWeb(path: string) {
     if (!managerContext) return;
     const base = (process.env.EXPO_PUBLIC_WEB_APP_URL ?? "https://teamoptix.io").replace(/\/$/, "");
@@ -1081,6 +1109,7 @@ function AuthenticatedApp(props: { session: Session }) {
                 dispatchSnapshot={managerDispatchSnapshot}
                 error={managerWorkspaceError}
                 loading={managerWorkspaceLoading}
+                peopleBusy={managerPeopleBusy}
                 onBack={() => { setManagerWorkspaceKey(null); setManagerWorkspaceChildKey(null); setManagerWorkspaceSnapshot(null); setManagerWorkspaceError(null); setManagerDispatchSnapshot(null); setManagerDispatchError(null); }}
                 onOpenChild={(key) => {
                   setManagerWorkspaceChildSnapshot(null);
@@ -1095,6 +1124,7 @@ function AuthenticatedApp(props: { session: Session }) {
                 onSettings={() => setSettingsOpen(true)}
                 onSubmitDelivery={submitManagerDeliveryAction}
                 onSubmitDispatch={submitManagerDispatchAction}
+                onSubmitCandidateStage={submitManagerCandidateStage}
                 onSubmitWalkOn={submitManagerWalkOnAction}
                 snapshot={managerWorkspaceSnapshot}
                 suite={activeManagerSuite}
