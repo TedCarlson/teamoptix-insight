@@ -31,6 +31,7 @@ import OperationsWorkspaceToolbar from "@/features/operations/components/Operati
 import { ExpressProgressSignal } from "@/features/operations/express/ExpressProgressSignal";
 import type { ExpressDataHealth, ExpressProgress } from "@/features/operations/express/expressProgress";
 import { completionNeedsWorkspaceRefresh } from "./operationsCollectionRefresh";
+import { deriveOperationsCollectionSignal } from "./operationsCollectionSignal";
 import { resolveOperatingDateDecision } from "./operationsOperatingCalendar";
 import {
   type DispatchDayRow,
@@ -147,15 +148,6 @@ function eventTime(value: string) {
   }).format(new Date(value));
 }
 
-function updateTime(value: string | null) {
-  if (!value) return "—";
-  return new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "America/New_York",
-  }).format(new Date(value));
-}
-
 function easternClockParts(value: Date) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
@@ -174,24 +166,6 @@ function easternClockParts(value: Date) {
     weekday: get("weekday"),
     minutes: Number(get("hour")) * 60 + Number(get("minute")),
   };
-}
-
-function clockMinutes(value: string | null | undefined) {
-  const [hour, minute] = String(value ?? "00:00")
-    .slice(0, 5)
-    .split(":")
-    .map(Number);
-  return hour * 60 + minute;
-}
-
-function formatScheduleClock(value: string | null | undefined) {
-  const [hour, minute] = String(value ?? "00:00")
-    .slice(0, 5)
-    .split(":")
-    .map(Number);
-  return `${hour % 12 || 12}:${String(minute).padStart(2, "0")} ${
-    hour >= 12 ? "PM" : "AM"
-  }`;
 }
 
 function routeEvents(events: DispatchEventRow[], route: DispatchRoute) {
@@ -793,28 +767,6 @@ export default function OperationsWorkspacePage({
     return () => window.clearInterval(timerId);
   }, [active]);
 
-  const latestSuccessfulCollection = collectionRequests.find(
-    (request) =>
-      request.request_status === "COMPLETE" && !request.error_message
-  );
-  const continuousRunnerOwnsDailyPackage = Boolean(runnerSchedule);
-  const visibleCollectionRequests = collectionRequests.filter(
-    (request) =>
-      !(
-        continuousRunnerOwnsDailyPackage &&
-        request.claimed_by === null &&
-        ["PREVIOUS_DAY_CLOSE", "DRO_AM", "OPERATIONS_PULSE"].includes(
-          request.request_type
-        )
-      )
-  );
-  const activeCollection = visibleCollectionRequests.find((request) =>
-    ["QUEUED", "CLAIMED", "RUNNING", "ARTIFACTS_READY", "INGESTING"].includes(
-      request.request_status
-    )
-  );
-  const latestCollection = visibleCollectionRequests[0];
-
   const operatingDateDecision = useMemo(() => {
     const operationalDate =
       collectionOperationalDate ?? easternClockParts(new Date(signalNow)).date;
@@ -829,95 +781,17 @@ export default function OperationsWorkspacePage({
   }, [collectionOperationalDate, operatingCalendar, signalNow]);
 
   const collectionSignal = useMemo(() => {
-    const now = new Date(signalNow);
-    const eastern = easternClockParts(now);
-    const withinWindow =
-      eastern.minutes >=
-        clockMinutes(runnerSchedule?.operations_pulse_start_time) &&
-      eastern.minutes <
-        clockMinutes(runnerSchedule?.operations_pulse_end_time);
-    const observedProcessing = Boolean(activeCollection);
-    const active =
-      observedProcessing ||
-      Boolean(
-        runnerSchedule?.collection_enabled &&
-          runnerSchedule.operations_pulse_enabled &&
-          operatingDateDecision.operates &&
-          withinWindow
-      );
-
-    if (!active) {
-      if (!operatingDateDecision.operates) {
-        return {
-          active: false,
-          copy:
-            operatingDateDecision.override === "CLOSED"
-              ? "Collection paused · dated closure"
-              : "Collection paused · outside the operating calendar",
-        };
-      }
-      return {
-        active: false,
-        copy: runnerSchedule?.operations_pulse_start_time
-          ? `Collection paused · next pulse begins ${formatScheduleClock(
-              runnerSchedule.operations_pulse_start_time
-            )}`
-          : "Collection paused",
-      };
-    }
-
-    if (runnerSchedule?.runner_state === "RUNNING") {
-      return {
-        active: true,
-        copy: "Collection Active · runner cycle in progress",
-      };
-    }
-
-    const activeStartedAt = activeCollection?.started_at
-      ? new Date(activeCollection.started_at).getTime()
-      : Number.NaN;
-    if (Number.isFinite(activeStartedAt)) {
-      const elapsedMinutes = Math.max(
-        0,
-        Math.floor((signalNow - activeStartedAt) / 60_000)
-      );
-      const progress =
-        activeCollection?.request_status === "ARTIFACTS_READY" ||
-        activeCollection?.request_status === "INGESTING"
-          ? "processing collected files"
-          : `collection running · ${elapsedMinutes} min elapsed`;
-
-      return {
-        active: true,
-        copy: `Collection Active · ${progress}`,
-      };
-    }
-
-    if (
-      latestCollection?.request_status === "FAILED" ||
-      latestCollection?.request_status === "CANCELLED"
-    ) {
-      return {
-        active: true,
-        copy: `Collection recovery active · last attempt ${updateTime(
-          latestCollection.updated_at
-        )}`,
-      };
-    }
-
-    return {
-      active: true,
-      copy: latestSuccessfulCollection?.completed_at
-        ? `Collection Active · next cycle starts on success · last update ${updateTime(
-            latestSuccessfulCollection.completed_at
-          )}`
-        : "Collection Active · runner released for continuous collection",
-    };
+    return deriveOperationsCollectionSignal({
+      now: new Date(signalNow),
+      operationalDate: collectionOperationalDate,
+      requests: collectionRequests,
+      runnerSchedule,
+      operatingCalendar,
+    });
   }, [
-    activeCollection,
-    latestCollection,
-    latestSuccessfulCollection,
-    operatingDateDecision,
+    collectionOperationalDate,
+    collectionRequests,
+    operatingCalendar,
     runnerSchedule,
     signalNow,
   ]);
@@ -1621,7 +1495,7 @@ export default function OperationsWorkspacePage({
       <OperationsWorkspaceToolbar
         slug={slug}
         statusText={collectionSignal.copy}
-        statusTone={collectionSignal.active ? "active" : "waiting"}
+        statusTone={collectionSignal.tone}
         refreshing={loading}
         onActions={() => setEventOverlayOpen(true)}
         actionsLabel="Actions"
@@ -1638,7 +1512,15 @@ export default function OperationsWorkspacePage({
         <section className="ou-collection" aria-label="Route operational units">
           <header>
             <span>
-              <small className={collectionSignal.active ? "is-active" : ""}>
+              <small
+                className={
+                  collectionSignal.tone === "active"
+                    ? "is-active"
+                    : collectionSignal.tone === "critical"
+                      ? "is-critical"
+                      : ""
+                }
+              >
                 {routeUnits.length} routes · {serviceDate} ·{" "}
                 {collectionSignal.copy}
               </small>
@@ -2124,6 +2006,7 @@ export default function OperationsWorkspacePage({
         .ou-collection > header span { display: grid; gap: 2px; }
         .ou-collection > header small { color: #7a8495; }
         .ou-collection > header small.is-active { color: #315f9c; font-weight: 750; }
+        .ou-collection > header small.is-critical { color: #b91c1c; font-weight: 850; }
         .ou-supplemental-day-signal { color: #047857 !important; font-weight: 850; }
         .ou-operating-override-error { color: #b91c1c !important; font-weight: 750; }
         .ou-route-filters {

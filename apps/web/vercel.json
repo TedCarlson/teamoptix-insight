@@ -25,6 +25,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cron/operations/monitor-runner-health",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/engineering/platform-telemetry",
       "schedule": "*/5 * * * *"
     }

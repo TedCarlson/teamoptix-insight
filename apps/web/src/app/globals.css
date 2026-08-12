@@ -2392,6 +2392,15 @@ h1 {
   background: #f59e0b;
 }
 
+.operations-workspace-toolbar__status.is-critical {
+  color: #b91c1c !important;
+}
+
+.operations-workspace-toolbar__status.is-critical::before {
+  background: #dc2626;
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.12);
+}
+
 @media (min-width: 721px) {
   .operations-action-rail__actions {
     min-width: 0;

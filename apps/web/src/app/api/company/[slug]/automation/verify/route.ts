@@ -8,7 +8,6 @@ import {
   resolveAutomationAccess,
   resolveCompanyBySlug,
 } from "@/features/automation/server/automation.repository";
-import { verifyFedExCredential } from "@/features/automation/server/automation.verify";
 
 export const runtime = "nodejs";
 
@@ -62,6 +61,12 @@ export async function POST(
       );
     }
 
+    // Keep Playwright outside route-module initialization. If the browser
+    // runtime is unavailable, this import fails inside the JSON error boundary
+    // instead of Next.js returning an HTML 500 page to the admin client.
+    const { verifyFedExCredential } = await import(
+      "@/features/automation/server/automation.verify"
+    );
     const verification = await verifyFedExCredential({
       username: credentialResult.row.username,
       password: credentialResult.row.encrypted_secret,
@@ -78,15 +83,18 @@ export async function POST(
       status: verification.ok ? 200 : 409,
     });
   } catch (error) {
+    const rawMessage =
+      error instanceof Error ? error.message : "Verification failed.";
+    const browserRuntimeUnavailable =
+      rawMessage.includes("playwright-core") || rawMessage.includes("browsers.json");
     return NextResponse.json(
       {
         ok: false,
         result: "BROWSER_ERROR",
         status: "WARNING",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Verification failed.",
+        message: browserRuntimeUnavailable
+          ? "Connection testing could not start in the web runtime. The saved credential was not rejected."
+          : rawMessage,
       },
       { status: 500 }
     );

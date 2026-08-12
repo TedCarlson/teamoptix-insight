@@ -17,6 +17,8 @@ export type OperationsRunnerSignalSchedule = {
   operations_pulse_start_time: string;
   operations_pulse_end_time: string;
   runner_state: string;
+  runner_last_seen_at?: string | null;
+  runner_last_error?: string | null;
 };
 
 export type OperationsSignalCalendar = {
@@ -27,6 +29,7 @@ export type OperationsSignalCalendar = {
 export type OperationsCollectionSignal = {
   active: boolean;
   copy: string;
+  tone: "active" | "waiting" | "critical";
 };
 
 const ACTIVE_STATUSES = new Set([
@@ -141,10 +144,37 @@ export function deriveOperationsCollectionSignal(params: {
         withinWindow
     );
 
+  if (runnerSchedule?.runner_state === "ERROR") {
+    return {
+      active: false,
+      tone: "critical",
+      copy: runnerSchedule.runner_last_error?.trim()
+        ? `Collection failed · ${runnerSchedule.runner_last_error.trim()}`
+        : "Collection failed · runner requires attention",
+    };
+  }
+
+  if (
+    runnerSchedule?.collection_enabled &&
+    runnerSchedule.operations_pulse_enabled &&
+    operatingDateDecision.operates &&
+    withinWindow &&
+    (!runnerSchedule.runner_last_seen_at ||
+      now.getTime() - new Date(runnerSchedule.runner_last_seen_at).getTime() >
+        45 * 60_000)
+  ) {
+    return {
+      active: false,
+      tone: "critical",
+      copy: "Collection failed · runner heartbeat is more than 45 minutes old",
+    };
+  }
+
   if (!active) {
     if (!operatingDateDecision.operates) {
       return {
         active: false,
+        tone: "waiting",
         copy:
           operatingDateDecision.override === "CLOSED"
             ? "Collection paused · dated closure"
@@ -153,6 +183,7 @@ export function deriveOperationsCollectionSignal(params: {
     }
     return {
       active: false,
+      tone: "waiting",
       copy: runnerSchedule?.operations_pulse_start_time
         ? `Collection paused · next pulse begins ${formatScheduleClock(
             runnerSchedule.operations_pulse_start_time
@@ -162,7 +193,11 @@ export function deriveOperationsCollectionSignal(params: {
   }
 
   if (runnerSchedule?.runner_state === "RUNNING") {
-    return { active: true, copy: "Collection Active · runner cycle in progress" };
+    return {
+      active: true,
+      tone: "active",
+      copy: "Collection Active · runner cycle in progress",
+    };
   }
 
   const activeStartedAt = activeCollection?.started_at
@@ -178,7 +213,11 @@ export function deriveOperationsCollectionSignal(params: {
       activeCollection?.request_status === "INGESTING"
         ? "processing collected files"
         : `collection running · ${elapsedMinutes} min elapsed`;
-    return { active: true, copy: `Collection Active · ${progress}` };
+    return {
+      active: true,
+      tone: "active",
+      copy: `Collection Active · ${progress}`,
+    };
   }
 
   if (
@@ -187,6 +226,7 @@ export function deriveOperationsCollectionSignal(params: {
   ) {
     return {
       active: true,
+      tone: "active",
       copy: `Collection recovery active · last attempt ${updateTime(
         latestCollection.updated_at
       )}`,
@@ -195,6 +235,7 @@ export function deriveOperationsCollectionSignal(params: {
 
   return {
     active: true,
+    tone: "active",
     copy: latestSuccessfulCollection?.completed_at
       ? `Collection Active · next cycle starts on success · last update ${updateTime(
           latestSuccessfulCollection.completed_at

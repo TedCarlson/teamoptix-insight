@@ -51,6 +51,24 @@ const TERMINAL_REQUEST_STATUSES = new Set([
   "CANCELLED",
 ]);
 
+async function readJsonResponse(
+  response: Response
+): Promise<{ error?: string; message?: string; [key: string]: unknown }> {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text) as {
+      error?: string;
+      message?: string;
+      [key: string]: unknown;
+    };
+  } catch {
+    return {
+      error: `The server returned an unreadable response (HTTP ${response.status}).`,
+    };
+  }
+}
+
 function formatRequestDate(request: CollectionRequest) {
   if (request.service_date) return request.service_date;
   if (!request.service_date_start) return "—";
@@ -453,7 +471,7 @@ export default function AutomationConfigPanel(
           }),
         }
       );
-      const data = await res.json();
+      const data = await readJsonResponse(res);
       if (!res.ok) throw new Error(data?.error ?? "Failed to queue recovery.");
       await Promise.all([loadCollectionRequests(), loadRecoveryCandidates()]);
       setMessage(`Recovery queued for ${candidate.service_date}.`);
@@ -516,7 +534,7 @@ export default function AutomationConfigPanel(
         }
       );
 
-      const data = await res.json();
+      const data = await readJsonResponse(res);
 
       await Promise.all([loadCredential(), loadStatus()]);
 
@@ -596,7 +614,9 @@ export default function AutomationConfigPanel(
         <div style={executiveSignalGrid}>
           <MiniStat
             label="Collection Health"
-            value={formatStatus(status?.status ?? null)}
+            value={formatStatus(
+              status?.collection_health ?? status?.status ?? null
+            )}
           />
 
           {customerManagesCredential ? (
@@ -614,7 +634,7 @@ export default function AutomationConfigPanel(
 
               <strong>
                 {credential?.has_secret
-                  ? "Credentials Current"
+                  ? "Credential Stored"
                   : "Credentials Needed"}
               </strong>
 
@@ -652,7 +672,7 @@ export default function AutomationConfigPanel(
 
               <strong>
                 {credential?.has_secret
-                  ? "Credentials Current"
+                  ? "Credential Stored"
                   : "Customer Action Required"}
               </strong>
 
@@ -691,6 +711,27 @@ export default function AutomationConfigPanel(
             )}
           />
         </div>
+
+        {status?.runner_state === "ERROR" ? (
+          <div
+            role="alert"
+            style={{
+              marginTop: 10,
+              border: "1px solid #fecaca",
+              borderRadius: 10,
+              background: "#fef2f2",
+              color: "#991b1b",
+              padding: "10px 12px",
+              fontSize: 13,
+              fontWeight: 800,
+            }}
+          >
+            Runner failed · {status.runner_last_error || "Collection requires attention."}
+            {status.runner_last_seen_at
+              ? ` Last heartbeat ${formatDateTime(status.runner_last_seen_at)}.`
+              : " No runner heartbeat has been recorded."}
+          </div>
+        ) : null}
 
         <div style={policyStrip}>
           <span style={{ fontWeight: 950, color: "#166534" }}>

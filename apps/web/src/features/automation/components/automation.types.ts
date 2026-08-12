@@ -20,6 +20,12 @@ export type AutomationStatusResponse = {
   profile_id: string;
   company_id: string;
   updated_at: string;
+  collection_health?: AutomationStatusValue;
+  runner_state?: string | null;
+  runner_last_seen_at?: string | null;
+  runner_last_error?: string | null;
+  runner_config_version?: number | null;
+  runner_applied_version?: number | null;
 };
 
 export type CredentialResponse = {

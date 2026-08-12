@@ -5,7 +5,7 @@ import { useOperationsCollectionSignal } from "@/features/operations/workspace/u
 type OperationsWorkspaceToolbarProps = {
   slug: string;
   statusText?: string;
-  statusTone?: "active" | "waiting" | "neutral";
+  statusTone?: "active" | "waiting" | "critical" | "neutral";
   refreshing?: boolean;
   onRefresh: () => void;
   onUpload?: () => void;
@@ -38,11 +38,7 @@ export default function OperationsWorkspaceToolbar(props: OperationsWorkspaceToo
     useOperationsCollectionSignal(slug);
   const renderedStatusText =
     authoritativeSignal?.copy ?? statusText ?? "Loading collection status…";
-  const renderedStatusTone = authoritativeSignal
-    ? authoritativeSignal.active
-      ? "active"
-      : "waiting"
-    : statusTone;
+  const renderedStatusTone = authoritativeSignal?.tone ?? statusTone;
 
   function refreshAll() {
     void refreshCollectionSignal();
