@@ -981,15 +981,14 @@ export function ManagerWorkspaceDetailScreen(props: {
             <Text style={styles.sectionMeta}>PASS 2</Text>
           </View>
           {props.suite.children.map((child) => {
-            const native = child.key === "dispatch";
             return (
               <AccessTile
                 code={child.code}
                 detail={child.detail}
                 key={child.label}
                 label={child.label}
-                onPress={() => native && child.key ? props.onOpenChild(child.key) : props.onOpenWeb(child.path)}
-                trailing={native ? "NATIVE" : "WEB FALLBACK"}
+                onPress={() => child.key ? props.onOpenChild(child.key) : props.onOpenWeb(child.path)}
+                trailing="NATIVE"
               />
             );
           })}
@@ -1018,6 +1017,78 @@ export function ManagerWorkspaceDetailScreen(props: {
           </Card>
         </>
       ) : null}
+    </Screen>
+  );
+}
+
+function OperationsReportDateNavigator(props: {
+  availableDates: string[];
+  serviceDate: string;
+  onServiceDate: (value: string) => void;
+}) {
+  const dates = [...props.availableDates].sort();
+  const index = dates.indexOf(props.serviceDate);
+  const previous = index > 0 ? dates[index - 1] : null;
+  const next = index >= 0 && index < dates.length - 1 ? dates[index + 1] : null;
+  return (
+    <View style={styles.reportDateNavigator}>
+      <Pressable
+        accessibilityLabel="Previous available report"
+        disabled={!previous}
+        onPress={() => previous && props.onServiceDate(previous)}
+        style={[styles.reportDateArrow, !previous && styles.controlDisabled]}
+      >
+        <Text style={styles.reportDateArrowText}>‹</Text>
+      </Pressable>
+      <View style={styles.reportDateCopy}>
+        <Text style={styles.reportDateLabel}>SERVICE DATE</Text>
+        <Text style={styles.reportDateValue}>{readableDate(props.serviceDate, { month: "short", day: "numeric", year: "numeric" })}</Text>
+        <Text style={styles.reportDateMeta}>{dates.length} final report{dates.length === 1 ? "" : "s"} available</Text>
+      </View>
+      <Pressable
+        accessibilityLabel="Next available report"
+        disabled={!next}
+        onPress={() => next && props.onServiceDate(next)}
+        style={[styles.reportDateArrow, !next && styles.controlDisabled]}
+      >
+        <Text style={styles.reportDateArrowText}>›</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+export function ManagerOperationsChildScreen(props: {
+  childKey: Exclude<ManagerWorkspaceChildKey, "dispatch">;
+  context: ManagerAccessContext;
+  error: string | null;
+  loading: boolean;
+  onBack: () => void;
+  onOpenWeb: (path: string) => void;
+  onRefresh: () => void;
+  onServiceDate: (value: string) => void;
+  onSettings: () => void;
+  snapshot: ManagerWorkspaceSnapshot | null;
+}) {
+  const suite = managerWorkspaceSuite("operations", props.context);
+  const child = suite?.children.find((candidate) => candidate.key === props.childKey);
+  if (!child) return null;
+  return (
+    <Screen>
+      <AppHeader companyName={props.context.company_name} eyebrow="INSIGHT · OPERATIONS" onSettings={props.onSettings} title={child.label} />
+      <Pressable onPress={props.onBack}><Text style={styles.back}>‹ Operations</Text></Pressable>
+      {props.childKey === "reports" && props.snapshot?.serviceDate ? (
+        <OperationsReportDateNavigator
+          availableDates={props.snapshot.availableDates ?? []}
+          onServiceDate={props.onServiceDate}
+          serviceDate={props.snapshot.serviceDate}
+        />
+      ) : null}
+      <WorkspaceSnapshotView error={props.error} loading={props.loading} onRetry={props.onRefresh} snapshot={props.snapshot} />
+      <Card>
+        <Text style={sharedStyles.bodyStrong}>Native read · full controls preserved</Text>
+        <Text style={sharedStyles.muted}>This screen is optimized for mobile review. The browser workspace remains available as a fallback for deeper controls.</Text>
+        <PrimaryButton compact label="Open full web workspace" onPress={() => props.onOpenWeb(child.path)} secondary />
+      </Card>
     </Screen>
   );
 }
@@ -2234,6 +2305,13 @@ const styles = StyleSheet.create({
   readChips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   readChip: { paddingHorizontal: 8, paddingVertical: 5, borderRadius: 999, backgroundColor: colors.palePrimary },
   readChipText: { color: colors.primary, fontSize: 9, fontWeight: "800" },
+  reportDateNavigator: { minHeight: 82, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 16, backgroundColor: colors.white },
+  reportDateArrow: { width: 54, minHeight: 80, alignItems: "center", justifyContent: "center" },
+  reportDateArrowText: { color: colors.primary, fontSize: 30, fontWeight: "700" },
+  reportDateCopy: { flex: 1, alignItems: "center", gap: 3 },
+  reportDateLabel: { color: colors.primary, fontSize: 9, fontWeight: "900", letterSpacing: 1.1 },
+  reportDateValue: { color: colors.ink, fontSize: 16, fontWeight: "900" },
+  reportDateMeta: { color: colors.muted, fontSize: 9, fontWeight: "700" },
   operationsControls: { gap: 8, paddingRight: 20 },
   operationsControl: { minHeight: 40, justifyContent: "center", paddingHorizontal: 14, borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.white },
   operationsControlPrimary: { borderColor: colors.success, backgroundColor: colors.success },

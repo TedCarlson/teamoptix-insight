@@ -26,4 +26,18 @@ describe("manager workspace suites", () => {
     expect(people?.children.map((child) => child.label)).toEqual(["Roster", "Workforce Readiness"]);
     expect(managerWorkspaceSuite("messages")?.children).toHaveLength(3);
   });
+
+  it("keeps excluded Operations code out of the rendered mobile suite", () => {
+    const operations = managerWorkspaceSuite("operations", {
+      ...context,
+      grants: ["dispatch", "planning", "delivery_window", "reports"],
+    });
+
+    expect(operations?.children.map((child) => child.label)).toEqual([
+      "Service",
+      "Planning",
+      "Ops Reports",
+      "Walk Ons",
+    ]);
+  });
 });
