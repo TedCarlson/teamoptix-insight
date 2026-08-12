@@ -56,6 +56,7 @@ type BaseMobileContext = {
 export type ManagerAccessContext = BaseMobileContext & {
   role: "MANAGER";
   grants: CompanyWorkspaceGrantKey[];
+  is_platform_owner?: boolean;
 };
 
 export type DriverAccessContext = BaseMobileContext & {
@@ -130,6 +131,7 @@ export function buildMobileAccessContexts(
       relationship_type: membership.relationship_type,
       title: membership.title ?? null,
       grants,
+      is_platform_owner: Boolean(access?.is_platform_owner),
     });
   }
 
@@ -149,6 +151,7 @@ export function buildMobileAccessContexts(
         relationship_type: "admin",
         title: "Platform owner",
         grants: [...COMPANY_WORKSPACE_GRANTS],
+        is_platform_owner: true,
       });
     }
   }

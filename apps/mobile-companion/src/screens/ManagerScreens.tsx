@@ -12,6 +12,13 @@ import {
 
 import type { DriverAccessContext, ManagerAccessContext } from "../domain/access";
 import {
+  EMPTY_MANAGER_MESSAGE_DRAFT,
+  managerMessageAudienceLabel,
+  validateManagerMessageDraft,
+  type ManagerMessageDraft,
+  type ManagerMessagesSnapshot,
+} from "../domain/managerMessages";
+import {
   MANAGER_DISPATCH_ACTIONS,
   dispatchActionDefinition,
   dispatchActionDefinitions,
@@ -53,6 +60,7 @@ import {
   type ManagerWorkspaceTone,
 } from "../domain/managerWorkspace";
 import { AppHeader, Card, PrimaryButton, Screen, sharedStyles } from "../components/ui";
+import { IntentVerificationModal } from "../components/IntentVerificationModal";
 import { colors } from "../theme";
 
 export type ManagerTabKey = "today" | "schedule" | "workspaces" | "messages";
@@ -2615,28 +2623,222 @@ export function ManagerDispatchScreen(props: {
   );
 }
 
+function MessageComposer(props: {
+  busy: boolean;
+  onClose: () => void;
+  onSubmit: (draft: ManagerMessageDraft, status: "draft" | "published") => Promise<void>;
+  snapshot: ManagerMessagesSnapshot;
+}) {
+  const [draft, setDraft] = useState<ManagerMessageDraft>({
+    ...EMPTY_MANAGER_MESSAGE_DRAFT,
+    recipientRosterMemberIds: [],
+  });
+  const [formError, setFormError] = useState<string | null>(null);
+  const [publishIntent, setPublishIntent] = useState(false);
+  const validation = validateManagerMessageDraft(draft);
+
+  async function submit(status: "draft" | "published") {
+    const currentValidation = validateManagerMessageDraft(draft);
+    if (currentValidation || props.busy) {
+      setFormError(currentValidation);
+      return;
+    }
+    try {
+      setFormError(null);
+      await props.onSubmit(draft, status);
+      props.onClose();
+    } catch (caught) {
+      setFormError(caught instanceof Error ? caught.message : "The message could not be saved.");
+    }
+  }
+
+  function selectVisibility(visibility: ManagerMessageDraft["visibility"]) {
+    setDraft((current) => ({
+      ...current,
+      visibility,
+      audienceMode: visibility === "drivers" ? current.audienceMode : "all_drivers",
+      recipientRosterMemberIds: visibility === "drivers" ? current.recipientRosterMemberIds : [],
+    }));
+    setFormError(null);
+  }
+
+  function toggleRecipient(rosterMemberId: string) {
+    setDraft((current) => {
+      const selected = new Set(current.recipientRosterMemberIds);
+      if (selected.has(rosterMemberId)) selected.delete(rosterMemberId);
+      else selected.add(rosterMemberId);
+      return { ...current, recipientRosterMemberIds: Array.from(selected) };
+    });
+  }
+
+  return (
+    <Modal animationType="slide" onRequestClose={props.onClose} presentationStyle="pageSheet" visible>
+      <ScrollView contentContainerStyle={styles.dispatchDrawer} keyboardShouldPersistTaps="handled">
+        <View style={[styles.reviewHeader, styles.modalHeaderClearance]}>
+          <View style={styles.accessCopy}>
+            <Text style={styles.nativeBannerLabel}>MESSAGE DRAFT</Text>
+            <Text style={styles.drawerTitle}>Create company message</Text>
+            <Text style={styles.detail}>Draft, broadcast, or target the same governed company message board used by Insight.</Text>
+          </View>
+          <Pressable disabled={props.busy} onPress={props.onClose}><Text style={styles.done}>Close</Text></Pressable>
+        </View>
+
+        <View style={styles.drawerStep}>
+          <Text style={styles.drawerStepLabel}>1 · Message</Text>
+          <TextInput
+            onChangeText={(title) => setDraft((current) => ({ ...current, title }))}
+            placeholder="Message title"
+            placeholderTextColor={colors.muted}
+            style={styles.drawerSearch}
+            value={draft.title}
+          />
+          <TextInput
+            multiline
+            onChangeText={(body) => setDraft((current) => ({ ...current, body }))}
+            placeholder="Write the update drivers or leaders need to see."
+            placeholderTextColor={colors.muted}
+            style={styles.messageBodyInput}
+            value={draft.body}
+          />
+        </View>
+
+        <View style={styles.drawerStep}>
+          <Text style={styles.drawerStepLabel}>2 · Visibility</Text>
+          <View style={styles.messageChoiceRow}>
+            {(["drivers", "all", "leadership"] as const).map((visibility) => {
+              const selected = draft.visibility === visibility;
+              const label = visibility === "drivers" ? "Drivers" : visibility === "all" ? "Everyone" : "Leadership";
+              return (
+                <Pressable
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                  key={visibility}
+                  onPress={() => selectVisibility(visibility)}
+                  style={[styles.messageChoice, selected && styles.drawerChoiceSelected]}
+                >
+                  <Text style={[styles.drawerActionText, selected && styles.drawerActionTextSelected]}>{label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        {draft.visibility === "drivers" ? (
+          <View style={styles.drawerStep}>
+            <Text style={styles.drawerStepLabel}>3 · Driver audience</Text>
+            <Pressable
+              onPress={() => setDraft((current) => ({ ...current, audienceMode: "all_drivers", recipientRosterMemberIds: [] }))}
+              style={[styles.drawerChoice, draft.audienceMode === "all_drivers" && styles.drawerChoiceSelected]}
+            >
+              <View style={styles.accessCopy}><Text style={styles.drawerChoiceTitle}>All active drivers</Text><Text style={styles.detail}>{props.snapshot.recipients.length} available recipients</Text></View>
+              {draft.audienceMode === "all_drivers" ? <Text style={styles.drawerSelectedMark}>SELECTED</Text> : null}
+            </Pressable>
+            <Pressable
+              onPress={() => setDraft((current) => ({ ...current, audienceMode: "selected_drivers" }))}
+              style={[styles.drawerChoice, draft.audienceMode === "selected_drivers" && styles.drawerChoiceSelected]}
+            >
+              <View style={styles.accessCopy}><Text style={styles.drawerChoiceTitle}>Selected drivers</Text><Text style={styles.detail}>Choose one or more active or trainee drivers.</Text></View>
+              {draft.audienceMode === "selected_drivers" ? <Text style={styles.drawerSelectedMark}>SELECTED</Text> : null}
+            </Pressable>
+            {draft.audienceMode === "selected_drivers" ? (
+              <View style={styles.messageRecipientList}>
+                {props.snapshot.recipients.length === 0 ? <Text style={sharedStyles.muted}>No active drivers are available for targeting.</Text> : props.snapshot.recipients.map((recipient) => {
+                  const selected = draft.recipientRosterMemberIds.includes(recipient.rosterMemberId);
+                  return (
+                    <Pressable key={recipient.rosterMemberId} onPress={() => toggleRecipient(recipient.rosterMemberId)} style={[styles.messageRecipient, selected && styles.drawerChoiceSelected]}>
+                      <View style={styles.accessCopy}>
+                        <Text style={styles.drawerChoiceTitle}>{recipient.fullName}</Text>
+                        <Text style={styles.detail}>{recipient.jobTitle || recipient.employmentStatus || "Driver"}</Text>
+                      </View>
+                      <Text style={selected ? styles.drawerSelectedMark : styles.messageUnselected}>{selected ? "SELECTED" : "SELECT"}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        <View style={styles.drawerStep}>
+          <Text style={styles.drawerStepLabel}>{draft.visibility === "drivers" ? "4" : "3"} · Acknowledgment</Text>
+          <Pressable onPress={() => setDraft((current) => ({ ...current, requiresAck: !current.requiresAck }))} style={[styles.drawerChoice, draft.requiresAck && styles.drawerChoiceSelected]}>
+            <View style={styles.accessCopy}>
+              <Text style={styles.drawerChoiceTitle}>Require acknowledgment</Text>
+              <Text style={styles.detail}>Drivers must explicitly mark this message read.</Text>
+            </View>
+            <Text style={draft.requiresAck ? styles.drawerSelectedMark : styles.messageUnselected}>{draft.requiresAck ? "ON" : "OFF"}</Text>
+          </Pressable>
+        </View>
+
+        <Card tone={validation || formError ? "danger" : "primary"}>
+          <Text style={sharedStyles.bodyStrong}>{formError || validation || "Message is ready."}</Text>
+          <Text style={sharedStyles.muted}>Audience: {managerMessageAudienceLabel(draft, props.snapshot.recipients.length)} · {draft.requiresAck ? "Acknowledgment required" : "Read only"}</Text>
+          <Text style={sharedStyles.muted}>Publishing requires a live connection and deliberate confirmation. It is never queued as an offline action.</Text>
+        </Card>
+        <View style={styles.messageActions}>
+          <PrimaryButton compact disabled={Boolean(validation) || props.busy} fill label={props.busy ? "Saving…" : "Save draft"} onPress={() => void submit("draft")} secondary />
+          <PrimaryButton compact disabled={Boolean(validation) || props.busy} label={props.busy ? "Publishing…" : "Publish now"} onPress={() => setPublishIntent(true)} fill />
+        </View>
+      </ScrollView>
+      {publishIntent ? (
+        <IntentVerificationModal
+          actionLabel="publish message"
+          busy={props.busy}
+          onCancel={() => setPublishIntent(false)}
+          onConfirm={() => {
+            setPublishIntent(false);
+            void submit("published");
+          }}
+          visible
+        />
+      ) : null}
+    </Modal>
+  );
+}
+
 export function ManagerMessagesScreen(props: {
+  busy: boolean;
   context: ManagerAccessContext;
   error: string | null;
   loading: boolean;
-  onOpenWeb: (path: string) => void;
   onRefresh: () => void;
   onSettings: () => void;
-  snapshot: ManagerWorkspaceSnapshot | null;
+  onSubmit: (draft: ManagerMessageDraft, status: "draft" | "published") => Promise<void>;
+  snapshot: ManagerMessagesSnapshot | null;
 }) {
-  const suite = managerWorkspaceSuite("messages", props.context);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const published = props.snapshot?.messages.filter((message) => message.status === "published").length ?? 0;
+  const drafts = props.snapshot?.messages.filter((message) => message.status === "draft").length ?? 0;
+  const acknowledgments = props.snapshot?.messages.filter((message) => message.requiresAck).length ?? 0;
   return (
     <Screen>
       <AppHeader companyName={props.context.company_name} eyebrow="INSIGHT · MANAGER" onSettings={props.onSettings} title="Messages" />
-      <Text style={sharedStyles.muted}>Review published updates, drafts, and acknowledgment requirements from the native manager layer.</Text>
-      <WorkspaceSnapshotView error={props.error} loading={props.loading} onRetry={props.onRefresh} snapshot={props.snapshot} />
-      {suite?.children.map((child) => (
-        <AccessTile code={child.code} detail={child.detail} key={child.label} label={child.label} onPress={() => props.onOpenWeb(child.path)} trailing="WEB FALLBACK" />
-      ))}
-      <Card>
-        <Text style={sharedStyles.bodyStrong}>Authoring enters Pass 2</Text>
-        <Text style={sharedStyles.muted}>Message composition and publishing remain governed browser actions while this pass locks the native read experience.</Text>
-      </Card>
+      <Text style={sharedStyles.muted}>Draft, publish, broadcast, or target operational updates using the same governed company message board as Insight.</Text>
+      {props.error ? <Card tone="danger"><Text style={sharedStyles.bodyStrong}>Messages need another try</Text><Text style={sharedStyles.muted}>{props.error}</Text><PrimaryButton compact label="Retry" onPress={props.onRefresh} secondary /></Card> : null}
+      {props.loading ? <View style={styles.loadingCard}><ActivityIndicator color={colors.primary} /><Text style={sharedStyles.muted}>Loading company messages and audience authority…</Text></View> : null}
+      {props.snapshot ? (
+        <>
+          <View style={styles.metricBand}>
+            <View style={[styles.metricCard, styles.metricSuccess]}><Text style={styles.metricLabel}>Published</Text><Text style={styles.metricValue}>{published}</Text></View>
+            <View style={[styles.metricCard, styles.metricWarning]}><Text style={styles.metricLabel}>Drafts</Text><Text style={styles.metricValue}>{drafts}</Text></View>
+            <View style={[styles.metricCard, styles.metricDefault]}><Text style={styles.metricLabel}>Requires read</Text><Text style={styles.metricValue}>{acknowledgments}</Text></View>
+          </View>
+          {props.snapshot.canAuthor ? <PrimaryButton label="Create message" onPress={() => setComposerOpen(true)} /> : (
+            <Card><Text style={sharedStyles.bodyStrong}>Read access</Text><Text style={sharedStyles.muted}>Company administrator access is required to draft or publish messages.</Text></Card>
+          )}
+          <View style={styles.sectionHeading}><Text style={styles.sectionLabel}>Message board</Text><Text style={styles.sectionMeta}>{props.snapshot.messages.length}</Text></View>
+          {props.snapshot.messages.length === 0 ? <Card><Text style={sharedStyles.bodyStrong}>No announcements yet</Text><Text style={sharedStyles.muted}>Published messages and administrator drafts will appear here.</Text></Card> : props.snapshot.messages.map((message) => (
+            <View key={message.id} style={styles.readCard}>
+              <View style={[styles.readAccent, message.status === "published" ? styles.readAccentSuccess : styles.readAccentWarning]} />
+              <View style={styles.readCardHeader}><Text style={styles.readEyebrow}>{message.status}</Text><Text style={styles.readMeta}>{message.visibility}</Text></View>
+              <Text style={styles.readCardTitle}>{message.title}</Text>
+              <Text numberOfLines={4} style={styles.readCardDetail}>{message.body}</Text>
+              <View style={styles.readChips}><View style={styles.readChip}><Text style={styles.readChipText}>{message.requiresAck ? "Ack required" : "Read only"}</Text></View></View>
+            </View>
+          ))}
+          {composerOpen ? <MessageComposer busy={props.busy} onClose={() => setComposerOpen(false)} onSubmit={props.onSubmit} snapshot={props.snapshot} /> : null}
+        </>
+      ) : null}
     </Screen>
   );
 }
@@ -2880,6 +3082,13 @@ const styles = StyleSheet.create({
   drawerChoiceTitle: { color: colors.ink, fontSize: 14, fontWeight: "900" },
   drawerSelectedMark: { color: colors.primary, fontSize: 8, fontWeight: "900", letterSpacing: 0.6 },
   drawerSearch: { minHeight: 48, paddingHorizontal: 13, borderWidth: 1, borderColor: colors.border, borderRadius: 13, color: colors.ink, fontSize: 14, backgroundColor: colors.white },
+  messageBodyInput: { minHeight: 150, paddingHorizontal: 13, paddingVertical: 13, borderWidth: 1, borderColor: colors.border, borderRadius: 13, color: colors.ink, fontSize: 14, lineHeight: 21, backgroundColor: colors.white, textAlignVertical: "top" },
+  messageChoiceRow: { flexDirection: "row", gap: 7 },
+  messageChoice: { flex: 1, minHeight: 48, alignItems: "center", justifyContent: "center", paddingHorizontal: 6, borderWidth: 1, borderColor: colors.border, borderRadius: 13, backgroundColor: colors.white },
+  messageRecipientList: { gap: 7, paddingTop: 2 },
+  messageRecipient: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 10, padding: 11, borderWidth: 1, borderColor: colors.border, borderRadius: 13, backgroundColor: colors.white },
+  messageUnselected: { color: colors.muted, fontSize: 8, fontWeight: "900", letterSpacing: 0.6 },
+  messageActions: { flexDirection: "row", gap: 10 },
   phaseSelector: { flexDirection: "row", gap: 8, padding: 5, borderRadius: 16, backgroundColor: colors.panel },
   phaseOption: { flex: 1, minHeight: 58, justifyContent: "center", gap: 3, paddingHorizontal: 13, borderWidth: 1, borderColor: "transparent", borderRadius: 12 },
   phaseOptionActive: { borderColor: colors.primary, backgroundColor: colors.white },

@@ -36,6 +36,10 @@ import {
   reviewManagerTimeOffRequest,
 } from "./src/data/managerSchedule";
 import {
+  loadManagerMessagesSnapshot,
+  saveManagerMessage,
+} from "./src/data/managerMessages";
+import {
   loadManagerDispatchSnapshot,
   recordManagerDispatchAction,
 } from "./src/data/managerDispatch";
@@ -72,6 +76,10 @@ import type {
   ManagerDispatchSnapshot,
 } from "./src/domain/managerDispatch";
 import type { ManagerDeliveryActionDraft } from "./src/domain/managerOperations";
+import type {
+  ManagerMessageDraft,
+  ManagerMessagesSnapshot,
+} from "./src/domain/managerMessages";
 import type {
   ManagerWalkOnAssignmentDraft,
   ManagerWalkOnIdentityDraft,
@@ -254,6 +262,10 @@ function AuthenticatedApp(props: { session: Session }) {
   const [managerScheduleLoading, setManagerScheduleLoading] = useState(false);
   const [managerScheduleError, setManagerScheduleError] = useState<string | null>(null);
   const [managerScheduleReviewBusy, setManagerScheduleReviewBusy] = useState(false);
+  const [managerMessagesSnapshot, setManagerMessagesSnapshot] = useState<ManagerMessagesSnapshot | null>(null);
+  const [managerMessagesLoading, setManagerMessagesLoading] = useState(false);
+  const [managerMessagesError, setManagerMessagesError] = useState<string | null>(null);
+  const [managerMessagesBusy, setManagerMessagesBusy] = useState(false);
   const [managerWorkspaceKey, setManagerWorkspaceKey] = useState<ManagerWorkspaceKey | null>(null);
   const [managerWorkspaceSnapshot, setManagerWorkspaceSnapshot] = useState<ManagerWorkspaceSnapshot | null>(null);
   const [managerWorkspaceLoading, setManagerWorkspaceLoading] = useState(false);
@@ -322,6 +334,20 @@ function AuthenticatedApp(props: { session: Session }) {
       setManagerWorkspaceError(errorMessage(caught));
     } finally {
       setManagerWorkspaceLoading(false);
+    }
+  }, [managerContext]);
+
+  const refreshManagerMessages = useCallback(async () => {
+    if (!managerContext) return;
+    try {
+      setManagerMessagesLoading(true);
+      setManagerMessagesError(null);
+      const snapshot = await loadManagerMessagesSnapshot(managerContext);
+      setManagerMessagesSnapshot(snapshot);
+    } catch (caught) {
+      setManagerMessagesError(errorMessage(caught));
+    } finally {
+      setManagerMessagesLoading(false);
     }
   }, [managerContext]);
 
@@ -449,13 +475,14 @@ function AuthenticatedApp(props: { session: Session }) {
 
   useEffect(() => {
     if (!managerContext) return;
-    const key = managerTab === "messages"
-      ? "messages"
-      : managerTab === "workspaces"
-        ? managerWorkspaceKey
-        : null;
+    const key = managerTab === "workspaces" ? managerWorkspaceKey : null;
     if (key) void refreshManagerWorkspace(key);
   }, [managerContext, managerTab, managerWorkspaceKey, refreshManagerWorkspace]);
+
+  useEffect(() => {
+    if (!managerContext || managerTab !== "messages") return;
+    void refreshManagerMessages();
+  }, [managerContext, managerTab, refreshManagerMessages]);
 
   useEffect(() => {
     const operationsParentOpen = managerWorkspaceKey === "operations" && managerWorkspaceChildKey === null;
@@ -764,6 +791,8 @@ function AuthenticatedApp(props: { session: Session }) {
       setManagerScheduleWeek(managerWeekStart());
       setManagerScheduleSnapshot(null);
       setManagerScheduleError(null);
+      setManagerMessagesSnapshot(null);
+      setManagerMessagesError(null);
       setManagerWorkspaceKey(null);
       setManagerWorkspaceSnapshot(null);
       setManagerWorkspaceError(null);
@@ -876,6 +905,30 @@ function AuthenticatedApp(props: { session: Session }) {
       throw new Error(message);
     } finally {
       setManagerDispatchBusy(false);
+    }
+  }
+
+  async function submitManagerMessage(
+    draft: ManagerMessageDraft,
+    messageStatus: "draft" | "published",
+  ) {
+    if (!managerContext || !profileId) return;
+    try {
+      setManagerMessagesBusy(true);
+      setManagerMessagesError(null);
+      await saveManagerMessage({
+        context: managerContext,
+        profileId,
+        draft,
+        status: messageStatus,
+      });
+      await refreshManagerMessages();
+    } catch (caught) {
+      const message = errorMessage(caught);
+      setManagerMessagesError(message);
+      throw new Error(message);
+    } finally {
+      setManagerMessagesBusy(false);
     }
   }
 
@@ -1057,13 +1110,14 @@ function AuthenticatedApp(props: { session: Session }) {
           ) : null}
           {managerTab === "messages" ? (
             <ManagerMessagesScreen
+              busy={managerMessagesBusy}
               context={managerContext}
-              error={managerWorkspaceError}
-              loading={managerWorkspaceLoading}
-              onOpenWeb={(path) => void openCompanyWeb(path)}
-              onRefresh={() => void refreshManagerWorkspace("messages")}
+              error={managerMessagesError}
+              loading={managerMessagesLoading}
+              onRefresh={() => void refreshManagerMessages()}
               onSettings={() => setSettingsOpen(true)}
-              snapshot={managerWorkspaceSnapshot}
+              onSubmit={submitManagerMessage}
+              snapshot={managerMessagesSnapshot}
             />
           ) : null}
         </View>
@@ -1076,6 +1130,10 @@ function AuthenticatedApp(props: { session: Session }) {
             if (nextTab === "workspaces") { setManagerWorkspaceKey(null); setManagerWorkspaceChildKey(null); setManagerWorkspaceChildSnapshot(null); setManagerWorkspaceChildError(null); }
             setManagerWorkspaceSnapshot(null);
             setManagerWorkspaceError(null);
+            if (nextTab !== "messages") {
+              setManagerMessagesSnapshot(null);
+              setManagerMessagesError(null);
+            }
           }}
         />
         <AccountModal
