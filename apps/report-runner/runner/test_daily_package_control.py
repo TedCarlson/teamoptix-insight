@@ -46,6 +46,15 @@ class DailyPackageControlContractTests(unittest.TestCase):
             "WorkingDirectory=/root/teamoptix-insight/apps/report-runner",
             self.service_unit,
         )
+
+    def test_canonical_runner_does_not_warehouse_in_legacy_mysql(self):
+        cycle_source = Path(__file__).with_name(
+            "run-continuous-cycle.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            'environment["FCMS_WRITE_LOCAL_DATABASE"] = "0"',
+            cycle_source,
+        )
         self.assertIn(
             "/root/teamoptix-insight/apps/report-runner/runner/"
             "continuous-controller.py",

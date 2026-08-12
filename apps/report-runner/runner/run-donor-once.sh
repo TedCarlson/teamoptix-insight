@@ -76,7 +76,8 @@ cleanup_runner_state() {
 }
 trap cleanup_runner_state EXIT
 
-export FCMS_SCRAPER_HOME="$SCRAPER_DIR"
+export FCMS_SCRAPER_HOME="${FCMS_SCRAPER_WORK_DIR:-$SCRAPER_DIR}"
+mkdir -p "$FCMS_SCRAPER_HOME/Excels" "$FCMS_SCRAPER_HOME/Logs"
 
 overall_status=0
 produced_total=0

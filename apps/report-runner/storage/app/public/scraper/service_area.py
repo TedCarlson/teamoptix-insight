@@ -243,7 +243,13 @@ def main(retry=0):
     if os.path.exists(service_area_status):
         renameFile(os.path.basename(DOWNLOAD_FOLDER), "ServiceAreaStatus.xls", DOWNLOAD_FOLDER)
 
-    extractDataFromFolder(os.path.basename(DOWNLOAD_FOLDER))
+    if os.environ.get("FCMS_WRITE_LOCAL_DATABASE", "1") == "1":
+        extractDataFromFolder(os.path.basename(DOWNLOAD_FOLDER))
+    else:
+        logging.info(
+            "Skipping legacy MySQL extraction; uploaded artifacts and "
+            "terminal receipts are authoritative."
+        )
 
 if __name__ == "__main__":
     main()

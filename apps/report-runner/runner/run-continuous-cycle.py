@@ -20,6 +20,11 @@ from pathlib import Path
 from typing import Any
 
 from failure_classification import is_authentication_failure
+from local_retention import (
+    enforce_local_retention,
+    prepare_cycle_spool,
+    release_cycle_spool,
+)
 from runner_log_evidence import RunnerLogEvidence
 
 
@@ -238,6 +243,10 @@ def child_environment(
     environment["FCMS_PERSIST_BROWSER"] = "0"
     environment["FCMS_FRESH_BROWSER"] = "1"
     environment["FCMS_FORCE_CREDENTIAL_AUTH"] = "1"
+    environment["FCMS_WRITE_LOCAL_DATABASE"] = "0"
+    scraper_home = str(request.get("_scraper_home") or "").strip()
+    if scraper_home:
+        environment["FCMS_SCRAPER_WORK_DIR"] = scraper_home
     return environment
 
 
@@ -760,8 +769,6 @@ def main() -> int:
         "requested_reports": reports,
         "request_payload": payload,
     }
-    environment = child_environment(args, request)
-
     delivered_outboxes, deferred_outboxes = RunnerLogEvidence.drain(
         outbox_dir=RUNNER_LOG_OUTBOX_DIR,
         rpc=RUNNER.rpc,
@@ -786,6 +793,25 @@ def main() -> int:
             "deferred_outboxes": deferred_outboxes,
         },
     )
+
+    retention = enforce_local_retention(APP_DIR)
+    log_evidence.append(
+        "Local runner retention completed.",
+        level="WARN" if retention["errors"] else "INFO",
+        stream="RETENTION",
+        metadata=retention,
+    )
+    if retention["deleted_file_count"] or retention["deleted_profile_count"]:
+        print(
+            "[continuous-cycle] local retention "
+            f"files={retention['deleted_file_count']} "
+            f"profiles={retention['deleted_profile_count']} "
+            f"bytes={retention['deleted_bytes']}"
+        )
+
+    cycle_spool = prepare_cycle_spool(APP_DIR, args.company_slug, cycle_id)
+    request["_scraper_home"] = str(cycle_spool)
+    environment = child_environment(args, request)
 
     started_at = time.time()
     donor_exit_code, stages, lane_timings, output_tail = execute_donor(
@@ -958,6 +984,13 @@ def main() -> int:
         level="INFO" if outcome == "COMPLETE" else "ERROR",
         stream="HANDOFF",
         metadata={"artifact_count": len(artifacts)},
+    )
+    spool_release = release_cycle_spool(APP_DIR, cycle_spool)
+    log_evidence.append(
+        "Cycle-local working files released.",
+        level="WARN" if spool_release["error"] else "INFO",
+        stream="RETENTION",
+        metadata=spool_release,
     )
     print(
         json.dumps(

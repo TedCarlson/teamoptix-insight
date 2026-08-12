@@ -368,10 +368,11 @@ def load_runner_artifact_metadata(file: Path) -> dict:
 
 def collect_artifacts(request: dict, run_started_at: float) -> list[dict]:
     artifacts = []
+    scraper_home = Path(request.get("_scraper_home") or SCRAPER_HOME)
 
     for service_date in request_service_dates(request):
         folder_name = service_date_folder(service_date)
-        excel_dir = SCRAPER_HOME / "Excels" / folder_name
+        excel_dir = scraper_home / "Excels" / folder_name
 
         if not excel_dir.exists():
             continue
@@ -931,6 +932,7 @@ def main() -> int:
         child_env["FCMS_SINGLE_SESSION"] = "1"
         child_env["FCMS_PERSIST_BROWSER"] = "1"
         child_env["FCMS_CHROME_DEBUGGER_ADDRESS"] = "127.0.0.1:9222"
+        child_env["FCMS_WRITE_LOCAL_DATABASE"] = "0"
         continuous_runtime_dir = APP_DIR / "runtime" / "continuous-runner"
         continuous_runtime_dir.mkdir(parents=True, exist_ok=True)
         continuous_runtime_dir.chmod(0o700)

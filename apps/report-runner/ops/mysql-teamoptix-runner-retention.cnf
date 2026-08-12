@@ -1,0 +1,6 @@
+# The VPS MySQL database is a disposable donor staging cache. Supabase Storage
+# artifacts and terminal receipts are authoritative. The runner does not use
+# this staging cache for replication or point-in-time recovery, so binary logs
+# are disabled instead of retaining client data on the execution host.
+[mysqld]
+skip-log-bin

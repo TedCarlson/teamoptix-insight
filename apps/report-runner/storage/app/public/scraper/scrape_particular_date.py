@@ -920,7 +920,10 @@ def main(section_='', option_=0, retry=1):
 
             success = renameFolder(DOWNLOAD_FOLDER)
 
-            if not INSIGHT_HISTORICAL_MODE:
+            if (
+                not INSIGHT_HISTORICAL_MODE
+                and os.environ.get("FCMS_WRITE_LOCAL_DATABASE", "1") == "1"
+            ):
                 extractDataFromFolder(os.path.basename(DOWNLOAD_FOLDER))
             else:
                 logging.info(
@@ -936,7 +939,10 @@ def main(section_='', option_=0, retry=1):
     time.sleep(5)
     success = renameFolder(DOWNLOAD_FOLDER)
 
-    if not INSIGHT_HISTORICAL_MODE:
+    if (
+        not INSIGHT_HISTORICAL_MODE
+        and os.environ.get("FCMS_WRITE_LOCAL_DATABASE", "1") == "1"
+    ):
         extractDataFromFolder(os.path.basename(DOWNLOAD_FOLDER))
     else:
         logging.info(

@@ -57,3 +57,24 @@ processing environment and run as a separate deployment qualification step.
 
 Do not commit credentials, downloaded reports, browser profiles, logs, or
 controller journal files. They remain outside Git and must survive deployments.
+
+## Bounded local retention
+
+Supabase Storage artifacts and terminal receipts are the authoritative evidence.
+The VPS keeps only disposable working copies:
+
+- each client cycle receives an isolated spool directory;
+- an accepted terminal receipt deletes the entire cycle spool immediately;
+- failed or abandoned spools have a 7-day hard maximum;
+- scraper and runner diagnostic logs: 7 days;
+- stale Chrome profiles: 48 hours;
+- legacy MySQL extraction: disabled for canonical runner cycles;
+- MySQL binary logging: disabled on the execution host.
+
+The cycle enforces file/profile retention before launching Chrome. Override the
+defaults only with `RUNNER_LOCAL_ARTIFACT_RETENTION_DAYS` and
+`RUNNER_LOCAL_DIAGNOSTIC_RETENTION_DAYS` in the protected controller environment.
+Install `ops/mysql-teamoptix-runner-retention.cnf` into
+`/etc/mysql/mysql.conf.d/` and restart MySQL during a controlled runner pause.
+The local `fcms` database is a donor staging cache; it is not the system of
+record for uploaded operational evidence.
