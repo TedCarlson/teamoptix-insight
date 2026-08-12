@@ -133,7 +133,7 @@ PYDATES
   echo "[runner] governed lane goal=$runner_goal request_type=${FCMS_REQUEST_TYPE:-} dates=${HISTORICAL_DATES[*]}"
 
   for service_date in "${HISTORICAL_DATES[@]}"; do
-    before_count="$(find "$SCRAPER_DIR/Excels" -type f -mmin -120 2>/dev/null | wc -l | tr -d ' ')"
+    before_count="$(find "$FCMS_SCRAPER_HOME/Excels" -type f -mmin -120 2>/dev/null | wc -l | tr -d ' ')"
     date_started_at="$(date +%s)"
 
     echo "[runner] governed date start: $service_date"
@@ -143,7 +143,7 @@ PYDATES
     status=$?
     set -e
 
-    after_count="$(find "$SCRAPER_DIR/Excels" -type f -mmin -120 2>/dev/null | wc -l | tr -d ' ')"
+    after_count="$(find "$FCMS_SCRAPER_HOME/Excels" -type f -mmin -120 2>/dev/null | wc -l | tr -d ' ')"
     produced_count="$((after_count - before_count))"
     [ "$produced_count" -lt 0 ] && produced_count=0
     produced_total="$((produced_total + produced_count))"
@@ -165,7 +165,7 @@ else
   fi
 
   if [ "${FCMS_SINGLE_SESSION:-0}" = "1" ]; then
-    before_count="$(find "$SCRAPER_DIR/Excels" -type f -mmin -120 2>/dev/null | wc -l | tr -d ' ')"
+    before_count="$(find "$FCMS_SCRAPER_HOME/Excels" -type f -mmin -120 2>/dev/null | wc -l | tr -d ' ')"
     session_started_at="$(date +%s)"
 
     echo "[runner] continuous session start sections=${FCMS_TARGET_SECTIONS:-ALL}"
@@ -175,7 +175,7 @@ else
     status=$?
     set -e
 
-    after_count="$(find "$SCRAPER_DIR/Excels" -type f -mmin -120 2>/dev/null | wc -l | tr -d ' ')"
+    after_count="$(find "$FCMS_SCRAPER_HOME/Excels" -type f -mmin -120 2>/dev/null | wc -l | tr -d ' ')"
     produced_count="$((after_count - before_count))"
     [ "$produced_count" -lt 0 ] && produced_count=0
     produced_total="$((produced_total + produced_count))"
@@ -188,7 +188,7 @@ else
     section="$(echo "$section" | xargs)"
     [ -z "$section" ] && continue
 
-    before_count="$(find "$SCRAPER_DIR/Excels" -type f -mmin -120 2>/dev/null | wc -l | tr -d ' ')"
+    before_count="$(find "$FCMS_SCRAPER_HOME/Excels" -type f -mmin -120 2>/dev/null | wc -l | tr -d ' ')"
 
     echo "[runner] section start: $section"
 
@@ -201,7 +201,7 @@ else
     status=$?
     set -e
 
-    after_count="$(find "$SCRAPER_DIR/Excels" -type f -mmin -120 2>/dev/null | wc -l | tr -d ' ')"
+    after_count="$(find "$FCMS_SCRAPER_HOME/Excels" -type f -mmin -120 2>/dev/null | wc -l | tr -d ' ')"
     produced_count="$((after_count - before_count))"
     [ "$produced_count" -lt 0 ] && produced_count=0
     produced_total="$((produced_total + produced_count))"
