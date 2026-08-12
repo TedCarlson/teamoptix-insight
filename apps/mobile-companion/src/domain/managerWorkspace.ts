@@ -1,5 +1,6 @@
 import type { CompanyWorkspaceGrantKey, ManagerAccessContext } from "./access";
 import type { ManagerWalkOnSnapshot } from "./managerWalkOns";
+import type { ManagerPeopleSnapshot } from "./managerPeople";
 
 export type ManagerWorkspaceKey = "operations" | "people" | "fleet" | "routes" | "admin" | "messages";
 
@@ -91,6 +92,7 @@ export type ManagerWorkspaceSnapshot = {
   serviceDate?: string;
   availableDates?: string[];
   operations?: ManagerOperationsSnapshot;
+  people?: ManagerPeopleSnapshot;
   walkOns?: ManagerWalkOnSnapshot;
 };
 

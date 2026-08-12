@@ -7,6 +7,7 @@ import type {
   ManagerWorkspaceSnapshot,
 } from "../domain/managerWorkspace";
 import { getSupabaseClient } from "../lib/supabase";
+import { loadManagerPeopleSnapshot } from "./managerPeople";
 
 function titleCase(value: string | null | undefined) {
   return String(value ?? "Unknown")
@@ -37,6 +38,7 @@ function completeSnapshot(
     serviceDate: value.serviceDate,
     availableDates: value.availableDates,
     operations: value.operations,
+    people: value.people,
   };
 }
 
@@ -298,52 +300,20 @@ async function loadOperations(context: ManagerAccessContext) {
 }
 
 async function loadPeople(context: ManagerAccessContext) {
-  const rosterResult = await getSupabaseClient()
-    .from("company_roster_view")
-    .select("roster_member_id, roster_record_kind, full_name, worker_type, job_title, employment_status, hire_date, invite_status, reports_to_name, license_expiration_date")
-    .eq("company_id", context.company_id)
-    .order("full_name");
-  if (rosterResult.error) throw rosterResult.error;
-  const roster = rosterResult.data ?? [];
-  const active = roster.filter((row) => row.employment_status === "Active" && row.roster_record_kind !== "WALK_ON");
-  const drivers = active.filter((row) => /driver/i.test(String(row.worker_type ?? row.job_title ?? "")));
-  const trainees = roster.filter((row) => row.employment_status === "Trainee");
-  const candidates = roster.filter((row) => row.employment_status === "Candidate");
+  const people = await loadManagerPeopleSnapshot(context);
+  const active = people.people.filter((person) => person.employmentStatus === "Active");
+  const drivers = active.filter((person) => /driver/i.test(`${person.workerType ?? ""} ${person.jobTitle ?? ""}`));
+  const trainees = people.people.filter((person) => person.employmentStatus === "Trainee");
+  const candidates = people.people.filter((person) => person.employmentStatus === "Candidate" && !person.candidateStageTerminal);
   return completeSnapshot({
     metrics: [
       { label: "Active drivers", value: String(drivers.length || active.length), tone: "success" },
       { label: "Trainees", value: String(trainees.length), tone: trainees.length ? "warning" : "default" },
       { label: "Candidates", value: String(candidates.length) },
     ],
-    description: "Workforce identity, employment posture, and readiness at a glance.",
-    filters: [
-      { key: "all", label: "All" },
-      { key: "active", label: "Active" },
-      { key: "trainee", label: "Trainees" },
-      { key: "candidate", label: "Candidates" },
-      { key: "former", label: "Former" },
-    ],
+    description: "Today's workforce briefing, searchable roster, lifecycle detail, compliance, and hiring pipeline.",
     sectionLabel: "Workforce roster",
-    items: roster.slice(0, 80).map((row): ManagerWorkspaceItem => {
-      const status = String(row.employment_status ?? "Unknown");
-      return {
-      id: row.roster_member_id,
-      title: row.full_name || "Roster member",
-      detail: row.job_title || row.worker_type || "Role not assigned",
-      eyebrow: status,
-      filterKeys: [status.toLowerCase()],
-      facts: [
-        { label: "Status", value: status },
-        { label: "Reports to", value: row.reports_to_name || "—" },
-        { label: "App access", value: row.invite_status || "Not invited" },
-      ],
-      chips: [
-        row.roster_record_kind === "WALK_ON" ? "Walk-on" : "Internal",
-        row.hire_date ? `Hired ${compactDate(row.hire_date)}` : null,
-        row.license_expiration_date ? `License ${compactDate(row.license_expiration_date)}` : null,
-      ].filter((value): value is string => Boolean(value)),
-      tone: status === "Active" ? "success" : status === "Trainee" ? "warning" : status === "Former" ? "danger" : "default",
-    }; }),
+    people,
     emptyMessage: "No roster members are available.",
   });
 }
