@@ -3,6 +3,8 @@ import * as Location from "expo-location";
 
 import type { BreadcrumbPoint } from "../outbox/types";
 
+export const FOREGROUND_BREADCRUMB_INTERVAL_MS = 120_000;
+
 export async function requirePreciseForegroundLocation() {
   const permission = await Location.requestForegroundPermissionsAsync();
   if (!permission.granted) {

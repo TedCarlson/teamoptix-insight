@@ -812,11 +812,13 @@ function OperationsReadSurface(props: {
   error: string | null;
   snapshot: ManagerWorkspaceSnapshot | null;
   onLoadRouteEvidence: (routeKey: string) => Promise<ManagerRouteEvidenceSnapshot>;
+  onLoadWalkOns: () => Promise<ManagerWalkOnSnapshot>;
   onOpenWeb: () => void;
   onRefresh: () => void;
   onRefreshDispatch: () => void;
   onSubmitDelivery: (draft: ManagerDeliveryActionDraft) => Promise<void>;
   onSubmitDispatch: (draft: ManagerDispatchActionDraft) => Promise<void>;
+  onSubmitWalkOn: (draft: ManagerWalkOnAssignmentDraft) => Promise<void>;
 }) {
   const [filter, setFilter] = useState<OperationsFilter>("all");
   const [actionOpen, setActionOpen] = useState(false);
@@ -930,8 +932,10 @@ function OperationsReadSurface(props: {
           initialRosterMemberId={initialRosterMemberId}
           initialRouteId={initialRouteId}
           onClose={() => setActionOpen(false)}
+          onLoadWalkOns={props.onLoadWalkOns}
           onSubmitDelivery={props.onSubmitDelivery}
           onSubmitEvent={props.onSubmitDispatch}
+          onSubmitWalkOn={props.onSubmitWalkOn}
           snapshot={props.dispatchSnapshot}
         />
       ) : null}
@@ -950,12 +954,14 @@ export function ManagerWorkspaceDetailScreen(props: {
   onBack: () => void;
   onOpenChild: (key: ManagerWorkspaceChildKey) => void;
   onLoadRouteEvidence: (routeKey: string) => Promise<ManagerRouteEvidenceSnapshot>;
+  onLoadWalkOns: () => Promise<ManagerWalkOnSnapshot>;
   onOpenWeb: (path: string) => void;
   onRefresh: () => void;
   onRefreshDispatch: () => void;
   onSettings: () => void;
   onSubmitDelivery: (draft: ManagerDeliveryActionDraft) => Promise<void>;
   onSubmitDispatch: (draft: ManagerDispatchActionDraft) => Promise<void>;
+  onSubmitWalkOn: (draft: ManagerWalkOnAssignmentDraft) => Promise<void>;
   snapshot: ManagerWorkspaceSnapshot | null;
   suite: ManagerWorkspaceSuite;
 }) {
@@ -973,10 +979,12 @@ export function ManagerWorkspaceDetailScreen(props: {
           loading={props.loading}
           onOpenWeb={() => props.onOpenWeb(props.suite.fallbackPath)}
           onLoadRouteEvidence={props.onLoadRouteEvidence}
+          onLoadWalkOns={props.onLoadWalkOns}
           onRefresh={props.onRefresh}
           onRefreshDispatch={props.onRefreshDispatch}
           onSubmitDelivery={props.onSubmitDelivery}
           onSubmitDispatch={props.onSubmitDispatch}
+          onSubmitWalkOn={props.onSubmitWalkOn}
           snapshot={props.snapshot}
         />
       ) : (
@@ -1810,12 +1818,14 @@ function ManagerActionDrawer(props: {
   initialRosterMemberId?: string | null;
   initialRouteId?: string | null;
   onClose: () => void;
+  onLoadWalkOns: () => Promise<ManagerWalkOnSnapshot>;
   onSubmitDelivery: (draft: ManagerDeliveryActionDraft) => Promise<void>;
   onSubmitEvent: (draft: ManagerDispatchActionDraft) => Promise<void>;
+  onSubmitWalkOn: (draft: ManagerWalkOnAssignmentDraft) => Promise<void>;
   snapshot: ManagerDispatchSnapshot;
 }) {
   type Phase = "DISPATCH" | "DELIVERY";
-  type SelectedAction = { kind: "event"; code: ManagerDispatchActionCode } | { kind: "delivery"; code: ManagerDeliveryActionCode };
+  type SelectedAction = { kind: "event"; code: ManagerDispatchActionCode } | { kind: "delivery"; code: ManagerDeliveryActionCode } | { kind: "walk_on"; code: "ADD_WALK_ON" };
   const initialPhase: Phase = props.snapshot.dayStatus === "ACTIVE" ? "DISPATCH" : "DELIVERY";
   const [phase, setPhase] = useState<Phase>(initialPhase);
   const initialAction = props.initialActionCode
@@ -1833,6 +1843,10 @@ function ManagerActionDrawer(props: {
   const [receivingRouteId, setReceivingRouteId] = useState<string | null>(null);
   const [stopCount, setStopCount] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [walkOnOpen, setWalkOnOpen] = useState(false);
+  const [walkOnLoading, setWalkOnLoading] = useState(false);
+  const [walkOnSnapshot, setWalkOnSnapshot] = useState<ManagerWalkOnSnapshot | null>(null);
+  const [walkOnError, setWalkOnError] = useState<string | null>(null);
 
   const eventAction = selectedAction?.kind === "event" ? dispatchActionDefinition(selectedAction.code, props.snapshot) : null;
   const eventDraft: ManagerDispatchActionDraft | null = eventAction && selectedAction?.kind === "event"
@@ -1841,12 +1855,12 @@ function ManagerActionDrawer(props: {
   const deliveryDraft: ManagerDeliveryActionDraft | null = selectedAction?.kind === "delivery"
     ? { code: selectedAction.code, note, assistingRouteId, receivingRouteId, stopCount }
     : null;
-  const validation = eventDraft
+  const validation = selectedAction?.kind === "walk_on" ? null : eventDraft
     ? validateDispatchAction(eventDraft, props.snapshot)
     : deliveryDraft ? validateManagerDeliveryAction(deliveryDraft) : actionGroup ? "Choose an action." : "Choose a primary action group.";
   const actionLabel = selectedAction?.kind === "event"
     ? dispatchActionDefinition(selectedAction.code, props.snapshot).label
-    : selectedAction?.code === "DELIVERY_NOTE" ? "Delivery note" : selectedAction?.code === "DRIVER_ASSIST" ? "Driver assist" : "action";
+    : selectedAction?.kind === "walk_on" ? "Walk-on" : selectedAction?.code === "DELIVERY_NOTE" ? "Delivery note" : selectedAction?.code === "DRIVER_ASSIST" ? "Driver assist" : "action";
   const assignsSeat = selectedAction?.kind === "event" && ["ASSIGN_DRIVER", "ASSIGN_HELPER", "ASSIGN_TRAINEE"].includes(selectedAction.code);
   const people = props.snapshot.people.filter((person) => !assignsSeat || !person.assignedRouteId || person.assignedRouteId === routeId);
   const routeOptions: ManagerSelectOption[] = props.snapshot.routes.map((route) => ({
@@ -1861,12 +1875,15 @@ function ManagerActionDrawer(props: {
   }));
   const dispatchCatalog = dispatchActionDefinitions(props.snapshot);
   const allActionOptions: ManagerActionOption[] = phase === "DISPATCH"
-    ? dispatchCatalog.map((action) => ({
+    ? [
+        ...dispatchCatalog.map((action) => ({
         value: `event:${action.code}`,
         label: action.label,
         detail: action.category,
         group: managerEventActionGroup(action),
-      }))
+        })),
+        { value: "walk_on:ADD_WALK_ON", label: "Walk-on", detail: "Reusable support identity", group: "workforce" as const },
+      ]
     : [
         ...MANAGER_DISPATCH_ACTIONS.filter((action) => managerStaffingCodes.has(action.code)).map((action) => ({
           value: `event:${action.code}`,
@@ -1904,14 +1921,30 @@ function ManagerActionDrawer(props: {
   }
 
   function chooseAction(value: string) {
-    const [kind, code] = value.split(":") as ["event" | "delivery", ManagerDispatchActionCode | ManagerDeliveryActionCode];
+    const [kind, code] = value.split(":") as ["event" | "delivery" | "walk_on", ManagerDispatchActionCode | ManagerDeliveryActionCode | "ADD_WALK_ON"];
     setSelectedAction(kind === "event"
       ? { kind, code: code as ManagerDispatchActionCode }
-      : { kind, code: code as ManagerDeliveryActionCode });
+      : kind === "delivery"
+        ? { kind, code: code as ManagerDeliveryActionCode }
+        : { kind, code: "ADD_WALK_ON" });
     setRosterMemberId(null);
     setManualRoute("");
     setNote("");
     setFormError(null);
+  }
+
+  async function openWalkOnWorkflow() {
+    try {
+      setWalkOnLoading(true);
+      setWalkOnError(null);
+      const next = await props.onLoadWalkOns();
+      setWalkOnSnapshot(next);
+      setWalkOnOpen(true);
+    } catch (caught) {
+      setWalkOnError(caught instanceof Error ? caught.message : "Walk-on identities could not be loaded.");
+    } finally {
+      setWalkOnLoading(false);
+    }
   }
 
   async function submit() {
@@ -2009,11 +2042,31 @@ function ManagerActionDrawer(props: {
           </>
         ) : null}
 
-        <Card tone={validation || formError ? "danger" : "primary"}>
+        {selectedAction?.kind === "walk_on" ? (
+          <Card tone={walkOnError ? "danger" : "primary"}>
+            <Text style={sharedStyles.bodyStrong}>{walkOnError || "Continue into the shared Walk Ons workflow."}</Text>
+            <Text style={sharedStyles.muted}>The same governed identity and dated-assignment client is used by the native Walk Ons workspace.</Text>
+            <PrimaryButton compact disabled={walkOnLoading || props.busy} label={walkOnLoading ? "Loading walk-ons…" : "Open walk-on workflow"} onPress={() => void openWalkOnWorkflow()} />
+          </Card>
+        ) : null}
+
+        {selectedAction?.kind !== "walk_on" ? <Card tone={validation || formError ? "danger" : "primary"}>
           <Text style={sharedStyles.bodyStrong}>{formError || validation || `${actionLabel} is ready to save.`}</Text>
           <Text style={sharedStyles.muted}>The server rechecks company access, terminal date, and every linked person or route. The selected phase classifies the event.</Text>
-        </Card>
-        <PrimaryButton disabled={Boolean(validation) || props.busy} label={props.busy ? "Saving…" : `Save ${actionLabel.toLowerCase()}`} onPress={() => void submit()} />
+        </Card> : null}
+        {selectedAction?.kind !== "walk_on" ? <PrimaryButton disabled={Boolean(validation) || props.busy} label={props.busy ? "Saving…" : `Save ${actionLabel.toLowerCase()}`} onPress={() => void submit()} /> : null}
+        {walkOnOpen && walkOnSnapshot ? (
+          <WalkOnAssignmentModal
+            busy={props.busy}
+            onClose={() => setWalkOnOpen(false)}
+            onSubmit={async (draft) => {
+              await props.onSubmitWalkOn(draft);
+              props.onClose();
+            }}
+            snapshot={walkOnSnapshot}
+            title="Add walk-on to Dispatch"
+          />
+        ) : null}
       </ScrollView>
     </Modal>
   );
@@ -2418,10 +2471,12 @@ export function ManagerDispatchScreen(props: {
   error: string | null;
   loading: boolean;
   onBack: () => void;
+  onLoadWalkOns: () => Promise<ManagerWalkOnSnapshot>;
   onRefresh: () => void;
   onSettings: () => void;
   onSubmitDelivery: (draft: ManagerDeliveryActionDraft) => Promise<void>;
   onSubmit: (draft: ManagerDispatchActionDraft) => Promise<void>;
+  onSubmitWalkOn: (draft: ManagerWalkOnAssignmentDraft) => Promise<void>;
   snapshot: ManagerDispatchSnapshot | null;
 }) {
   const [actionOpen, setActionOpen] = useState(false);
@@ -2511,8 +2566,10 @@ export function ManagerDispatchScreen(props: {
               initialRosterMemberId={initialRosterMemberId}
               initialRouteId={initialRouteId}
               onClose={() => setActionOpen(false)}
+              onLoadWalkOns={props.onLoadWalkOns}
               onSubmitDelivery={props.onSubmitDelivery}
               onSubmitEvent={props.onSubmit}
+              onSubmitWalkOn={props.onSubmitWalkOn}
               snapshot={props.snapshot}
             />
           ) : null}

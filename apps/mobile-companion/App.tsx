@@ -44,6 +44,7 @@ import { loadManagerWorkspaceSnapshot } from "./src/data/managerWorkspace";
 import { loadManagerOperationsChildSnapshot } from "./src/data/managerOperationsChildren";
 import {
   manageManagerWalkOnIdentity,
+  loadManagerWalkOnSnapshot,
   recordManagerWalkOnAction,
   saveManagerWalkOnAssignment,
 } from "./src/data/managerWalkOns";
@@ -120,6 +121,7 @@ import {
 import { colors } from "./src/theme";
 import {
   captureForegroundPoint,
+  FOREGROUND_BREADCRUMB_INTERVAL_MS,
   requirePreciseForegroundLocation,
 } from "./src/tracking/location";
 
@@ -277,6 +279,7 @@ function AuthenticatedApp(props: { session: Session }) {
   const [scheduleNotice, setScheduleNotice] = useState<string | null>(null);
   const [lastSynchronizedAt, setLastSynchronizedAt] = useState<Date | null>(null);
   const syncingRef = useRef(false);
+  const capturingBreadcrumbRef = useRef(false);
 
   const selectedContext = useMemo(
     () => contexts.find((item) => item.context_key === selectedContextKey) ?? null,
@@ -522,6 +525,49 @@ function AuthenticatedApp(props: { session: Session }) {
       listener.remove();
     };
   }, [outbox, synchronize, syncMembership]);
+
+  useEffect(() => {
+    if (!outbox || !dutySession || !dutyMembership) return;
+    let active = true;
+
+    const capture = async () => {
+      if (
+        !active
+        || AppState.currentState !== "active"
+        || capturingBreadcrumbRef.current
+      ) return;
+      try {
+        capturingBreadcrumbRef.current = true;
+        const point = await captureForegroundPoint(
+          dutySession.sessionId,
+          dutyMembership.context_key,
+        );
+        if (!active) return;
+        await outbox.enqueuePoint(point);
+        await refreshLocal(outbox, dutyMembership.context_key);
+        void synchronize();
+      } catch (caught) {
+        if (active) {
+          setStatus(`Foreground location evidence paused: ${errorMessage(caught)}`);
+        }
+      } finally {
+        capturingBreadcrumbRef.current = false;
+      }
+    };
+
+    const interval = setInterval(
+      () => void capture(),
+      FOREGROUND_BREADCRUMB_INTERVAL_MS,
+    );
+    const listener = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") void capture();
+    });
+    return () => {
+      active = false;
+      clearInterval(interval);
+      listener.remove();
+    };
+  }, [dutyMembership, dutySession, outbox, refreshLocal, synchronize]);
 
   async function startDuty() {
     if (!outbox || !membership || busy) return;
@@ -785,6 +831,54 @@ function AuthenticatedApp(props: { session: Session }) {
     }
   }
 
+  async function submitManagerWalkOnAssignment(draft: ManagerWalkOnAssignmentDraft) {
+    if (!managerContext) return;
+    try {
+      setManagerDispatchBusy(true);
+      setManagerWorkspaceChildError(null);
+      await saveManagerWalkOnAssignment(managerContext, draft);
+      await refreshManagerOperationsChild();
+    } catch (caught) {
+      const message = errorMessage(caught);
+      setManagerWorkspaceChildError(message);
+      throw new Error(message);
+    } finally {
+      setManagerDispatchBusy(false);
+    }
+  }
+
+  async function submitManagerWalkOnIdentity(draft: ManagerWalkOnIdentityDraft) {
+    if (!managerContext) return;
+    try {
+      setManagerDispatchBusy(true);
+      setManagerWorkspaceChildError(null);
+      await manageManagerWalkOnIdentity(managerContext, draft);
+      await refreshManagerOperationsChild();
+    } catch (caught) {
+      const message = errorMessage(caught);
+      setManagerWorkspaceChildError(message);
+      throw new Error(message);
+    } finally {
+      setManagerDispatchBusy(false);
+    }
+  }
+
+  async function submitManagerWalkOnAction(draft: ManagerWalkOnAssignmentDraft) {
+    if (!managerContext) return;
+    try {
+      setManagerDispatchBusy(true);
+      setManagerDispatchError(null);
+      await recordManagerWalkOnAction(managerContext, draft);
+      await refreshManagerDispatch();
+    } catch (caught) {
+      const message = errorMessage(caught);
+      setManagerDispatchError(message);
+      throw new Error(message);
+    } finally {
+      setManagerDispatchBusy(false);
+    }
+  }
+
   async function openCompanyWeb(path: string) {
     if (!managerContext) return;
     const base = (process.env.EXPO_PUBLIC_WEB_APP_URL ?? "https://teamoptix.io").replace(/\/$/, "");
@@ -898,14 +992,17 @@ function AuthenticatedApp(props: { session: Session }) {
                 error={managerDispatchError}
                 loading={managerDispatchLoading}
                 onBack={() => { setManagerWorkspaceChildKey(null); setManagerDispatchSnapshot(null); setManagerDispatchError(null); }}
+                onLoadWalkOns={() => loadManagerWalkOnSnapshot(managerContext)}
                 onRefresh={() => void refreshManagerDispatch()}
                 onSettings={() => setSettingsOpen(true)}
                 onSubmitDelivery={submitManagerDeliveryAction}
                 onSubmit={submitManagerDispatchAction}
+                onSubmitWalkOn={submitManagerWalkOnAction}
                 snapshot={managerDispatchSnapshot}
               />
             ) : managerWorkspaceChildKey && managerWorkspaceKey === "operations" ? (
               <ManagerOperationsChildScreen
+                busy={managerDispatchBusy}
                 childKey={managerWorkspaceChildKey}
                 context={managerContext}
                 error={managerWorkspaceChildError}
@@ -915,8 +1012,10 @@ function AuthenticatedApp(props: { session: Session }) {
                   setManagerWorkspaceChildSnapshot(null);
                   setManagerWorkspaceChildError(null);
                 }}
+                onManageWalkOn={submitManagerWalkOnIdentity}
                 onOpenWeb={(path) => void openCompanyWeb(path)}
                 onRefresh={() => void refreshManagerOperationsChild(managerWorkspaceChildSnapshot?.serviceDate)}
+                onSaveWalkOn={submitManagerWalkOnAssignment}
                 onServiceDate={(value) => void refreshManagerOperationsChild(value)}
                 onSettings={() => setSettingsOpen(true)}
                 snapshot={managerWorkspaceChildSnapshot}
@@ -937,12 +1036,14 @@ function AuthenticatedApp(props: { session: Session }) {
                   setManagerWorkspaceChildKey(key);
                 }}
                 onLoadRouteEvidence={(routeKey) => loadManagerRouteEvidence(managerContext, routeKey)}
+                onLoadWalkOns={() => loadManagerWalkOnSnapshot(managerContext)}
                 onOpenWeb={(path) => void openCompanyWeb(path)}
                 onRefresh={() => void refreshManagerWorkspace(activeManagerSuite.key)}
                 onRefreshDispatch={() => void refreshManagerDispatch()}
                 onSettings={() => setSettingsOpen(true)}
                 onSubmitDelivery={submitManagerDeliveryAction}
                 onSubmitDispatch={submitManagerDispatchAction}
+                onSubmitWalkOn={submitManagerWalkOnAction}
                 snapshot={managerWorkspaceSnapshot}
                 suite={activeManagerSuite}
               />

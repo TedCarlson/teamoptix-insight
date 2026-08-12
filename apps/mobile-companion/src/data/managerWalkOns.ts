@@ -139,13 +139,13 @@ export async function saveManagerWalkOnAssignment(
   if (draft.mode === "EXISTING" && !existing) throw new Error("That walk-on is outside the active company roster.");
 
   const result = draft.mode === "CANDIDATE"
-    ? await supabase.rpc("create_walk_on_roster_candidate", {
+    ? await supabase.rpc("mobile_companion_create_walk_on_candidate", {
         p_company_slug: context.company_slug,
         p_full_name: draft.fullName.trim(),
         p_seen_date: draft.serviceDate,
         p_note: draft.note.trim() || "Candidate created from the Mobile Companion walk-on workflow.",
       })
-    : await supabase.rpc("upsert_company_walk_on_roster_member", {
+    : await supabase.rpc("mobile_companion_upsert_walk_on_assignment", {
         p_company_slug: context.company_slug,
         p_seen_date: draft.serviceDate,
         p_roster_member_id: draft.mode === "EXISTING" ? draft.rosterMemberId : null,
@@ -173,7 +173,7 @@ export async function manageManagerWalkOnIdentity(
 ) {
   const validation = validateManagerWalkOnIdentity(draft);
   if (validation) throw new Error(validation);
-  const result = await getSupabaseClient().rpc("manage_company_walk_on_roster_member", {
+  const result = await getSupabaseClient().rpc("mobile_companion_manage_walk_on_identity", {
     p_company_slug: context.company_slug,
     p_roster_member_id: draft.rosterMemberId,
     p_full_name: draft.fullName.trim(),
@@ -216,4 +216,3 @@ export async function recordManagerWalkOnAction(
   if (result.error) throw result.error;
   return { saved, event: result.data };
 }
-
