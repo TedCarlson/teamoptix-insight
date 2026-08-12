@@ -2,7 +2,10 @@ import type { CompanyWorkspaceGrantKey, ManagerAccessContext } from "./access";
 
 export type ManagerWorkspaceKey = "operations" | "people" | "fleet" | "routes" | "admin" | "messages";
 
+export type ManagerWorkspaceChildKey = "dispatch" | "service" | "planning" | "reports" | "walk_ons";
+
 export type ManagerWorkspaceChild = {
+  key?: ManagerWorkspaceChildKey;
   code: string;
   label: string;
   detail: string;
@@ -95,11 +98,11 @@ export const MANAGER_WORKSPACE_SUITES: ManagerWorkspaceSuite[] = [
     grants: ["dispatch", "planning", "delivery_window", "reports"],
     fallbackPath: "/operations",
     children: [
-      { code: "DP", label: "Dispatch", detail: "Assignments, attendance, route changes, and handoff", path: "/operations/dispatch", requiredGrant: "dispatch" },
-      { code: "SV", label: "Service", detail: "On-route progress, exceptions, and delivery actions", path: "/operations/service", requiredGrant: "delivery_window" },
-      { code: "PL", label: "Planning", detail: "Forecast, demand, and readiness intelligence", path: "/operations/planning", requiredGrant: "planning" },
-      { code: "RP", label: "Ops Reports", detail: "Select a service date and review prior-day facts", path: "/prior-day", requiredGrant: "reports" },
-      { code: "WO", label: "Walk Ons", detail: "Support identities, dated assignments, and pay treatment", path: "/operations/walk-ons", requiredGrant: "dispatch" },
+      { key: "dispatch", code: "DP", label: "Dispatch", detail: "Assignments, attendance, route changes, and handoff", path: "/operations/dispatch", requiredGrant: "dispatch" },
+      { key: "service", code: "SV", label: "Service", detail: "On-route progress, exceptions, and delivery actions", path: "/operations/service", requiredGrant: "delivery_window" },
+      { key: "planning", code: "PL", label: "Planning", detail: "Forecast, demand, and readiness intelligence", path: "/operations/planning", requiredGrant: "planning" },
+      { key: "reports", code: "RP", label: "Ops Reports", detail: "Select a service date and review prior-day facts", path: "/prior-day", requiredGrant: "reports" },
+      { key: "walk_ons", code: "WO", label: "Walk Ons", detail: "Support identities, dated assignments, and pay treatment", path: "/operations/walk-ons", requiredGrant: "dispatch" },
     ],
   },
   {

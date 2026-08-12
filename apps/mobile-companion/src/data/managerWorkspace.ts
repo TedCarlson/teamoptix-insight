@@ -66,9 +66,8 @@ async function loadOperations(context: ManagerAccessContext) {
   const supabase = getSupabaseClient();
   const hasDispatch = context.grants.includes("dispatch");
   const dispatchPromise = hasDispatch
-    ? supabase.rpc("dispatch_get_or_create_day", {
-        p_company_id: context.company_id,
-        p_dispatch_date: serviceDate,
+    ? supabase.rpc("mobile_companion_dispatch_workspace", {
+        p_company_slug: context.company_slug,
       })
     : Promise.resolve({ data: null, error: null });
   const [factsResult, routesResult, dispatchResult, dswResult, healthResult] = await Promise.all([
