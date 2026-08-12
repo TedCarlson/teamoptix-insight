@@ -976,7 +976,6 @@ function AuthenticatedApp(props: { session: Session }) {
                 if (companyDriverContext) selectContext(companyDriverContext.context_key, "schedule");
               }}
               onNextWeek={() => setManagerScheduleWeek((current) => addScheduleDays(current, 7))}
-              onOpenWeb={(path) => void openCompanyWeb(path)}
               onPreviousWeek={() => setManagerScheduleWeek((current) => addScheduleDays(current, -7))}
               onRefresh={() => void refreshManagerSchedule()}
               onReviewRequest={reviewManagerRequest}
