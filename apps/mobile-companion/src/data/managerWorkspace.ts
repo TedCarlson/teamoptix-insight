@@ -8,6 +8,7 @@ import type {
 } from "../domain/managerWorkspace";
 import { getSupabaseClient } from "../lib/supabase";
 import { loadManagerPeopleSnapshot } from "./managerPeople";
+import { loadManagerFleetSnapshot } from "./managerFleet";
 
 function titleCase(value: string | null | undefined) {
   return String(value ?? "Unknown")
@@ -39,6 +40,7 @@ function completeSnapshot(
     availableDates: value.availableDates,
     operations: value.operations,
     people: value.people,
+    fleet: value.fleet,
   };
 }
 
@@ -319,56 +321,16 @@ async function loadPeople(context: ManagerAccessContext) {
 }
 
 async function loadFleet(context: ManagerAccessContext) {
-  const result = await getSupabaseClient()
-    .from("company_fleet_vehicle_v")
-    .select("vehicle_id, unit_number, vehicle_type, vehicle_class_key, status, year, make, model, primary_route, primary_driver_name, odometer_miles, open_defect_count, open_work_order_count, last_inspected_at, gvwr_verified_status, federal_overtime_weight_band")
-    .eq("company_slug", context.company_slug)
-    .neq("status", "RETIRED")
-    .order("unit_number");
-  if (result.error) throw result.error;
-  const rows = result.data ?? [];
-  const defects = rows.reduce((sum, row) => sum + Number(row.open_defect_count ?? 0), 0);
-  const workOrders = rows.reduce((sum, row) => sum + Number(row.open_work_order_count ?? 0), 0);
-  const ready = rows.filter((row) => ["READY", "ASSIGNED", "SPARE"].includes(String(row.status).toUpperCase()));
+  const fleet = await loadManagerFleetSnapshot(context);
   return completeSnapshot({
     metrics: [
-      { label: "Units", value: String(rows.length) },
-      { label: "Dispatch ready", value: String(ready.length), tone: "success" },
-      { label: "Open issues", value: String(defects + workOrders), tone: defects + workOrders ? "danger" : "success" },
+      { label: "Units", value: String(fleet.totalVehicles) },
+      { label: "Dispatch ready", value: String(fleet.dispatchReady), tone: "success" },
+      { label: "Open issues", value: String(fleet.openDefects + fleet.openWorkOrders), tone: fleet.openDefects + fleet.openWorkOrders ? "danger" : "success" },
     ],
     description: "Dispatch readiness, assignment, inspection, and maintenance posture by unit.",
-    filters: [
-      { key: "all", label: "All" },
-      { key: "ready", label: "Ready" },
-      { key: "issues", label: "Issues" },
-      { key: "unavailable", label: "Unavailable" },
-    ],
     sectionLabel: "Fleet units",
-    items: rows.map((row): ManagerWorkspaceItem => ({
-      id: row.vehicle_id,
-      title: row.unit_number || "Unnumbered unit",
-      detail: [row.year, row.make, row.model].filter(Boolean).join(" ") || row.vehicle_type || "Vehicle",
-      eyebrow: titleCase(row.status),
-      filterKeys: [
-        ["READY", "ASSIGNED", "SPARE"].includes(String(row.status).toUpperCase()) ? "ready" : "",
-        Number(row.open_defect_count ?? 0) + Number(row.open_work_order_count ?? 0) > 0 ? "issues" : "",
-        ["MAINTENANCE", "OUT_OF_SERVICE"].includes(String(row.status).toUpperCase()) ? "unavailable" : "",
-      ].filter(Boolean),
-      facts: [
-        { label: "Route", value: row.primary_route || "—" },
-        { label: "Driver", value: row.primary_driver_name || "—" },
-        { label: "Inspected", value: row.last_inspected_at ? compactDate(row.last_inspected_at) : "—" },
-      ],
-      chips: [
-        `${row.open_defect_count ?? 0} defects`,
-        `${row.open_work_order_count ?? 0} work orders`,
-        titleCase(row.gvwr_verified_status),
-      ],
-      meta: row.vehicle_class_key || titleCase(row.vehicle_type),
-      tone: ["MAINTENANCE", "OUT_OF_SERVICE"].includes(String(row.status).toUpperCase())
-        ? "danger"
-        : Number(row.open_defect_count ?? 0) + Number(row.open_work_order_count ?? 0) > 0 ? "warning" : "success",
-    })),
+    fleet,
     emptyMessage: "No active fleet vehicles are available.",
   });
 }
