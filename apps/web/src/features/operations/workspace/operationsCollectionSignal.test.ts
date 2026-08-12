@@ -7,6 +7,7 @@ const schedule = {
   operations_pulse_start_time: "07:30:00",
   operations_pulse_end_time: "19:30:00",
   runner_state: "APPLIED",
+  runner_last_seen_at: "2026-08-09T13:00:00Z",
 };
 
 describe("deriveOperationsCollectionSignal", () => {
