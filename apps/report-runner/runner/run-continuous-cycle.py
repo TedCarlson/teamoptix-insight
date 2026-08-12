@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from failure_classification import is_authentication_failure
 from runner_log_evidence import RunnerLogEvidence
 
 
@@ -108,13 +109,6 @@ DSW_ALL_CODES_TARGET: dict[str, Any] = {
     "expected_filename_match": ["PackageLevelDetails"],
     "optional_when_empty": True,
 }
-
-AUTH_FAILURE_PATTERN = re.compile(
-    r"login failed|login failure|authentication failed|invalid credentials|"
-    r"incorrect credentials|invalid username|invalid password|"
-    r"credentials rejected",
-    re.IGNORECASE,
-)
 
 SENSITIVE_DIAGNOSTIC_PATTERN = re.compile(
     r"(?i)(['\"]?(?:authorization|apikey|api_key|password|passwd|secret|token|cookie)"
@@ -807,15 +801,7 @@ def main() -> int:
         str(stage.get("event_type") or "")
         for stage in stages
     }
-    authentication_attempted = "AUTH_ATTEMPTED" in event_types
-    authentication_succeeded = bool(
-        {"AUTH_COMPLETED", "SESSION_REUSED"} & event_types
-    )
-    auth_failure = bool(AUTH_FAILURE_PATTERN.search(output_tail)) or (
-        donor_exit_code != 0
-        and authentication_attempted
-        and not authentication_succeeded
-    )
+    auth_failure = is_authentication_failure(output_tail, event_types)
 
     artifacts: list[dict[str, Any]] = []
     upload_metrics: list[dict[str, Any]] = []
