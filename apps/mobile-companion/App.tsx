@@ -47,6 +47,7 @@ import { loadManagerRouteEvidence, recordManagerDeliveryAction } from "./src/dat
 import { loadManagerWorkspaceSnapshot } from "./src/data/managerWorkspace";
 import { updateManagerCandidateStage } from "./src/data/managerPeople";
 import { createManagerFleetWorkOrder, updateManagerFleetWorkOrder } from "./src/data/managerFleet";
+import { saveManagerRoute } from "./src/data/managerRoutes";
 import { loadManagerOperationsChildSnapshot } from "./src/data/managerOperationsChildren";
 import {
   manageManagerWalkOnIdentity,
@@ -79,6 +80,7 @@ import type {
 } from "./src/domain/managerDispatch";
 import type { ManagerDeliveryActionDraft } from "./src/domain/managerOperations";
 import type { ManagerFleetWorkOrderDraft } from "./src/domain/managerFleet";
+import type { ManagerRouteDraft } from "./src/domain/managerRoutes";
 import type {
   ManagerMessageDraft,
   ManagerMessagesSnapshot,
@@ -275,6 +277,7 @@ function AuthenticatedApp(props: { session: Session }) {
   const [managerWorkspaceError, setManagerWorkspaceError] = useState<string | null>(null);
   const [managerPeopleBusy, setManagerPeopleBusy] = useState(false);
   const [managerFleetBusy, setManagerFleetBusy] = useState(false);
+  const [managerRoutesBusy, setManagerRoutesBusy] = useState(false);
   const [managerWorkspaceChildKey, setManagerWorkspaceChildKey] = useState<ManagerWorkspaceChildKey | null>(null);
   const [managerWorkspaceChildSnapshot, setManagerWorkspaceChildSnapshot] = useState<ManagerWorkspaceSnapshot | null>(null);
   const [managerWorkspaceChildLoading, setManagerWorkspaceChildLoading] = useState(false);
@@ -995,6 +998,22 @@ function AuthenticatedApp(props: { session: Session }) {
     }
   }
 
+  async function submitManagerRoute(routeId: string | null, draft: ManagerRouteDraft) {
+    if (!managerContext) return;
+    try {
+      setManagerRoutesBusy(true);
+      setManagerWorkspaceError(null);
+      await saveManagerRoute(managerContext, routeId, draft);
+      await refreshManagerWorkspace("routes");
+    } catch (caught) {
+      const message = errorMessage(caught);
+      setManagerWorkspaceError(message);
+      throw new Error(message);
+    } finally {
+      setManagerRoutesBusy(false);
+    }
+  }
+
   async function openCompanyWeb(path: string) {
     if (!managerContext) return;
     const base = (process.env.EXPO_PUBLIC_WEB_APP_URL ?? "https://teamoptix.io").replace(/\/$/, "");
@@ -1145,6 +1164,7 @@ function AuthenticatedApp(props: { session: Session }) {
                 error={managerWorkspaceError}
                 loading={managerWorkspaceLoading}
                 fleetBusy={managerFleetBusy}
+                routesBusy={managerRoutesBusy}
                 peopleBusy={managerPeopleBusy}
                 onBack={() => { setManagerWorkspaceKey(null); setManagerWorkspaceChildKey(null); setManagerWorkspaceSnapshot(null); setManagerWorkspaceError(null); setManagerDispatchSnapshot(null); setManagerDispatchError(null); }}
                 onOpenChild={(key) => {
@@ -1163,6 +1183,7 @@ function AuthenticatedApp(props: { session: Session }) {
                 onSubmitCandidateStage={submitManagerCandidateStage}
                 onSubmitFleetWorkOrder={submitManagerFleetWorkOrder}
                 onSubmitFleetWorkOrderStatus={submitManagerFleetWorkOrderStatus}
+                onSubmitRoute={submitManagerRoute}
                 onSubmitWalkOn={submitManagerWalkOnAction}
                 snapshot={managerWorkspaceSnapshot}
                 suite={activeManagerSuite}

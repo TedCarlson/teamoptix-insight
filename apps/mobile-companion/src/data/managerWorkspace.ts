@@ -9,6 +9,7 @@ import type {
 import { getSupabaseClient } from "../lib/supabase";
 import { loadManagerPeopleSnapshot } from "./managerPeople";
 import { loadManagerFleetSnapshot } from "./managerFleet";
+import { loadManagerRoutesSnapshot } from "./managerRoutes";
 
 function titleCase(value: string | null | undefined) {
   return String(value ?? "Unknown")
@@ -41,6 +42,7 @@ function completeSnapshot(
     operations: value.operations,
     people: value.people,
     fleet: value.fleet,
+    routes: value.routes,
   };
 }
 
@@ -336,52 +338,16 @@ async function loadFleet(context: ManagerAccessContext) {
 }
 
 async function loadRoutes(context: ManagerAccessContext) {
-  const result = await getSupabaseClient()
-    .from("route_baseline")
-    .select("id, route_name, current_wa_num, route_type, route_location, threshold_stops, threshold_rate, rotation_name, runs_s, runs_u, runs_m, runs_t, runs_w, runs_h, runs_f")
-    .eq("company_id", context.company_id)
-    .eq("is_active", true)
-    .is("effective_end", null)
-    .order("route_name");
-  if (result.error) throw result.error;
-  const rows = result.data ?? [];
-  const runCount = (row: typeof rows[number]) =>
-    [row.runs_s, row.runs_u, row.runs_m, row.runs_t, row.runs_w, row.runs_h, row.runs_f]
-      .filter(Boolean).length;
+  const routes = await loadManagerRoutesSnapshot(context);
   return completeSnapshot({
     metrics: [
-      { label: "Active routes", value: String(rows.length) },
-      { label: "Core", value: String(rows.filter((row) => String(row.route_type).toUpperCase() === "CORE").length), tone: "success" },
-      { label: "Thresholds", value: String(rows.filter((row) => row.threshold_stops != null).length) },
+      { label: "Active routes", value: String(routes.activeRoutes.length) },
+      { label: "Core", value: String(routes.coreCount), tone: "success" },
+      { label: "Thresholds", value: String(routes.thresholdCount) },
     ],
     description: "Current route baseline, run pattern, location, rotation, and threshold posture.",
-    filters: [
-      { key: "all", label: "All" },
-      { key: "core", label: "Core" },
-      { key: "peak", label: "Peak" },
-      { key: "overflow", label: "Overflow" },
-      { key: "threshold", label: "Thresholds" },
-    ],
     sectionLabel: "Route baseline",
-    items: rows.map((row): ManagerWorkspaceItem => ({
-      id: row.id,
-      title: row.current_wa_num || row.route_name || "Unnamed route",
-      detail: [row.route_name, row.route_location]
-        .filter((value) => value && value !== row.current_wa_num)
-        .join(" · ") || titleCase(row.route_type),
-      eyebrow: titleCase(row.route_type),
-      filterKeys: [String(row.route_type ?? "").toLowerCase(), row.threshold_stops != null ? "threshold" : ""].filter(Boolean),
-      facts: [
-        { label: "Location", value: row.route_location || "—" },
-        { label: "Rotation", value: row.rotation_name || "—" },
-        { label: "Threshold", value: row.threshold_stops == null ? "—" : `${row.threshold_stops} stops${row.threshold_rate == null ? "" : ` · $${row.threshold_rate}`}` },
-      ],
-      chips: [
-        ["S", "U", "M", "T", "W", "H", "F"].filter((_, index) => [row.runs_s, row.runs_u, row.runs_m, row.runs_t, row.runs_w, row.runs_h, row.runs_f][index]).join("  "),
-        `${runCount(row)} run days`,
-      ],
-      meta: row.route_name && row.current_wa_num ? row.route_name : undefined,
-    })),
+    routes,
     emptyMessage: "No active route baselines are available.",
   });
 }
