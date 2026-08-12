@@ -74,6 +74,8 @@ export default function DispatchPage({
   const searchParams = useSearchParams();
   const [assignments, setAssignments] = useState<Record<string, DispatchRoute>>({});
   const [intent, setIntent] = useState<AssignmentIntent>(null);
+  const [editingRouteKey, setEditingRouteKey] = useState<string | null>(null);
+  const [editingSeat, setEditingSeat] = useState<Seat>("driver");
   const [eventOverlayOpen, setEventOverlayOpen] = useState(false);
   const [savingEvent, setSavingEvent] = useState(false);
   const [locking, setLocking] = useState(false);
@@ -340,6 +342,20 @@ export default function DispatchPage({
 
 
   function stagePerson(person: DispatchPerson) {
+    if (editingRouteKey) {
+      const route = assignments[editingRouteKey];
+      if (route) {
+        assignPersonToRoute(
+          person,
+          route.route_key,
+          orderedRouteLabelForSort(route),
+          editingSeat
+        );
+        setEditingRouteKey(null);
+      }
+      return;
+    }
+
     setIntent((current) =>
       current?.person.roster_member_id === person.roster_member_id
         ? null
@@ -361,6 +377,12 @@ export default function DispatchPage({
           }
         : null
     );
+  }
+
+  function openRouteEditor(route: DispatchRoute, seat: Seat) {
+    setEditingRouteKey(route.route_key);
+    setEditingSeat(seat);
+    setIntent(null);
   }
 
   async function recordAssignmentEvent(payload: {
@@ -409,13 +431,12 @@ export default function DispatchPage({
     }
   }
 
-  function completeAssignment(seat: Seat) {
-    if (!intent?.route_key || !intent.route_label) return;
-
-    const person = intent.person;
-    const routeKey = intent.route_key;
-    const routeLabel = intent.route_label;
-
+  function assignPersonToRoute(
+    person: DispatchPerson,
+    routeKey: string,
+    routeLabel: string,
+    seat: Seat
+  ) {
     setAssignments((current) => {
       const target = current[routeKey];
       if (!target) return current;
@@ -466,8 +487,58 @@ export default function DispatchPage({
       seat,
       person,
     });
+  }
+
+  function completeAssignment(seat: Seat) {
+    if (!intent?.route_key || !intent.route_label) return;
+
+    assignPersonToRoute(
+      intent.person,
+      intent.route_key,
+      intent.route_label,
+      seat
+    );
 
     setIntent(null);
+  }
+
+  function clearSeat(routeKey: string, seat: Seat) {
+    const route = assignments[routeKey];
+    if (!route) return;
+
+    setAssignments((current) => {
+      const target = current[routeKey];
+      if (!target) return current;
+
+      return {
+        ...current,
+        [routeKey]: {
+          ...target,
+          driver: seat === "driver" ? null : target.driver,
+          helpers: seat === "helper" ? [] : target.helpers,
+          trainees: seat === "trainee" ? [] : target.trainees,
+        },
+      };
+    });
+
+    void recordAssignmentEvent({
+      event_code:
+        seat === "driver"
+          ? "UNASSIGN_DRIVER"
+          : seat === "helper"
+            ? "UNASSIGN_HELPER"
+            : "UNASSIGN_TRAINEE",
+      event_label:
+        seat === "driver"
+          ? "Driver unassigned"
+          : seat === "helper"
+            ? "Helper unassigned"
+            : "Trainee unassigned",
+      route_key: routeKey,
+      route_label: orderedRouteLabelForSort(route),
+      seat,
+      person: null,
+    });
   }
 
   async function recordManualAction(payload: {
@@ -873,6 +944,12 @@ export default function DispatchPage({
               totalRoutes={summary.total}
               loading={loading}
               intent={intent}
+              editingRouteKey={editingRouteKey}
+              editingSeat={editingSeat}
+              onOpenRouteEditor={openRouteEditor}
+              onCloseRouteEditor={() => setEditingRouteKey(null)}
+              onEditSeat={setEditingSeat}
+              onClearSeat={clearSeat}
               onSelectRoute={selectAssignmentRoute}
               onSelectSeat={completeAssignment}
               arrivedPersonIds={arrivedPersonIds}

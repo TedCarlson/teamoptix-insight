@@ -43,6 +43,11 @@ import { loadManagerRouteEvidence, recordManagerDeliveryAction } from "./src/dat
 import { loadManagerWorkspaceSnapshot } from "./src/data/managerWorkspace";
 import { loadManagerOperationsChildSnapshot } from "./src/data/managerOperationsChildren";
 import {
+  manageManagerWalkOnIdentity,
+  recordManagerWalkOnAction,
+  saveManagerWalkOnAssignment,
+} from "./src/data/managerWalkOns";
+import {
   scheduleForDate,
   type DriverMessage,
   type DriverSchedule,
@@ -66,6 +71,10 @@ import type {
   ManagerDispatchSnapshot,
 } from "./src/domain/managerDispatch";
 import type { ManagerDeliveryActionDraft } from "./src/domain/managerOperations";
+import type {
+  ManagerWalkOnAssignmentDraft,
+  ManagerWalkOnIdentityDraft,
+} from "./src/domain/managerWalkOns";
 import {
   managerWorkspaceSuite,
   type ManagerWorkspaceChildKey,

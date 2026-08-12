@@ -8,6 +8,7 @@ import type {
 } from "../domain/managerWorkspace";
 import { getSupabaseClient } from "../lib/supabase";
 import { authoritativeOperationsDate, loadManagerWorkspaceSnapshot } from "./managerWorkspace";
+import { loadManagerWalkOnSnapshot } from "./managerWalkOns";
 
 function dateBy(value: string, delta: number) {
   const [year, month, day] = value.split("-").map(Number);
@@ -246,47 +247,11 @@ async function loadReports(context: ManagerAccessContext, requestedDate?: string
   };
 }
 
-type WalkOnRow = {
-  walk_on_driver_id: string;
-  roster_member_id: string;
-  full_name: string;
-  dswid: string | null;
-  workforce_unit_name: string | null;
-  first_seen_date: string;
-  last_seen_date: string;
-  dispatch_count: number | null;
-  status: string;
-};
-type AssignmentRow = {
-  assignment_id: string;
-  roster_member_id: string;
-  service_date: string;
-  assignment_status: string;
-  note: string | null;
-  payroll_event_id: string | null;
-  payroll_event_status: string | null;
-  pay_treatment: string | null;
-  override_daily_pay_rate: number | string | null;
-};
-
 async function loadWalkOns(context: ManagerAccessContext): Promise<ManagerWorkspaceSnapshot> {
-  const supabase = getSupabaseClient();
-  const [rosterResult, assignmentsResult] = await Promise.all([
-    supabase.from("company_walk_on_roster_v").select("walk_on_driver_id, roster_member_id, full_name, dswid, workforce_unit_name, first_seen_date, last_seen_date, dispatch_count, status").eq("company_id", context.company_id).order("full_name"),
-    supabase.from("company_walk_on_assignment_v").select("assignment_id, roster_member_id, service_date, assignment_status, note, payroll_event_id, payroll_event_status, pay_treatment, override_daily_pay_rate").eq("company_id", context.company_id).order("service_date", { ascending: false }).limit(500),
-  ]);
-  if (rosterResult.error) throw rosterResult.error;
-  if (assignmentsResult.error) throw assignmentsResult.error;
-  const roster = (rosterResult.data ?? []) as WalkOnRow[];
-  const assignments = (assignmentsResult.data ?? []) as AssignmentRow[];
-  const assignmentsByRoster = new Map<string, AssignmentRow[]>();
-  assignments.forEach((assignment) => {
-    const current = assignmentsByRoster.get(assignment.roster_member_id) ?? [];
-    current.push(assignment);
-    assignmentsByRoster.set(assignment.roster_member_id, current);
-  });
-  const active = roster.filter((row) => row.status === "ACTIVE");
-  const needsPayroll = assignments.filter((row) => row.assignment_status === "ACTIVE" && !row.payroll_event_id).length;
+  const walkOns = await loadManagerWalkOnSnapshot(context);
+  const assignments = walkOns.people.flatMap((person) => person.assignments);
+  const active = walkOns.people.filter((person) => person.status === "ACTIVE");
+  const needsPayroll = assignments.filter((assignment) => assignment.status === "ACTIVE" && !assignment.payrollEventId).length;
   return {
     metrics: [
       { label: "Active", value: String(active.length), tone: "success" },
@@ -301,34 +266,35 @@ async function loadWalkOns(context: ManagerAccessContext): Promise<ManagerWorksp
       { key: "archived", label: "Archived" },
     ],
     sectionLabel: "Walk-on roster",
-    items: roster.map((row): ManagerWorkspaceItem => {
-      const personAssignments = assignmentsByRoster.get(row.roster_member_id) ?? [];
-      const latest = personAssignments[0];
-      const missingPayroll = personAssignments.some((assignment) => assignment.assignment_status === "ACTIVE" && !assignment.payroll_event_id);
+    items: walkOns.people.map((person): ManagerWorkspaceItem => {
+      const latest = person.assignments[0];
+      const missingPayroll = person.assignments.some((assignment) => assignment.status === "ACTIVE" && !assignment.payrollEventId);
       const payDetail = !latest
         ? "No dated assignment"
-        : !latest.payroll_event_id
+        : !latest.payrollEventId
           ? "Payroll treatment required"
-          : latest.pay_treatment === "ONE_DAY_RATE"
-            ? `One-day · $${numberValue(latest.override_daily_pay_rate).toFixed(2)}`
-            : latest.pay_treatment === "INTERCOMPANY" ? "Intercompany" : "Roster rate";
+          : latest.payTreatment === "ONE_DAY_RATE"
+            ? `One-day · $${numberValue(latest.overrideDailyPayRate).toFixed(2)}`
+            : latest.payTreatment === "INTERCOMPANY" ? "Intercompany" : "Roster rate";
       return {
-        id: row.walk_on_driver_id,
-        title: row.full_name,
-        detail: [row.dswid ? `DSWID ${row.dswid}` : "DSWID unavailable", row.workforce_unit_name || "Unit unavailable"].join(" · "),
-        eyebrow: row.status === "ACTIVE" ? "Active support" : "Archived",
-        meta: `${row.dispatch_count ?? 0} dispatches`,
-        filterKeys: [row.status.toLowerCase(), missingPayroll ? "payroll" : ""].filter(Boolean),
+        id: person.id,
+        title: person.fullName,
+        detail: [person.dswid ? `DSWID ${person.dswid}` : "DSWID unavailable", person.workforceUnitName || "Unit unavailable"].join(" · "),
+        eyebrow: person.status === "ACTIVE" ? "Active support" : "Archived",
+        meta: `${person.dispatchCount} dispatches`,
+        filterKeys: [person.status.toLowerCase(), missingPayroll ? "payroll" : ""].filter(Boolean),
         facts: [
-          { label: "Last seen", value: row.last_seen_date ? dateLabel(row.last_seen_date) : "—" },
-          { label: "Latest day", value: latest?.service_date ? dateLabel(latest.service_date) : "—" },
+          { label: "Last seen", value: person.lastSeenDate ? dateLabel(person.lastSeenDate) : "—" },
+          { label: "Latest day", value: latest?.serviceDate ? dateLabel(latest.serviceDate) : "—" },
           { label: "Pay", value: payDetail },
         ],
-        chips: latest?.note ? [latest.note] : [row.first_seen_date ? `First seen ${dateLabel(row.first_seen_date)}` : "History pending"],
-        tone: missingPayroll ? "warning" : row.status === "ACTIVE" ? "success" : "default",
+        chips: latest?.note ? [latest.note] : [person.firstSeenDate ? `First seen ${dateLabel(person.firstSeenDate)}` : "History pending"],
+        tone: missingPayroll ? "warning" : person.status === "ACTIVE" ? "success" : "default",
       };
     }),
     emptyMessage: "No walk-on identities have been recorded for this company.",
+    serviceDate: walkOns.serviceDate,
+    walkOns,
   };
 }
 

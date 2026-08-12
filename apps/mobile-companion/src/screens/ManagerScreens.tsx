@@ -33,6 +33,14 @@ import type {
   ManagerTimeOffRequest,
 } from "../domain/managerSchedule";
 import {
+  validateManagerWalkOnAssignment,
+  validateManagerWalkOnIdentity,
+  type ManagerWalkOnAssignmentDraft,
+  type ManagerWalkOnIdentityDraft,
+  type ManagerWalkOnPerson,
+  type ManagerWalkOnSnapshot,
+} from "../domain/managerWalkOns";
+import {
   managerWorkspaceSuite,
   managerWorkspaceSuites,
   type ManagerOperationsPhase,
@@ -1057,7 +1065,379 @@ function OperationsReportDateNavigator(props: {
   );
 }
 
+function WalkOnAssignmentModal(props: {
+  busy: boolean;
+  onClose: () => void;
+  onSubmit: (draft: ManagerWalkOnAssignmentDraft) => Promise<void>;
+  snapshot: ManagerWalkOnSnapshot;
+  title?: string;
+}) {
+  const activePeople = props.snapshot.people.filter((person) => person.status === "ACTIVE");
+  const [mode, setMode] = useState<ManagerWalkOnAssignmentDraft["mode"]>(activePeople.length ? "EXISTING" : "NEW");
+  const [rosterMemberId, setRosterMemberId] = useState<string | null>(null);
+  const [fullName, setFullName] = useState("");
+  const [dswid, setDswid] = useState("");
+  const [workforceUnitId, setWorkforceUnitId] = useState<string | null>(null);
+  const [newWorkforceUnitName, setNewWorkforceUnitName] = useState("");
+  const [serviceDate, setServiceDate] = useState(props.snapshot.serviceDate);
+  const [note, setNote] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+  const selectedPerson = activePeople.find((person) => person.rosterMemberId === rosterMemberId) ?? null;
+  const draft: ManagerWalkOnAssignmentDraft = {
+    mode,
+    rosterMemberId,
+    fullName,
+    dswid,
+    workforceUnitId,
+    newWorkforceUnitName,
+    serviceDate,
+    note,
+  };
+  const validation = validateManagerWalkOnAssignment(draft);
+  const personOptions: ManagerSelectOption[] = activePeople.map((person) => ({
+    value: person.rosterMemberId,
+    label: person.fullName,
+    detail: `${person.dswid || "DSWID missing"} · ${person.workforceUnitName || "Unit missing"}`,
+  }));
+  const unitOptions: ManagerSelectOption[] = props.snapshot.workforceUnits.map((unit) => ({
+    value: unit.id,
+    label: unit.name,
+  }));
+
+  function chooseMode(next: ManagerWalkOnAssignmentDraft["mode"]) {
+    setMode(next);
+    setRosterMemberId(null);
+    setFullName("");
+    setDswid("");
+    setWorkforceUnitId(null);
+    setNewWorkforceUnitName("");
+    setFormError(null);
+  }
+
+  async function submit() {
+    if (validation || props.busy) return;
+    try {
+      setFormError(null);
+      await props.onSubmit({
+        ...draft,
+        fullName: mode === "EXISTING" ? selectedPerson?.fullName ?? "" : fullName,
+        workforceUnitId: mode === "EXISTING"
+          ? workforceUnitId || selectedPerson?.workforceUnitId || null
+          : workforceUnitId,
+      });
+      props.onClose();
+    } catch (caught) {
+      setFormError(caught instanceof Error ? caught.message : "The walk-on assignment could not be saved.");
+    }
+  }
+
+  return (
+    <Modal animationType="slide" onRequestClose={props.onClose} presentationStyle="pageSheet" visible>
+      <ScrollView contentContainerStyle={styles.dispatchDrawer} keyboardShouldPersistTaps="handled">
+        <View style={[styles.reviewHeader, styles.modalHeaderClearance]}>
+          <View style={styles.accessCopy}>
+            <Text style={styles.nativeBannerLabel}>OPERATIONS · WALK ON</Text>
+            <Text style={styles.drawerTitle}>{props.title ?? "Add support driver"}</Text>
+            <Text style={styles.detail}>Reuse a governed identity, add a reusable walk-on, or deliberately create a hiring candidate.</Text>
+          </View>
+          <Pressable onPress={props.onClose}><Text style={styles.done}>Close</Text></Pressable>
+        </View>
+
+        <View style={styles.drawerStep}>
+          <Text style={styles.drawerStepLabel}>1 · Choose record path</Text>
+          <View style={styles.phaseSelector}>
+            {([
+              ["EXISTING", "Known", "Reuse identity"],
+              ["NEW", "New", "Reusable support"],
+              ["CANDIDATE", "Candidate", "Hiring pipeline"],
+            ] as const).map(([value, label, detail]) => {
+              const active = mode === value;
+              return (
+                <Pressable key={value} onPress={() => chooseMode(value)} style={[styles.walkOnMode, active && styles.phaseOptionActive]}>
+                  <Text style={[styles.phaseOptionText, active && styles.phaseOptionTextActive]}>{label}</Text>
+                  <Text style={[styles.walkOnModeDetail, active && styles.phaseOptionDetailActive]}>{detail}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        {mode === "EXISTING" ? (
+          <ManagerSelectField
+            label="2 · Choose known walk-on"
+            onChange={(value) => {
+              const person = activePeople.find((candidate) => candidate.rosterMemberId === value) ?? null;
+              setRosterMemberId(value);
+              setWorkforceUnitId(person?.workforceUnitId ?? null);
+              setFormError(null);
+            }}
+            options={personOptions}
+            placeholder="Select known walk-on"
+            searchable
+            value={rosterMemberId}
+          />
+        ) : (
+          <View style={styles.drawerStep}>
+            <Text style={styles.drawerStepLabel}>2 · Identity</Text>
+            <TextInput
+              autoCapitalize="words"
+              onChangeText={(value) => { setFullName(value); setFormError(null); }}
+              placeholder={mode === "CANDIDATE" ? "Candidate full name" : "Walk-on full name"}
+              placeholderTextColor={colors.muted}
+              style={styles.drawerSearch}
+              value={fullName}
+            />
+            {mode === "NEW" ? (
+              <TextInput
+                autoCapitalize="characters"
+                autoCorrect={false}
+                onChangeText={(value) => { setDswid(value); setFormError(null); }}
+                placeholder="Foreign DSWID, e.g. HEARNS,JAYLEN"
+                placeholderTextColor={colors.muted}
+                style={styles.drawerSearch}
+                value={dswid}
+              />
+            ) : null}
+          </View>
+        )}
+
+        {mode !== "CANDIDATE" ? (
+          <>
+            <ManagerSelectField
+              label="3 · Lending workforce unit"
+              onChange={(value) => { setWorkforceUnitId(value); setNewWorkforceUnitName(""); setFormError(null); }}
+              options={unitOptions}
+              placeholder={selectedPerson?.workforceUnitName || "Choose known unit"}
+              searchable
+              value={workforceUnitId}
+            />
+            {mode === "NEW" ? (
+              <View style={styles.drawerStep}>
+                <Text style={styles.drawerStepLabel}>Or add a new unit</Text>
+                <TextInput
+                  autoCapitalize="words"
+                  onChangeText={(value) => { setNewWorkforceUnitName(value); if (value.trim()) setWorkforceUnitId(null); setFormError(null); }}
+                  placeholder="Lending company or workforce unit"
+                  placeholderTextColor={colors.muted}
+                  style={styles.drawerSearch}
+                  value={newWorkforceUnitName}
+                />
+              </View>
+            ) : null}
+          </>
+        ) : (
+          <Card tone="primary">
+            <Text style={sharedStyles.bodyStrong}>Candidate is a deliberate hiring choice</Text>
+            <Text style={sharedStyles.muted}>This creates an internal candidate record instead of a reusable walk-on identity.</Text>
+          </Card>
+        )}
+
+        <View style={styles.drawerStep}>
+          <Text style={styles.drawerStepLabel}>{mode === "CANDIDATE" ? "3" : "4"} · Service date</Text>
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="numbers-and-punctuation"
+            onChangeText={(value) => { setServiceDate(value); setFormError(null); }}
+            placeholder="YYYY-MM-DD"
+            placeholderTextColor={colors.muted}
+            style={styles.drawerSearch}
+            value={serviceDate}
+          />
+          <Text style={styles.detail}>Terminal-authoritative default: {props.snapshot.serviceDate}</Text>
+        </View>
+
+        <View style={styles.drawerStep}>
+          <Text style={styles.drawerStepLabel}>{mode === "CANDIDATE" ? "4" : "5"} · Context</Text>
+          <TextInput multiline onChangeText={setNote} placeholder="Optional assignment note" placeholderTextColor={colors.muted} style={styles.noteInput} value={note} />
+        </View>
+
+        <Card tone={validation || formError ? "danger" : "primary"}>
+          <Text style={sharedStyles.bodyStrong}>{formError || validation || "Walk-on workflow is ready to save."}</Text>
+          <Text style={sharedStyles.muted}>The server rechecks company access, identity ownership, workforce unit, and service date.</Text>
+        </Card>
+        <PrimaryButton disabled={Boolean(validation) || props.busy} label={props.busy ? "Saving…" : mode === "CANDIDATE" ? "Create candidate" : "Save assignment"} onPress={() => void submit()} />
+      </ScrollView>
+    </Modal>
+  );
+}
+
+function WalkOnIdentityModal(props: {
+  busy: boolean;
+  onClose: () => void;
+  onSubmit: (draft: ManagerWalkOnIdentityDraft) => Promise<void>;
+  person: ManagerWalkOnPerson;
+  snapshot: ManagerWalkOnSnapshot;
+}) {
+  const [fullName, setFullName] = useState(props.person.fullName);
+  const [dswid, setDswid] = useState(props.person.dswid ?? "");
+  const [workforceUnitId, setWorkforceUnitId] = useState<string | null>(props.person.workforceUnitId);
+  const [status, setStatus] = useState(props.person.status);
+  const [formError, setFormError] = useState<string | null>(null);
+  const draft: ManagerWalkOnIdentityDraft = { rosterMemberId: props.person.rosterMemberId, fullName, dswid, workforceUnitId, status };
+  const validation = validateManagerWalkOnIdentity(draft);
+  const unitOptions = props.snapshot.workforceUnits.map((unit) => ({ value: unit.id, label: unit.name }));
+
+  async function submit() {
+    if (validation || props.busy) return;
+    try {
+      setFormError(null);
+      await props.onSubmit(draft);
+      props.onClose();
+    } catch (caught) {
+      setFormError(caught instanceof Error ? caught.message : "The walk-on identity could not be updated.");
+    }
+  }
+
+  return (
+    <Modal animationType="slide" onRequestClose={props.onClose} presentationStyle="pageSheet" visible>
+      <ScrollView contentContainerStyle={styles.dispatchDrawer} keyboardShouldPersistTaps="handled">
+        <View style={[styles.reviewHeader, styles.modalHeaderClearance]}>
+          <View style={styles.accessCopy}>
+            <Text style={styles.nativeBannerLabel}>WALK-ON IDENTITY</Text>
+            <Text style={styles.drawerTitle}>{props.person.fullName}</Text>
+            <Text style={styles.detail}>Update the reusable identity without moving it into the employee population.</Text>
+          </View>
+          <Pressable onPress={props.onClose}><Text style={styles.done}>Close</Text></Pressable>
+        </View>
+        <View style={styles.drawerStep}>
+          <Text style={styles.drawerStepLabel}>Identity</Text>
+          <TextInput autoCapitalize="words" onChangeText={setFullName} placeholder="Full name" placeholderTextColor={colors.muted} style={styles.drawerSearch} value={fullName} />
+          <TextInput autoCapitalize="characters" autoCorrect={false} onChangeText={setDswid} placeholder="Foreign DSWID" placeholderTextColor={colors.muted} style={styles.drawerSearch} value={dswid} />
+        </View>
+        <ManagerSelectField label="Lending workforce unit" onChange={setWorkforceUnitId} options={unitOptions} placeholder="Choose unit" searchable value={workforceUnitId} />
+        <View style={styles.drawerStep}>
+          <Text style={styles.drawerStepLabel}>Roster status</Text>
+          <View style={styles.phaseSelector}>
+            {(["ACTIVE", "ARCHIVED"] as const).map((candidate) => {
+              const active = status === candidate;
+              return (
+                <Pressable key={candidate} onPress={() => setStatus(candidate)} style={[styles.phaseOption, active && styles.phaseOptionActive]}>
+                  <Text style={[styles.phaseOptionText, active && styles.phaseOptionTextActive]}>{candidate === "ACTIVE" ? "Active" : "Archived"}</Text>
+                  <Text style={[styles.phaseOptionDetail, active && styles.phaseOptionDetailActive]}>{candidate === "ACTIVE" ? "Available to reuse" : "Hidden from new work"}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+        <Card tone={validation || formError ? "danger" : "primary"}>
+          <Text style={sharedStyles.bodyStrong}>{formError || validation || "Identity changes are ready to save."}</Text>
+        </Card>
+        <PrimaryButton disabled={Boolean(validation) || props.busy} label={props.busy ? "Saving…" : "Save identity"} onPress={() => void submit()} />
+      </ScrollView>
+    </Modal>
+  );
+}
+
+function ManagerWalkOnsSurface(props: {
+  busy: boolean;
+  error: string | null;
+  loading: boolean;
+  onManage: (draft: ManagerWalkOnIdentityDraft) => Promise<void>;
+  onRefresh: () => void;
+  onSave: (draft: ManagerWalkOnAssignmentDraft) => Promise<void>;
+  snapshot: ManagerWalkOnSnapshot | null;
+}) {
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<"active" | "payroll" | "archived">("active");
+  const [assignmentOpen, setAssignmentOpen] = useState(false);
+  const [managePerson, setManagePerson] = useState<ManagerWalkOnPerson | null>(null);
+  const [expandedRosterId, setExpandedRosterId] = useState<string | null>(null);
+  if (props.loading && !props.snapshot) {
+    return <View style={styles.loadingCard}><ActivityIndicator color={colors.primary} /><Text style={sharedStyles.muted}>Loading walk-on identities…</Text></View>;
+  }
+  if (props.error && !props.snapshot) {
+    return <Card tone="danger"><Text style={sharedStyles.bodyStrong}>Walk Ons is unavailable</Text><Text style={sharedStyles.muted}>{props.error}</Text><PrimaryButton compact label="Retry" onPress={props.onRefresh} secondary /></Card>;
+  }
+  if (!props.snapshot) return null;
+  const normalizedSearch = search.trim().toLowerCase();
+  const people = props.snapshot.people.filter((person) => {
+    const needsPayroll = person.assignments.some((assignment) => assignment.status === "ACTIVE" && !assignment.payrollEventId);
+    if (filter === "active" && person.status !== "ACTIVE") return false;
+    if (filter === "archived" && person.status !== "ARCHIVED") return false;
+    if (filter === "payroll" && !needsPayroll) return false;
+    return !normalizedSearch || `${person.fullName} ${person.dswid ?? ""} ${person.workforceUnitName ?? ""}`.toLowerCase().includes(normalizedSearch);
+  });
+  const active = props.snapshot.people.filter((person) => person.status === "ACTIVE").length;
+  const assignments = props.snapshot.people.flatMap((person) => person.assignments).filter((assignment) => assignment.status === "ACTIVE");
+  const payroll = assignments.filter((assignment) => !assignment.payrollEventId).length;
+
+  return (
+    <>
+      {props.error ? <Card tone="danger"><Text style={sharedStyles.bodyStrong}>The latest walk-on change was not saved</Text><Text style={sharedStyles.muted}>{props.error}</Text></Card> : null}
+      <View style={styles.walkOnHero}>
+        <View style={styles.cardHeaderRow}>
+          <View style={styles.accessCopy}>
+            <Text style={styles.nativeBannerLabel}>NATIVE WALK-ON WORKSPACE</Text>
+            <Text style={styles.nativeBannerTitle}>Support identities</Text>
+            <Text style={styles.nativeBannerDetail}>Reusable workers stay separate from employees while assignments and payroll posture remain visible.</Text>
+          </View>
+          <View style={styles.walkOnDate}><Text style={styles.walkOnDateLabel}>SERVICE</Text><Text style={styles.walkOnDateValue}>{readableDate(props.snapshot.serviceDate)}</Text></View>
+        </View>
+        <View style={styles.pulseStats}>
+          <View style={styles.pulseStat}><Text style={styles.pulseStatLabel}>Active</Text><Text style={styles.pulseStatValue}>{active}</Text></View>
+          <View style={styles.pulseStat}><Text style={styles.pulseStatLabel}>Assignments</Text><Text style={styles.pulseStatValue}>{assignments.length}</Text></View>
+          <View style={styles.pulseStat}><Text style={styles.pulseStatLabel}>Needs pay</Text><Text style={styles.pulseStatValue}>{payroll}</Text></View>
+        </View>
+      </View>
+      <PrimaryButton label="Add walk-on assignment" onPress={() => setAssignmentOpen(true)} />
+      <TextInput autoCapitalize="none" autoCorrect={false} onChangeText={setSearch} placeholder="Search name, DSWID, or workforce unit" placeholderTextColor={colors.muted} style={styles.drawerSearch} value={search} />
+      <ScrollView contentContainerStyle={styles.readFilters} horizontal showsHorizontalScrollIndicator={false}>
+        {([[
+          "active", "Active", active,
+        ], ["payroll", "Needs payroll", payroll], ["archived", "Archived", props.snapshot.people.length - active]] as const).map(([key, label, count]) => {
+          const selected = filter === key;
+          return (
+            <Pressable key={key} onPress={() => setFilter(key)} style={[styles.readFilter, selected && styles.readFilterActive]}>
+              <Text style={[styles.readFilterText, selected && styles.readFilterTextActive]}>{label}</Text>
+              <View style={[styles.readFilterCount, selected && styles.readFilterCountActive]}><Text style={[styles.readFilterCountText, selected && styles.readFilterCountTextActive]}>{count}</Text></View>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+      <View style={styles.sectionHeading}><Text style={styles.sectionLabel}>Walk-on roster</Text><Text style={styles.sectionMeta}>{people.length}</Text></View>
+      {people.map((person) => {
+        const expanded = expandedRosterId === person.rosterMemberId;
+        const unresolved = person.assignments.filter((assignment) => assignment.status === "ACTIVE" && !assignment.payrollEventId).length;
+        return (
+          <View key={person.id} style={[styles.readCard, unresolved > 0 && styles.walkOnCardAttention]}>
+            <View style={styles.readCardHeader}>
+              <Text style={styles.readEyebrow}>{person.status === "ACTIVE" ? "ACTIVE SUPPORT" : "ARCHIVED"}</Text>
+              <Text style={styles.readMeta}>{person.dispatchCount} dispatches</Text>
+            </View>
+            <Text style={styles.readCardTitle}>{person.fullName}</Text>
+            <Text style={styles.readCardDetail}>{person.dswid ? `DSWID ${person.dswid}` : "DSWID missing"} · {person.workforceUnitName || "Unit missing"}</Text>
+            <View style={styles.readFacts}>
+              <View style={styles.readFact}><Text style={styles.readFactLabel}>Last service</Text><Text style={styles.readFactValue}>{readableDate(person.lastSeenDate)}</Text></View>
+              <View style={styles.readFact}><Text style={styles.readFactLabel}>Days</Text><Text style={styles.readFactValue}>{person.assignments.filter((item) => item.status === "ACTIVE").length}</Text></View>
+              <View style={styles.readFact}><Text style={styles.readFactLabel}>Payroll</Text><Text style={styles.readFactValue}>{unresolved ? `${unresolved} review` : "Ready"}</Text></View>
+            </View>
+            <View style={styles.walkOnCardActions}>
+              <Pressable onPress={() => setManagePerson(person)} style={styles.walkOnCardAction}><Text style={styles.walkOnCardActionText}>Manage</Text></Pressable>
+              <Pressable onPress={() => setExpandedRosterId(expanded ? null : person.rosterMemberId)} style={styles.walkOnCardAction}><Text style={styles.walkOnCardActionText}>{expanded ? "Hide history" : "History"}</Text></Pressable>
+            </View>
+            {expanded ? (
+              <View style={styles.walkOnHistory}>
+                {person.assignments.length ? person.assignments.map((assignment) => (
+                  <View key={assignment.id} style={styles.walkOnHistoryRow}>
+                    <View style={styles.accessCopy}><Text style={styles.drawerChoiceTitle}>{readableDate(assignment.serviceDate, { month: "short", day: "numeric", year: "numeric" })}</Text><Text style={styles.detail}>{assignment.note || person.workforceUnitName || "Walk-on assignment"}</Text></View>
+                    <Text style={[styles.walkOnPayStatus, !assignment.payrollEventId && styles.walkOnPayStatusAttention]}>{assignment.status === "REVERSED" ? "REVERSED" : assignment.payrollEventId ? assignment.payTreatment?.replaceAll("_", " ") || "PAY SET" : "PAY REVIEW"}</Text>
+                  </View>
+                )) : <Text style={sharedStyles.muted}>No dated assignments.</Text>}
+              </View>
+            ) : null}
+          </View>
+        );
+      })}
+      {people.length === 0 ? <Card><Text style={sharedStyles.bodyStrong}>No walk-ons match this view</Text><Text style={sharedStyles.muted}>Change the filter or add the first support assignment.</Text></Card> : null}
+      {assignmentOpen ? <WalkOnAssignmentModal busy={props.busy} onClose={() => setAssignmentOpen(false)} onSubmit={props.onSave} snapshot={props.snapshot} /> : null}
+      {managePerson ? <WalkOnIdentityModal busy={props.busy} onClose={() => setManagePerson(null)} onSubmit={props.onManage} person={managePerson} snapshot={props.snapshot} /> : null}
+    </>
+  );
+}
+
 export function ManagerOperationsChildScreen(props: {
+  busy: boolean;
   childKey: Exclude<ManagerWorkspaceChildKey, "dispatch">;
   context: ManagerAccessContext;
   error: string | null;
@@ -1065,6 +1445,8 @@ export function ManagerOperationsChildScreen(props: {
   onBack: () => void;
   onOpenWeb: (path: string) => void;
   onRefresh: () => void;
+  onManageWalkOn: (draft: ManagerWalkOnIdentityDraft) => Promise<void>;
+  onSaveWalkOn: (draft: ManagerWalkOnAssignmentDraft) => Promise<void>;
   onServiceDate: (value: string) => void;
   onSettings: () => void;
   snapshot: ManagerWorkspaceSnapshot | null;
@@ -1083,10 +1465,20 @@ export function ManagerOperationsChildScreen(props: {
           serviceDate={props.snapshot.serviceDate}
         />
       ) : null}
-      <WorkspaceSnapshotView error={props.error} loading={props.loading} onRetry={props.onRefresh} snapshot={props.snapshot} />
+      {props.childKey === "walk_ons" ? (
+        <ManagerWalkOnsSurface
+          busy={props.busy}
+          error={props.error}
+          loading={props.loading}
+          onManage={props.onManageWalkOn}
+          onRefresh={props.onRefresh}
+          onSave={props.onSaveWalkOn}
+          snapshot={props.snapshot?.walkOns ?? null}
+        />
+      ) : <WorkspaceSnapshotView error={props.error} loading={props.loading} onRetry={props.onRefresh} snapshot={props.snapshot} />}
       <Card>
-        <Text style={sharedStyles.bodyStrong}>Native read · full controls preserved</Text>
-        <Text style={sharedStyles.muted}>This screen is optimized for mobile review. The browser workspace remains available as a fallback for deeper controls.</Text>
+        <Text style={sharedStyles.bodyStrong}>{props.childKey === "walk_ons" ? "Native management · web fallback preserved" : "Native read · full controls preserved"}</Text>
+        <Text style={sharedStyles.muted}>{props.childKey === "walk_ons" ? "Create, reuse, and govern walk-on identities here. Payroll overrides remain available in the browser workspace." : "This screen is optimized for mobile review. The browser workspace remains available as a fallback for deeper controls."}</Text>
         <PrimaryButton compact label="Open full web workspace" onPress={() => props.onOpenWeb(child.path)} secondary />
       </Card>
     </Screen>
@@ -2398,6 +2790,20 @@ const styles = StyleSheet.create({
   phaseOptionTextActive: { color: colors.primary },
   phaseOptionDetail: { color: colors.muted, fontSize: 9, fontWeight: "700" },
   phaseOptionDetailActive: { color: colors.ink },
+  walkOnMode: { flex: 1, minHeight: 68, justifyContent: "center", gap: 3, paddingHorizontal: 9, borderWidth: 1, borderColor: "transparent", borderRadius: 12 },
+  walkOnModeDetail: { color: colors.muted, fontSize: 8, fontWeight: "700" },
+  walkOnHero: { gap: 14, padding: 17, borderRadius: 18, backgroundColor: colors.ink },
+  walkOnDate: { minWidth: 70, alignItems: "flex-end", gap: 3 },
+  walkOnDateLabel: { color: "#8DD3EF", fontSize: 8, fontWeight: "900", letterSpacing: 0.8 },
+  walkOnDateValue: { color: colors.white, fontSize: 12, fontWeight: "900" },
+  walkOnCardAttention: { borderColor: colors.warning, backgroundColor: "#FFFBF5" },
+  walkOnCardActions: { flexDirection: "row", gap: 8 },
+  walkOnCardAction: { flex: 1, minHeight: 40, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.primary, borderRadius: 11, backgroundColor: colors.palePrimary },
+  walkOnCardActionText: { color: colors.primary, fontSize: 11, fontWeight: "900" },
+  walkOnHistory: { gap: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border },
+  walkOnHistoryRow: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 10, padding: 10, borderRadius: 12, backgroundColor: colors.panel },
+  walkOnPayStatus: { color: colors.success, fontSize: 8, fontWeight: "900", textAlign: "right" },
+  walkOnPayStatusAttention: { color: colors.warning },
   selectField: { minHeight: 62, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.white },
   selectFieldValue: { color: colors.ink, fontSize: 15, fontWeight: "800" },
   selectFieldPlaceholder: { color: colors.muted, fontSize: 15 },

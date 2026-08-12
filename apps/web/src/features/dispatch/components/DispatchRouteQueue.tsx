@@ -26,6 +26,12 @@ type DispatchRouteQueueProps = {
   totalRoutes: number;
   loading: boolean;
   intent: AssignmentIntent;
+  editingRouteKey: string | null;
+  editingSeat: Seat;
+  onOpenRouteEditor: (route: DispatchRoute, seat: Seat) => void;
+  onCloseRouteEditor: () => void;
+  onEditSeat: (seat: Seat) => void;
+  onClearSeat: (routeKey: string, seat: Seat) => void;
   onSelectRoute: (route: DispatchRoute) => void;
   onSelectSeat: (seat: Seat) => void;
   arrivedPersonIds: Set<string>;
@@ -73,21 +79,29 @@ function DswSignalLine(props: { signal: DswDispatchSignal }) {
   );
 }
 
-function SeatDisplay(props: { value: string; empty?: boolean }) {
-  const { value, empty } = props;
+function SeatButton(props: {
+  value: string;
+  empty?: boolean;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const { value, empty, active, onClick } = props;
 
   return (
-    <span
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={active}
       style={{
         ...seatButtonBase,
         display: "block",
-        background: empty ? "#f8fafc" : "#fff",
+        borderColor: active ? "#2563eb" : "#dbe4ef",
+        background: active ? "#eff6ff" : empty ? "#f8fafc" : "#fff",
         color: empty ? "#64748b" : "#0f172a",
-        cursor: "default",
       }}
     >
       {value}
-    </span>
+    </button>
   );
 }
 
@@ -98,6 +112,12 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
     totalRoutes,
     loading,
     intent,
+    editingRouteKey,
+    editingSeat,
+    onOpenRouteEditor,
+    onCloseRouteEditor,
+    onEditSeat,
+    onClearSeat,
     onSelectRoute,
     onSelectSeat,
     arrivedPersonIds,
@@ -185,6 +205,8 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
             ? intent.route_label
               ? `Choose a seat for ${intent.person.full_name}`
               : `Choose a route for ${intent.person.full_name}`
+            : editingRouteKey
+              ? "Choose a seat, then choose a person from the workforce rail."
             : "Stage a person in the workforce rail to begin assignment."}
         </span>
       </div>
@@ -275,6 +297,7 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
           routes.map((route) => {
             const needsDriver = !route.driver;
             const assignmentTarget = intent?.route_key === route.route_key;
+            const editorOpen = editingRouteKey === route.route_key;
             const driverArrived = route.driver
               ? arrivedPersonIds.has(route.driver.roster_member_id)
               : false;
@@ -283,7 +306,7 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
             return (
               <div
                 key={route.route_key}
-                className={`dispatch-route-row${assignmentTarget ? " is-assignment-target" : ""}`}
+                className={`dispatch-route-row${assignmentTarget ? " is-assignment-target" : ""}${editorOpen ? " is-editor-open" : ""}`}
                 style={{ ...routeRowBase, position: "relative" }}
               >
                 {intent && !assignmentTarget ? (
@@ -373,9 +396,11 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
                 </div>
 
                 <div className="dispatch-route-row__driver" style={{ display: "grid", gap: 4 }}>
-                  <SeatDisplay
+                  <SeatButton
                     value={route.driver?.full_name ?? "Open driver seat"}
                     empty={!route.driver}
+                    active={editorOpen}
+                    onClick={() => onOpenRouteEditor(route, "driver")}
                   />
 
                   {route.helpers.length > 0 || route.trainees.length > 0 ? (
@@ -506,6 +531,57 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
                       onClick={() => onSelectSeat("trainee")}
                     >
                       Trainee
+                    </button>
+                  </div>
+                ) : editorOpen ? (
+                  <div
+                    className="dispatch-route-row__seat-picker dispatch-route-row__seat-editor"
+                    style={{
+                      gridColumn: "1 / -1",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      flexWrap: "wrap",
+                      paddingTop: 2,
+                    }}
+                  >
+                    <span>
+                      Edit <strong>{routeLabelForDisplay ? routeLabelForDisplay(route) : routeLabel(route)}</strong>
+                    </span>
+                    {(["driver", "helper", "trainee"] as const).map((seat) => (
+                      <button
+                        key={seat}
+                        type="button"
+                        style={editingSeat === seat ? { ...compactButton, borderColor: "#2563eb", background: "#eff6ff", color: "#1d4ed8" } : compactButton}
+                        aria-pressed={editingSeat === seat}
+                        onClick={() => onEditSeat(seat)}
+                      >
+                        {seat === "driver" ? "Driver" : seat === "helper" ? "Helper" : "Trainee"}
+                      </button>
+                    ))}
+                    <span className="dispatch-route-row__seat-editor-hint">
+                      Choose a person from the workforce rail
+                    </span>
+                    {(editingSeat === "driver"
+                      ? Boolean(route.driver)
+                      : editingSeat === "helper"
+                        ? route.helpers.length > 0
+                        : route.trainees.length > 0) ? (
+                      <button
+                        type="button"
+                        className="dispatch-route-row__clear-seat"
+                        style={compactButton}
+                        onClick={() => onClearSeat(route.route_key, editingSeat)}
+                      >
+                        Clear {editingSeat}
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      style={compactButton}
+                      onClick={onCloseRouteEditor}
+                    >
+                      Close
                     </button>
                   </div>
                 ) : null}
