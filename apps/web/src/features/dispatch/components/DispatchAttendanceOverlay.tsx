@@ -14,7 +14,6 @@ type DispatchAttendanceOverlayProps = {
   onClose: () => void;
   onToggleArrived: (person: DispatchPerson) => void;
   onSelectPerson: (person: DispatchPerson) => void;
-  onCancelAssign: () => void;
 };
 
 export function DispatchAttendanceOverlay(props: DispatchAttendanceOverlayProps) {
@@ -28,7 +27,6 @@ export function DispatchAttendanceOverlay(props: DispatchAttendanceOverlayProps)
     onClose,
     onToggleArrived,
     onSelectPerson,
-    onCancelAssign,
   } = props;
   const [query, setQuery] = useState("");
 
@@ -87,16 +85,6 @@ export function DispatchAttendanceOverlay(props: DispatchAttendanceOverlayProps)
           </button>
         </header>
 
-        {intent ? (
-          <div className="dispatch-attendance-intent">
-            <span>
-              <small>Assign {intent.seat}</small>
-              <strong>{intent.route_label}</strong>
-            </span>
-            <button type="button" onClick={onCancelAssign}>Cancel assignment</button>
-          </div>
-        ) : null}
-
         <div className="dispatch-attendance-search">
           <input
             value={query}
@@ -111,13 +99,22 @@ export function DispatchAttendanceOverlay(props: DispatchAttendanceOverlayProps)
             const present = arrivedPersonIds.has(person.roster_member_id);
             const available = availableIds.has(person.roster_member_id);
             const calledOut = calloutIds.has(person.roster_member_id);
+            const staged = intent?.person.roster_member_id === person.roster_member_id;
 
             return (
               <div key={person.roster_member_id}>
                 <span className="dispatch-attendance-person">
                   <strong>{person.full_name}</strong>
                   <small>
-                    {personTypeLabel(person)} · {calledOut ? "Called out" : available ? "Available" : "Assigned"}
+                    {personTypeLabel(person)} · {staged
+                      ? "Staged for route assignment"
+                      : calledOut && present
+                        ? "Present after callout"
+                        : calledOut
+                          ? "Called out · still actionable"
+                          : available
+                            ? "Available"
+                            : "Assigned"}
                   </small>
                 </span>
 
@@ -129,19 +126,17 @@ export function DispatchAttendanceOverlay(props: DispatchAttendanceOverlayProps)
                   >
                     {present ? "Present" : "Mark present"}
                   </button>
-                  {intent ? (
-                    <button
-                      type="button"
-                      className="is-assignment"
-                      disabled={!available || calledOut}
-                      onClick={() => {
-                        onSelectPerson(person);
-                        onClose();
-                      }}
-                    >
-                      Assign
-                    </button>
-                  ) : null}
+                  <button
+                    type="button"
+                    className={staged ? "is-assignment is-staged" : "is-assignment"}
+                    aria-pressed={staged}
+                    onClick={() => {
+                      onSelectPerson(person);
+                      onClose();
+                    }}
+                  >
+                    {staged ? "Cancel stage" : "Stage"}
+                  </button>
                 </span>
               </div>
             );

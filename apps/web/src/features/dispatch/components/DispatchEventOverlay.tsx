@@ -20,18 +20,16 @@ type DispatchActionOption = {
 };
 
 type ActionGroupKey =
-  | "route_staffing"
   | "workforce"
   | "route_operations"
   | "delivery_support"
   | "notes_context";
 
 const actionGroupCopy: Record<ActionGroupKey, { label: string; detail: string }> = {
-  route_staffing: { label: "Route staffing", detail: "Assign or clear route seats" },
-  workforce: { label: "Workforce", detail: "Arrival, call-out, no-show, and staffing-pool events" },
-  route_operations: { label: "Route operations", detail: "Add, remove, transfer, or flag a route" },
-  delivery_support: { label: "Delivery support", detail: "Record assistance between active routes" },
-  notes_context: { label: "Notes and context", detail: "Record operational or delivery context" },
+  workforce: { label: "Workforce", detail: "Route staffing, attendance, call-outs, no-shows, and staffing-pool events" },
+  route_operations: { label: "Routes", detail: "Add, remove, transfer, or flag a route" },
+  delivery_support: { label: "Support", detail: "Record assistance between active routes" },
+  notes_context: { label: "Notes", detail: "Record operational or delivery context" },
 };
 
 const routeStaffingCodes = new Set([
@@ -45,18 +43,21 @@ const routeStaffingCodes = new Set([
 
 function dispatchActionGroup(action: DispatchActionOption): ActionGroupKey {
   const category = action.event_category.toUpperCase();
-  if (routeStaffingCodes.has(action.event_code) || category === "ASSIGNMENT") return "route_staffing";
+  if (routeStaffingCodes.has(action.event_code) || category === "ASSIGNMENT") return "workforce";
   if (action.kind === "add_driver" || action.kind === "add_walk_on" || category === "WORKFORCE") return "workforce";
   if (["OPERATIONS", "COVERAGE", "PERFORMANCE"].includes(category)) return "route_operations";
   return "notes_context";
 }
 
 const dispatchGroupOrder: ActionGroupKey[] = [
-  "route_staffing",
   "workforce",
   "route_operations",
   "notes_context",
 ];
+const dispatchActionGroups = dispatchGroupOrder.map((group) => ({
+  group,
+  ...actionGroupCopy[group],
+}));
 
 const deliveryActionOptions = [
   { code: "DRIVER_ASSIST", label: "Driver assist", group: "delivery_support" as const },
@@ -75,7 +76,6 @@ type DispatchEventOverlayProps = {
   activeRoutes: DispatchRoute[];
   phase?: "dispatch" | "delivery";
   handoffSaving?: boolean;
-  onHandoffToDelivery?: () => Promise<void> | void;
   onReturnToDispatch?: () => Promise<void> | void;
   onPrepareCorrectiveAction?: (phase: "dispatch" | "delivery") => void;
   supplementalCollectionAction?: {
@@ -185,6 +185,85 @@ function routeDropdownLabel(route: DispatchRoute) {
   return [route.current_wa_num, route.route_name].filter(Boolean).join(" · ");
 }
 
+function ActionGroupRail(props: {
+  options: Array<{
+    group: ActionGroupKey;
+    label: string;
+    detail: string;
+  }>;
+  value: ActionGroupKey | "";
+  onChange: (group: ActionGroupKey) => void;
+}) {
+  const { options, value, onChange } = props;
+
+  return (
+    <div
+      className="dispatch-action-group-rail"
+      role="group"
+      aria-label="Primary action group"
+      style={{
+        gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))`,
+      }}
+    >
+      {options.map((option) => {
+        const selected = option.group === value;
+        return (
+          <button
+            key={option.group}
+            type="button"
+            className={selected ? "is-active" : ""}
+            data-group={option.group}
+            aria-pressed={selected}
+            title={option.detail}
+            onClick={() => onChange(option.group)}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ActionChoiceRail(props: {
+  options: Array<{ value: string; label: string }>;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const { options, value, onChange } = props;
+
+  if (options.length === 0) {
+    return (
+      <p className="dispatch-action-choice-rail__empty">
+        No actions are configured for this group.
+      </p>
+    );
+  }
+
+  return (
+    <div
+      className="dispatch-action-choice-rail"
+      role="group"
+      aria-label="Action"
+    >
+      {options.map((option) => {
+        const selected = option.value === value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            className={selected ? "is-active" : ""}
+            aria-pressed={selected}
+            onClick={() => onChange(option.value)}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
   const {
     slug,
@@ -198,7 +277,6 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
     activeRoutes,
     phase: defaultPhase = "dispatch",
     handoffSaving = false,
-    onHandoffToDelivery,
     onReturnToDispatch,
     onPrepareCorrectiveAction,
     supplementalCollectionAction,
@@ -313,13 +391,6 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
   const selected = useMemo(() => {
     return allActions.find((option) => option.event_code === eventCode) ?? null;
   }, [allActions, eventCode]);
-
-  const actionGroups = useMemo(
-    () => dispatchGroupOrder
-      .filter((group) => allActions.some((action) => dispatchActionGroup(action) === group))
-      .map((group) => ({ group, ...actionGroupCopy[group] })),
-    [allActions]
-  );
 
   const filteredActions = useMemo(
     () => actionGroup
@@ -696,42 +767,33 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
         <form onSubmit={handleSubmit} style={{ marginTop: 16, display: "grid", gap: 16 }}>
           <section style={{ display: "grid", gap: 10 }}>
             <p className="eyebrow">Step 1 · Choose action group</p>
-            <select
+            <ActionGroupRail
+              options={dispatchActionGroups}
               value={actionGroup}
-              onChange={(event) => {
-                setActionGroup(event.target.value as ActionGroupKey | "");
+              onChange={(group) => {
+                setActionGroup(group);
                 setEventCode("");
                 setSelectedTargetId("");
                 setWalkOnName("");
                 setNote("");
               }}
-              className="workspace-select"
-            >
-              <option value="">Choose a primary group</option>
-              {actionGroups.map((option) => (
-                <option key={option.group} value={option.group}>
-                  {option.label} · {option.detail}
-                </option>
-              ))}
-            </select>
+            />
             {actionGroup ? (
               <>
                 <p className="eyebrow" style={{ marginTop: 6 }}>Step 2 · Choose action</p>
-                <select
+                <ActionChoiceRail
+                  options={filteredActions.map((option) => ({
+                    value: option.event_code,
+                    label: option.event_label,
+                  }))}
                   value={eventCode}
-                  onChange={(event) => {
-                    setEventCode(event.target.value);
+                  onChange={(nextEventCode) => {
+                    setEventCode(nextEventCode);
                     setSelectedTargetId("");
                     setWalkOnName("");
                     setNote("");
                   }}
-                  className="workspace-select"
-                >
-                  <option value="">Choose an action</option>
-                  {filteredActions.map((option) => (
-                    <option key={option.event_code} value={option.event_code}>{option.event_label}</option>
-                  ))}
-                </select>
+                />
               </>
             ) : null}
             {supplementalCollectionAction ? <div>{renderSupplementalCollectionButton()}</div> : null}
@@ -1011,44 +1073,35 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
             >
               <section style={{ display: "grid", gap: 10 }}>
                 <p className="eyebrow">Step 1 · Choose action group</p>
-                <select
+                <ActionGroupRail
+                  options={deliveryGroups}
                   value={actionGroup}
-                  onChange={(event) => {
-                    setActionGroup(event.target.value as ActionGroupKey | "");
+                  onChange={(group) => {
+                    setActionGroup(group);
                     setDeliveryActionCode("");
                     setNote("");
                     setAssistingRouteId("");
                     setReceivingRouteId("");
                     setAssistStopCount("");
                   }}
-                  className="workspace-select"
-                >
-                  <option value="">Choose a primary group</option>
-                  {deliveryGroups.map((option) => (
-                    <option key={option.group} value={option.group}>
-                      {option.label} · {option.detail}
-                    </option>
-                  ))}
-                </select>
+                />
                 {actionGroup ? (
                   <>
                     <p className="eyebrow" style={{ marginTop: 6 }}>Step 2 · Choose action</p>
-                    <select
+                    <ActionChoiceRail
+                      options={filteredDeliveryActions.map((option) => ({
+                        value: option.code,
+                        label: option.label,
+                      }))}
                       value={deliveryActionCode}
-                      onChange={(event) => {
-                        setDeliveryActionCode(event.target.value);
+                      onChange={(nextActionCode) => {
+                        setDeliveryActionCode(nextActionCode);
                         setNote("");
                         setAssistingRouteId("");
                         setReceivingRouteId("");
                         setAssistStopCount("");
                       }}
-                      className="workspace-select"
-                    >
-                      <option value="">Choose an action</option>
-                      {filteredDeliveryActions.map((option) => (
-                        <option key={option.code} value={option.code}>{option.label}</option>
-                      ))}
-                    </select>
+                    />
                   </>
                 ) : null}
               </section>
@@ -1162,37 +1215,6 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
             </form>
           </section>
         )}
-
-        {defaultPhase === "dispatch" && onHandoffToDelivery ? (
-          <section
-            style={{
-              marginTop: 18,
-              paddingTop: 16,
-              borderTop: "1px solid #e6edf5",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 14,
-              flexWrap: "wrap",
-            }}
-          >
-            <div>
-              <p className="eyebrow" style={{ marginBottom: 4 }}>Operational handoff</p>
-              <strong>Move today’s operation into Delivery</strong>
-              <p className="app-card__body" style={{ marginBottom: 0 }}>
-                Sets the operation’s working phase to Delivery while preserving the event history.
-              </p>
-            </div>
-            <button
-              type="button"
-              className="button"
-              onClick={() => void onHandoffToDelivery()}
-              disabled={handoffSaving || saving}
-            >
-              {handoffSaving ? "Handing off…" : "Handoff to delivery"}
-            </button>
-          </section>
-        ) : null}
 
         {onPrepareCorrectiveAction ? (
           <section style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #e6edf5", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>

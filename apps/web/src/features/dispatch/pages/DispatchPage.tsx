@@ -11,10 +11,10 @@ import {
   type Seat,
   cleanRouteKey,
   panel,
+  personSort,
 } from "../lib/dispatchSupport";
 import { addDaysIso } from "../lib/dispatchDates";
 import {
-  lockDispatchDay,
   recordDispatchEvent,
   reopenDispatchDay,
 } from "../lib/dispatchApi";
@@ -199,7 +199,6 @@ export default function DispatchPage({
 
   useEffect(() => {
     setAssignments(buildAssignmentMapFromRoutesAndEvents(hydratedRoutes, dispatchEvents));
-    setIntent(null);
   }, [hydratedRoutes, dispatchEvents]);
 
   const workspaceModel = useMemo(
@@ -250,6 +249,55 @@ export default function DispatchPage({
     workforce,
   } = workspaceModel;
 
+  const calloutPersonIds = useMemo(
+    () => new Set(callouts.map((person) => person.roster_member_id)),
+    [callouts]
+  );
+  const assignmentByPersonId = useMemo(() => {
+    const assignmentMap = new Map<
+      string,
+      { routeLabel: string; seat: Seat }
+    >();
+
+    dispatchRoutes.forEach((route) => {
+      if (route.route_key === "UNASSIGNED") return;
+      const routeLabel = orderedRouteLabelForSort(route);
+      if (route.driver) {
+        assignmentMap.set(route.driver.roster_member_id, {
+          routeLabel,
+          seat: "driver",
+        });
+      }
+      route.helpers.forEach((person) => {
+        assignmentMap.set(person.roster_member_id, {
+          routeLabel,
+          seat: "helper",
+        });
+      });
+      route.trainees.forEach((person) => {
+        assignmentMap.set(person.roster_member_id, {
+          routeLabel,
+          seat: "trainee",
+        });
+      });
+    });
+
+    return assignmentMap;
+  }, [dispatchRoutes, orderedRouteLabelForSort]);
+
+  const rosterPeople = useMemo(() => {
+    const peopleById = new Map<string, DispatchPerson>();
+    [...workforce.available, ...callouts].forEach((person) => {
+      if (
+        !assignmentByPersonId.has(person.roster_member_id) &&
+        !peopleById.has(person.roster_member_id)
+      ) {
+        peopleById.set(person.roster_member_id, person);
+      }
+    });
+    return [...peopleById.values()].sort(personSort);
+  }, [assignmentByPersonId, callouts, workforce.available]);
+
   const expressSignalsByRouteKey = useMemo(() => {
     const normalize = (value: string | null | undefined) =>
       String(value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -291,12 +339,28 @@ export default function DispatchPage({
   }, [dispatchRoutes, expressHealthRows]);
 
 
-  function openSeat(route: DispatchRoute, seat: Seat) {
-    setIntent({
-      route_key: route.route_key,
-      route_label: orderedRouteLabelForSort(route),
-      seat,
-    });
+  function stagePerson(person: DispatchPerson) {
+    setIntent((current) =>
+      current?.person.roster_member_id === person.roster_member_id
+        ? null
+        : {
+            person,
+            route_key: null,
+            route_label: null,
+          }
+    );
+  }
+
+  function selectAssignmentRoute(route: DispatchRoute) {
+    setIntent((current) =>
+      current
+        ? {
+            ...current,
+            route_key: route.route_key,
+            route_label: orderedRouteLabelForSort(route),
+          }
+        : null
+    );
   }
 
   async function recordAssignmentEvent(payload: {
@@ -345,11 +409,15 @@ export default function DispatchPage({
     }
   }
 
-  function assignPerson(person: DispatchPerson) {
-    if (!intent) return;
+  function completeAssignment(seat: Seat) {
+    if (!intent?.route_key || !intent.route_label) return;
+
+    const person = intent.person;
+    const routeKey = intent.route_key;
+    const routeLabel = intent.route_label;
 
     setAssignments((current) => {
-      const target = current[intent.route_key];
+      const target = current[routeKey];
       if (!target) return current;
 
       const next: Record<string, DispatchRoute> = {};
@@ -358,92 +426,45 @@ export default function DispatchPage({
         next[key] = removePersonFromRoute(route, person.roster_member_id);
       }
 
-      const updatedTarget = next[intent.route_key];
+      const updatedTarget = next[routeKey];
 
-      if (intent.seat === "driver") {
+      if (seat === "driver") {
         if (updatedTarget.driver) {
           updatedTarget.extras = [...updatedTarget.extras, updatedTarget.driver];
         }
         updatedTarget.driver = person;
       }
 
-      if (intent.seat === "helper") {
+      if (seat === "helper") {
         updatedTarget.helpers = [...updatedTarget.helpers, person];
       }
 
-      if (intent.seat === "trainee") {
+      if (seat === "trainee") {
         updatedTarget.trainees = [...updatedTarget.trainees, person];
       }
 
-      next[intent.route_key] = updatedTarget;
+      next[routeKey] = updatedTarget;
 
       return next;
     });
 
     void recordAssignmentEvent({
       event_code:
-        intent.seat === "driver"
+        seat === "driver"
           ? "ASSIGN_DRIVER"
-          : intent.seat === "helper"
+          : seat === "helper"
             ? "ASSIGN_HELPER"
             : "ASSIGN_TRAINEE",
       event_label:
-        intent.seat === "driver"
+        seat === "driver"
           ? "Driver assigned"
-          : intent.seat === "helper"
+          : seat === "helper"
             ? "Helper assigned"
             : "Trainee assigned",
-      route_key: intent.route_key,
-      route_label: intent.route_label,
-      seat: intent.seat,
-      person,
-    });
-
-    setIntent(null);
-  }
-
-  function clearSeat(routeKey: string, seat: Seat) {
-    setAssignments((current) => {
-      const target = current[routeKey];
-      if (!target) return current;
-
-      const nextRoute: DispatchRoute = { ...target };
-
-      if (seat === "driver") nextRoute.driver = null;
-      if (seat === "helper") nextRoute.helpers = [];
-      if (seat === "trainee") nextRoute.trainees = [];
-
-      return {
-        ...current,
-        [routeKey]: nextRoute,
-      };
-    });
-
-    const route = assignments[routeKey];
-    const removedPerson =
-      seat === "driver"
-        ? route?.driver ?? null
-        : seat === "helper"
-          ? route?.helpers[0] ?? null
-          : route?.trainees[0] ?? null;
-
-    void recordAssignmentEvent({
-      event_code:
-        seat === "driver"
-          ? "UNASSIGN_DRIVER"
-          : seat === "helper"
-            ? "UNASSIGN_HELPER"
-            : "UNASSIGN_TRAINEE",
-      event_label:
-        seat === "driver"
-          ? "Driver unassigned"
-          : seat === "helper"
-            ? "Helper unassigned"
-            : "Trainee unassigned",
       route_key: routeKey,
-      route_label: route ? orderedRouteLabelForSort(route) : routeKey,
+      route_label: routeLabel,
       seat,
-      person: removedPerson,
+      person,
     });
 
     setIntent(null);
@@ -776,49 +797,6 @@ export default function DispatchPage({
   }
 
 
-  async function lockDispatch() {
-    try {
-      setLocking(true);
-      setError(null);
-
-      const snapshot = {
-        service_date: serviceDate,
-        locked_at: new Date().toISOString(),
-        summary,
-        routes: dispatchRoutes,
-        event_count: dispatchEvents.length,
-        report: {
-          title: "Dispatch Handoff Report",
-          routes_total: summary.total,
-          routes_covered: summary.withDriver,
-          routes_needing_driver: summary.withoutDriver,
-          helpers_assigned: summary.helpers,
-          trainees_assigned: summary.trainees,
-          available_workers: summary.available,
-        },
-      };
-
-      const { ok, data } = await lockDispatchDay({
-        slug,
-        dispatchDate: serviceDate,
-        snapshotJson: snapshot,
-      });
-
-      if (!ok) {
-        setError(data?.error ?? "Failed to hand the operation to Delivery.");
-        return;
-      }
-
-      if (data?.dispatch_day) {
-        setDispatchDay(data.dispatch_day as DispatchDayRow);
-      }
-    } catch {
-      setError("Failed to hand the operation to Delivery.");
-    } finally {
-      setLocking(false);
-    }
-  }
-
   async function returnToDispatch() {
     if (locking || dispatchDay?.status !== "LOCKED") return;
 
@@ -870,7 +848,7 @@ export default function DispatchPage({
           onComplianceReport={() => setComplianceReportOpen(true)}
           onExpressReport={() => setExpressReportOpen(true)}
           onAttendance={() => setAttendanceOpen(true)}
-          attendanceLabel={intent ? "Choose Worker" : "Attendance"}
+          attendanceLabel={intent ? "Choose Route" : "Attendance"}
         />
 
         {error ? (
@@ -881,15 +859,12 @@ export default function DispatchPage({
 
         <section className="dispatch-grid">
             <DispatchWorkforceRail
-              allPeopleCount={allPeople.length}
-              availableCount={summary.available}
+              people={rosterPeople}
               intent={intent}
-              availablePeople={workforce.available}
-              callouts={callouts}
+              calloutPersonIds={calloutPersonIds}
               arrivedPersonIds={arrivedPersonIds}
               onToggleArrived={toggleArrived}
-              onCancelAssign={() => setIntent(null)}
-              onSelectPerson={assignPerson}
+              onStagePerson={stagePerson}
             />
 
             <DispatchRouteQueue
@@ -898,9 +873,8 @@ export default function DispatchPage({
               totalRoutes={summary.total}
               loading={loading}
               intent={intent}
-              onOpenSeat={openSeat}
-              onClearSeat={clearSeat}
-              onCancelIntent={() => setIntent(null)}
+              onSelectRoute={selectAssignmentRoute}
+              onSelectSeat={completeAssignment}
               arrivedPersonIds={arrivedPersonIds}
               onToggleArrived={toggleArrived}
               planSignalsByRouteKey={planSignalsByRouteKey}
@@ -945,17 +919,13 @@ export default function DispatchPage({
       <DispatchAttendanceOverlay
         open={attendanceOpen}
         intent={intent}
-        people={allPeople}
+        people={rosterPeople}
         availablePeople={workforce.available}
         callouts={callouts}
         arrivedPersonIds={arrivedPersonIds}
         onClose={() => setAttendanceOpen(false)}
         onToggleArrived={toggleArrived}
-        onSelectPerson={assignPerson}
-        onCancelAssign={() => {
-          setIntent(null);
-          setAttendanceOpen(false);
-        }}
+        onSelectPerson={stagePerson}
       />
 
       <DispatchEventOverlay
@@ -971,7 +941,6 @@ export default function DispatchPage({
         activeRoutes={dispatchRoutes}
         phase={deliveryPhase ? "delivery" : "dispatch"}
         handoffSaving={locking}
-        onHandoffToDelivery={lockDispatch}
         onReturnToDispatch={deliveryPhase ? returnToDispatch : undefined}
         onPrepareCorrectiveAction={(actionPhase) => {
           window.location.href = `/company/${slug}/people/corrective-actions?source=${actionPhase}&incidentDate=${serviceDate}`;

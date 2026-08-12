@@ -17,7 +17,6 @@ import { buildAssignmentMapFromRoutesAndEvents } from "@/features/dispatch/lib/d
 import { buildDroPlanSignals } from "@/features/dispatch/lib/droPlanSignals";
 import { buildDswDispatchSignals } from "@/features/dispatch/lib/dswDispatchSignals";
 import {
-  lockDispatchDay,
   recordDispatchEvent,
   reopenDispatchDay,
 } from "@/features/dispatch/lib/dispatchApi";
@@ -1487,50 +1486,6 @@ export default function OperationsWorkspacePage({
     }
   }
 
-  async function handoffToDelivery() {
-    if (handoffSaving || dispatchDay?.status === "LOCKED") return;
-
-    try {
-      setHandoffSaving(true);
-      setError(null);
-      const covered = routeUnits.filter((route) => route.driver).length;
-      const snapshot = {
-        service_date: serviceDate,
-        locked_at: new Date().toISOString(),
-        summary: {
-          total: routeUnits.length,
-          withDriver: covered,
-          withoutDriver: routeUnits.length - covered,
-          helpers: routeUnits.reduce(
-            (total, route) => total + route.helpers.length,
-            0
-          ),
-          trainees: routeUnits.reduce(
-            (total, route) => total + route.trainees.length,
-            0
-          ),
-        },
-        routes: routeUnits,
-        event_count: dispatchEvents.length,
-        source: "operational_unit_action_overlay",
-      };
-      const { ok, data } = await lockDispatchDay({
-        slug,
-        dispatchDate: serviceDate,
-        snapshotJson: snapshot,
-      });
-      if (!ok) {
-        setError(data?.error ?? "Failed to hand the operation to Delivery.");
-        return;
-      }
-      if (data?.dispatch_day) setDispatchDay(data.dispatch_day);
-    } catch {
-      setError("Failed to hand the operation to Delivery.");
-    } finally {
-      setHandoffSaving(false);
-    }
-  }
-
   async function returnToDispatch() {
     if (handoffSaving || dispatchDay?.status !== "LOCKED") return;
 
@@ -2009,7 +1964,6 @@ export default function OperationsWorkspacePage({
         activeRoutes={routeUnits}
         phase={dispatchDay?.status === "LOCKED" ? "delivery" : "dispatch"}
         handoffSaving={handoffSaving}
-        onHandoffToDelivery={handoffToDelivery}
         onReturnToDispatch={
           dispatchDay?.status === "LOCKED" ? returnToDispatch : undefined
         }

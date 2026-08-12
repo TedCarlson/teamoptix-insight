@@ -225,6 +225,15 @@ export function buildCallouts(params: {
   return Array.from(byId.values()).sort(personSort);
 }
 
+export function buildEffectiveCalloutIds(
+  callouts: DispatchPerson[],
+  arrivedPersonIds: Set<string>
+) {
+  const ids = new Set(callouts.map((person) => person.roster_member_id));
+  arrivedPersonIds.forEach((personId) => ids.delete(personId));
+  return ids;
+}
+
 export function buildAssignedIds(
   dispatchRoutes: DispatchRoute[]
 ) {

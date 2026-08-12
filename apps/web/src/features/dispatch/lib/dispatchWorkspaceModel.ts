@@ -1,9 +1,11 @@
 import {
   buildAllPeople,
+  buildArrivedPersonIds,
   buildAssignedIds,
   buildAvailableRoutes,
   buildCallouts,
   buildDispatchSummary,
+  buildEffectiveCalloutIds,
   buildPlanningRoutes,
   buildScheduledRosterIds,
   buildUnscheduledDrivers,
@@ -74,7 +76,8 @@ export function buildDispatchWorkspaceModel(params: DispatchWorkspaceModelParams
     dispatchEvents,
     serviceDate,
   });
-  const calloutIds = new Set(callouts.map((person) => person.roster_member_id));
+  const arrivedPersonIds = buildArrivedPersonIds(dispatchEvents);
+  const calloutIds = buildEffectiveCalloutIds(callouts, arrivedPersonIds);
   const assignedIds = buildAssignedIds(dispatchRoutes);
   const workforce = buildWorkforce({
     allPeople,

@@ -9,6 +9,7 @@ import { timeCriticalColor, type DispatchPlanSignal, type DroPlanTotals } from "
 import type { DswDispatchSignal, DswDispatchTotals } from "../lib/dswDispatchSignals";
 import { ExpressProgressSignal } from "@/features/operations/express/ExpressProgressSignal";
 import type { ExpressDataHealth, ExpressProgress } from "@/features/operations/express/expressProgress";
+import { DispatchAttendanceToggle } from "./DispatchAttendanceToggle";
 import {
   compactButton,
   eyebrow,
@@ -17,7 +18,6 @@ import {
   routeLabel,
   routeRowBase,
   seatButtonBase,
-  selectedButton,
 } from "../lib/dispatchSupport";
 
 type DispatchRouteQueueProps = {
@@ -26,9 +26,8 @@ type DispatchRouteQueueProps = {
   totalRoutes: number;
   loading: boolean;
   intent: AssignmentIntent;
-  onOpenSeat: (route: DispatchRoute, seat: Seat) => void;
-  onClearSeat: (routeKey: string, seat: Seat) => void;
-  onCancelIntent: () => void;
+  onSelectRoute: (route: DispatchRoute) => void;
+  onSelectSeat: (seat: Seat) => void;
   arrivedPersonIds: Set<string>;
   onToggleArrived: (person: DispatchPerson) => void;
   planSignalsByRouteKey?: Record<string, DispatchPlanSignal>;
@@ -74,6 +73,24 @@ function DswSignalLine(props: { signal: DswDispatchSignal }) {
   );
 }
 
+function SeatDisplay(props: { value: string; empty?: boolean }) {
+  const { value, empty } = props;
+
+  return (
+    <span
+      style={{
+        ...seatButtonBase,
+        display: "block",
+        background: empty ? "#f8fafc" : "#fff",
+        color: empty ? "#64748b" : "#0f172a",
+        cursor: "default",
+      }}
+    >
+      {value}
+    </span>
+  );
+}
+
 export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
   const {
     routeLabelForDisplay,
@@ -81,9 +98,8 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
     totalRoutes,
     loading,
     intent,
-    onOpenSeat,
-    onClearSeat,
-    onCancelIntent,
+    onSelectRoute,
+    onSelectSeat,
     arrivedPersonIds,
     onToggleArrived,
     planSignalsByRouteKey = {},
@@ -113,34 +129,6 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
       document.removeEventListener("pointerdown", handlePointerDown);
     };
   }, [legendOpen]);
-
-  function SeatButton(props: {
-    route: DispatchRoute;
-    seat: Seat;
-    label: string;
-    value: string;
-    empty?: boolean;
-  }) {
-    const { route, seat, label, value, empty } = props;
-    const isActive =
-      intent?.route_key === route.route_key && intent.seat === seat;
-
-    return (
-      <button
-        type="button"
-        onClick={() => onOpenSeat(route, seat)}
-        style={{
-          ...seatButtonBase,
-          borderColor: isActive ? "#2563eb" : "#dbe4ef",
-          background: isActive ? "#eff6ff" : empty ? "#f8fafc" : "#fff",
-          color: empty ? "#64748b" : "#0f172a",
-        }}
-        title={`Assign ${label}`}
-      >
-        {value}
-      </button>
-    );
-  }
 
   return (
     <section className="dispatch-route-queue" style={panel}>
@@ -189,8 +177,15 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
             style={{ minWidth: 170 }}
           />
         ) : null}
-        <span style={{ fontSize: 12, color: "#64748b", fontWeight: 800 }}>
-          Tap driver seat. Helper / trainee actions live in right rail.
+        <span
+          className={intent ? "dispatch-route-queue__assignment-prompt is-active" : "dispatch-route-queue__assignment-prompt"}
+          aria-live="polite"
+        >
+          {intent
+            ? intent.route_label
+              ? `Choose a seat for ${intent.person.full_name}`
+              : `Choose a route for ${intent.person.full_name}`
+            : "Stage a person in the workforce rail to begin assignment."}
         </span>
       </div>
 
@@ -279,33 +274,34 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
         ) : (
           routes.map((route) => {
             const needsDriver = !route.driver;
+            const assignmentTarget = intent?.route_key === route.route_key;
             const driverArrived = route.driver
               ? arrivedPersonIds.has(route.driver.roster_member_id)
               : false;
             const expressSignal = expressSignalsByRouteKey[route.route_key];
 
             return (
-              <div key={route.route_key} className="dispatch-route-row" style={routeRowBase}>
+              <div
+                key={route.route_key}
+                className={`dispatch-route-row${assignmentTarget ? " is-assignment-target" : ""}`}
+                style={{ ...routeRowBase, position: "relative" }}
+              >
+                {intent && !assignmentTarget ? (
+                  <button
+                    type="button"
+                    className="dispatch-route-row__assignment-hit-area"
+                    aria-label={`Choose ${routeLabelForDisplay ? routeLabelForDisplay(route) : routeLabel(route)} for ${intent.person.full_name}`}
+                    onClick={() => onSelectRoute(route)}
+                  />
+                ) : null}
                 <div className="dispatch-route-row__arrival" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {route.driver ? (
-                    <button
-                      type="button"
-                      aria-label={driverArrived ? "Arrived verified" : "Arrival not verified"}
-                      title={driverArrived ? "Arrived verified" : "Arrival not verified"}
-                      onClick={() => onToggleArrived(route.driver!)}
-                      style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 999,
-                        border: driverArrived ? "1px solid #86efac" : "1px solid #cbd5e1",
-                        background: driverArrived ? "#dcfce7" : "#f8fafc",
-                        color: driverArrived ? "#166534" : "#64748b",
-                        fontWeight: 950,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {driverArrived ? "✓" : "?"}
-                    </button>
+                    <DispatchAttendanceToggle
+                      person={route.driver}
+                      present={driverArrived}
+                      onToggle={onToggleArrived}
+                      placement="table"
+                    />
                   ) : (
                     <span style={{ color: "#cbd5e1", fontWeight: 900 }}>—</span>
                   )}
@@ -377,10 +373,7 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
                 </div>
 
                 <div className="dispatch-route-row__driver" style={{ display: "grid", gap: 4 }}>
-                  <SeatButton
-                    route={route}
-                    seat="driver"
-                    label="driver"
+                  <SeatDisplay
                     value={route.driver?.full_name ?? "Open driver seat"}
                     empty={!route.driver}
                   />
@@ -478,58 +471,41 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
                   />
                 </div>
 
-                {intent?.route_key === route.route_key ? (
+                {assignmentTarget ? (
                   <div
+                    className="dispatch-route-row__seat-picker"
                     style={{
                       gridColumn: "1 / -1",
                       display: "flex",
+                      alignItems: "center",
                       gap: 8,
                       flexWrap: "wrap",
                       paddingTop: 2,
                     }}
                   >
+                    <span>
+                      Assign <strong>{intent.person.full_name}</strong> as
+                    </span>
                     <button
                       type="button"
-                      style={
-                        intent.seat === "driver" ? selectedButton : compactButton
-                      }
-                      onClick={() => onOpenSeat(route, "driver")}
+                      style={compactButton}
+                      onClick={() => onSelectSeat("driver")}
                     >
                       Driver
                     </button>
                     <button
                       type="button"
-                      style={
-                        intent.seat === "helper" ? selectedButton : compactButton
-                      }
-                      onClick={() => onOpenSeat(route, "helper")}
+                      style={compactButton}
+                      onClick={() => onSelectSeat("helper")}
                     >
-                      Add Helper
-                    </button>
-                    <button
-                      type="button"
-                      style={
-                        intent.seat === "trainee"
-                          ? selectedButton
-                          : compactButton
-                      }
-                      onClick={() => onOpenSeat(route, "trainee")}
-                    >
-                      Add Trainee
+                      Helper
                     </button>
                     <button
                       type="button"
                       style={compactButton}
-                      onClick={() => onClearSeat(route.route_key, intent.seat)}
+                      onClick={() => onSelectSeat("trainee")}
                     >
-                      Clear {intent.seat}
-                    </button>
-                    <button
-                      type="button"
-                      style={compactButton}
-                      onClick={onCancelIntent}
-                    >
-                      Cancel
+                      Trainee
                     </button>
                   </div>
                 ) : null}

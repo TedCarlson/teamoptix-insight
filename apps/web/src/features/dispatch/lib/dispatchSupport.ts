@@ -57,9 +57,9 @@ export type DispatchRoute = {
 };
 
 export type AssignmentIntent = {
-  route_key: string;
-  route_label: string;
-  seat: Seat;
+  person: DispatchPerson;
+  route_key: string | null;
+  route_label: string | null;
 } | null;
 
 export function todayIso() {
