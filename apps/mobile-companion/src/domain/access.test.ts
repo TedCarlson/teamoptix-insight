@@ -48,6 +48,7 @@ describe("MC-8A mobile role contexts", () => {
     expect(contexts).toHaveLength(1);
     expect(contexts[0]).toMatchObject({ role: "MANAGER" });
     expect(contexts[0].role === "MANAGER" && contexts[0].grants).toHaveLength(14);
+    expect(contexts[0].role === "MANAGER" && contexts[0].is_platform_owner).toBe(false);
   });
 
   it("derives platform-owner manager scope from authorized demo companies", () => {
@@ -60,6 +61,21 @@ describe("MC-8A mobile role contexts", () => {
       role: "MANAGER",
       company_id: "company-1",
       title: "Platform owner",
+      is_platform_owner: true,
+    });
+    expect(contexts[0].role === "MANAGER" && contexts[0].grants).toHaveLength(14);
+  });
+
+  it("retains platform-owner message authority on membership-backed manager contexts", () => {
+    const contexts = buildMobileAccessContexts({
+      is_platform_owner: true,
+      memberships: [member({ relationship_type: "member", grants: [] })],
+    }, []);
+
+    expect(contexts[0]).toMatchObject({
+      role: "MANAGER",
+      relationship_type: "member",
+      is_platform_owner: true,
     });
     expect(contexts[0].role === "MANAGER" && contexts[0].grants).toHaveLength(14);
   });
