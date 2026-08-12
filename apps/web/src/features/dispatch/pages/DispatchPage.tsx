@@ -592,6 +592,7 @@ export default function DispatchPage({
   }
 
   const addManualDispatchEvent = useCallback(async (payload: {
+    action_phase?: "dispatch" | "delivery";
     event_code: string;
     event_label: string;
     event_category: string;
@@ -600,6 +601,10 @@ export default function DispatchPage({
     person_name: string | null;
     route_key?: string | null;
     route_label?: string | null;
+    from_route_key?: string | null;
+    from_route_label?: string | null;
+    to_route_key?: string | null;
+    to_route_label?: string | null;
     event_payload?: Record<string, unknown>;
     walk_on_full_name?: string | null;
     walk_on_record_mode?: "CANDIDATE" | "WALK_ON";
@@ -954,6 +959,7 @@ export default function DispatchPage({
       />
 
       <DispatchEventOverlay
+        key={`${eventOverlayOpen ? "open" : "closed"}:${deliveryPhase ? "delivery" : "dispatch"}`}
         slug={slug}
         serviceDate={serviceDate}
         open={eventOverlayOpen}
@@ -967,8 +973,8 @@ export default function DispatchPage({
         handoffSaving={locking}
         onHandoffToDelivery={lockDispatch}
         onReturnToDispatch={deliveryPhase ? returnToDispatch : undefined}
-        onPrepareCorrectiveAction={() => {
-          window.location.href = `/company/${slug}/people/corrective-actions?source=${deliveryPhase ? "delivery" : "dispatch"}&incidentDate=${serviceDate}`;
+        onPrepareCorrectiveAction={(actionPhase) => {
+          window.location.href = `/company/${slug}/people/corrective-actions?source=${actionPhase}&incidentDate=${serviceDate}`;
         }}
         supplementalCollectionAction={supplementalCollectionAction}
         onClose={() => setEventOverlayOpen(false)}

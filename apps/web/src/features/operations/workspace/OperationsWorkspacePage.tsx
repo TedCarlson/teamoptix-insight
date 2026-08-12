@@ -1669,11 +1669,7 @@ export default function OperationsWorkspacePage({
         statusTone={collectionSignal.active ? "active" : "waiting"}
         refreshing={loading}
         onActions={() => setEventOverlayOpen(true)}
-        actionsLabel={
-          dispatchDay?.status === "LOCKED"
-            ? "Delivery action"
-            : "Dispatch action"
-        }
+        actionsLabel="Actions"
         onComplianceReport={() => setComplianceReportOpen(true)}
         onExpressReport={() => setExpressReportOpen(true)}
         onAttendance={() => setAttendanceOpen(true)}
@@ -1993,7 +1989,7 @@ export default function OperationsWorkspacePage({
 
               <Section title="Available actions">
                 <p className="ou-empty">
-                  Seat-specific controls remain in this workspace. Use Dispatch action above for route, workforce, call-out, and note exceptions.
+                  Seat-specific controls remain in this workspace. Use Actions above for route, workforce, call-out, and note exceptions.
                 </p>
               </Section>
             </div>
