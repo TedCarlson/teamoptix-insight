@@ -28,13 +28,6 @@ export async function ingestDswPackageStatusWorkbook(params: {
   if (companyError || !company) throw new Error("Company not found.");
 
   const parsed = parseDswPackageStatusWorkbook(buffer);
-  const metadata = artifact.runner_artifact_json ?? {};
-  const runnerServiceDate = String(metadata.service_date_raw ?? "").trim();
-  if (runnerServiceDate && runnerServiceDate !== parsed.service_date) {
-    throw new Error(
-      "Package status workbook date does not match its Runner metadata."
-    );
-  }
   if (
     artifact.service_date &&
     artifact.service_date !== parsed.service_date
@@ -43,22 +36,30 @@ export async function ingestDswPackageStatusWorkbook(params: {
       "Package status workbook date does not match its collection artifact."
     );
   }
-  const contractNumber = String(metadata.contract_number ?? "")
+
+  const { data: ownershipRows, error: ownershipError } = await supabase.rpc(
+    "get_active_company_contract_config",
+    {
+      p_company_slug: slug,
+      p_service_date: parsed.service_date,
+    }
+  );
+  if (ownershipError) throw new Error(ownershipError.message);
+  const ownership = ownershipRows?.[0] ?? null;
+  if (!ownership) {
+    throw new Error(
+      "No active company contract configuration was found for the package-status date."
+    );
+  }
+
+  const contractNumber = String(ownership.contract_number ?? "")
     .trim()
     .toUpperCase();
   if (!/^C\d+$/.test(contractNumber)) {
-    throw new Error("Package status artifact is missing its contract number.");
+    throw new Error("The active company contract number is invalid.");
   }
 
-  const expectedCount = Number(metadata.expected_package_count);
-  if (!Number.isInteger(expectedCount) || expectedCount < 0) {
-    throw new Error("Package status artifact is missing a valid expected count.");
-  }
-  if (expectedCount !== parsed.rows.length) {
-    throw new Error(
-      `Package status count mismatch: DSW reported ${expectedCount}, workbook contains ${parsed.rows.length}.`
-    );
-  }
+  const expectedCount = parsed.rows.length;
 
   const derivedSnapshotKind = deriveDswSnapshotKind(parsed.service_date);
   if (derivedSnapshotKind === "FUTURE") {
@@ -108,7 +109,7 @@ export async function ingestDswPackageStatusWorkbook(params: {
         terminal_identity: parsed.terminal_identity,
         detected_sheet_name: parsed.sheet_name,
         detected_header_row: parsed.header_row_number,
-        expected_count_source: "DSW_CONTRACT_TOTAL_LINK",
+        expected_count_source: "INGESTION_PARSED_ROWS",
       },
       p_rows: rows,
     }

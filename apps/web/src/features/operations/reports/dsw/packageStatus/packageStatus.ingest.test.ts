@@ -69,6 +69,16 @@ function fakeSupabase() {
       }),
       rpc: async (name: string, args: Record<string, unknown>) => {
         rpcCalls.push({ name, args });
+        if (name === "get_active_company_contract_config") {
+          return {
+            data: [{
+              company_id: "00000000-0000-4000-8000-000000000001",
+              contract_number: "C1234567",
+              terminal_identity: "TEST: 249/3249",
+            }],
+            error: null,
+          };
+        }
         if (
           name ===
           "record_operations_dsw_package_status_snapshot_membership"
@@ -134,25 +144,25 @@ describe("ingestDswPackageStatusWorkbook", () => {
         service_date: "2026-07-27",
         runner_artifact_json: {
           artifact_key: "DSW_ALL_STATUS_CODE_PACKAGES",
-          service_date_raw: "2026-07-27",
-          contract_number: "C1234567",
-          expected_package_count: 1,
         },
       },
     });
 
-    expect(supabase.rpcCalls).toHaveLength(4);
+    expect(supabase.rpcCalls).toHaveLength(5);
     expect(supabase.rpcCalls[0].name).toBe(
+      "get_active_company_contract_config"
+    );
+    expect(supabase.rpcCalls[1].name).toBe(
       "import_operations_dsw_package_status"
     );
-    expect(supabase.rpcCalls[0].args.p_snapshot_kind).toBe("LIVE");
+    expect(supabase.rpcCalls[1].args.p_snapshot_kind).toBe("LIVE");
     const serializedRows = JSON.stringify(
-      supabase.rpcCalls[0].args.p_rows
+      supabase.rpcCalls[1].args.p_rows
     );
     expect(serializedRows).not.toContain(TRACKING_ID);
     expect(serializedRows).not.toContain(DESTINATION);
     expect(serializedRows).toMatch(/v1_[a-f0-9]{64}/);
-    expect(supabase.rpcCalls[1]).toMatchObject({
+    expect(supabase.rpcCalls[2]).toMatchObject({
       name: "record_operations_dsw_package_status_snapshot_membership",
       args: {
         p_snapshot_id: "00000000-0000-4000-8000-000000000002",
@@ -160,10 +170,10 @@ describe("ingestDswPackageStatusWorkbook", () => {
         p_service_date: "2026-07-27",
       },
     });
-    expect(supabase.rpcCalls[1].args.p_tracking_refs).toEqual([
+    expect(supabase.rpcCalls[2].args.p_tracking_refs).toEqual([
       expect.stringMatching(/^v1_[a-f0-9]{64}$/),
     ]);
-    expect(supabase.rpcCalls[2]).toMatchObject({
+    expect(supabase.rpcCalls[3]).toMatchObject({
       name: "attach_operations_dsw_manifest_tracking_refs",
       args: {
         p_snapshot_id: "00000000-0000-4000-8000-000000000002",
@@ -171,8 +181,8 @@ describe("ingestDswPackageStatusWorkbook", () => {
         p_service_date: "2026-07-27",
       },
     });
-    expect(JSON.stringify(supabase.rpcCalls[2].args.p_rows)).toContain(TRACKING_ID);
-    expect(supabase.rpcCalls[3]).toMatchObject({
+    expect(JSON.stringify(supabase.rpcCalls[3].args.p_rows)).toContain(TRACKING_ID);
+    expect(supabase.rpcCalls[4]).toMatchObject({
       name: "record_operations_express_progress_snapshot",
       args: {
         p_company_id: "00000000-0000-4000-8000-000000000001",
@@ -187,7 +197,7 @@ describe("ingestDswPackageStatusWorkbook", () => {
     );
   });
 
-  it("fails closed when the Runner date disagrees with the workbook", async () => {
+  it("fails in ingestion when the collection date disagrees with the workbook", async () => {
     const supabase = fakeSupabase();
     await expect(
       ingestDswPackageStatusWorkbook({
@@ -197,16 +207,13 @@ describe("ingestDswPackageStatusWorkbook", () => {
         filename: "PackageLevelDetails.xls",
         artifact: {
           id: "00000000-0000-4000-8000-000000000003",
-          service_date: "2026-07-27",
+          service_date: "2026-07-26",
           runner_artifact_json: {
             artifact_key: "DSW_ALL_STATUS_CODE_PACKAGES",
-            service_date_raw: "2026-07-26",
-            contract_number: "C1234567",
-            expected_package_count: 1,
           },
         },
       })
-    ).rejects.toThrow("does not match its Runner metadata");
+    ).rejects.toThrow("does not match its collection artifact");
     expect(supabase.rpcCalls).toHaveLength(0);
   });
 });

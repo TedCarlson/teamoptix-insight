@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { processCapturedManifestArtifacts } from "@/features/operations/manifests/manifest.processor";
 import { manifestIdentityFromBuffer } from "@/features/operations/manifests/manifest.identity";
+import {
+  canonicalManifestFilename,
+  expectedManifestType,
+  isManifestCollectionArtifact,
+} from "@/features/operations/reports/automation/collectionArtifactAuthority";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 
 export const runtime = "nodejs";
@@ -37,14 +42,6 @@ function parseLimit(req: NextRequest) {
   return Math.max(1, Math.min(25, Math.trunc(raw)));
 }
 
-function isManifestCollectionArtifact(row: any) {
-  return ["Delivery Manifest.xlsx", "Pickup Manifest.xlsx"].includes(row.normalized_filename);
-}
-
-function expectedManifestType(row: any) {
-  return row.normalized_filename === "Delivery Manifest.xlsx" ? "delivery" : "pickup";
-}
-
 async function prepareManifestCollectionArtifacts(
   supabase: any,
   limit: number,
@@ -55,9 +52,8 @@ async function prepareManifestCollectionArtifacts(
     .select("*")
     .eq("artifact_kind", "REPORT_FILE")
     .in("artifact_status", ["READY_FOR_INGEST", "FAILED"])
-    .in("normalized_filename", ["Delivery Manifest.xlsx", "Pickup Manifest.xlsx"])
     .order("created_at", { ascending: true })
-    .limit(Math.max(1, Math.min(limit, 250)));
+    .limit(250);
 
   if (collectionRequestId) {
     artifactQuery = artifactQuery.eq(
@@ -71,7 +67,9 @@ async function prepareManifestCollectionArtifacts(
   if (error) throw new Error(error.message);
 
   const prepared = [];
-  for (const artifact of (artifacts ?? []).filter(isManifestCollectionArtifact)) {
+  for (const artifact of (artifacts ?? [])
+    .filter(isManifestCollectionArtifact)
+    .slice(0, Math.max(1, Math.min(limit, 250)))) {
     const failedByPromotion = artifact.artifact_status === "FAILED" &&
       artifact.ingest_metadata_json?.source === "promote_operations_collection_manifest_artifacts";
     if (artifact.artifact_status === "FAILED" && !failedByPromotion) continue;
@@ -84,6 +82,9 @@ async function prepareManifestCollectionArtifacts(
 
       const identity = manifestIdentityFromBuffer(Buffer.from(await blob.arrayBuffer()));
       const expectedType = expectedManifestType(artifact);
+      if (!expectedType || expectedType === "combined") {
+        throw new Error("Manifest source lane is unsupported by the ingestion pipeline.");
+      }
       if (identity.manifest_type !== expectedType) {
         throw new Error(`Manifest identity mismatch: artifact expects ${expectedType}, Header identifies ${identity.manifest_type}.`);
       }
@@ -103,7 +104,7 @@ async function prepareManifestCollectionArtifacts(
         header_page: identity.source_page,
         source_download_filename: artifact.runner_artifact_json?.source_download_filename ?? artifact.original_filename,
         canonical_filename: identity.canonical_filename,
-        identity_authority: "WORKBOOK_HEADER",
+        identity_authority: "INGESTION_PIPELINE",
       };
 
       const { error: updateError } = await supabase.schema("core")
@@ -111,6 +112,7 @@ async function prepareManifestCollectionArtifacts(
         .update({
           service_date: identity.service_date,
           original_filename: identity.canonical_filename,
+          normalized_filename: canonicalManifestFilename(identity.manifest_type),
           artifact_status: "READY_FOR_INGEST",
           runner_artifact_json: runnerArtifact,
           error_message: null,
@@ -118,7 +120,7 @@ async function prepareManifestCollectionArtifacts(
             ...(artifact.ingest_metadata_json ?? {}),
             source: "prepare_manifest_collection_artifacts",
             prepared_at: new Date().toISOString(),
-            identity_authority: "WORKBOOK_HEADER",
+            identity_authority: "INGESTION_PIPELINE",
             manifest_identity: identity,
           },
           updated_at: new Date().toISOString(),

@@ -165,9 +165,9 @@ def request_payload(args: argparse.Namespace, reports: list[str]) -> dict[str, A
             continue
         targets.append(REPORT_TARGETS[report])
         if report == "DSW":
-            # All Codes is part of the DSW contract. It remains optional only
-            # when the DSW reports zero status-code packages and exposes no
-            # drill-down link.
+            # All Codes is an independent DSW export and the sole source of
+            # package code evidence. The runner only looks for its Contract
+            # Total footer link; it does not interpret the displayed count.
             targets.append(DSW_ALL_CODES_TARGET)
     previous_day = args.request_type == "PREVIOUS_DAY_CLOSE"
     return {
@@ -640,9 +640,13 @@ def terminal_receipt(
     diagnostics: dict[str, Any],
 ) -> dict[str, Any]:
     route_identities = {
-        str((artifact.get("header_identity") or {}).get("work_area"))
+        str((artifact.get("collection_context") or {}).get(
+            "selected_work_area"
+        ))
         for artifact in artifacts
-        if (artifact.get("header_identity") or {}).get("work_area")
+        if (artifact.get("collection_context") or {}).get(
+            "selected_work_area"
+        )
     }
     artifact_counts = Counter(
         str(artifact.get("artifact_key") or "UNKNOWN")
@@ -864,6 +868,9 @@ def main() -> int:
         if artifacts and upload_error is None
         else "FAILED"
     )
+    # Source availability is collection health evidence, not an ingestion
+    # error. Only a failed collector process or failed persistence handoff is
+    # submitted as the request error.
     error_message = upload_error
     if donor_exit_code != 0:
         donor_error = f"Collector exited with status {donor_exit_code}."
@@ -872,8 +879,6 @@ def main() -> int:
             if partial
             else donor_error
         )
-    elif exception_evidence:
-        error_message = str(exception_evidence["summary"])
 
     failure = failure_evidence(
         donor_exit_code=donor_exit_code,
@@ -932,6 +937,20 @@ def main() -> int:
     )
     receipt["outcome"] = outcome
     receipt["partial"] = partial
+    receipt["collection"] = {
+        "health": (
+            "FAILED"
+            if donor_exit_code != 0 or upload_error is not None
+            else "EXCEPTIONS"
+            if exception_evidence
+            else "HEALTHY"
+        ),
+        "completed_at": utc_iso(completed_at),
+        "artifact_count": len(artifacts),
+        "exception_count": sum(
+            (exception_evidence or {}).get("event_counts", {}).values()
+        ),
+    }
     if exception_evidence:
         receipt["exceptions"] = exception_evidence
     if error_message:

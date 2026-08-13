@@ -15,8 +15,6 @@ import shutil
 import threading
 from datetime import datetime
 
-from rename_files import renameFile
-from extract_data import extractDataFromFolder
 
 from webdriver_manager.chrome import ChromeDriverManager
 from connections import getConnection, closeConnection, getScrapingConfig, getMainFolder, writeError, isPlatformLinux
@@ -234,22 +232,10 @@ def main(retry=0):
 
     driver.quit()
 
-    service_area_summary = os.path.join(DOWNLOAD_FOLDER, "ServiceAreaSummary.xls")
-    service_area_status = os.path.join(DOWNLOAD_FOLDER, "ServiceAreaStatus.xls")
-
-    if os.path.exists(service_area_summary):
-        renameFile(os.path.basename(DOWNLOAD_FOLDER), "ServiceAreaSummary.xls", DOWNLOAD_FOLDER)
-
-    if os.path.exists(service_area_status):
-        renameFile(os.path.basename(DOWNLOAD_FOLDER), "ServiceAreaStatus.xls", DOWNLOAD_FOLDER)
-
-    if os.environ.get("FCMS_WRITE_LOCAL_DATABASE", "1") == "1":
-        extractDataFromFolder(os.path.basename(DOWNLOAD_FOLDER))
-    else:
-        logging.info(
-            "Skipping legacy MySQL extraction; uploaded artifacts and "
-            "terminal receipts are authoritative."
-        )
+    logging.info(
+        "Collection complete; source files remain opaque for database "
+        "handoff and ingestion-owned validation."
+    )
 
 if __name__ == "__main__":
     main()

@@ -25,14 +25,11 @@ from datetime import datetime, timezone
 
 # from webdriver_manager.chrome import ChromeDriverManager
 
-from rename_files import renameFolder, renameDownloadedManifest
 from runtime_events import emit_runtime_event
-from extract_data import extractDataFromFolder
 from dsw_package_status import (
     collect_dsw_daily_service,
     collect_dsw_package_status,
     purge_expired_local_package_artifacts,
-    returned_route_wa_numbers,
 )
 from dro_collection import collect_dro_package_detail
 
@@ -53,11 +50,6 @@ log_file = f"daily_scraper_{datetime.fromtimestamp(time.time()).strftime('%Y-%m-
 logging.basicConfig(filename=os.path.join(log_folder, log_file), level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 #
 MAIN_FOLDER = os.path.join(getMainFolder(), 'Excels')
-MANIFEST_FINAL_STATE_FILE = os.path.join(
-    MAIN_FOLDER,
-    ".manifest-finalization.json",
-)
-
 if not os.path.exists(MAIN_FOLDER):
     os.mkdir(MAIN_FOLDER)
 
@@ -215,32 +207,21 @@ def waitForCompletedDownload(before, timeout_seconds=45):
     )
 
 
-def finalizeManifestDownload(before, expected_type, requested_at):
+def writeRunnerMetadata(path, metadata):
+    sidecar_path = path + ".runner.json"
+    temporary_path = sidecar_path + f".{os.getpid()}.tmp"
+    with open(temporary_path, "w", encoding="utf-8") as sidecar:
+        json.dump(metadata, sidecar, sort_keys=True)
+    os.replace(temporary_path, sidecar_path)
+
+
+def finalizeManifestDownload(
+    before,
+    expected_type,
+    requested_at,
+    route_identity,
+):
     downloaded_path, source_ready_at = waitForCompletedDownload(before)
-
-    identification_started_at = time.time()
-    renamed_path, metadata = renameDownloadedManifest(
-        downloaded_path,
-        expected_type=expected_type,
-    )
-
-    logging.info(
-        "Manifest canonicalized "
-        + json.dumps(
-            {
-                "expected_type": expected_type,
-                "source_download_filename": metadata.get(
-                    "source_download_filename"
-                ),
-                "canonical_filename": os.path.basename(renamed_path),
-                "service_date": metadata.get("service_date_compact"),
-                "service_area": metadata.get("service_area"),
-                "work_area": metadata.get("work_area"),
-            },
-            sort_keys=True,
-        )
-    )
-
     artifact_key = {
         "combined": "COMBINED_MANIFEST",
         "delivery": "DELIVERY_MANIFEST",
@@ -251,36 +232,42 @@ def finalizeManifestDownload(before, expected_type, requested_at):
         "delivery": "FCC_DELIVERY_MANIFESTS",
         "pickup": "FCC_PICKUP_MANIFESTS",
     }[expected_type]
+    filename = os.path.basename(downloaded_path)
+    writeRunnerMetadata(
+        downloaded_path,
+        {
+            "artifact_key": artifact_key,
+            "report_family_key": "FCC",
+            "declared_artifact_type": expected_type,
+            "source_download_filename": filename,
+            "collection_context": {
+                "selected_work_area": route_identity,
+                "selected_service_date": current_date.strftime(
+                    "%Y-%m-%d"
+                ),
+                "source_lane": lane_key,
+            },
+            "payload_authority": "INGESTION_PIPELINE",
+        },
+    )
+    logging.info(
+        "Manifest bytes collected "
+        + json.dumps(
+            {
+                "declared_artifact_type": expected_type,
+                "source_download_filename": filename,
+                "selected_work_area": route_identity,
+            },
+            sort_keys=True,
+        )
+    )
+
     event_common = {
         "artifact_key": artifact_key,
         "lane_key": lane_key,
-        "route_identity": metadata.get("work_area"),
-        "filename": os.path.basename(renamed_path),
+        "route_identity": route_identity,
+        "filename": filename,
     }
-    emit_runtime_event(
-        "ARTIFACT_IDENTIFICATION_STARTED",
-        "ARTIFACT_IDENTIFICATION",
-        occurred_at=datetime.fromtimestamp(
-            identification_started_at, timezone.utc
-        ).isoformat().replace("+00:00", "Z"),
-        **event_common,
-    )
-    emit_runtime_event(
-        "ARTIFACT_IDENTIFICATION_COMPLETED",
-        "ARTIFACT_IDENTIFICATION",
-        duration_ms=int((time.time() - identification_started_at) * 1000),
-        metadata={
-            "source_download_filename": metadata.get(
-                "source_download_filename"
-            ),
-            "canonical_filename": os.path.basename(renamed_path),
-            "header_authoritative": metadata.get(
-                "header_authoritative",
-                False,
-            ),
-        },
-        **event_common,
-    )
     emit_runtime_event(
         "SOURCE_REQUESTED",
         "SOURCE",
@@ -307,7 +294,7 @@ def finalizeManifestDownload(before, expected_type, requested_at):
     )
     emit_runtime_event("DOWNLOAD_COMPLETED", "DOWNLOAD", **event_common)
 
-    return renamed_path
+    return downloaded_path
 
 
 def collectOptionalManifest(
@@ -412,6 +399,7 @@ def collectOptionalManifest(
             before_download,
             expected_type,
             requested_at,
+            route_identity,
         )
     except Exception as error:
         logging.info(
@@ -664,96 +652,6 @@ REQUESTED_MANIFEST_TYPES = requested_manifest_types()
 
 def should_download_manifest(manifest_type):
     return manifest_type in REQUESTED_MANIFEST_TYPES
-
-
-def load_returned_dsw_routes():
-    candidates = [
-        os.path.join(DOWNLOAD_FOLDER, filename)
-        for filename in os.listdir(DOWNLOAD_FOLDER)
-        if filename.lower() in {
-            "daily service worksheet.xls",
-            "daily service worksheet.xlsx",
-        }
-    ]
-    if not candidates:
-        emit_runtime_event(
-            "NEEDS_ATTENTION",
-            "SOURCE_DISCOVERY",
-            lane_key="FCC_P_AND_D",
-            metadata={
-                "reason": "FRESH_DSW_NOT_AVAILABLE",
-                "fallback": "COLLECT_ALL_MANIFESTS",
-            },
-        )
-        return set(), False
-
-    workbook_path = max(candidates, key=os.path.getmtime)
-    try:
-        return returned_route_wa_numbers(workbook_path), True
-    except Exception as error:
-        logging.info("Fresh DSW eligibility read failed: %s", error)
-        emit_runtime_event(
-            "NEEDS_ATTENTION",
-            "SOURCE_DISCOVERY",
-            lane_key="FCC_P_AND_D",
-            metadata={
-                "reason": "FRESH_DSW_READ_FAILED",
-                "error_type": type(error).__name__,
-                "fallback": "COLLECT_ALL_MANIFESTS",
-            },
-        )
-        return set(), False
-
-
-def load_manifest_final_state():
-    empty_state = {
-        "service_date": current_date.strftime("%Y-%m-%d"),
-        "routes": {},
-    }
-    try:
-        with open(
-            MANIFEST_FINAL_STATE_FILE,
-            "r",
-            encoding="utf-8",
-        ) as state_file:
-            state = json.load(state_file)
-        if state.get("service_date") != empty_state["service_date"]:
-            return empty_state
-        if not isinstance(state.get("routes"), dict):
-            return empty_state
-        return state
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        return empty_state
-
-
-def write_manifest_final_state(state):
-    temporary = f"{MANIFEST_FINAL_STATE_FILE}.{os.getpid()}.tmp"
-    with open(temporary, "w", encoding="utf-8") as state_file:
-        json.dump(state, state_file, sort_keys=True)
-    os.chmod(temporary, 0o600)
-    os.replace(temporary, MANIFEST_FINAL_STATE_FILE)
-
-
-def completed_manifest_types(state, wa_number, route_returned):
-    routes = state["routes"]
-    if not route_returned:
-        if wa_number in routes:
-            routes.pop(wa_number, None)
-            write_manifest_final_state(state)
-        return set()
-    return set(routes.get(wa_number, []))
-
-
-def record_final_manifest_success(state, wa_number, manifest_type):
-    completed = set(state["routes"].get(wa_number, []))
-    completed.add(manifest_type)
-    state["routes"][wa_number] = sorted(completed)
-    write_manifest_final_state(state)
-
-
-def work_area_wa_number(work_area):
-    match = re.match(r"\s*(\d{3,4})\b", str(work_area or ""))
-    return match.group(1) if match else ""
 
 
 def should_run_section(section_name):
@@ -1302,9 +1200,6 @@ def main(section_='', option_=0, retry=1):
             select_element = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//select[@id='manifestForm:workAreas']")))
 
             total_select_options = len(select_element.find_elements(By.XPATH, 'option'))
-            returned_routes, fresh_dsw_available = load_returned_dsw_routes()
-            manifest_final_state = load_manifest_final_state()
-
             for i in range(option_, total_select_options):
                 if i == 0: continue
                 select_element = WebDriverWait(driver, 30).until(
@@ -1318,42 +1213,6 @@ def main(section_='', option_=0, retry=1):
                     or option.get_attribute("value")
                     or f"option-{i}"
                 ).strip()
-                wa_number = work_area_wa_number(work_area_hint)
-                route_returned = (
-                    fresh_dsw_available
-                    and wa_number in returned_routes
-                )
-                completed_types = completed_manifest_types(
-                    manifest_final_state,
-                    wa_number,
-                    route_returned,
-                )
-                due_manifest_types = (
-                    REQUESTED_MANIFEST_TYPES - completed_types
-                    if route_returned
-                    else set(REQUESTED_MANIFEST_TYPES)
-                )
-
-                if not due_manifest_types:
-                    logging.info(
-                        "Skipping finalized route manifests for %s",
-                        work_area_hint,
-                    )
-                    emit_runtime_event(
-                        "SOURCE_SKIPPED",
-                        "SOURCE_DISCOVERY",
-                        lane_key="FCC_P_AND_D",
-                        route_identity=work_area_hint,
-                        metadata={
-                            "reason": "FINAL_MANIFEST_ALREADY_COLLECTED",
-                            "dsw_returned": True,
-                            "completed_manifest_types": sorted(
-                                completed_types
-                            ),
-                        },
-                    )
-                    continue
-
                 logging.info(f'Selecting option {i}')
                 ACTIVE_SECTION_OPTION = i
                 time.sleep(1)
@@ -1392,7 +1251,6 @@ def main(section_='', option_=0, retry=1):
                 # Combined Manifest download remains optional.
                 if (
                     should_download_manifest("combined")
-                    and "combined" in due_manifest_types
                 ):
                     logging.info("Waiting for loading...")
                     combined_path = collectOptionalManifest(
@@ -1401,12 +1259,6 @@ def main(section_='', option_=0, retry=1):
                         expected_type="combined",
                         route_identity=selected_work_area,
                     )
-                    if route_returned and combined_path:
-                        record_final_manifest_success(
-                            manifest_final_state,
-                            wa_number,
-                            "combined",
-                        )
                 else:
                     logging.info(
                         "Skipping Combined Manifest download after initialization"
@@ -1415,7 +1267,6 @@ def main(section_='', option_=0, retry=1):
                 # Delivery Manifest
                 if (
                     should_download_manifest("delivery")
-                    and "delivery" in due_manifest_types
                 ):
                     time.sleep(1)
                     clickManifestTab(
@@ -1433,19 +1284,12 @@ def main(section_='', option_=0, retry=1):
                         expected_type="delivery",
                         route_identity=selected_work_area,
                     )
-                    if route_returned and delivery_path:
-                        record_final_manifest_success(
-                            manifest_final_state,
-                            wa_number,
-                            "delivery",
-                        )
                 else:
                     logging.info("Skipping Delivery Manifest")
 
                 # Pickup manifest
                 if (
                     should_download_manifest("pickup")
-                    and "pickup" in due_manifest_types
                 ):
                     time.sleep(1)
                     clickManifestTab(
@@ -1463,12 +1307,6 @@ def main(section_='', option_=0, retry=1):
                         expected_type="pickup",
                         route_identity=selected_work_area,
                     )
-                    if route_returned and pickup_path:
-                        record_final_manifest_success(
-                            manifest_final_state,
-                            wa_number,
-                            "pickup",
-                        )
                 else:
                     logging.info("Skipping Pickup Manifest")
             ACTIVE_SECTION_OPTION = 0
@@ -1763,15 +1601,10 @@ def main(section_='', option_=0, retry=1):
     else:
         driver.quit()
     time.sleep(5)
-    success = renameFolder(DOWNLOAD_FOLDER)
-
-    if os.environ.get("FCMS_WRITE_LOCAL_DATABASE", "1") == "1":
-        extractDataFromFolder(os.path.basename(DOWNLOAD_FOLDER))
-    else:
-        logging.info(
-            "Skipping legacy MySQL extraction; uploaded artifacts and "
-            "terminal receipts are authoritative."
-        )
+    logging.info(
+        "Collection complete; opaque artifacts are ready for database "
+        "handoff and ingestion-owned validation."
+    )
 
 if __name__ == "__main__":
     main()

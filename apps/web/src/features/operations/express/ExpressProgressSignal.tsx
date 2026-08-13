@@ -36,7 +36,7 @@ export function ExpressProgressSignal({
   const stopLinkMissing = Number(dataHealth?.stopLinkMissing ?? 0);
   const stopLinkAmbiguous = Number(dataHealth?.stopLinkAmbiguous ?? 0);
   const healthNote = [
-    referenceUnavailable ? "All Codes matching unavailable" : null,
+    referenceUnavailable ? "All Codes status matching unavailable" : null,
     identityMissing > 0 ? `${identityMissing} missing tracking ${identityMissing === 1 ? "identity" : "identities"}` : null,
     stopLinkMissing > 0 ? `${stopLinkMissing} missing stop ${stopLinkMissing === 1 ? "link" : "links"}` : null,
     stopLinkAmbiguous > 0 ? `${stopLinkAmbiguous} ambiguous stop ${stopLinkAmbiguous === 1 ? "link" : "links"}` : null,
@@ -103,8 +103,8 @@ export function ExpressProgressSignal({
         ))}
         </div>
       ) : (
-        <span style={{ color: referenceUnavailable ? "#b45309" : "#64748b", fontSize: compact ? 9 : 10, fontWeight: 850 }}>
-          {referenceUnavailable ? "Express evidence unavailable" : "No Express volume"}
+        <span style={{ color: "#64748b", fontSize: compact ? 9 : 10, fontWeight: 850 }}>
+          No Express volume in manifests
         </span>
       )}
 

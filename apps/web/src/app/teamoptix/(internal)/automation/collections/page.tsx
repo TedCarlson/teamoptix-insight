@@ -23,6 +23,18 @@ function exceptionExplanation(message: unknown) {
     : "This request did not reach a clean outcome. Open the record to see the affected stage.";
 }
 
+function reviewMessage(request: any) {
+  const collection = request.collection_error_message ??
+    request.collection_exception_message;
+  const ingestion = request.ingestion_error_message ?? (
+    request.error_message !== collection ? request.error_message : null
+  );
+  return [
+    collection ? `Collection: ${collection}` : null,
+    ingestion ? `Ingestion: ${ingestion}` : null,
+  ].filter(Boolean).join(" ") || null;
+}
+
 function compactDuration(value: unknown) {
   if (value === null || value === undefined || value === "") return null;
   const milliseconds = Number(value);
@@ -81,11 +93,15 @@ function runtimeSummary(request: any, artifacts: any[]) {
 export default async function Page() {
   const data = await getAutomationOverview();
   const attention = data.requests.filter(isCollectionRequestException);
-  const failed = data.requests.filter((row: any) => row.request_status === "FAILED");
+  const failed = data.requests.filter((row: any) =>
+    ["FAILED"].includes(String(row.collection_health).toUpperCase()) ||
+    ["FAILED"].includes(String(row.ingestion_status).toUpperCase()) ||
+    (!row.collection_health && !row.ingestion_status && row.request_status === "FAILED")
+  );
   const active = data.requests.filter(isActiveCollectionRequest);
   const complete = data.requests.filter(isCleanCompleteCollectionRequest);
   return <TeamOptixDomainOverview eyebrow="TeamOptix · Automation" title="Collections" description="Follow every generated request from demand through ingestion evidence."
     metrics={[{ label: "7-day requests", value: data.requests.length, detail: "Governed customer scope" }, { label: "Active", value: active.length, detail: "Queued through ingestion" }, { label: "Clean completion", value: complete.length, detail: "Finished without a recorded exception" }, { label: "Needs review", value: attention.length, detail: `${failed.length} failed · ${attention.length - failed.length} completed with exceptions` }]}
-    panels={[{ eyebrow: "Collection trail", title: "Recent requests", rows: data.requests.slice(0, 12).map((row: any) => ({ title: `${String(row.request_type).replaceAll("_", " ")} · ${row.request_status === "COMPLETE" && row.error_message ? "COMPLETE WITH EXCEPTIONS" : row.request_status}`, detail: <>{row.company_slug} · <LocalDateTime value={String(row.created_at)} /> · {runtimeSummary(row, data.artifacts)}{row.error_message ? ` · Review: ${exceptionExplanation(row.error_message)}` : ""}</>, status: row.request_status === "COMPLETE" && row.error_message ? "Degraded" : row.request_status, href: `/teamoptix/automation/collections/${row.id}` })) }, { eyebrow: "Needs review", title: "What requires attention—and why", rows: attention.length ? attention.slice(0, 8).map((row: any) => ({ title: `${String(row.request_type).replaceAll("_", " ")} · ${row.request_status === "FAILED" ? "FAILED" : "COMPLETED WITH EXCEPTIONS"}`, detail: `${row.company_slug} · ${runtimeSummary(row, data.artifacts)} · ${exceptionExplanation(row.error_message)}`, status: row.request_status === "FAILED" ? "Failed" : "Degraded", href: `/teamoptix/automation/collections/${row.id}` })) : [{ title: "Nothing requires review", detail: "Every collection in the trailing seven days finished without a recorded exception.", status: "Healthy", href: "/teamoptix/automation/collections" }] }]}
+    panels={[{ eyebrow: "Collection trail", title: "Recent requests", rows: data.requests.slice(0, 12).map((row: any) => ({ title: `${String(row.request_type).replaceAll("_", " ")} · Collection ${row.collection_health ?? "PENDING"} · Ingestion ${row.ingestion_status ?? row.request_status}`, detail: <>{row.company_slug} · <LocalDateTime value={String(row.created_at)} /> · {runtimeSummary(row, data.artifacts)}{reviewMessage(row) ? ` · Review: ${exceptionExplanation(reviewMessage(row))}` : ""}</>, status: isCollectionRequestException(row) ? "Degraded" : row.ingestion_status ?? row.request_status, href: `/teamoptix/automation/collections/${row.id}` })) }, { eyebrow: "Needs review", title: "What requires attention—and why", rows: attention.length ? attention.slice(0, 8).map((row: any) => ({ title: `${String(row.request_type).replaceAll("_", " ")} · Collection ${row.collection_health ?? "PENDING"} · Ingestion ${row.ingestion_status ?? row.request_status}`, detail: `${row.company_slug} · ${runtimeSummary(row, data.artifacts)} · ${exceptionExplanation(reviewMessage(row))}`, status: ["FAILED"].includes(String(row.collection_health).toUpperCase()) || ["FAILED"].includes(String(row.ingestion_status).toUpperCase()) ? "Failed" : "Degraded", href: `/teamoptix/automation/collections/${row.id}` })) : [{ title: "Nothing requires review", detail: "Every collection in the trailing seven days finished without a recorded exception.", status: "Healthy", href: "/teamoptix/automation/collections" }] }]}
   />;
 }

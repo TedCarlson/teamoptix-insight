@@ -5,7 +5,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 import dsw_package_status
-import pandas as pd
 
 
 class FakeDriver:
@@ -30,7 +29,34 @@ class BrokenDriver:
     switch_to = SwitchTo()
 
 
+class ScriptCaptureDriver:
+    def __init__(self):
+        self.script = None
+
+    def execute_script(self, script):
+        self.script = script
+        return {"status": "SOURCE_NOT_OFFERED", "link": None}
+
+
 class DswPackageStatusTests(unittest.TestCase):
+    def test_discovery_maps_shifted_footer_links_without_reading_count(self):
+        driver = ScriptCaptureDriver()
+
+        dsw_package_status.discover_dsw_package_status(driver)
+
+        self.assertIn("cell.rowSpan", driver.script)
+        self.assertIn("cell.colSpan", driver.script)
+        self.assertIn(
+            "grid[rowIndex + rowOffset][columnIndex + columnOffset]",
+            driver.script,
+        )
+        self.assertIn("Contract\\s+(C\\d+)\\s+Total", driver.script)
+        self.assertIn("Colocation\\s+Total", driver.script)
+        self.assertIn("origin.columnIndex", driver.script)
+        self.assertIn('targetCell.querySelector("a")', driver.script)
+        self.assertNotIn("expected_package_count", driver.script)
+        self.assertNotIn("INVALID_COUNT", driver.script)
+
     def test_fresh_dsw_replaces_prior_same_day_copies(self):
         with tempfile.TemporaryDirectory() as download_folder:
             folder = Path(download_folder)
@@ -55,33 +81,6 @@ class DswPackageStatusTests(unittest.TestCase):
             self.assertEqual(canonical.read_bytes(), b"fresh")
             self.assertFalse(duplicate.exists())
             self.assertFalse(downloaded.exists())
-
-    @patch.object(dsw_package_status.pd, "read_excel")
-    def test_returned_routes_require_all_dot_fields(self, read_excel):
-        read_excel.return_value = pd.DataFrame(
-            [
-                ["Daily Service Worksheet"],
-                [""],
-                ["DOT Hours and Miles"],
-                [
-                    "Svc Area #",
-                    "WA Name",
-                    "WA#",
-                    "Miles",
-                    "On Road Hours",
-                    "On Duty Hours",
-                ],
-                ["309747", "BPV 02", "477", "138", "07:13", "08:02"],
-                ["309747", "BPV 03", "426", "", "10:06", "10:42"],
-                ["Contract Totals", "", "", "", "", ""],
-            ]
-        )
-
-        returned = dsw_package_status.returned_route_wa_numbers(
-            "synthetic.xls"
-        )
-
-        self.assertEqual(returned, {"477"})
 
     @patch.object(dsw_package_status, "emit_runtime_event")
     def test_local_retention_removes_only_expired_package_files(
@@ -122,15 +121,13 @@ class DswPackageStatusTests(unittest.TestCase):
 
     @patch.object(dsw_package_status, "emit_runtime_event")
     @patch.object(dsw_package_status, "discover_dsw_package_status")
-    def test_zero_without_link_is_empty_not_attention(
+    def test_absent_export_control_reports_collection_health(
         self,
         discover,
         emit,
     ):
         discover.return_value = {
-            "status": "FOUND",
-            "contract_number": "C1234567",
-            "expected_package_count": 0,
+            "status": "SOURCE_NOT_OFFERED",
             "link": None,
         }
         with tempfile.TemporaryDirectory() as download_folder:
@@ -142,20 +139,18 @@ class DswPackageStatusTests(unittest.TestCase):
                 service_date="2026-07-28",
             )
 
-        self.assertEqual(result["status"], "EMPTY_CONFIRMED")
-        self.assertEqual(emit.call_args.args[0], "EMPTY_CONFIRMED")
+        self.assertEqual(result["status"], "SOURCE_UNAVAILABLE")
+        self.assertEqual(emit.call_args.args[0], "SOURCE_UNAVAILABLE")
 
     @patch.object(dsw_package_status, "emit_runtime_event")
     @patch.object(dsw_package_status, "discover_dsw_package_status")
-    def test_positive_count_without_link_needs_attention(
+    def test_runner_does_not_interpret_source_count_text(
         self,
         discover,
         emit,
     ):
         discover.return_value = {
             "status": "FOUND",
-            "contract_number": "C1234567",
-            "expected_package_count": 3,
             "link": None,
         }
         with tempfile.TemporaryDirectory() as download_folder:
@@ -167,12 +162,12 @@ class DswPackageStatusTests(unittest.TestCase):
                 service_date="2026-07-28",
             )
 
-        self.assertEqual(result["status"], "NEEDS_ATTENTION")
+        self.assertEqual(result["status"], "SOURCE_UNAVAILABLE")
         self.assertEqual(
             result["reason"],
-            "POSITIVE_COUNT_WITHOUT_LINK",
+            "EXPORT_CONTROL_NOT_AVAILABLE",
         )
-        self.assertEqual(emit.call_args.args[0], "NEEDS_ATTENTION")
+        self.assertEqual(emit.call_args.args[0], "SOURCE_UNAVAILABLE")
 
     @patch.object(dsw_package_status, "emit_runtime_event")
     @patch.object(
@@ -194,7 +189,7 @@ class DswPackageStatusTests(unittest.TestCase):
                 service_date="2026-07-28",
             )
 
-        self.assertEqual(result["status"], "NEEDS_ATTENTION")
+        self.assertEqual(result["status"], "DOWNLOAD_FAILED")
         self.assertEqual(result["reason"], "selector changed")
 
 

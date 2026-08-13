@@ -22,6 +22,25 @@ describe("collection request outcome classification", () => {
     expect(isCollectionRequestException({ request_status: "FAILED", error_message: null })).toBe(true);
   });
 
+  it("keeps collection and ingestion outcomes independent", () => {
+    expect(isCollectionRequestException({
+      request_status: "FAILED",
+      error_message: "canceling statement due to statement timeout",
+      collection_health: "HEALTHY",
+      ingestion_status: "FAILED",
+    })).toBe(true);
+    expect(isCleanCompleteCollectionRequest({
+      request_status: "COMPLETE",
+      collection_health: "HEALTHY",
+      ingestion_status: "COMPLETE",
+    })).toBe(true);
+    expect(isCleanCompleteCollectionRequest({
+      request_status: "COMPLETE",
+      collection_health: "EXCEPTIONS",
+      ingestion_status: "COMPLETE",
+    })).toBe(false);
+  });
+
   it("closes an older request failure after a later clean completion", () => {
     const attention = currentCollectionRequestExceptions([
       { company_slug: "beacon", request_type: "DRO_AM", request_status: "FAILED", created_at: "2026-08-07T08:00:00Z" },

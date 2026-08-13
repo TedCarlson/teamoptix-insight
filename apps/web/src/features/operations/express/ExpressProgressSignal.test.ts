@@ -40,8 +40,8 @@ describe("ExpressProgressSignal", () => {
       })
     );
 
-    expect(markup).toContain("Express evidence unavailable");
-    expect(markup).not.toContain("No Express volume");
+    expect(markup).toContain("No Express volume in manifests");
+    expect(markup).toContain("All Codes status matching unavailable");
   });
 
   it("retains the total when a populated signal has a data-health warning", () => {
@@ -54,6 +54,7 @@ describe("ExpressProgressSignal", () => {
     );
 
     expect(markup).toContain("444 total");
+    expect(markup).toContain("All Codes status matching unavailable");
     expect(markup).not.toContain(">Evidence unavailable<");
   });
 });
