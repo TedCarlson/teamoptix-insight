@@ -11,6 +11,7 @@ import {
 
 type StatusPayload = {
   operational_date?: string | null;
+  latest_ingestion_success_at?: string | null;
   rows?: OperationsCollectionRequestSignalRow[];
   runner_schedule?: OperationsRunnerSignalSchedule | null;
   operating_calendar?: OperationsSignalCalendar | null;
@@ -33,6 +34,8 @@ export function useOperationsCollectionSignal(slug: string) {
         deriveOperationsCollectionSignal({
           now: new Date(),
           operationalDate: payload.operational_date,
+          latestIngestionSuccessAt:
+            payload.latest_ingestion_success_at ?? null,
           requests: Array.isArray(payload.rows) ? payload.rows : [],
           runnerSchedule: payload.runner_schedule ?? null,
           operatingCalendar: payload.operating_calendar ?? null,

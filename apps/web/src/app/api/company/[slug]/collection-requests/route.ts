@@ -112,6 +112,7 @@ export async function GET(
         { data, error },
         { data: runnerSchedule, error: scheduleError },
         { data: inDayAssignment, error: assignmentError },
+        { data: latestIngestionSuccess, error: ingestionSuccessError },
       ] = await Promise.all([
         service
           .from("operations_collection_request_v")
@@ -145,6 +146,17 @@ export async function GET(
           .order("release_order", { ascending: true })
           .limit(1)
           .maybeSingle(),
+        // Keep the polling response bounded: return one authoritative scalar
+        // instead of expanding every request with artifact-ingest details.
+        service
+          .from("operations_collection_request_v")
+          .select("ingestion_completed_at")
+          .eq("company_id", resolved.company.id)
+          .eq("ingestion_status", "COMPLETE")
+          .not("ingestion_completed_at", "is", null)
+          .order("ingestion_completed_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ]);
 
       if (error) {
@@ -165,6 +177,12 @@ export async function GET(
           { status: 500 }
         );
       }
+      if (ingestionSuccessError) {
+        return NextResponse.json(
+          { error: ingestionSuccessError.message, rows: [] },
+          { status: 500 }
+        );
+      }
 
       const assignmentPayload =
         inDayAssignment?.assignment_payload_json &&
@@ -177,6 +195,8 @@ export async function GET(
           operational_date: operationalDate,
           company_id: resolved.company.id,
           rows: data ?? [],
+          latest_ingestion_success_at:
+            latestIngestionSuccess?.ingestion_completed_at ?? null,
           runner_schedule: runnerSchedule ?? null,
           operating_calendar: inDayAssignment
             ? {

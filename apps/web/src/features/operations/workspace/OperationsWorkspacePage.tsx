@@ -609,6 +609,8 @@ export default function OperationsWorkspacePage({
     useState<OperatingCalendarSummary | null>(null);
   const [collectionOperationalDate, setCollectionOperationalDate] =
     useState<string | null>(null);
+  const [latestIngestionSuccessAt, setLatestIngestionSuccessAt] =
+    useState<string | null>(null);
   const [canManageOperatingCalendar, setCanManageOperatingCalendar] =
     useState(false);
   const [savingOperatingOverride, setSavingOperatingOverride] = useState(false);
@@ -677,6 +679,11 @@ export default function OperationsWorkspacePage({
         setCollectionOperationalDate(
           typeof data?.operational_date === "string"
             ? data.operational_date
+            : null
+        );
+        setLatestIngestionSuccessAt(
+          typeof data?.latest_ingestion_success_at === "string"
+            ? data.latest_ingestion_success_at
             : null
         );
         setCanManageOperatingCalendar(
@@ -784,6 +791,7 @@ export default function OperationsWorkspacePage({
     return deriveOperationsCollectionSignal({
       now: new Date(signalNow),
       operationalDate: collectionOperationalDate,
+      latestIngestionSuccessAt,
       requests: collectionRequests,
       runnerSchedule,
       operatingCalendar,
@@ -791,6 +799,7 @@ export default function OperationsWorkspacePage({
   }, [
     collectionOperationalDate,
     collectionRequests,
+    latestIngestionSuccessAt,
     operatingCalendar,
     runnerSchedule,
     signalNow,
