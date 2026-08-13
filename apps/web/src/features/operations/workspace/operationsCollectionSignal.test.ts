@@ -11,10 +11,11 @@ const schedule = {
 };
 
 describe("deriveOperationsCollectionSignal", () => {
-  it("reports the success-chain contract and terminal receipt time", () => {
+  it("labels collection freshness and ingestion success independently", () => {
     const signal = deriveOperationsCollectionSignal({
       now: new Date("2026-08-09T13:07:00Z"),
       operationalDate: "2026-08-09",
+      latestIngestionSuccessAt: "2026-08-09T12:53:00Z",
       runnerSchedule: schedule,
       operatingCalendar: {
         operating_weekdays: [1, 2, 3, 4, 5, 6],
@@ -37,8 +38,38 @@ describe("deriveOperationsCollectionSignal", () => {
     expect(signal).toEqual({
       active: true,
       tone: "active",
-      copy: "Collection Active · next cycle starts on success · last update 8:52 AM",
+      collectionObservedAt: "2026-08-09T13:00:00Z",
+      ingestionSucceededAt: "2026-08-09T12:53:00Z",
+      copy: "Collection Active · next cycle starts on success · collection check-in 9:00 AM · ingestion succeeded 8:53 AM",
     });
+  });
+
+  it("does not let an ingestion error hide a completed collection", () => {
+    const signal = deriveOperationsCollectionSignal({
+      now: new Date("2026-08-09T13:07:00Z"),
+      operationalDate: "2026-08-09",
+      latestIngestionSuccessAt: "2026-08-09T12:53:00Z",
+      runnerSchedule: schedule,
+      operatingCalendar: {
+        operating_date_overrides: { "2026-08-09": "OPERATING" },
+      },
+      requests: [
+        {
+          id: "cycle-with-ingestion-error",
+          request_type: "OPERATIONS_PULSE",
+          request_status: "COMPLETE",
+          error_message: "One or more artifacts failed processing.",
+          claimed_by: "continuous-runner",
+          started_at: "2026-08-09T12:55:00Z",
+          completed_at: "2026-08-09T12:59:00Z",
+          updated_at: "2026-08-09T12:59:00Z",
+        },
+      ],
+    });
+
+    expect(signal.copy).toBe(
+      "Collection Active · next cycle starts on success · collection check-in 9:00 AM · ingestion succeeded 8:53 AM"
+    );
   });
 
   it("surfaces an explicit runner error instead of claiming collection is active", () => {
@@ -57,7 +88,9 @@ describe("deriveOperationsCollectionSignal", () => {
     expect(signal).toEqual({
       active: false,
       tone: "critical",
-      copy: "Collection failed · Collector browser disconnected.",
+      collectionObservedAt: "2026-08-11T21:22:27Z",
+      ingestionSucceededAt: null,
+      copy: "Collection failed · Collector browser disconnected. · collection check-in 5:22 PM · ingestion success unavailable",
     });
   });
 
@@ -99,7 +132,7 @@ describe("deriveOperationsCollectionSignal", () => {
     });
 
     expect(signal.copy).toBe(
-      "Collection Active · runner released for continuous collection"
+      "Collection Active · runner released for continuous collection · collection check-in 9:00 AM · ingestion success unavailable"
     );
   });
 });

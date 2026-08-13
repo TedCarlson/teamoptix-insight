@@ -29,6 +29,8 @@ export type OperationsSignalCalendar = {
 export type OperationsCollectionSignal = {
   active: boolean;
   copy: string;
+  collectionObservedAt: string | null;
+  ingestionSucceededAt: string | null;
   tone: "active" | "waiting" | "critical";
 };
 
@@ -92,9 +94,25 @@ function updateTime(value: string | null) {
   }).format(new Date(value));
 }
 
+function authorityCopy(params: {
+  collection: string;
+  collectionObservedAt: string | null;
+  ingestionSucceededAt: string | null;
+}) {
+  const collectionTime = params.collectionObservedAt
+    ? `collection check-in ${updateTime(params.collectionObservedAt)}`
+    : "collection check-in unavailable";
+  const ingestionTime = params.ingestionSucceededAt
+    ? `ingestion succeeded ${updateTime(params.ingestionSucceededAt)}`
+    : "ingestion success unavailable";
+
+  return `${params.collection} · ${collectionTime} · ${ingestionTime}`;
+}
+
 export function deriveOperationsCollectionSignal(params: {
   now: Date;
   operationalDate?: string | null;
+  latestIngestionSuccessAt?: string | null;
   requests: OperationsCollectionRequestSignalRow[];
   runnerSchedule?: OperationsRunnerSignalSchedule | null;
   operatingCalendar?: OperationsSignalCalendar | null;
@@ -105,6 +123,23 @@ export function deriveOperationsCollectionSignal(params: {
     runnerSchedule = null,
     operatingCalendar = null,
   } = params;
+  const collectionObservedAt = runnerSchedule?.runner_last_seen_at ?? null;
+  const ingestionSucceededAt = params.latestIngestionSuccessAt ?? null;
+  const signal = (
+    active: boolean,
+    tone: OperationsCollectionSignal["tone"],
+    collection: string
+  ): OperationsCollectionSignal => ({
+    active,
+    tone,
+    collectionObservedAt,
+    ingestionSucceededAt,
+    copy: authorityCopy({
+      collection,
+      collectionObservedAt,
+      ingestionSucceededAt,
+    }),
+  });
   const eastern = easternClockParts(now);
   const operationalDate = params.operationalDate ?? eastern.date;
   const dayOfWeek = new Date(`${operationalDate}T00:00:00Z`).getUTCDay();
@@ -123,8 +158,7 @@ export function deriveOperationsCollectionSignal(params: {
       )
   );
   const latestSuccessfulCollection = visibleRequests.find(
-    (request) =>
-      request.request_status === "COMPLETE" && !request.error_message
+    (request) => request.request_status === "COMPLETE"
   );
   const activeCollection = visibleRequests.find((request) =>
     ACTIVE_STATUSES.has(request.request_status)
@@ -145,13 +179,13 @@ export function deriveOperationsCollectionSignal(params: {
     );
 
   if (runnerSchedule?.runner_state === "ERROR") {
-    return {
-      active: false,
-      tone: "critical",
-      copy: runnerSchedule.runner_last_error?.trim()
+    return signal(
+      false,
+      "critical",
+      runnerSchedule.runner_last_error?.trim()
         ? `Collection failed · ${runnerSchedule.runner_last_error.trim()}`
-        : "Collection failed · runner requires attention",
-    };
+        : "Collection failed · runner requires attention"
+    );
   }
 
   if (
@@ -163,41 +197,36 @@ export function deriveOperationsCollectionSignal(params: {
       now.getTime() - new Date(runnerSchedule.runner_last_seen_at).getTime() >
         45 * 60_000)
   ) {
-    return {
-      active: false,
-      tone: "critical",
-      copy: "Collection failed · runner heartbeat is more than 45 minutes old",
-    };
+    return signal(
+      false,
+      "critical",
+      "Collection failed · runner heartbeat is more than 45 minutes old"
+    );
   }
 
   if (!active) {
     if (!operatingDateDecision.operates) {
-      return {
-        active: false,
-        tone: "waiting",
-        copy:
+      return signal(
+        false,
+        "waiting",
           operatingDateDecision.override === "CLOSED"
             ? "Collection paused · dated closure"
-            : "Collection paused · outside the operating calendar",
-      };
+            : "Collection paused · outside the operating calendar"
+      );
     }
-    return {
-      active: false,
-      tone: "waiting",
-      copy: runnerSchedule?.operations_pulse_start_time
+    return signal(
+      false,
+      "waiting",
+      runnerSchedule?.operations_pulse_start_time
         ? `Collection paused · next pulse begins ${formatScheduleClock(
             runnerSchedule.operations_pulse_start_time
           )}`
-        : "Collection paused",
-    };
+        : "Collection paused"
+    );
   }
 
   if (runnerSchedule?.runner_state === "RUNNING") {
-    return {
-      active: true,
-      tone: "active",
-      copy: "Collection Active · runner cycle in progress",
-    };
+    return signal(true, "active", "Collection Active · runner cycle in progress");
   }
 
   const activeStartedAt = activeCollection?.started_at
@@ -213,33 +242,27 @@ export function deriveOperationsCollectionSignal(params: {
       activeCollection?.request_status === "INGESTING"
         ? "processing collected files"
         : `collection running · ${elapsedMinutes} min elapsed`;
-    return {
-      active: true,
-      tone: "active",
-      copy: `Collection Active · ${progress}`,
-    };
+    return signal(true, "active", `Collection Active · ${progress}`);
   }
 
   if (
     latestCollection?.request_status === "FAILED" ||
     latestCollection?.request_status === "CANCELLED"
   ) {
-    return {
-      active: true,
-      tone: "active",
-      copy: `Collection recovery active · last attempt ${updateTime(
+    return signal(
+      true,
+      "active",
+      `Collection recovery active · last attempt ${updateTime(
         latestCollection.updated_at
-      )}`,
-    };
+      )}`
+    );
   }
 
-  return {
-    active: true,
-    tone: "active",
-    copy: latestSuccessfulCollection?.completed_at
-      ? `Collection Active · next cycle starts on success · last update ${updateTime(
-          latestSuccessfulCollection.completed_at
-        )}`
-      : "Collection Active · runner released for continuous collection",
-  };
+  return signal(
+    true,
+    "active",
+    latestSuccessfulCollection?.completed_at
+      ? "Collection Active · next cycle starts on success"
+      : "Collection Active · runner released for continuous collection"
+  );
 }
