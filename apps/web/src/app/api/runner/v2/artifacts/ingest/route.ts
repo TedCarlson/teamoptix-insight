@@ -4,6 +4,7 @@ import { manifestIdentityFromBuffer } from "@/features/operations/manifests/mani
 import { processManifestArtifact } from "@/features/operations/manifests/manifest.processor";
 import {
   isManifestCollectionArtifact,
+  isRetryableIngestionTimeout,
   manifestPreparationPayload,
 } from "@/features/operations/reports/automation/collectionArtifactAuthority";
 import {
@@ -39,7 +40,7 @@ function isRunnerAuthorized(req: NextRequest) {
 async function markArtifact(params: {
   supabase: any;
   artifactId: string;
-  status: "INGESTING" | "INGESTED" | "FAILED" | "IGNORED";
+  status: "READY_FOR_INGEST" | "INGESTING" | "INGESTED" | "FAILED" | "IGNORED";
   metadata: Record<string, unknown>;
   reportBatchId?: string | null;
   errorMessage?: string | null;
@@ -353,18 +354,24 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Direct artifact ingestion failed.";
+    const retryable = isRetryableIngestionTimeout(error);
     if (supabase && artifactId) {
       await markArtifact({
         supabase,
         artifactId,
-        status: "FAILED",
+        status: retryable ? "READY_FOR_INGEST" : "FAILED",
         metadata: {
           source: "runner_v2_direct_ingestion",
-          phase: "FALLBACK_REQUIRED",
+          phase: retryable
+            ? "STORAGE_FALLBACK_RETRY_QUEUED"
+            : "FALLBACK_REQUIRED",
           failed_at: new Date().toISOString(),
+          retry_reason: retryable
+            ? "DATABASE_STATEMENT_TIMEOUT"
+            : null,
           error: message,
         },
-        errorMessage: message,
+        errorMessage: retryable ? null : message,
       }).catch(() => null);
     }
     console.error(
@@ -375,6 +382,10 @@ export async function POST(req: NextRequest) {
         elapsed_ms: Date.now() - startedAt,
       })
     );
-    return jsonError(message, 422, Date.now() - startedAt);
+    return jsonError(
+      message,
+      retryable ? 503 : 422,
+      Date.now() - startedAt
+    );
   }
 }

@@ -39,6 +39,12 @@ REQUEST = {
 
 
 class DirectIngestionTests(unittest.TestCase):
+    def test_direct_client_waits_within_the_server_ingestion_window(self):
+        client = MODULE.DirectIngestionClient(
+            "https://example.test/ingest", "token"
+        )
+        self.assertEqual(client.timeout_seconds, 25.0)
+
     def test_transport_name_is_readable_unique_and_extension_honest(self):
         self.assertEqual(
             MODULE.transport_filename(

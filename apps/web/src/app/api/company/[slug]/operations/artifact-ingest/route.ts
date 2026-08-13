@@ -7,7 +7,10 @@ import {
   resolveCompanyBySlug,
 } from "@/features/automation/server/automation.repository";
 import { ingestArtifactWorkbook } from "@/features/operations/reports/automation/ingestArtifactWorkbook";
-import { isManifestCollectionArtifact } from "@/features/operations/reports/automation/collectionArtifactAuthority";
+import {
+  isManifestCollectionArtifact,
+  isRetryableIngestionTimeout,
+} from "@/features/operations/reports/automation/collectionArtifactAuthority";
 
 export const runtime = "nodejs";
 
@@ -36,7 +39,7 @@ function isRunnerAuthorized(req: NextRequest) {
 async function markArtifact(params: {
   supabase: any;
   artifactId: string;
-  status: "INGESTING" | "INGESTED" | "FAILED" | "IGNORED";
+  status: "READY_FOR_INGEST" | "INGESTING" | "INGESTED" | "FAILED" | "IGNORED";
   metadata?: Record<string, unknown>;
   reportBatchId?: string | null;
   errorMessage?: string | null;
@@ -231,6 +234,33 @@ async function handleArtifactIngest(req: NextRequest, context: RouteContext) {
         const message = error instanceof Error ? error.message : "Artifact ingest failed.";
         const optionalPackageStatus =
           artifactKey === "DSW_ALL_STATUS_CODE_PACKAGES";
+
+        if (
+          isRetryableIngestionTimeout(error) &&
+          Number(artifact.attempt_count ?? 0) < 3
+        ) {
+          await markArtifact({
+            supabase,
+            artifactId: artifact.id,
+            status: "READY_FOR_INGEST",
+            metadata: {
+              source: "artifact_ingest",
+              phase: "RETRY_SCHEDULED",
+              retry_reason: "DATABASE_STATEMENT_TIMEOUT",
+              retry_scheduled_at: new Date().toISOString(),
+              attempt_count: Number(artifact.attempt_count ?? 0) + 1,
+              error: message,
+            },
+            errorMessage: null,
+          });
+          processed.push({
+            artifact_id: artifact.id,
+            collection_request_id: artifact.collection_request_id,
+            status: "RETRY_SCHEDULED",
+            reason: "DATABASE_STATEMENT_TIMEOUT",
+          });
+          continue;
+        }
 
         await markArtifact({
           supabase,
