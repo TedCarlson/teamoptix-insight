@@ -197,18 +197,18 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
             style={{ minWidth: 170 }}
           />
         ) : null}
-        <span
-          className={intent ? "dispatch-route-queue__assignment-prompt is-active" : "dispatch-route-queue__assignment-prompt"}
-          aria-live="polite"
-        >
-          {intent
-            ? intent.route_label
-              ? `Choose a seat for ${intent.person.full_name}`
-              : `Choose a route for ${intent.person.full_name}`
-            : editingRouteKey
-              ? "Choose a seat, then choose a person from the workforce rail."
-            : "Stage a person in the workforce rail to begin assignment."}
-        </span>
+        {intent || editingRouteKey ? (
+          <span
+            className={intent ? "dispatch-route-queue__assignment-prompt is-active" : "dispatch-route-queue__assignment-prompt"}
+            aria-live="polite"
+          >
+            {intent
+              ? intent.route_label
+                ? `Choose a seat for ${intent.person.full_name}`
+                : `Choose a route for ${intent.person.full_name}`
+              : "Choose a seat, then choose a person from the workforce rail."}
+          </span>
+        ) : null}
       </div>
 
       <div
