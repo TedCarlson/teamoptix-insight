@@ -7,6 +7,7 @@ import {
   resolveCompanyBySlug,
 } from "@/features/automation/server/automation.repository";
 import { ingestArtifactWorkbook } from "@/features/operations/reports/automation/ingestArtifactWorkbook";
+import { isManifestCollectionArtifact } from "@/features/operations/reports/automation/collectionArtifactAuthority";
 
 export const runtime = "nodejs";
 
@@ -144,7 +145,6 @@ async function handleArtifactIngest(req: NextRequest, context: RouteContext) {
       .eq("company_id", resolved.company.id)
       .eq("artifact_kind", "REPORT_FILE")
       .eq("artifact_status", "READY_FOR_INGEST")
-      .not("normalized_filename", "in", '("Delivery Manifest.xlsx","Pickup Manifest.xlsx","Combined Manifest.xlsx")')
       .order("created_at", { ascending: true });
 
     if (runnerAuthorized && !requestId) {
@@ -167,7 +167,9 @@ async function handleArtifactIngest(req: NextRequest, context: RouteContext) {
 
     const processed = [];
 
-    for (const artifact of artifacts ?? []) {
+    for (const artifact of (artifacts ?? []).filter(
+      (row: any) => !isManifestCollectionArtifact(row)
+    )) {
       const artifactKey = String(artifact.runner_artifact_json?.artifact_key ?? "").toUpperCase();
       if (DECOMMISSIONED_FCC_ARTIFACT_KEYS.has(artifactKey)) {
         await markArtifact({

@@ -72,6 +72,40 @@ class LocalRetentionTests(unittest.TestCase):
             self.assertEqual(result["deleted_bytes"], len(b"uploaded"))
             self.assertIsNone(result["error"])
 
+    def test_size_cap_drains_oldest_acknowledged_files_only(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            app_dir = Path(temporary)
+            excels = app_dir / "storage/app/public/scraper/Excels/current"
+            spool = app_dir / "runtime/spool/client/cycle/Excels"
+            excels.mkdir(parents=True)
+            spool.mkdir(parents=True)
+            oldest = excels / "oldest.xls"
+            newest = excels / "newest.xls"
+            unacknowledged = spool / "unacknowledged.xls"
+            oldest.write_bytes(b"a" * 10)
+            newest.write_bytes(b"b" * 10)
+            unacknowledged.write_bytes(b"c" * 30)
+            now = time.time()
+            os.utime(oldest, (now - 20, now - 20))
+            os.utime(newest, (now - 10, now - 10))
+
+            result = enforce_local_retention(
+                app_dir,
+                now=now,
+                artifact_retention_days=30,
+                diagnostic_retention_days=30,
+                artifact_max_bytes=10,
+                unacknowledged_spool_max_bytes=20,
+            )
+
+            self.assertFalse(oldest.exists())
+            self.assertTrue(newest.exists())
+            self.assertTrue(unacknowledged.exists())
+            self.assertIn(
+                "unacknowledged-spool-cap-exceeded",
+                result["warnings"],
+            )
+
     def test_cycle_spool_release_refuses_paths_outside_spool_root(self):
         with tempfile.TemporaryDirectory() as temporary:
             app_dir = Path(temporary)

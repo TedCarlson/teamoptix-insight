@@ -3,9 +3,8 @@ import { timingSafeEqual } from "node:crypto";
 import { processCapturedManifestArtifacts } from "@/features/operations/manifests/manifest.processor";
 import { manifestIdentityFromBuffer } from "@/features/operations/manifests/manifest.identity";
 import {
-  canonicalManifestFilename,
-  expectedManifestType,
   isManifestCollectionArtifact,
+  manifestPreparationPayload,
 } from "@/features/operations/reports/automation/collectionArtifactAuthority";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 
@@ -81,70 +80,43 @@ async function prepareManifestCollectionArtifacts(
       if (downloadError || !blob) throw new Error(downloadError?.message ?? "Manifest artifact was not readable.");
 
       const identity = manifestIdentityFromBuffer(Buffer.from(await blob.arrayBuffer()));
-      const expectedType = expectedManifestType(artifact);
-      if (!expectedType || expectedType === "combined") {
-        throw new Error("Manifest source lane is unsupported by the ingestion pipeline.");
-      }
-      if (identity.manifest_type !== expectedType) {
-        throw new Error(`Manifest identity mismatch: artifact expects ${expectedType}, Header identifies ${identity.manifest_type}.`);
-      }
-      if (artifact.service_date && artifact.service_date !== identity.service_date) {
-        throw new Error(`Manifest identity mismatch: artifact date ${artifact.service_date}, Header date ${identity.service_date}.`);
-      }
-
-      const runnerArtifact = {
-        ...(artifact.runner_artifact_json ?? {}),
-        artifact_key: identity.manifest_type === "delivery" ? "DELIVERY_MANIFEST" : "PICKUP_MANIFEST",
-        manifest_type: identity.manifest_type,
-        service_date: identity.service_date,
-        service_area: identity.service_area,
-        route_key: identity.route_key,
-        route_label: identity.route_label,
-        header_work_area: identity.raw_work_area,
-        header_page: identity.source_page,
-        source_download_filename: artifact.runner_artifact_json?.source_download_filename ?? artifact.original_filename,
-        canonical_filename: identity.canonical_filename,
-        identity_authority: "INGESTION_PIPELINE",
-      };
-
-      const { error: updateError } = await supabase.schema("core")
-        .from("operations_collection_artifact")
-        .update({
-          service_date: identity.service_date,
-          original_filename: identity.canonical_filename,
-          normalized_filename: canonicalManifestFilename(identity.manifest_type),
-          artifact_status: "READY_FOR_INGEST",
-          runner_artifact_json: runnerArtifact,
-          error_message: null,
-          ingest_metadata_json: {
-            ...(artifact.ingest_metadata_json ?? {}),
-            source: "prepare_manifest_collection_artifacts",
-            prepared_at: new Date().toISOString(),
-            identity_authority: "INGESTION_PIPELINE",
-            manifest_identity: identity,
-          },
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", artifact.id);
+      const preparation = manifestPreparationPayload({
+        artifact,
+        identity,
+        preparedAt: new Date().toISOString(),
+      });
+      const { error: updateError } = await supabase.rpc(
+        "prepare_operations_collection_manifest_artifact",
+        {
+          p_artifact_id: artifact.id,
+          p_service_date: preparation.serviceDate,
+          p_original_filename: preparation.originalFilename,
+          p_normalized_filename: preparation.normalizedFilename,
+          p_runner_artifact_json: preparation.runnerArtifact,
+          p_ingest_metadata_json: preparation.ingestMetadata,
+        }
+      );
       if (updateError) throw new Error(updateError.message);
 
       prepared.push({ artifact_id: artifact.id, status: "PREPARED", identity });
     } catch (identityError) {
       const message = identityError instanceof Error ? identityError.message : "Manifest Header identity could not be resolved.";
-      await supabase.schema("core")
-        .from("operations_collection_artifact")
-        .update({
-          artifact_status: "FAILED",
-          error_message: message,
-          ingest_metadata_json: {
+      const { error: failureUpdateError } = await supabase.rpc(
+        "update_operations_collection_artifact_status",
+        {
+          p_artifact_id: artifact.id,
+          p_artifact_status: "FAILED",
+          p_ingest_metadata_json: {
             ...(artifact.ingest_metadata_json ?? {}),
             source: "prepare_manifest_collection_artifacts",
             failed_at: new Date().toISOString(),
             reason: "MANIFEST_HEADER_IDENTITY_INVALID",
           },
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", artifact.id);
+          p_report_batch_id: null,
+          p_error_message: message,
+        }
+      );
+      if (failureUpdateError) throw new Error(failureUpdateError.message);
       prepared.push({ artifact_id: artifact.id, status: "FAILED", error: message });
     }
   }

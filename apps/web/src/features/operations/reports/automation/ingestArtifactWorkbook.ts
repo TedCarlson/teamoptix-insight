@@ -52,17 +52,20 @@ export async function ingestArtifactWorkbook(params: {
   supabase: any;
   slug: string;
   artifact: ArtifactRow;
+  buffer?: Buffer;
   uploadedByAuthUserId?: string | null;
   uploadedByProfileId?: string | null;
 }) {
   const { supabase, slug, artifact, uploadedByAuthUserId = null, uploadedByProfileId = null } = params;
 
   if (artifact.artifact_kind !== "REPORT_FILE") throw new Error("Only report files can be ingested.");
-  if (!artifact.storage_bucket || !artifact.storage_path) throw new Error("Artifact is missing storage location.");
+  if (!params.buffer && (!artifact.storage_bucket || !artifact.storage_path)) {
+    throw new Error("Artifact is missing storage location.");
+  }
 
-  const buffer = await downloadArtifactBuffer({
-    bucket: artifact.storage_bucket,
-    path: artifact.storage_path,
+  const buffer = params.buffer ?? await downloadArtifactBuffer({
+    bucket: artifact.storage_bucket!,
+    path: artifact.storage_path!,
   });
 
   const filename = artifact.original_filename || artifact.normalized_filename || "artifact.xls";

@@ -20,6 +20,12 @@ from pathlib import Path
 from typing import Any
 
 from failure_classification import is_authentication_failure
+from direct_ingestion import (
+    DirectIngestionClient,
+    RUNNER_VERSION as RUNNER_V2_VERSION,
+    derive_endpoint as derive_direct_ingest_endpoint,
+    enabled as runner_v2_enabled,
+)
 from local_retention import (
     enforce_local_retention,
     prepare_cycle_spool,
@@ -534,6 +540,7 @@ def cycle_exception_evidence(
 def execute_donor(
     environment: dict[str, str],
     log_evidence: RunnerLogEvidence | None = None,
+    on_runtime_marker=None,
 ) -> tuple[int, list[dict[str, Any]], list[dict[str, Any]], str]:
     stages: list[dict[str, Any]] = []
     lane_timings: list[dict[str, Any]] = []
@@ -567,6 +574,16 @@ def execute_donor(
         marker = parse_runtime_marker(line)
         if marker:
             stages.append(sanitize_diagnostic_value(marker))
+            if on_runtime_marker:
+                try:
+                    on_runtime_marker()
+                except Exception as exc:
+                    if log_evidence:
+                        log_evidence.append(
+                            f"Runner 2.0 file handoff scan deferred: {exc}",
+                            level="WARN",
+                            stream="HANDOFF",
+                        )
 
         lane_match = re.search(
             r"\[runner\] (?:section|governed date) start:\s*(.+)$",
@@ -598,8 +615,9 @@ def execute_donor(
 def upload_artifacts(
     request: dict[str, Any],
     run_started_at: float,
+    artifacts: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    artifacts = RUNNER.collect_artifacts(request, run_started_at)
+    artifacts = artifacts or RUNNER.collect_artifacts(request, run_started_at)
     upload_metrics: list[dict[str, Any]] = []
 
     for artifact in artifacts:
@@ -623,6 +641,31 @@ def upload_artifacts(
         )
 
     return artifacts, upload_metrics
+
+
+def open_runner_v2_cycle(
+    *,
+    args: argparse.Namespace,
+    cycle_id: str,
+    reports: list[str],
+    payload: dict[str, Any],
+    started_at: float,
+) -> dict[str, Any]:
+    return RUNNER.rpc(
+        "start_operations_runner_cycle_v2",
+        {
+            "p_runner_key": args.runner_key,
+            "p_cycle_id": cycle_id,
+            "p_company_id": args.company_id,
+            "p_company_slug": args.company_slug,
+            "p_request_type": args.request_type,
+            "p_service_date": args.service_date,
+            "p_started_at": utc_iso(started_at),
+            "p_requested_reports": reports,
+            "p_request_payload": payload,
+        },
+        timeout_seconds=30,
+    )
 
 
 def terminal_receipt(
@@ -699,7 +742,7 @@ def terminal_receipt(
         },
         "runner": {
             "key": args.runner_key,
-            "version": os.environ.get(
+            "version": request.get("_runner_version") or os.environ.get(
                 "TEAMOPTIX_RUNNER_VERSION", "continuous-runner-v1"
             ),
         },
@@ -772,6 +815,7 @@ def main() -> int:
         "service_date_end": None,
         "requested_reports": reports,
         "request_payload": payload,
+        "runner_key": args.runner_key,
     }
     delivered_outboxes, deferred_outboxes = RunnerLogEvidence.drain(
         outbox_dir=RUNNER_LOG_OUTBOX_DIR,
@@ -801,7 +845,7 @@ def main() -> int:
     retention = enforce_local_retention(APP_DIR)
     log_evidence.append(
         "Local runner retention completed.",
-        level="WARN" if retention["errors"] else "INFO",
+        level="WARN" if retention["errors"] or retention["warnings"] else "INFO",
         stream="RETENTION",
         metadata=retention,
     )
@@ -812,15 +856,145 @@ def main() -> int:
             f"profiles={retention['deleted_profile_count']} "
             f"bytes={retention['deleted_bytes']}"
         )
+    if "unacknowledged-spool-cap-exceeded" in retention["warnings"]:
+        log_evidence.append(
+            "Collection stopped before download because the unacknowledged spool reached its safety cap.",
+            level="ERROR",
+            stream="RETENTION",
+            metadata=retention,
+        )
+        log_evidence.flush()
+        raise RuntimeError(
+            "Runner unacknowledged spool capacity exceeded; collection paused safely."
+        )
 
     cycle_spool = prepare_cycle_spool(APP_DIR, args.company_slug, cycle_id)
     request["_scraper_home"] = str(cycle_spool)
     environment = child_environment(args, request)
 
     started_at = time.time()
+    v2_requested = runner_v2_enabled(
+        os.environ.get("TEAMOPTIX_RUNNER_V2_ENABLED")
+        or RUNNER.INSIGHT_ENV.get("TEAMOPTIX_RUNNER_V2_ENABLED")
+    )
+    direct_endpoint = derive_direct_ingest_endpoint(
+        RUNNER.INSIGHT_ENV.get("INSIGHT_DIRECT_ARTIFACT_INGEST_URL"),
+        RUNNER.INSIGHT_ENV.get("INSIGHT_ARTIFACT_INGEST_URL"),
+    )
+    direct_token = RUNNER.INSIGHT_ENV.get("INSIGHT_ARTIFACT_INGEST_TOKEN")
+    v2_active = False
+    direct_client: DirectIngestionClient | None = None
+    if v2_requested and direct_endpoint and direct_token:
+        try:
+            open_runner_v2_cycle(
+                args=args,
+                cycle_id=cycle_id,
+                reports=reports,
+                payload={
+                    **payload,
+                    "payload_contract_version": "operations_collection_v2",
+                },
+                started_at=started_at,
+            )
+            direct_client = DirectIngestionClient(
+                direct_endpoint,
+                direct_token,
+                timeout_seconds=10,
+            )
+            v2_active = True
+            request["_runner_version"] = RUNNER_V2_VERSION
+            log_evidence.append(
+                "Runner 2.0 direct-ingestion cycle opened.",
+                stream="HANDOFF",
+                metadata={
+                    "handoff_contract": "operations_artifact_handoff_v2",
+                    "fallback": "STORAGE_WORKER",
+                },
+            )
+        except Exception as exc:
+            log_evidence.append(
+                f"Runner 2.0 activation failed; using legacy handoff: {exc}",
+                level="WARN",
+                stream="HANDOFF",
+            )
+    elif v2_requested:
+        log_evidence.append(
+            "Runner 2.0 requested but direct-ingestion endpoint is not configured; using legacy handoff.",
+            level="WARN",
+            stream="HANDOFF",
+        )
+
+    v2_artifacts: dict[str, dict[str, Any]] = {}
+    v2_handoff_metrics: list[dict[str, Any]] = []
+
+    def handoff_completed_files() -> None:
+        if not v2_active or direct_client is None:
+            return
+        for discovered in RUNNER.collect_artifacts(request, started_at):
+            artifact = RUNNER.prepare_transport_artifact(request, discovered)
+            artifact_id = str(artifact["artifact_id"])
+            if artifact_id in v2_artifacts:
+                continue
+
+            handoff_started = time.time()
+            data = RUNNER.package_artifact_payload(artifact)
+            result = direct_client.ingest(request, artifact, data)
+            elapsed_ms = int((time.time() - handoff_started) * 1000)
+            artifact["runner_elapsed_ms"] = int(
+                (time.time() - started_at) * 1000
+            )
+            artifact["ingestion_receipt"] = {
+                key: result.get(key)
+                for key in (
+                    "artifact_id",
+                    "artifact_status",
+                    "file_type",
+                    "service_date",
+                    "route_key",
+                    "batch_id",
+                    "elapsed_ms",
+                    "http_status",
+                    "reason",
+                )
+                if result.get(key) is not None
+            }
+
+            if result.get("durable") is True:
+                artifact["handoff_mode"] = "DIRECT_INGESTION"
+                artifact["storage_bucket"] = "direct-ingestion-v2"
+                artifact["storage_path"] = f"receipt/{artifact_id}"
+            else:
+                artifact["handoff_mode"] = "STORAGE_FALLBACK"
+                artifact["storage_bucket"] = "automation-artifacts"
+                artifact["storage_path"] = RUNNER.local_storage_path(
+                    request,
+                    artifact,
+                )
+
+            v2_artifacts[artifact_id] = artifact
+            v2_handoff_metrics.append({
+                "artifact_id": artifact_id,
+                "artifact_key": artifact.get("artifact_key"),
+                "handoff_mode": artifact["handoff_mode"],
+                "size_bytes": artifact.get("size_bytes"),
+                "handoff_ms": elapsed_ms,
+                "ingestion_ms": result.get("elapsed_ms"),
+            })
+            log_evidence.append(
+                "Artifact handoff completed.",
+                level=(
+                    "INFO"
+                    if artifact["handoff_mode"] == "DIRECT_INGESTION"
+                    else "WARN"
+                ),
+                stream="HANDOFF",
+                metadata=v2_handoff_metrics[-1],
+            )
+
     donor_exit_code, stages, lane_timings, output_tail = execute_donor(
         environment,
         log_evidence,
+        on_runtime_marker=handoff_completed_files if v2_active else None,
     )
     log_evidence.append(
         f"Collector exited with status {donor_exit_code}.",
@@ -837,7 +1011,28 @@ def main() -> int:
     upload_metrics: list[dict[str, Any]] = []
     upload_error: str | None = None
     try:
-        artifacts, upload_metrics = upload_artifacts(request, started_at)
+        if v2_active:
+            handoff_completed_files()
+            artifacts = list(v2_artifacts.values())
+            fallback_artifacts = [
+                artifact
+                for artifact in artifacts
+                if artifact.get("handoff_mode") == "STORAGE_FALLBACK"
+            ]
+            if fallback_artifacts:
+                _, fallback_metrics = upload_artifacts(
+                    request,
+                    started_at,
+                    fallback_artifacts,
+                )
+                upload_metrics = v2_handoff_metrics + [
+                    {**metric, "handoff_mode": "STORAGE_FALLBACK"}
+                    for metric in fallback_metrics
+                ]
+            else:
+                upload_metrics = v2_handoff_metrics
+        else:
+            artifacts, upload_metrics = upload_artifacts(request, started_at)
         log_evidence.append(
             f"Artifact handoff prepared {len(artifacts)} file(s).",
             stream="HANDOFF",
@@ -937,6 +1132,25 @@ def main() -> int:
     )
     receipt["outcome"] = outcome
     receipt["partial"] = partial
+    if v2_active:
+        direct_count = sum(
+            artifact.get("handoff_mode") == "DIRECT_INGESTION"
+            for artifact in artifacts
+        )
+        fallback_count = sum(
+            artifact.get("handoff_mode") == "STORAGE_FALLBACK"
+            for artifact in artifacts
+        )
+        receipt["handoff"] = {
+            "contract": "operations_artifact_handoff_v2",
+            "direct_ingestion_count": direct_count,
+            "storage_fallback_count": fallback_count,
+            "direct_ingestion_ms": [
+                metric["ingestion_ms"]
+                for metric in v2_handoff_metrics
+                if metric.get("ingestion_ms") is not None
+            ],
+        }
     receipt["collection"] = {
         "health": (
             "FAILED"
@@ -962,26 +1176,38 @@ def main() -> int:
             "evidence": failure or exception_evidence,
         }
 
-    terminal_rpc = (
-        "record_operations_dro_runner_cycle_terminal"
-        if args.request_type == "DRO_AM"
-        else "record_operations_runner_cycle_terminal"
-    )
-    terminal_params = {
-        "p_runner_key": args.runner_key,
-        "p_cycle_id": cycle_id,
-        "p_service_date": args.service_date,
-        "p_started_at": utc_iso(started_at),
-        "p_completed_at": utc_iso(completed_at),
-        "p_outcome": outcome,
-        "p_requested_reports": reports,
-        "p_request_payload": payload,
-        "p_receipt_json": receipt,
-        "p_artifacts_json": artifacts,
-        "p_error_message": error_message,
-    }
-    if args.request_type != "DRO_AM":
-        terminal_params["p_request_type"] = args.request_type
+    if v2_active:
+        terminal_rpc = "record_operations_runner_cycle_terminal_v2"
+        terminal_params = {
+            "p_runner_key": args.runner_key,
+            "p_cycle_id": cycle_id,
+            "p_completed_at": utc_iso(completed_at),
+            "p_outcome": outcome,
+            "p_receipt_json": receipt,
+            "p_artifacts_json": artifacts,
+            "p_error_message": error_message,
+        }
+    else:
+        terminal_rpc = (
+            "record_operations_dro_runner_cycle_terminal"
+            if args.request_type == "DRO_AM"
+            else "record_operations_runner_cycle_terminal"
+        )
+        terminal_params = {
+            "p_runner_key": args.runner_key,
+            "p_cycle_id": cycle_id,
+            "p_service_date": args.service_date,
+            "p_started_at": utc_iso(started_at),
+            "p_completed_at": utc_iso(completed_at),
+            "p_outcome": outcome,
+            "p_requested_reports": reports,
+            "p_request_payload": payload,
+            "p_receipt_json": receipt,
+            "p_artifacts_json": artifacts,
+            "p_error_message": error_message,
+        }
+        if args.request_type != "DRO_AM":
+            terminal_params["p_request_type"] = args.request_type
 
     try:
         terminal = RUNNER.rpc(
@@ -1035,7 +1261,11 @@ def main() -> int:
         log_evidence.discard()
 
     if outcome == "COMPLETE":
-        trigger_ingest(cycle_id)
+        if not v2_active or any(
+            artifact.get("handoff_mode") == "STORAGE_FALLBACK"
+            for artifact in artifacts
+        ):
+            trigger_ingest(cycle_id)
         return 0
     if auth_failure:
         return 40

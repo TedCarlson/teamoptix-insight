@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  canonicalManifestFilename,
   expectedManifestType,
   isManifestCollectionArtifact,
   isRetryableIngestionTimeout,
+  manifestPreparationPayload,
 } from "./collectionArtifactAuthority";
 
 describe("collection artifact authority", () => {
@@ -27,10 +27,41 @@ describe("collection artifact authority", () => {
     expect(expectedManifestType(artifact)).toBeNull();
   });
 
-  it("canonicalizes only after ingestion resolves manifest identity", () => {
-    expect(canonicalManifestFilename("pickup")).toBe(
-      "Pickup Manifest.xlsx"
-    );
+  it("persists Header-derived identity as ingestion-authoritative", () => {
+    const payload = manifestPreparationPayload({
+      artifact: {
+        service_date: "2026-08-13",
+        original_filename: "PickupManifest (11).xls",
+        runner_artifact_json: {
+          artifact_key: "PICKUP_MANIFEST",
+          collection_context: { selected_work_area: "486 BPV 17" },
+        },
+      },
+      identity: {
+        manifest_type: "pickup",
+        service_date: "2026-08-13",
+        service_area: "309747",
+        route_key: "486",
+        route_label: "BPV 17",
+        raw_work_area: "0486 BPV 17",
+        source_page: "Pickup Manifest",
+        canonical_filename: "PM20260813_309747_0486.xls",
+      },
+      preparedAt: "2026-08-13T14:30:00.000Z",
+    });
+
+    expect(payload.originalFilename).toBe("PM20260813_309747_0486.xls");
+    expect(payload.normalizedFilename).toBe("PM20260813_309747_0486.xls");
+    expect(payload.runnerArtifact).toMatchObject({
+      manifest_type: "pickup",
+      route_key: "486",
+      identity_authority: "INGESTION_PIPELINE",
+      source_download_filename: "PickupManifest (11).xls",
+    });
+    expect(payload.ingestMetadata).toMatchObject({
+      identity_authority: "INGESTION_PIPELINE",
+      manifest_identity: { route_key: "486" },
+    });
   });
 
   it("recognizes database statement timeouts as retryable ingestion errors", () => {

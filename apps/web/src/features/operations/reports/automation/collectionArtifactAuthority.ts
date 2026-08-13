@@ -6,6 +6,17 @@ export const MANIFEST_COLLECTION_ARTIFACT_KEYS = new Set([
 
 export type DeclaredManifestType = "combined" | "delivery" | "pickup";
 
+export type IngestionManifestIdentity = {
+  manifest_type: "delivery" | "pickup";
+  service_date: string;
+  service_area: string | null;
+  route_key: string;
+  route_label: string;
+  raw_work_area: string;
+  source_page: string;
+  canonical_filename: string;
+};
+
 export function collectionArtifactKey(row: any) {
   return String(row?.runner_artifact_json?.artifact_key ?? "")
     .trim()
@@ -39,10 +50,63 @@ export function expectedManifestType(
   return null;
 }
 
-export function canonicalManifestFilename(type: DeclaredManifestType) {
-  if (type === "combined") return "Combined Manifest.xlsx";
-  if (type === "delivery") return "Delivery Manifest.xlsx";
-  return "Pickup Manifest.xlsx";
+export function manifestPreparationPayload(params: {
+  artifact: any;
+  identity: IngestionManifestIdentity;
+  preparedAt: string;
+}) {
+  const { artifact, identity, preparedAt } = params;
+  const expectedType = expectedManifestType(artifact);
+  if (!expectedType || expectedType === "combined") {
+    throw new Error(
+      "Manifest source lane is unsupported by the ingestion pipeline."
+    );
+  }
+  if (identity.manifest_type !== expectedType) {
+    throw new Error(
+      `Manifest identity mismatch: artifact expects ${expectedType}, Header identifies ${identity.manifest_type}.`
+    );
+  }
+  if (artifact.service_date && artifact.service_date !== identity.service_date) {
+    throw new Error(
+      `Manifest identity mismatch: artifact date ${artifact.service_date}, Header date ${identity.service_date}.`
+    );
+  }
+
+  return {
+    serviceDate: identity.service_date,
+    originalFilename: identity.canonical_filename,
+    // The ingestion-derived canonical name preserves the workbook's actual
+    // .xls transport. A display label must never pretend that bytes were
+    // converted to .xlsx or become a routing authority.
+    normalizedFilename: identity.canonical_filename,
+    runnerArtifact: {
+      ...(artifact.runner_artifact_json ?? {}),
+      artifact_key:
+        identity.manifest_type === "delivery"
+          ? "DELIVERY_MANIFEST"
+          : "PICKUP_MANIFEST",
+      manifest_type: identity.manifest_type,
+      service_date: identity.service_date,
+      service_area: identity.service_area,
+      route_key: identity.route_key,
+      route_label: identity.route_label,
+      header_work_area: identity.raw_work_area,
+      header_page: identity.source_page,
+      source_download_filename:
+        artifact.runner_artifact_json?.source_download_filename ??
+        artifact.original_filename,
+      canonical_filename: identity.canonical_filename,
+      identity_authority: "INGESTION_PIPELINE",
+    },
+    ingestMetadata: {
+      ...(artifact.ingest_metadata_json ?? {}),
+      source: "prepare_manifest_collection_artifacts",
+      prepared_at: preparedAt,
+      identity_authority: "INGESTION_PIPELINE",
+      manifest_identity: identity,
+    },
+  };
 }
 
 export function isRetryableIngestionTimeout(error: unknown) {

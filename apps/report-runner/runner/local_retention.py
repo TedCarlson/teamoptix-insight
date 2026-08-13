@@ -70,12 +70,53 @@ def _remove_stale_profiles(root: Path, cutoff: float) -> tuple[int, int]:
     return deleted_count, deleted_bytes
 
 
+def _directory_bytes(root: Path) -> int:
+    if not root.exists():
+        return 0
+    return sum(
+        path.stat().st_size
+        for path in root.rglob("*")
+        if path.is_file() and not path.is_symlink()
+    )
+
+
+def _enforce_size_cap(root: Path, max_bytes: int) -> tuple[int, int]:
+    if not root.exists():
+        return 0, 0
+    files = sorted(
+        (
+            path
+            for path in root.rglob("*")
+            if path.is_file() and not path.is_symlink()
+        ),
+        key=lambda path: path.stat().st_mtime,
+    )
+    total = sum(path.stat().st_size for path in files)
+    deleted_count = 0
+    deleted_bytes = 0
+    for path in files:
+        if total <= max_bytes:
+            break
+        try:
+            size = path.stat().st_size
+            path.unlink()
+            total -= size
+            deleted_bytes += size
+            deleted_count += 1
+        except FileNotFoundError:
+            continue
+    return deleted_count, deleted_bytes
+
+
 def enforce_local_retention(
     app_dir: Path,
     *,
     now: float | None = None,
     artifact_retention_days: int | None = None,
     diagnostic_retention_days: int | None = None,
+    artifact_max_bytes: int | None = None,
+    diagnostic_max_bytes: int | None = None,
+    unacknowledged_spool_max_bytes: int | None = None,
 ) -> dict[str, Any]:
     """Delete expired local copies while preserving uploaded evidence.
 
@@ -85,10 +126,20 @@ def enforce_local_retention(
     """
     effective_now = now if now is not None else time.time()
     artifact_days = artifact_retention_days or _positive_int(
-        os.environ.get("RUNNER_LOCAL_ARTIFACT_RETENTION_DAYS"), 7
+        os.environ.get("RUNNER_LOCAL_ARTIFACT_RETENTION_DAYS"), 2
     )
     diagnostic_days = diagnostic_retention_days or _positive_int(
-        os.environ.get("RUNNER_LOCAL_DIAGNOSTIC_RETENTION_DAYS"), 7
+        os.environ.get("RUNNER_LOCAL_DIAGNOSTIC_RETENTION_DAYS"), 2
+    )
+    artifact_cap = artifact_max_bytes or _positive_int(
+        os.environ.get("RUNNER_LOCAL_ARTIFACT_MAX_BYTES"), 512 * 1024 * 1024
+    )
+    diagnostic_cap = diagnostic_max_bytes or _positive_int(
+        os.environ.get("RUNNER_LOCAL_DIAGNOSTIC_MAX_BYTES"), 256 * 1024 * 1024
+    )
+    spool_cap = unacknowledged_spool_max_bytes or _positive_int(
+        os.environ.get("RUNNER_UNACKNOWLEDGED_SPOOL_MAX_BYTES"),
+        1024 * 1024 * 1024,
     )
     artifact_cutoff = effective_now - artifact_days * 24 * 60 * 60
     diagnostic_cutoff = effective_now - diagnostic_days * 24 * 60 * 60
@@ -103,6 +154,7 @@ def enforce_local_retention(
         (app_dir / "runtime/spool", artifact_cutoff),
         (app_dir / "storage/app/public/scraper/Logs", diagnostic_cutoff),
         (app_dir / "runtime/logs", diagnostic_cutoff),
+        (app_dir / "runtime/ledger", diagnostic_cutoff),
     ):
         try:
             count, size = _remove_expired_files(path, cutoff)
@@ -121,13 +173,38 @@ def enforce_local_retention(
     except OSError as error:
         errors.append(f"chrome-profiles: {type(error).__name__}")
 
+    for path, cap in (
+        (app_dir / "storage/app/public/scraper/Excels", artifact_cap),
+        (app_dir / "storage/app/public/scraper/Logs", diagnostic_cap),
+        (app_dir / "runtime/logs", diagnostic_cap),
+        (app_dir / "runtime/ledger", diagnostic_cap),
+    ):
+        try:
+            count, size = _enforce_size_cap(path, cap)
+            deleted_files += count
+            deleted_bytes += size
+        except OSError as error:
+            errors.append(f"{path.name}-cap: {type(error).__name__}")
+
+    # Spools have no durable acknowledgement yet. Never delete them merely to
+    # satisfy a cap; surface backpressure so collection can stop safely.
+    unacknowledged_spool_bytes = _directory_bytes(app_dir / "runtime/spool")
+    warnings = []
+    if unacknowledged_spool_bytes > spool_cap:
+        warnings.append("unacknowledged-spool-cap-exceeded")
+
     return {
         "artifact_retention_days": artifact_days,
         "diagnostic_retention_days": diagnostic_days,
+        "artifact_max_bytes": artifact_cap,
+        "diagnostic_max_bytes": diagnostic_cap,
+        "unacknowledged_spool_max_bytes": spool_cap,
+        "unacknowledged_spool_bytes": unacknowledged_spool_bytes,
         "deleted_file_count": deleted_files,
         "deleted_profile_count": deleted_profiles,
         "deleted_bytes": deleted_bytes,
         "errors": errors,
+        "warnings": warnings,
     }
 
 
