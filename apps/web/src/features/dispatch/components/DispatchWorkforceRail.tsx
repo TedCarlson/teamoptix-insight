@@ -12,6 +12,7 @@ type DispatchWorkforceRailProps = {
   intent: AssignmentIntent;
   calloutPersonIds: Set<string>;
   arrivedPersonIds: Set<string>;
+  attendanceCount: number;
   onToggleArrived: (person: DispatchPerson) => void;
   onStagePerson: (person: DispatchPerson) => void;
 };
@@ -22,6 +23,7 @@ export function DispatchWorkforceRail(props: DispatchWorkforceRailProps) {
     intent,
     calloutPersonIds,
     arrivedPersonIds,
+    attendanceCount,
     onToggleArrived,
     onStagePerson,
   } = props;
@@ -29,7 +31,6 @@ export function DispatchWorkforceRail(props: DispatchWorkforceRailProps) {
   const unassignedCount = people.filter(
     (person) => !calloutPersonIds.has(person.roster_member_id)
   ).length;
-  const calloutCount = people.length - unassignedCount;
   const groups = [
     {
       key: "trainees",
@@ -64,8 +65,8 @@ export function DispatchWorkforceRail(props: DispatchWorkforceRailProps) {
           <dd>{unassignedCount}</dd>
         </div>
         <div>
-          <dt>Callouts</dt>
-          <dd>{calloutCount}</dd>
+          <dt>Attendance</dt>
+          <dd>{attendanceCount}</dd>
         </div>
       </dl>
 

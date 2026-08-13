@@ -300,6 +300,14 @@ export default function DispatchPage({
     return [...peopleById.values()].sort(personSort);
   }, [assignmentByPersonId, callouts, workforce.available]);
 
+  const attendanceCount = useMemo(
+    () =>
+      allPeople.filter((person) =>
+        arrivedPersonIds.has(person.roster_member_id)
+      ).length,
+    [allPeople, arrivedPersonIds]
+  );
+
   const expressSignalsByRouteKey = useMemo(() => {
     const normalize = (value: string | null | undefined) =>
       String(value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -931,6 +939,7 @@ export default function DispatchPage({
               intent={intent}
               calloutPersonIds={calloutPersonIds}
               arrivedPersonIds={arrivedPersonIds}
+              attendanceCount={attendanceCount}
               onToggleArrived={toggleArrived}
               onStagePerson={stagePerson}
             />
@@ -993,7 +1002,7 @@ export default function DispatchPage({
       <DispatchAttendanceOverlay
         open={attendanceOpen}
         intent={intent}
-        people={rosterPeople}
+        people={allPeople}
         availablePeople={workforce.available}
         callouts={callouts}
         arrivedPersonIds={arrivedPersonIds}

@@ -105,6 +105,34 @@ function SeatButton(props: {
   );
 }
 
+function SeatAssignmentSummary(props: {
+  label: "H" | "T";
+  people: DispatchPerson[];
+  arrivedPersonIds: Set<string>;
+}) {
+  const { label, people, arrivedPersonIds } = props;
+  if (people.length === 0) return null;
+
+  const detail = people
+    .map((person) =>
+      arrivedPersonIds.has(person.roster_member_id)
+        ? `${person.full_name} · present`
+        : person.full_name
+    )
+    .join(", ");
+
+  return (
+    <span className="dispatch-route-row__support-assignment">
+      <span
+        className={`dispatch-route-row__support-pill is-${label === "H" ? "helper" : "trainee"}`}
+      >
+        {label} {people.length}
+      </span>
+      <small title={detail}>{detail}</small>
+    </span>
+  );
+}
+
 export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
   const {
     routeLabelForDisplay,
@@ -404,36 +432,17 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
                   />
 
                   {route.helpers.length > 0 || route.trainees.length > 0 ? (
-                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                      {route.helpers.length > 0 ? (
-                        <span
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 900,
-                            borderRadius: 999,
-                            padding: "2px 8px",
-                            background: "#eff6ff",
-                            color: "#1d4ed8",
-                          }}
-                        >
-                          H {route.helpers.length}
-                        </span>
-                      ) : null}
-
-                      {route.trainees.length > 0 ? (
-                        <span
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 900,
-                            borderRadius: 999,
-                            padding: "2px 8px",
-                            background: "#f3e8ff",
-                            color: "#7c3aed",
-                          }}
-                        >
-                          T {route.trainees.length}
-                        </span>
-                      ) : null}
+                    <div className="dispatch-route-row__support-assignments">
+                      <SeatAssignmentSummary
+                        label="H"
+                        people={route.helpers}
+                        arrivedPersonIds={arrivedPersonIds}
+                      />
+                      <SeatAssignmentSummary
+                        label="T"
+                        people={route.trainees}
+                        arrivedPersonIds={arrivedPersonIds}
+                      />
                     </div>
                   ) : null}
                 </div>
