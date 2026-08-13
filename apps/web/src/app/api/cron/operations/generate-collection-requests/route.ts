@@ -182,7 +182,7 @@ function buildRequestPayload(manifestAssignment: ScheduledManifestAssignment) {
     request_origin: "automation_scheduler",
     collect_scope: "targeted_file_groups",
     control_level: "platform_managed",
-    customer_language: "Operations Pulse",
+    customer_language: "Continuous Collection",
     runner_goal: "keep_operations_current",
     cadence_minutes: Number(manifestAssignment.cadence_minutes) || 15,
     ticket_library_assignment_id: manifestAssignment.id,
@@ -637,7 +637,7 @@ export async function GET() {
           status: "delegated",
           request_type: "DAILY_PACKAGE",
           reason:
-            "signed continuous-runner schedule owns Prior Day, DRO AM, and Operations Pulse",
+            "signed continuous-runner schedule owns Prior Day, DRO AM, and Continuous Collection",
           cancelled_legacy_requests: cancelledLegacyRequests ?? 0,
           migration_drift: cancellationError
             ? {

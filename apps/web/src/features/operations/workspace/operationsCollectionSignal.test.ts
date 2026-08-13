@@ -7,116 +7,123 @@ const schedule = {
   operations_pulse_start_time: "07:30:00",
   operations_pulse_end_time: "19:30:00",
   runner_state: "APPLIED",
-  runner_last_seen_at: "2026-08-09T13:00:00Z",
+  runner_last_seen_at: "2026-08-13T16:20:00Z",
 };
 
 describe("deriveOperationsCollectionSignal", () => {
-  it("labels collection freshness and ingestion success independently", () => {
+  it("reports three independent authoritative signals", () => {
     const signal = deriveOperationsCollectionSignal({
-      now: new Date("2026-08-09T13:07:00Z"),
-      operationalDate: "2026-08-09",
-      latestIngestionSuccessAt: "2026-08-09T12:53:00Z",
+      now: new Date("2026-08-13T16:27:00Z"),
+      latestIngestionSuccessAt: "2026-08-13T16:17:00Z",
       runnerSchedule: schedule,
-      operatingCalendar: {
-        operating_weekdays: [1, 2, 3, 4, 5, 6],
-        operating_date_overrides: { "2026-08-09": "OPERATING" },
-      },
-      requests: [
-        {
-          id: "cycle-1",
-          request_type: "OPERATIONS_PULSE",
-          request_status: "COMPLETE",
-          error_message: null,
-          claimed_by: "continuous-runner",
-          started_at: "2026-08-09T12:34:12Z",
-          completed_at: "2026-08-09T12:52:28Z",
-          updated_at: "2026-08-09T12:52:28Z",
-        },
-      ],
+      requests: [],
     });
 
-    expect(signal).toEqual({
-      active: true,
+    expect(signal.collection).toEqual({
+      key: "collection",
+      label: "Collection",
+      value: "ON",
+      detail: "Master gate enabled",
       tone: "active",
-      collectionObservedAt: "2026-08-09T13:00:00Z",
-      ingestionSucceededAt: "2026-08-09T12:53:00Z",
-      copy: "Collection Active · next cycle starts on success · collection check-in 9:00 AM · ingestion succeeded 8:53 AM",
+    });
+    expect(signal.activity).toEqual({
+      key: "activity",
+      label: "Collection activity",
+      value: "READY",
+      detail: "Check-in 12:20 PM",
+      tone: "active",
+    });
+    expect(signal.ingestion).toEqual({
+      key: "ingestion",
+      label: "Ingestion",
+      value: "SUCCEEDED",
+      detail: "Last receipt 12:17 PM",
+      tone: "active",
     });
   });
 
-  it("does not let an ingestion error hide a completed collection", () => {
+  it("never lets a legacy pulse window or calendar rewrite an enabled gate", () => {
     const signal = deriveOperationsCollectionSignal({
-      now: new Date("2026-08-09T13:07:00Z"),
-      operationalDate: "2026-08-09",
-      latestIngestionSuccessAt: "2026-08-09T12:53:00Z",
-      runnerSchedule: schedule,
-      operatingCalendar: {
-        operating_date_overrides: { "2026-08-09": "OPERATING" },
+      now: new Date("2026-08-13T10:00:00Z"),
+      operationalDate: "2026-08-13",
+      runnerSchedule: {
+        ...schedule,
+        operations_pulse_enabled: false,
+        runner_last_seen_at: "2026-08-13T09:55:00Z",
       },
+      operatingCalendar: {
+        operating_date_overrides: { "2026-08-13": "CLOSED" },
+      },
+      requests: [],
+    });
+
+    expect(signal.active).toBe(true);
+    expect(signal.collection.value).toBe("ON");
+    expect(JSON.stringify(signal)).not.toMatch(/paused|next pulse/i);
+  });
+
+  it("reports the master gate as off even while an in-flight request drains", () => {
+    const signal = deriveOperationsCollectionSignal({
+      now: new Date("2026-08-13T16:27:00Z"),
+      runnerSchedule: { ...schedule, collection_enabled: false },
       requests: [
         {
-          id: "cycle-with-ingestion-error",
+          id: "draining-cycle",
           request_type: "OPERATIONS_PULSE",
-          request_status: "COMPLETE",
-          error_message: "One or more artifacts failed processing.",
-          claimed_by: "continuous-runner",
-          started_at: "2026-08-09T12:55:00Z",
-          completed_at: "2026-08-09T12:59:00Z",
-          updated_at: "2026-08-09T12:59:00Z",
+          request_status: "RUNNING",
+          error_message: null,
+          claimed_by: "runner-2",
+          started_at: "2026-08-13T16:25:00Z",
+          completed_at: null,
+          updated_at: "2026-08-13T16:25:00Z",
         },
       ],
     });
 
-    expect(signal.copy).toBe(
-      "Collection Active · next cycle starts on success · collection check-in 9:00 AM · ingestion succeeded 8:53 AM"
-    );
+    expect(signal.collection.value).toBe("OFF");
+    expect(signal.activity.value).toBe("COLLECTING");
   });
 
-  it("surfaces an explicit runner error instead of claiming collection is active", () => {
+  it("keeps runner errors out of the collection gate and ingestion signals", () => {
     const signal = deriveOperationsCollectionSignal({
-      now: new Date("2026-08-12T13:00:00Z"),
-      operationalDate: "2026-08-12",
+      now: new Date("2026-08-13T16:27:00Z"),
+      latestIngestionSuccessAt: "2026-08-13T16:17:00Z",
       runnerSchedule: {
         ...schedule,
         runner_state: "ERROR",
-        runner_last_seen_at: "2026-08-11T21:22:27Z",
         runner_last_error: "Collector browser disconnected.",
       },
       requests: [],
     });
 
-    expect(signal).toEqual({
-      active: false,
+    expect(signal.collection.value).toBe("ON");
+    expect(signal.activity).toMatchObject({
+      value: "ATTENTION",
+      detail: "Collector browser disconnected.",
       tone: "critical",
-      collectionObservedAt: "2026-08-11T21:22:27Z",
-      ingestionSucceededAt: null,
-      copy: "Collection failed · Collector browser disconnected. · collection check-in 5:22 PM · ingestion success unavailable",
     });
+    expect(signal.ingestion.value).toBe("SUCCEEDED");
   });
 
-  it("reports a stale heartbeat during the operating window", () => {
+  it("reports stale activity without claiming collection is off", () => {
     const signal = deriveOperationsCollectionSignal({
-      now: new Date("2026-08-12T13:00:00Z"),
-      operationalDate: "2026-08-12",
-      runnerSchedule: {
-        ...schedule,
-        runner_last_seen_at: "2026-08-12T12:00:00Z",
-      },
+      now: new Date("2026-08-13T17:20:01Z"),
+      runnerSchedule: schedule,
       requests: [],
     });
 
-    expect(signal.tone).toBe("critical");
-    expect(signal.copy).toContain("heartbeat");
+    expect(signal.collection.value).toBe("ON");
+    expect(signal.activity).toMatchObject({
+      value: "ATTENTION",
+      detail: "Check-in stale · 12:20 PM",
+      tone: "critical",
+    });
   });
 
-  it("does not let an unclaimed legacy daily ticket replace runner truth", () => {
+  it("ignores unclaimed legacy tickets as collection activity", () => {
     const signal = deriveOperationsCollectionSignal({
-      now: new Date("2026-08-09T13:07:00Z"),
-      operationalDate: "2026-08-09",
+      now: new Date("2026-08-13T16:27:00Z"),
       runnerSchedule: schedule,
-      operatingCalendar: {
-        operating_date_overrides: { "2026-08-09": "OPERATING" },
-      },
       requests: [
         {
           id: "legacy",
@@ -126,13 +133,11 @@ describe("deriveOperationsCollectionSignal", () => {
           claimed_by: null,
           started_at: null,
           completed_at: null,
-          updated_at: "2026-08-09T12:30:00Z",
+          updated_at: "2026-08-13T16:25:00Z",
         },
       ],
     });
 
-    expect(signal.copy).toBe(
-      "Collection Active · runner released for continuous collection · collection check-in 9:00 AM · ingestion success unavailable"
-    );
+    expect(signal.activity.value).toBe("READY");
   });
 });
