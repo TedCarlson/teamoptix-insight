@@ -92,7 +92,6 @@ export function applyDispatchEvent(
     if (!target) return current;
 
     if (seat === "driver") {
-      if (target.driver) target.extras = [...target.extras, target.driver];
       target.driver = person;
     }
 

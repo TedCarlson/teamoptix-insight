@@ -70,3 +70,23 @@ describe("route-to-CSA dispatch handoff", () => {
     expect(assignments["430"]?.driver?.full_name).toBe("Beacon Driver");
   });
 });
+
+describe("driver assignment displacement", () => {
+  it("returns the prior scheduled driver to the workforce instead of hiding them as an extra", () => {
+    const assignments = buildAssignmentMapFromRoutesAndEvents(
+      [route],
+      [
+        event({
+          event_code: "ASSIGN_DRIVER",
+          event_label: "Driver assigned",
+          seat: "driver",
+          person_roster_member_id: "driver-2",
+          person_name: "Replacement Driver",
+        }),
+      ]
+    );
+
+    expect(assignments["430"]?.driver?.full_name).toBe("Replacement Driver");
+    expect(assignments["430"]?.extras).toEqual([]);
+  });
+});

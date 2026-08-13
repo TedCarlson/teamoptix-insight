@@ -245,7 +245,6 @@ export function buildAssignedIds(
     if (route.driver) ids.add(route.driver.roster_member_id);
     for (const person of route.helpers) ids.add(person.roster_member_id);
     for (const person of route.trainees) ids.add(person.roster_member_id);
-    for (const person of route.extras) ids.add(person.roster_member_id);
   }
 
   return ids;

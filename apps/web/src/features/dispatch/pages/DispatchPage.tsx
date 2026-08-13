@@ -450,9 +450,6 @@ export default function DispatchPage({
       const updatedTarget = next[routeKey];
 
       if (seat === "driver") {
-        if (updatedTarget.driver) {
-          updatedTarget.extras = [...updatedTarget.extras, updatedTarget.driver];
-        }
         updatedTarget.driver = person;
       }
 

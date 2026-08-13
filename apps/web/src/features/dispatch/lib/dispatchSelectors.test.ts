@@ -55,6 +55,20 @@ describe("dispatch workforce availability", () => {
     expect(assignedIds).not.toContain(ricky.roster_member_id);
   });
 
+  it("does not hide a displaced driver stored as a route collision", () => {
+    const occupiedRoute = route("430", {
+      ...ricky,
+      roster_member_id: "replacement-driver",
+      full_name: "Replacement Driver",
+    });
+    occupiedRoute.extras = [ricky];
+
+    const assignedIds = buildAssignedIds([occupiedRoute]);
+
+    expect(assignedIds).toContain("replacement-driver");
+    expect(assignedIds).not.toContain(ricky.roster_member_id);
+  });
+
   it("lets an arrival recover a person from a prior callout posture", () => {
     const arrivedPersonIds = buildArrivedPersonIds([
       {
