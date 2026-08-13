@@ -264,10 +264,22 @@ export default async function Page({ params }: { params: Promise<{ requestId: st
     return leftFailed - rightFailed;
   });
   const failedCount = rows.filter((row: any) => String(row.artifact_status).toUpperCase() === "FAILED").length;
-  const active = ["QUEUED", "CLAIMED", "RUNNING", "ARTIFACTS_READY", "INGESTING"].includes(
-    String(request.request_status).toUpperCase()
-  );
   const terminalReceipt = objectValue(request.output_receipt_json);
+  const collectionReceipt = objectValue(terminalReceipt?.collection);
+  const collectionHealth = String(
+    request.collection_health ?? collectionReceipt?.health ?? "PENDING"
+  ).toUpperCase();
+  const ingestionStatus = String(
+    request.ingestion_status ?? request.request_status ?? "PENDING"
+  ).toUpperCase();
+  const active = ["QUEUED", "CLAIMED", "RUNNING", "ARTIFACTS_READY", "INGESTING", "PENDING"].includes(
+    ingestionStatus
+  );
+  const ingestionError = textValue(request.ingestion_error_message) ?? (
+    textValue(request.error_message) !== textValue(request.collection_error_message)
+      ? textValue(request.error_message)
+      : null
+  );
   const runnerLogRows = runnerLogs ?? [];
   const runnerErrorCount = runnerLogRows.filter(
     (event: any) => String(event.level).toUpperCase() === "ERROR"
@@ -404,16 +416,18 @@ export default async function Page({ params }: { params: Promise<{ requestId: st
       </header>
 
       <section style={{ ...card, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14 }}>
-        <div><small>Status</small><strong style={{ display: "block" }}>{request.request_status}</strong></div>
+        <div><small>Collection health</small><strong style={{ display: "block" }}>{collectionHealth}</strong></div>
+        <div><small>Ingestion</small><strong style={{ display: "block" }}>{ingestionStatus}</strong></div>
         <div><small>Registered files</small><strong style={{ display: "block" }}>{rows.length}</strong></div>
         <div><small>Ingested</small><strong style={{ display: "block" }}>{rows.filter((row: any) => ["INGESTED", "IGNORED"].includes(String(row.artifact_status).toUpperCase())).length}</strong></div>
         <div><small>Failed</small><strong style={{ display: "block", color: failedCount ? "#b91c1c" : "inherit" }}>{failedCount}</strong></div>
+        <div><small>Ingestion time</small><strong style={{ display: "block" }}>{duration(request.ingestion_duration_ms)}</strong></div>
       </section>
 
-      {request.error_message ? (
+      {ingestionError ? (
         <section style={{ ...card, borderColor: "#fecaca", background: "#fff7f7", color: "#991b1b" }}>
-          <strong>Request outcome</strong>
-          <p style={{ marginBottom: 0 }}>{request.error_message}</p>
+          <strong>Ingestion outcome</strong>
+          <p style={{ marginBottom: 0 }}>{ingestionError}</p>
         </section>
       ) : null}
 

@@ -325,33 +325,17 @@ def load_runner_artifact_metadata(file: Path) -> dict:
     if not isinstance(metadata, dict):
         return {}
 
+    # Runner sidecars describe the source lane and collection attempt only.
+    # Workbook identity and every payload-derived fact belong to ingestion.
     result = {
-        "header_identity": {
-            "page": metadata.get("page"),
-            "manifest_type": metadata.get("manifest_type"),
-            "service_date_raw": metadata.get("service_date_raw"),
-            "service_date_compact": metadata.get("service_date_compact"),
-            "service_area": metadata.get("service_area"),
-            "work_area": metadata.get("work_area"),
-            "driver": metadata.get("driver"),
-            "isp_ic": metadata.get("isp_ic"),
-            "vehicle": metadata.get("vehicle"),
-        },
-        "header_authoritative": metadata.get(
-            "header_authoritative",
-            False,
-        ),
         "source_download_filename": metadata.get(
             "source_download_filename"
         ),
-        "canonical_filename": metadata.get("canonical_filename"),
-        "download_source_hash": metadata.get("source_hash"),
-        "contract_number": metadata.get("contract_number"),
-        "expected_package_count": metadata.get(
-            "expected_package_count"
+        "declared_artifact_type": metadata.get(
+            "declared_artifact_type"
         ),
-        "facility_identity": metadata.get("facility_identity"),
-        "discovery_status": metadata.get("discovery_status"),
+        "collection_context": metadata.get("collection_context") or {},
+        "payload_authority": "INGESTION_PIPELINE",
     }
 
     for key in (
@@ -389,14 +373,6 @@ def collect_artifacts(request: dict, run_started_at: float) -> list[dict]:
 
             identity = infer_report_identity(file.name)
             runner_metadata = load_runner_artifact_metadata(file)
-
-            # Manifests are not valid handoff artifacts until Header identity
-            # extraction and canonicalization have completed. Raw browser
-            # downloads such as DeliveryManifest (3).xls must fail closed.
-            if identity.get("artifact_key") in {
-                "COMBINED_MANIFEST", "DELIVERY_MANIFEST", "PICKUP_MANIFEST"
-            } and not runner_metadata.get("header_authoritative"):
-                continue
 
             artifact = {
                 "kind": "REPORT_FILE",
@@ -664,8 +640,9 @@ def record_runtime_event(
     artifact = artifact or {}
     execution_key = artifact.get("artifact_execution_key")
     lane = lane_key or artifact.get("lane_key")
+    collection_context = artifact.get("collection_context") or {}
     route_identity = (
-        (artifact.get("header_identity") or {}).get("work_area")
+        collection_context.get("selected_work_area")
         or artifact.get("route_identity")
     )
     suffix = idempotency_suffix or execution_key or lane or "request"

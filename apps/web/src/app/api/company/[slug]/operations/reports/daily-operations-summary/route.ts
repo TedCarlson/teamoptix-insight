@@ -181,8 +181,8 @@ export async function GET(req: NextRequest, context: RouteContext) {
   if (!express.reference_match_available) signals.push({
     key: "EXPRESS_EVIDENCE_UNAVAILABLE",
     type: "EXPRESS_EVIDENCE_UNAVAILABLE",
-    title: "Express All Codes evidence unavailable",
-    detail: "Manifest volume remains visible, but Complete | Attempted | Open matching is not fully available in this runtime.",
+    title: "Express All Codes status matching unavailable",
+    detail: "Manifest volume remains authoritative and visible, but All Codes cannot currently separate incomplete packages into Attempted and Open.",
     source: "SYSTEM",
     severity: "RISK",
     value: express.package_count,

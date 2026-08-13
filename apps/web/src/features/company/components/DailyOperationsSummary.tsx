@@ -494,17 +494,17 @@ function workflowForSignal(signalType: string): WatchlistWorkflow {
       notePrompt: "Record the affected identifiers, linkage correction, and reprocessing result.",
     },
     EXPRESS_EVIDENCE_UNAVAILABLE: {
-      title: "Restore Express evidence availability",
-      objective: "Restore the protected manifest-to-All-Codes reference pass before interpreting Open volume.",
+      title: "Restore Express status matching",
+      objective: "Restore protected matching between manifest package identities and the independent All Codes status records before interpreting Open versus Attempted volume.",
       steps: [
-        "Confirm the latest delivery manifest and All Codes artifacts are present.",
-        "Re-run the protected reference attachment pass.",
-        "Verify the Express invariant and reference availability flag.",
+        "Confirm the latest delivery manifest and independent All Codes export are present.",
+        "Re-run the protected identity-matching pass.",
+        "Verify manifest-derived Express volume is unchanged and status matching is available.",
         "Resolve only after all operational surfaces show the same totals.",
       ],
       recommendedState: "IN_PROGRESS",
       noteType: "CORRECTION",
-      notePrompt: "Record the source artifacts, repair action, and verified Complete / Attempted / Open totals.",
+      notePrompt: "Record the manifest and All Codes source artifacts, repair action, and verified Complete / Attempted / Open totals.",
     },
     EARLY_LATE_PICKUPS: {
       title: "Review early and late pickup execution",
@@ -1010,7 +1010,7 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
               <ReportSection title="Time-critical execution">
                 <div className="daily-operations-critical" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
                   <SignalRow tone={express.open_package_count || express.attempted_package_count ? "watch" : "clear"} title={`Express · ${fmt(express.complete_package_count)} Complete · ${fmt(express.attempted_package_count)} Attempted · ${fmt(express.open_package_count)} Open`} detail={`${fmt(express.package_count)} total premium-service packages. Each package appears in exactly one state.`} />
-                  <SignalRow tone={!express.reference_match_available || express.tracking_identity_missing_count || express.stop_link_missing_count || express.stop_link_ambiguous_count ? "risk" : "clear"} title={`Express evidence · ${express.reference_match_available ? "Available" : "Unavailable"}`} detail={`${fmt(express.tracking_identity_missing_count)} missing tracking identities · ${fmt(express.stop_link_missing_count)} missing stop links · ${fmt(express.stop_link_ambiguous_count)} ambiguous links. Data health is separate from delivery state.`} />
+                  <SignalRow tone={!express.reference_match_available || express.tracking_identity_missing_count || express.stop_link_missing_count || express.stop_link_ambiguous_count ? "risk" : "clear"} title={`All Codes status matching · ${express.reference_match_available ? "Available" : "Unavailable"}`} detail={`Manifest volume remains authoritative: ${fmt(express.package_count)} Express packages. ${fmt(express.tracking_identity_missing_count)} missing tracking identities · ${fmt(express.stop_link_missing_count)} missing stop links · ${fmt(express.stop_link_ambiguous_count)} ambiguous links.`} />
                   <SignalRow tone={earlyLatePickups ? "watch" : "clear"} title={`Pickup timing · ${fmt(earlyLatePickups)} early / late`} detail="DSW E/L pickup events that need timing review." />
                   <SignalRow tone={potentialMissedPickups ? "risk" : "clear"} title={`Potential missed pickups · ${fmt(potentialMissedPickups)}`} detail="DSW potential-miss signal. Validate against pickup execution before closing." />
                   <SignalRow tone={pickupVariance < 0 ? "watch" : "clear"} title={`Pickup coverage · ${fmt(actPuStops)} actual / ${fmt(puStops)} planned`} detail={`${pickupVariance >= 0 ? "+" : ""}${fmt(pickupVariance)} stop variance; ${fmt(actPuPkgs)} pickup packages.`} />

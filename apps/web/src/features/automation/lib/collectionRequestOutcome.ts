@@ -1,6 +1,11 @@
 export type CollectionRequestOutcome = {
   request_status?: string | null;
   error_message?: string | null;
+  collection_health?: string | null;
+  collection_error_message?: string | null;
+  collection_exception_message?: string | null;
+  ingestion_status?: string | null;
+  ingestion_error_message?: string | null;
 };
 
 export type CollectionRequestAttention = CollectionRequestOutcome & {
@@ -27,17 +32,34 @@ export const ACTIVE_COLLECTION_STATUSES = [
 ] as const;
 
 export function isActiveCollectionRequest(request: CollectionRequestOutcome) {
+  const ingestionStatus = String(request.ingestion_status ?? "").toUpperCase();
+  if (ingestionStatus) {
+    return ["NOT_STARTED", "PENDING", "QUEUED", "INGESTING"].includes(
+      ingestionStatus
+    );
+  }
   return ACTIVE_COLLECTION_STATUSES.includes(
     String(request.request_status ?? "").toUpperCase() as (typeof ACTIVE_COLLECTION_STATUSES)[number]
   );
 }
 
 export function isCleanCompleteCollectionRequest(request: CollectionRequestOutcome) {
+  const collectionHealth = String(request.collection_health ?? "").toUpperCase();
+  const ingestionStatus = String(request.ingestion_status ?? "").toUpperCase();
+  if (collectionHealth || ingestionStatus) {
+    return collectionHealth === "HEALTHY" && ingestionStatus === "COMPLETE";
+  }
   return String(request.request_status ?? "").toUpperCase() === "COMPLETE" &&
     !String(request.error_message ?? "").trim();
 }
 
 export function isCollectionRequestException(request: CollectionRequestOutcome) {
+  const collectionHealth = String(request.collection_health ?? "").toUpperCase();
+  const ingestionStatus = String(request.ingestion_status ?? "").toUpperCase();
+  if (collectionHealth || ingestionStatus) {
+    return ["EXCEPTIONS", "FAILED"].includes(collectionHealth) ||
+      ["PARTIAL", "FAILED"].includes(ingestionStatus);
+  }
   const status = String(request.request_status ?? "").toUpperCase();
   return status === "FAILED" || (status === "COMPLETE" && Boolean(String(request.error_message ?? "").trim()));
 }

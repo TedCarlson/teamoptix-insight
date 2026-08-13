@@ -18,9 +18,7 @@ from datetime import datetime, timezone
 
 from webdriver_manager.chrome import ChromeDriverManager
 
-from rename_files import renameFolder
 from runtime_events import emit_runtime_event
-from extract_data import extractDataFromFolder
 from dsw_package_status import (
     collect_dsw_daily_service,
     collect_dsw_package_status,
@@ -918,18 +916,10 @@ def main(section_='', option_=0, retry=1):
             except Exception as e:
                 logging.info(e)
 
-            success = renameFolder(DOWNLOAD_FOLDER)
-
-            if (
-                not INSIGHT_HISTORICAL_MODE
-                and os.environ.get("FCMS_WRITE_LOCAL_DATABASE", "1") == "1"
-            ):
-                extractDataFromFolder(os.path.basename(DOWNLOAD_FOLDER))
-            else:
-                logging.info(
-                    "Skipping legacy MySQL extraction for Insight historical "
-                    "collection; Supabase artifact ingestion is authoritative."
-                )
+            logging.info(
+                "Collection stopped after source failure; downloaded bytes "
+                "remain available for database handoff."
+            )
 
             closeConnection(CONNECTION)
 
@@ -937,18 +927,10 @@ def main(section_='', option_=0, retry=1):
 
     releaseDriver(driver)
     time.sleep(5)
-    success = renameFolder(DOWNLOAD_FOLDER)
-
-    if (
-        not INSIGHT_HISTORICAL_MODE
-        and os.environ.get("FCMS_WRITE_LOCAL_DATABASE", "1") == "1"
-    ):
-        extractDataFromFolder(os.path.basename(DOWNLOAD_FOLDER))
-    else:
-        logging.info(
-            "Skipping legacy MySQL extraction for Insight historical "
-            "collection; Supabase artifact ingestion is authoritative."
-        )
+    logging.info(
+        "Collection complete; opaque artifacts are ready for database "
+        "handoff and ingestion-owned validation."
+    )
 
     if not INSIGHT_HISTORICAL_MODE:
         CONNECTION, CURSOR = getConnection()

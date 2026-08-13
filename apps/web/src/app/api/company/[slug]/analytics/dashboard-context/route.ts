@@ -154,7 +154,7 @@ export async function GET(
           0
         ),
         available: !expressResult.error && expressRows.length > 0 && expressRows.every((row) => row.reference_match_available !== false),
-        error: expressResult.error?.message ?? (expressRows.some((row) => row.reference_match_available === false) ? "Express reference matching is unavailable for part of this period." : null),
+        error: expressResult.error?.message ?? (expressRows.some((row) => row.reference_match_available === false) ? "All Codes status matching is unavailable for part of this period; Express manifest volume remains authoritative." : null),
       },
     });
   } catch (error) {

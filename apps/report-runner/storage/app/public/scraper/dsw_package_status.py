@@ -5,12 +5,10 @@ import logging
 import os
 import re
 import time
+import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-import pandas as pd
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 from runtime_events import emit_runtime_event
@@ -20,6 +18,8 @@ ARTIFACT_KEY = "DSW_ALL_STATUS_CODE_PACKAGES"
 LANE_KEY = "DSW_PACKAGE_STATUS"
 DAILY_SERVICE_ARTIFACT_KEY = "DSW_DAILY_SERVICE"
 DAILY_SERVICE_LANE_KEY = "DSW"
+OPTIONAL_SOURCE_UI_TIMEOUT_SECONDS = 8
+OPTIONAL_DOWNLOAD_TIMEOUT_SECONDS = 20
 
 
 def retain_latest_daily_service_workbook(
@@ -54,69 +54,6 @@ def retain_latest_daily_service_workbook(
         os.replace(source, target)
 
     return str(target)
-
-
-def returned_route_wa_numbers(workbook_path):
-    """Return WA numbers whose DSW DOT hours-and-miles fields are loaded."""
-
-    worksheet = pd.read_excel(
-        workbook_path,
-        sheet_name=0,
-        header=None,
-        dtype=object,
-    )
-    header_index = None
-    headers = []
-
-    for index, row in worksheet.iterrows():
-        values = [
-            "" if pd.isna(value) else str(value).strip()
-            for value in row.tolist()
-        ]
-        if "WA#" in values and "On Duty Hours" in values:
-            header_index = index
-            headers = values
-            break
-
-    if header_index is None:
-        raise RuntimeError("Fresh DSW workbook has no route header row.")
-
-    column_index = {name: index for index, name in enumerate(headers)}
-    required = ("WA#", "Miles", "On Road Hours", "On Duty Hours")
-    missing = [name for name in required if name not in column_index]
-    if missing:
-        raise RuntimeError(
-            "Fresh DSW workbook is missing required columns: "
-            + ", ".join(missing)
-        )
-
-    returned_routes = set()
-    for _, row in worksheet.iloc[header_index + 1:].iterrows():
-        values = row.tolist()
-        first_value = (
-            ""
-            if not values or pd.isna(values[0])
-            else str(values[0]).strip()
-        )
-        if "contract" in first_value.lower():
-            break
-
-        def cell(column_name):
-            value = values[column_index[column_name]]
-            if pd.isna(value):
-                return ""
-            return str(value).strip()
-
-        wa_number = re.sub(r"\.0$", "", cell("WA#"))
-        if (
-            wa_number
-            and cell("Miles")
-            and cell("On Road Hours")
-            and cell("On Duty Hours")
-        ):
-            returned_routes.add(wa_number)
-
-    return returned_routes
 
 
 def purge_expired_local_package_artifacts(
@@ -301,37 +238,58 @@ for (const table of tables) {
   for (const [headerCell, origin] of origins.entries()) {
     if (normalize(headerCell.innerText) !== "All Status Code Pkgs") continue;
 
+    const contractFooters = [];
+    const colocationFooters = [];
     for (let rowIndex = 0; rowIndex < tableRows.length; rowIndex += 1) {
       const rowText = normalize(tableRows[rowIndex].innerText);
       const contractMatch = rowText.match(/Contract\s+(C\d+)\s+Total/i);
-      if (!contractMatch) continue;
+      const isColocationTotal = /\bColocation\s+Total(?:\s+WE)?\b/i.test(
+        rowText
+      );
+      if (!contractMatch && !isColocationTotal) continue;
 
       const targetCell =
         grid[rowIndex] && grid[rowIndex][origin.columnIndex];
-      if (!targetCell) {
-        return {
-          status: "INVALID_CELL",
-          contract_number: contractMatch[1].toUpperCase(),
-        };
-      }
-
-      const countText = normalize(targetCell.innerText);
-      const countMatch = countText.replace(/,/g, "").match(/\d+/);
+      if (!targetCell) continue;
       // FedEx binds the drill-down handler with page JavaScript to a bare
-      // anchor, so the clickable count may have neither href nor onclick.
+      // anchor. Footer rows have merged leading cells, so intersect the
+      // header's expanded visual-grid column with each eligible footer row;
+      // raw DOM cell indexes do not line up.
       const link = targetCell.querySelector("a");
-      const blankWithoutLink = !countText && !link;
-      return {
-        status: countMatch || blankWithoutLink ? "FOUND" : "INVALID_COUNT",
-        contract_number: contractMatch[1].toUpperCase(),
-        expected_package_count: countMatch ? Number(countMatch[0]) : 0,
+      const candidate = {
         link: link || null,
+        footer_scope: contractMatch ? "CONTRACT_TOTAL" : "COLOCATION_TOTAL",
+        contract_number: contractMatch
+          ? contractMatch[1].toUpperCase()
+          : null,
       };
+      (contractMatch ? contractFooters : colocationFooters).push(candidate);
     }
+
+    // Prefer company-specific Contract Total evidence when offered. The DSW
+    // can instead expose the only live All Codes link on the shifted
+    // Colocation Total footer, especially early in sort, so retain that as the
+    // navigation fallback and leave payload authority to ingestion.
+    const selected =
+      contractFooters.find((candidate) => candidate.link) ||
+      colocationFooters.find((candidate) => candidate.link) ||
+      null;
+    if (selected) return { status: "FOUND", ...selected };
+
+    return {
+      status: "SOURCE_NOT_OFFERED",
+      reason: "ALL_CODES_FOOTER_LINK_NOT_OFFERED",
+      footer_candidates: contractFooters.length + colocationFooters.length,
+      link: null,
+    };
   }
 }
 
-return { status: "HEADER_NOT_FOUND" };
+return {
+  status: "SOURCE_NOT_OFFERED",
+  reason: "ALL_CODES_COLUMN_NOT_FOUND",
+  link: null,
+};
 """
     )
 
@@ -419,6 +377,21 @@ def collect_dsw_daily_service(
         download_folder,
     )
     filename = os.path.basename(downloaded_path)
+    write_runner_metadata(
+        downloaded_path,
+        {
+            "artifact_key": DAILY_SERVICE_ARTIFACT_KEY,
+            "report_family_key": "DSW",
+            "report_shape_key": "DSW_DAILY_SERVICE_WORKSHEET",
+            "declared_artifact_type": "daily_service",
+            "source_download_filename": filename,
+            "collection_context": {
+                "selected_facility": facility_identity,
+                "source_lane": DAILY_SERVICE_LANE_KEY,
+            },
+            "payload_authority": "INGESTION_PIPELINE",
+        },
+    )
     event_common = {
         "artifact_key": DAILY_SERVICE_ARTIFACT_KEY,
         "lane_key": DAILY_SERVICE_LANE_KEY,
@@ -502,57 +475,40 @@ def collect_dsw_package_status(
     try:
         discovery = discover_dsw_package_status(driver) or {}
         discovery_status = str(discovery.get("status") or "UNKNOWN")
-        contract_number = str(
-            discovery.get("contract_number") or ""
-        ).strip().upper()
-        expected_count = discovery.get("expected_package_count")
         link = discovery.get("link")
 
-        if discovery_status != "FOUND":
-            _emit_attention(
-                discovery_status,
-                facility_identity,
-                contract_number=contract_number or None,
+        if discovery_status != "FOUND" or not link:
+            source_reason = str(
+                discovery.get("reason")
+                or "EXPORT_CONTROL_NOT_AVAILABLE"
             )
-            return {"status": "NEEDS_ATTENTION", "reason": discovery_status}
-
-        if not isinstance(expected_count, int) or expected_count < 0:
-            _emit_attention(
-                "INVALID_COUNT",
-                facility_identity,
-                contract_number=contract_number,
-            )
-            return {"status": "NEEDS_ATTENTION", "reason": "INVALID_COUNT"}
-
-        if expected_count == 0:
             emit_runtime_event(
-                "EMPTY_CONFIRMED",
+                "SOURCE_UNAVAILABLE",
                 "SOURCE_DISCOVERY",
                 metadata={
-                    "contract_number": contract_number,
-                    "expected_package_count": 0,
+                    "reason": source_reason,
                     "facility_identity": facility_identity,
+                    "source_contract_hint": discovery.get(
+                        "contract_number"
+                    ),
+                    "footer_scope": discovery.get("footer_scope"),
+                    "retry_policy": "NEXT_COLLECTION",
+                    "cycle_blocking": False,
                 },
                 **event_common,
             )
-            return {"status": "EMPTY_CONFIRMED"}
-
-        if not link:
-            _emit_attention(
-                "POSITIVE_COUNT_WITHOUT_LINK",
-                facility_identity,
-                contract_number=contract_number,
-                expected_package_count=expected_count,
-            )
             return {
-                "status": "NEEDS_ATTENTION",
-                "reason": "POSITIVE_COUNT_WITHOUT_LINK",
+                "status": "SOURCE_UNAVAILABLE",
+                "reason": source_reason,
             }
 
         existing_handles = set(driver.window_handles)
         requested_at = time.time()
         driver.execute_script("arguments[0].click();", link)
-        WebDriverWait(driver, 30).until(
+        WebDriverWait(
+            driver,
+            OPTIONAL_SOURCE_UI_TIMEOUT_SECONDS,
+        ).until(
             lambda current_driver: bool(
                 set(current_driver.window_handles) - existing_handles
             )
@@ -564,71 +520,44 @@ def collect_dsw_package_status(
         )
         driver.switch_to.window(detail_handle)
 
-        expected_compact_date = service_date.replace("-", "")
-        heading = WebDriverWait(driver, 30).until(
-            EC.presence_of_element_located(
-                (
-                    By.XPATH,
-                    "//*[self::h1 or self::h2 or self::h3 or self::div]"
-                    "[contains(normalize-space(.), "
-                    "'All Status Code Packages')]",
-                )
-            )
-        ).text
-        heading_match = re.search(
-            r"All Status Code Packages\s*--\s*(C\d+)\s*--\s*(\d{8})",
-            heading,
-            re.IGNORECASE,
-        )
-        if (
-            not heading_match
-            or heading_match.group(1).upper() != contract_number
-            or heading_match.group(2) != expected_compact_date
-        ):
-            raise RuntimeError(
-                "Package-status heading did not match the selected "
-                "contract and service date."
-            )
-
-        excel_control = find_package_status_excel_control(driver)
-        if not excel_control:
-            raise RuntimeError(
-                "Package-status page has no unambiguous Excel control."
-            )
+        excel_control = WebDriverWait(
+            driver,
+            OPTIONAL_SOURCE_UI_TIMEOUT_SECONDS,
+        ).until(find_package_status_excel_control)
 
         before_download = download_snapshot(download_folder)
         driver.execute_script("arguments[0].click();", excel_control)
         downloaded_path, source_ready_at = wait_for_completed_download(
             download_folder,
             before_download,
+            timeout_seconds=OPTIONAL_DOWNLOAD_TIMEOUT_SECONDS,
         )
         source_filename = os.path.basename(downloaded_path)
         extension = os.path.splitext(downloaded_path)[1].lower() or ".xls"
-        canonical_name = (
-            f"PackageLevelDetails_{contract_number}_"
-            f"{expected_compact_date}{extension}"
+        transport_name = (
+            f"PackageLevelDetails_{uuid.uuid4().hex}{extension}"
         )
-        canonical_path = os.path.join(download_folder, canonical_name)
-        if os.path.exists(canonical_path):
-            os.remove(canonical_path)
-        os.replace(downloaded_path, canonical_path)
+        transport_path = os.path.join(download_folder, transport_name)
+        os.replace(downloaded_path, transport_path)
 
         write_runner_metadata(
-            canonical_path,
+            transport_path,
             {
                 "artifact_key": ARTIFACT_KEY,
                 "report_family_key": "DSW",
                 "report_shape_key": ARTIFACT_KEY,
-                "page": "All Status Code Packages",
-                "header_authoritative": True,
-                "service_date_raw": service_date,
-                "service_date_compact": expected_compact_date,
-                "contract_number": contract_number,
-                "expected_package_count": expected_count,
-                "facility_identity": facility_identity,
+                "declared_artifact_type": "all_status_code_packages",
                 "source_download_filename": source_filename,
-                "canonical_filename": canonical_name,
-                "discovery_status": "COLLECTED",
+                "collection_context": {
+                    "selected_facility": facility_identity,
+                    "selected_service_date": service_date,
+                    "source_lane": LANE_KEY,
+                    "source_contract_hint": discovery.get(
+                        "contract_number"
+                    ),
+                    "footer_scope": discovery.get("footer_scope"),
+                },
+                "payload_authority": "INGESTION_PIPELINE",
             },
         )
 
@@ -638,11 +567,11 @@ def collect_dsw_package_status(
             occurred_at=datetime.fromtimestamp(
                 requested_at, timezone.utc
             ).isoformat().replace("+00:00", "Z"),
-            filename=canonical_name,
+            filename=transport_name,
             metadata={
-                "contract_number": contract_number,
-                "expected_package_count": expected_count,
                 "facility_identity": facility_identity,
+                "selected_service_date": service_date,
+                "footer_scope": discovery.get("footer_scope"),
             },
             **event_common,
         )
@@ -652,37 +581,38 @@ def collect_dsw_package_status(
             occurred_at=datetime.fromtimestamp(
                 source_ready_at, timezone.utc
             ).isoformat().replace("+00:00", "Z"),
-            filename=canonical_name,
+            filename=transport_name,
             **event_common,
         )
         emit_runtime_event(
             "DOWNLOAD_COMPLETED",
             "DOWNLOAD",
-            filename=canonical_name,
-            metadata={
-                "contract_number": contract_number,
-                "expected_package_count": expected_count,
-            },
+            filename=transport_name,
             **event_common,
         )
         return {
             "status": "COLLECTED",
-            "filename": canonical_name,
-            "contract_number": contract_number,
-            "expected_package_count": expected_count,
+            "filename": transport_name,
         }
     except Exception as error:
         logging.info(
             "Optional DSW package-status collection failed: %s",
             error,
         )
-        _emit_attention(
-            str(error),
-            facility_identity,
-            event_stage="DOWNLOAD",
-            error_type=type(error).__name__,
+        emit_runtime_event(
+            "DOWNLOAD_FAILED",
+            "DOWNLOAD",
+            artifact_key=ARTIFACT_KEY,
+            lane_key=LANE_KEY,
+            metadata={
+                "reason": type(error).__name__,
+                "message": str(error),
+                "facility_identity": facility_identity,
+                "retry_policy": "NEXT_COLLECTION",
+                "cycle_blocking": False,
+            },
         )
-        return {"status": "NEEDS_ATTENTION", "reason": str(error)}
+        return {"status": "DOWNLOAD_FAILED", "reason": str(error)}
     finally:
         try:
             if detail_handle and detail_handle in driver.window_handles:

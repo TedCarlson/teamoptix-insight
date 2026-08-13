@@ -61,6 +61,30 @@ class DailyPackageControlContractTests(unittest.TestCase):
             self.service_unit,
         )
 
+    def test_canonical_collection_path_never_validates_workbook_payloads(self):
+        app_dir = Path(__file__).resolve().parents[1]
+        sources = [
+            Path(__file__).with_name("run-insight-request.py"),
+            app_dir / "storage/app/public/scraper/dynamic_script.py",
+            app_dir / "storage/app/public/scraper/scrape_particular_date.py",
+            app_dir / "storage/app/public/scraper/dsw_package_status.py",
+        ]
+        combined = "\n".join(
+            source.read_text(encoding="utf-8") for source in sources
+        )
+
+        for forbidden in (
+            "read_excel(",
+            "renameDownloadedManifest",
+            "renameFolder(",
+            "extractDataFromFolder",
+            "header_authoritative",
+            "returned_route_wa_numbers",
+        ):
+            self.assertNotIn(forbidden, combined)
+
+        self.assertIn('"payload_authority": "INGESTION_PIPELINE"', combined)
+
 
 if __name__ == "__main__":
     unittest.main()

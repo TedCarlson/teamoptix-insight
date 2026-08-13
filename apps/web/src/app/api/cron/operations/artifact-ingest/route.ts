@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import { ingestArtifactWorkbook } from "@/features/operations/reports/automation/ingestArtifactWorkbook";
+import {
+  isManifestCollectionArtifact,
+  isRetryableIngestionTimeout,
+} from "@/features/operations/reports/automation/collectionArtifactAuthority";
 
 export const runtime = "nodejs";
 
@@ -27,7 +31,7 @@ function artifactAuditContext(artifact: any) {
 async function markArtifact(params: {
   supabase: any;
   artifactId: string;
-  status: "INGESTING" | "INGESTED" | "FAILED" | "IGNORED";
+  status: "READY_FOR_INGEST" | "INGESTING" | "INGESTED" | "FAILED" | "IGNORED";
   metadata?: Record<string, unknown>;
   reportBatchId?: string | null;
   errorMessage?: string | null;
@@ -214,10 +218,9 @@ export async function GET() {
     .eq("artifact_kind", "REPORT_FILE")
     .in("request_status", ["RUNNING", "ARTIFACTS_READY", "INGESTING"])
     .in("artifact_status", ["READY_FOR_INGEST", "ARTIFACTS_READY"])
-    .not("normalized_filename", "in", '("Delivery Manifest.xlsx","Pickup Manifest.xlsx","Combined Manifest.xlsx")')
     .order("ingest_priority", { ascending: true })
     .order("created_at", { ascending: true })
-    .limit(10);
+    .limit(250);
 
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
@@ -225,7 +228,11 @@ export async function GET() {
 
   const processed = [];
 
-  for (const artifact of artifacts ?? []) {
+  const workbookArtifacts = (artifacts ?? [])
+    .filter((artifact: any) => !isManifestCollectionArtifact(artifact))
+    .slice(0, 10);
+
+  for (const artifact of workbookArtifacts) {
     try {
       const artifactKey = String(artifact.runner_artifact_json?.artifact_key ?? "").toUpperCase();
       if (DECOMMISSIONED_FCC_ARTIFACT_KEYS.has(artifactKey)) {
@@ -294,6 +301,34 @@ export async function GET() {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Artifact ingest failed.";
+
+      if (
+        isRetryableIngestionTimeout(error) &&
+        Number(artifact.attempt_count ?? 0) < 3
+      ) {
+        await markArtifact({
+          supabase,
+          artifactId: artifact.id,
+          status: "READY_FOR_INGEST",
+          metadata: {
+            source: "cron_artifact_ingest",
+            phase: "RETRY_SCHEDULED",
+            retry_reason: "DATABASE_STATEMENT_TIMEOUT",
+            retry_scheduled_at: new Date().toISOString(),
+            attempt_count: Number(artifact.attempt_count ?? 0) + 1,
+            artifact: artifactAuditContext(artifact),
+            error: message,
+          },
+          errorMessage: null,
+        }).catch(() => null);
+        processed.push({
+          artifact_id: artifact.id,
+          collection_request_id: artifact.collection_request_id,
+          status: "RETRY_SCHEDULED",
+          reason: "DATABASE_STATEMENT_TIMEOUT",
+        });
+        continue;
+      }
 
       await markArtifact({
         supabase,
