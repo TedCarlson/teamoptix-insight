@@ -99,17 +99,26 @@ export function artifactWarehouseLineage(params: {
     text(runner.handoff_contract) === "operations_artifact_handoff_v2" ||
     text(runner.handoff_mode) === "DIRECT_INGESTION" ||
     Boolean(text(runner.transport_filename));
+  const structuredArtifactKey = text(runner.artifact_key)?.toUpperCase();
   const resolvedArtifactKey = declaredArtifactKey(artifact);
+  let transportIdentity: ReturnType<
+    typeof parseRunnerV2TransportFilename
+  > | null = null;
 
   if (isRunnerV2) {
     if (!transportFilename) {
       throw new Error("Runner 2.0 artifact is missing its transport filename.");
     }
     const convention = parseRunnerV2TransportFilename(transportFilename);
+    transportIdentity = convention;
     const expectedDate =
       text(runner.requested_service_date) ?? text(artifact.service_date);
-    const expectedLane = text(runner.source_lane);
-    const expectedType = text(runner.artifact_key);
+    const declaredLane = text(runner.source_lane);
+    const declaredType = text(runner.artifact_key);
+    const expectedLane =
+      declaredLane?.toUpperCase() === "UNKNOWN" ? null : declaredLane;
+    const expectedType =
+      declaredType?.toUpperCase() === "UNKNOWN" ? null : declaredType;
     const matches =
       convention.companySlug === conventionSegment(companySlug, "unknown-company") &&
       convention.artifactId === artifact.id.toLowerCase() &&
@@ -146,6 +155,23 @@ export function artifactWarehouseLineage(params: {
       handoff_mode: text(runner.handoff_mode),
       runner_key: text(artifact.runner_key),
       payload_authority: "INGESTION_PIPELINE",
+      identity_resolution_precedence: [
+        "PAYLOAD_OR_WORKBOOK_HEADER",
+        "STRUCTURED_HANDOFF",
+        "TRANSPORT_FILENAME_LAST_RESORT",
+      ],
+      artifact_purpose_resolution_source:
+        structuredArtifactKey && structuredArtifactKey !== "UNKNOWN"
+          ? text(runner.identity_authority) === "INGESTION_PIPELINE"
+            ? "PAYLOAD_OR_WORKBOOK_HEADER"
+            : "STRUCTURED_HANDOFF"
+          : resolvedArtifactKey
+            ? "TRANSPORT_FILENAME_LAST_RESORT"
+            : null,
+      company_authority: "DATABASE_COMPANY_SCOPE",
+      company_filename_reconciled:
+        transportIdentity?.companySlug ===
+        conventionSegment(companySlug, "unknown-company"),
       filename_routing_authority: false,
       filename_identity_role: isRunnerV2
         ? "LAST_RESORT_RECONCILIATION"

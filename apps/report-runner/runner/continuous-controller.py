@@ -77,6 +77,18 @@ def utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def cycle_exit_has_terminal_handoff(returncode: int) -> bool:
+    """Whether the child exited normally enough to own terminal reconciliation.
+
+    Negative subprocess return codes mean the operating system terminated the
+    child with a signal. In that case the controller must retain active_cycle
+    so the replacement process can reconcile the interrupted collection.
+    Exit 40 intentionally remains credential-blocked state for the same
+    existing restart reconciliation behavior.
+    """
+    return returncode >= 0 and returncode != 40
+
+
 def load_env_file(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     if not path.exists():
@@ -497,7 +509,7 @@ class ContinuousController:
             f"[controller] cycle finished id={cycle_id} status={status}",
             flush=True,
         )
-        if status != 40:
+        if cycle_exit_has_terminal_handoff(status):
             self.journal["active_cycle"] = None
             self.save_journal()
         return status
