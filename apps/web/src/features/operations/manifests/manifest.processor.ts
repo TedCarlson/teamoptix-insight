@@ -338,6 +338,7 @@ async function processPickupArtifact(params: {
 export async function processManifestArtifact(params: {
   supabase: SupabaseClientLike;
   artifact: ManifestArtifactRow;
+  buffer?: Buffer;
 }): Promise<ManifestProcessorResult> {
   const { supabase, artifact } = params;
 
@@ -355,7 +356,7 @@ export async function processManifestArtifact(params: {
       throw new Error(`Unsupported manifest_type ${artifact.manifest_type}.`);
     }
 
-    const buffer = await downloadManifestArtifact(supabase, artifact);
+    const buffer = params.buffer ?? await downloadManifestArtifact(supabase, artifact);
 
     await updateArtifactStatus({
       supabase,

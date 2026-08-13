@@ -343,6 +343,18 @@ export async function POST(_req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Only report file artifacts can be inspected." }, { status: 400 });
     }
 
+    if (artifact.storage_bucket === "direct-ingestion-v2") {
+      return NextResponse.json(
+        {
+          error: "Raw artifact was not retained after Runner 2.0 direct ingestion.",
+          raw_artifact_retained: false,
+          artifact_id: artifact.id,
+          artifact_status: artifact.artifact_status,
+        },
+        { status: 410 }
+      );
+    }
+
     if (!artifact.storage_bucket || !artifact.storage_path) {
       return NextResponse.json({ error: "Artifact is missing storage location." }, { status: 400 });
     }
@@ -423,6 +435,16 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
     }
     if (!artifact) {
       return NextResponse.json({ error: "Artifact not found." }, { status: 404 });
+    }
+    if (artifact.storage_bucket === "direct-ingestion-v2") {
+      return NextResponse.json(
+        {
+          error: "Raw artifact was not retained after Runner 2.0 direct ingestion.",
+          raw_artifact_retained: false,
+          artifact_record_retained: true,
+        },
+        { status: 410 }
+      );
     }
     if (!artifact.storage_bucket || !artifact.storage_path) {
       return NextResponse.json({ error: "Artifact has no storage object to remove." }, { status: 400 });

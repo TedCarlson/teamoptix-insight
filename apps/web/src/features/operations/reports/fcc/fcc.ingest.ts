@@ -135,6 +135,7 @@ export async function ingestFccWorkbook(params: {
   serviceDate?: string;
   uploadedByAuthUserId?: string | null;
   uploadedByProfileId?: string | null;
+  artifactLineage?: Record<string, unknown>;
 }) {
   const { supabase, slug, buffer, filename, fileSize, serviceDate } = params;
   const sourceHash = createHash("sha256").update(buffer).digest("hex");
@@ -287,6 +288,9 @@ export async function ingestFccWorkbook(params: {
         matched: matchedCount,
         unmatched: stagedRows.length - matchedCount,
       },
+      ...(params.artifactLineage
+        ? { artifact_lineage: params.artifactLineage }
+        : {}),
     },
     p_rows: stagedRows,
   });

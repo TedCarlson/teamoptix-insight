@@ -18,8 +18,9 @@ export async function ingestDswPackageStatusWorkbook(params: {
   buffer: Buffer;
   filename: string;
   artifact: ArtifactContext;
+  artifactLineage?: Record<string, unknown>;
 }) {
-  const { supabase, slug, buffer, filename, artifact } = params;
+  const { supabase, slug, buffer, filename, artifact, artifactLineage } = params;
   const { data: company, error: companyError } = await supabase
     .from("companies")
     .select("id")
@@ -110,6 +111,7 @@ export async function ingestDswPackageStatusWorkbook(params: {
         detected_sheet_name: parsed.sheet_name,
         detected_header_row: parsed.header_row_number,
         expected_count_source: "INGESTION_PARSED_ROWS",
+        ...(artifactLineage ? { artifact_lineage: artifactLineage } : {}),
       },
       p_rows: rows,
     }

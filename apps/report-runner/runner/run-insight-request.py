@@ -12,6 +12,7 @@ import urllib.request
 import urllib.parse
 from datetime import date, timedelta
 from pathlib import Path
+from direct_ingestion import transport_filename as runner_v2_transport_filename
 
 APP_DIR = Path(__file__).resolve().parents[1]
 INSIGHT_ENV_FILE = Path(os.environ.get(
@@ -42,6 +43,13 @@ def utc_now() -> str:
 
 
 def artifact_execution_key(request: dict, artifact: dict) -> str:
+    existing = str(
+        artifact.get("artifact_id")
+        or artifact.get("artifact_execution_key")
+        or ""
+    ).strip()
+    if existing:
+        return existing
     identity = "|".join([
         str(request.get("id") or ""),
         str(artifact.get("service_date") or ""),
@@ -179,17 +187,33 @@ def storage_slug(value: str) -> str:
     return "".join(cleaned).strip("-") or "artifact"
 
 def local_storage_path(request: dict, artifact: dict) -> str:
-    company_slug = request.get("company_slug") or "unknown-company"
+    if not artifact.get("transport_filename"):
+        company_slug = request.get("company_slug") or "unknown-company"
+        service_date = artifact.get("service_date") or request.get("service_date") or time.strftime("%Y-%m-%d")
+        request_id = request.get("id") or "unknown-request"
+        family = artifact.get("report_family_key") or "unknown"
+        original_filename = artifact.get("filename") or "artifact"
+        return "/".join([
+            f"company={company_slug}",
+            f"service_date={service_date}",
+            f"request={request_id}",
+            storage_slug(family),
+            original_filename,
+        ])
+
+    company_id = request.get("company_id") or "unknown-company"
     service_date = artifact.get("service_date") or request.get("service_date") or time.strftime("%Y-%m-%d")
     request_id = request.get("id") or "unknown-request"
-    family = artifact.get("report_family_key") or "unknown"
-    original_filename = artifact.get("filename") or "artifact"
+    lane = lane_key_for_artifact(artifact)
+    artifact_id = artifact_execution_key(request, artifact)
+    extension = Path(artifact.get("filename") or "artifact").suffix.lower() or ".bin"
     return "/".join([
-        f"company={company_slug}",
-        f"service_date={service_date}",
-        f"request={request_id}",
-        storage_slug(family),
-        original_filename,
+        "v2",
+        f"company_id={company_id}",
+        f"requested_date={service_date}",
+        f"request_id={request_id}",
+        f"lane={storage_slug(lane)}",
+        f"{artifact_id}{extension}",
     ])
 
 def request_targets(request: dict) -> list[dict]:
@@ -338,6 +362,11 @@ def load_runner_artifact_metadata(file: Path) -> dict:
         "payload_authority": "INGESTION_PIPELINE",
     }
 
+    for key in ("artifact_id", "transport_filename"):
+        value = metadata.get(key)
+        if value:
+            result[key] = value
+
     for key in (
         "artifact_key",
         "report_family_key",
@@ -348,6 +377,70 @@ def load_runner_artifact_metadata(file: Path) -> dict:
             result[key] = value
 
     return result
+
+
+def prepare_transport_artifact(request: dict, artifact: dict) -> dict:
+    """Give one completed download a stable Runner 2.0 transport identity."""
+    source_path = Path(artifact["path"])
+    source_filename = str(
+        artifact.get("source_download_filename")
+        or artifact.get("filename")
+        or source_path.name
+    )
+    artifact_id = artifact_execution_key(request, artifact)
+    service_date = str(
+        artifact.get("service_date")
+        or request.get("service_date")
+        or time.strftime("%Y-%m-%d")
+    )
+    lane = lane_key_for_artifact(artifact)
+    transport_filename = runner_v2_transport_filename(
+        str(request.get("company_slug") or "unknown-company"),
+        service_date,
+        lane,
+        str(artifact.get("artifact_key") or "UNKNOWN"),
+        artifact_id,
+        source_path.name,
+    )
+    transport_path = source_path.with_name(transport_filename)
+
+    source_sidecar = Path(f"{source_path}.runner.json")
+    metadata = load_runner_artifact_metadata(source_path)
+    metadata.update({
+        "artifact_id": artifact_id,
+        "transport_filename": transport_filename,
+        "source_download_filename": source_filename,
+        "artifact_key": artifact.get("artifact_key"),
+        "report_family_key": artifact.get("report_family_key"),
+        "report_shape_key": artifact.get("report_shape_key"),
+        "collection_context": artifact.get("collection_context") or {},
+        "payload_authority": "INGESTION_PIPELINE",
+    })
+
+    if source_path != transport_path:
+        os.replace(source_path, transport_path)
+        if source_sidecar.exists():
+            os.replace(source_sidecar, Path(f"{transport_path}.runner.json"))
+
+    sidecar_path = Path(f"{transport_path}.runner.json")
+    temporary_path = Path(f"{sidecar_path}.{os.getpid()}.tmp")
+    temporary_path.write_text(
+        json.dumps(metadata, sort_keys=True),
+        encoding="utf-8",
+    )
+    os.replace(temporary_path, sidecar_path)
+
+    artifact.update({
+        "path": str(transport_path),
+        "filename": transport_filename,
+        "transport_filename": transport_filename,
+        "source_download_filename": source_filename,
+        "artifact_id": artifact_id,
+        "artifact_execution_key": artifact_id,
+        "lane_key": lane,
+    })
+    artifact["storage_path"] = local_storage_path(request, artifact)
+    return artifact
 
 
 def collect_artifacts(request: dict, run_started_at: float) -> list[dict]:
@@ -399,6 +492,7 @@ def collect_artifacts(request: dict, run_started_at: float) -> list[dict]:
             artifact["artifact_execution_key"] = artifact_execution_key(
                 request, artifact
             )
+            artifact["artifact_id"] = artifact["artifact_execution_key"]
             artifact["lane_key"] = lane_key_for_artifact(artifact)
             artifact["download_completed_at"] = time.strftime(
                 "%Y-%m-%dT%H:%M:%SZ",
