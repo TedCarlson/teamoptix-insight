@@ -114,7 +114,7 @@ def encode_metadata(metadata: dict[str, Any]) -> str:
 
 
 class DirectIngestionClient:
-    def __init__(self, endpoint: str, token: str, timeout_seconds: float = 10.0):
+    def __init__(self, endpoint: str, token: str, timeout_seconds: float = 25.0):
         self.endpoint = endpoint
         self.token = token
         self.timeout_seconds = timeout_seconds

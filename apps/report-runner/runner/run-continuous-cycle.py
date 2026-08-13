@@ -899,7 +899,7 @@ def main() -> int:
             direct_client = DirectIngestionClient(
                 direct_endpoint,
                 direct_token,
-                timeout_seconds=10,
+                timeout_seconds=25,
             )
             v2_active = True
             request["_runner_version"] = RUNNER_V2_VERSION
