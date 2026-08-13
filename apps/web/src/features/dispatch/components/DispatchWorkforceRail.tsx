@@ -3,9 +3,7 @@ import type {
   DispatchPerson,
 } from "../lib/dispatchSupport";
 import {
-  eyebrow,
   panel,
-  panelHeader,
 } from "../lib/dispatchSupport";
 import { DispatchAttendanceToggle } from "./DispatchAttendanceToggle";
 
@@ -28,9 +26,10 @@ export function DispatchWorkforceRail(props: DispatchWorkforceRailProps) {
     onStagePerson,
   } = props;
 
-  const presentCount = people.filter((person) =>
-    arrivedPersonIds.has(person.roster_member_id)
+  const unassignedCount = people.filter(
+    (person) => !calloutPersonIds.has(person.roster_member_id)
   ).length;
+  const calloutCount = people.length - unassignedCount;
   const groups = [
     {
       key: "trainees",
@@ -59,19 +58,20 @@ export function DispatchWorkforceRail(props: DispatchWorkforceRailProps) {
 
   return (
     <aside className="dispatch-workforce-rail" style={panel}>
-      <div style={panelHeader}>
+      <dl className="dispatch-workforce-rail__summary">
         <div>
-          <p style={eyebrow}>Workforce</p>
-          <strong>{people.length} awaiting assignment</strong>
+          <dt>Unassigned</dt>
+          <dd>{unassignedCount}</dd>
         </div>
-        <span className="dispatch-workforce-rail__summary">
-          {presentCount} present
-        </span>
-      </div>
+        <div>
+          <dt>Callouts</dt>
+          <dd>{calloutCount}</dd>
+        </div>
+      </dl>
 
       <div className="dispatch-workforce-rail__legend" aria-hidden="true">
         <span>Attendance</span>
-        <span>Route assignment</span>
+        <span>Workforce</span>
       </div>
 
       <div className="dispatch-workforce-rail__body">
