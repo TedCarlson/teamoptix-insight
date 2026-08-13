@@ -38,6 +38,7 @@ export async function ingestDswWorkbook(params: {
   uploadedByAuthUserId?: string | null;
   uploadedByProfileId?: string | null;
   debugCandidates?: boolean;
+  artifactLineage?: Record<string, unknown>;
 }) {
   const {
     supabase,
@@ -48,6 +49,7 @@ export async function ingestDswWorkbook(params: {
     uploadedByAuthUserId = null,
     uploadedByProfileId = null,
     debugCandidates = false,
+    artifactLineage,
   } = params;
 
   const { data: company, error: companyError } = await supabase
@@ -154,6 +156,7 @@ export async function ingestDswWorkbook(params: {
     },
     summary_row_count: stagedSummaryRows.length,
     row_classification: rowClassification,
+    ...(artifactLineage ? { artifact_lineage: artifactLineage } : {}),
   };
 
   if (snapshotKind === "FINAL") {

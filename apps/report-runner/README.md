@@ -42,6 +42,14 @@ agree before ingesting. The source lane and declared file type select a parser,
 but the parser establishes the actual file type and database destination.
 Manifest route, date, and type come only from the workbook Header.
 
+Ingestion resolves identity in this order: workbook payload/Header signatures,
+structured handoff metadata, then the convention filename as the last
+reconciliation attempt. A convention company slug must agree with the database
+company and open cycle; it cannot redirect an artifact. Warehouse metadata
+retains both the generic provider filename and the convention transport name,
+along with company slug, collection UUID, artifact UUID, source lane, and
+declared file type.
+
 Direct ingestion is limited to 4,000,000 bytes to remain below the Vercel
 Function request-body ceiling. Oversized files, timeouts, and unsuccessful
 ingestion receipts automatically use the existing Supabase Storage and worker

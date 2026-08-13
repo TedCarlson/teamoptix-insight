@@ -27,6 +27,20 @@ describe("collection artifact authority", () => {
     expect(expectedManifestType(artifact)).toBeNull();
   });
 
+  it("uses the transport convention only when structured purpose metadata is missing", () => {
+    const artifact = {
+      id: "7bb90e2a-ff29-43d7-93ab-7869d021cad0",
+      original_filename: "generic.xls",
+      normalized_filename:
+        "acme-ground__2026-08-13__fcc-pickup-manifests__pickup-manifest__7bb90e2a-ff29-43d7-93ab-7869d021cad0.xls",
+      report_family_key: "FCC",
+      runner_artifact_json: {},
+    };
+
+    expect(isManifestCollectionArtifact(artifact)).toBe(true);
+    expect(expectedManifestType(artifact)).toBe("pickup");
+  });
+
   it("persists Header-derived identity as ingestion-authoritative", () => {
     const payload = manifestPreparationPayload({
       artifact: {

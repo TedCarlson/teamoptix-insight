@@ -2,17 +2,26 @@ import { ingestDswWorkbook } from "@/features/operations/reports/dsw/dsw.ingest"
 import { ingestDswPackageStatusWorkbook } from "@/features/operations/reports/dsw/packageStatus/packageStatus.ingest";
 import { ingestDroPackageDetailWorkbook } from "@/features/operations/reports/dro/dro.ingest";
 import { ingestFccWorkbook } from "@/features/operations/reports/fcc/fcc.ingest";
+import {
+  artifactWarehouseLineage,
+  declaredArtifactKey,
+  reportFamilyFromArtifact,
+} from "@/features/operations/reports/automation/artifactWarehouseLineage";
 
 type ArtifactRow = {
   id: string;
+  collection_request_id?: string | null;
+  company_id?: string | null;
   service_date: string | null;
   artifact_kind: string;
   report_family_key: string | null;
+  report_shape_key?: string | null;
   storage_bucket: string | null;
   storage_path: string | null;
   original_filename: string | null;
   normalized_filename: string | null;
   size_bytes: number | null;
+  runner_key?: string | null;
   runner_artifact_json?: Record<string, unknown> | null;
 };
 
@@ -68,12 +77,12 @@ export async function ingestArtifactWorkbook(params: {
     path: artifact.storage_path!,
   });
 
-  const filename = artifact.original_filename || artifact.normalized_filename || "artifact.xls";
-  const artifactKey = String(
-    artifact.runner_artifact_json?.artifact_key ?? ""
-  ).toUpperCase();
+  const lineage = artifactWarehouseLineage({ artifact, companySlug: slug });
+  const filename = lineage.warehouseSourceFilename;
+  const artifactKey = declaredArtifactKey(artifact) ?? "";
+  const reportFamilyKey = reportFamilyFromArtifact(artifact);
 
-  if (artifact.report_family_key === "DSW") {
+  if (reportFamilyKey === "DSW") {
     if (artifactKey === "DSW_ALL_STATUS_CODE_PACKAGES") {
       return ingestDswPackageStatusWorkbook({
         supabase,
@@ -81,6 +90,7 @@ export async function ingestArtifactWorkbook(params: {
         buffer,
         filename,
         artifact,
+        artifactLineage: lineage.metadata,
       });
     }
     return ingestDswWorkbook({
@@ -91,10 +101,11 @@ export async function ingestArtifactWorkbook(params: {
       fileSize: artifact.size_bytes ?? buffer.length,
       uploadedByAuthUserId,
       uploadedByProfileId,
+      artifactLineage: lineage.metadata,
     });
   }
 
-  if (artifact.report_family_key === "FCC") {
+  if (reportFamilyKey === "FCC") {
     return ingestFccWorkbook({
       supabase,
       slug,
@@ -104,10 +115,11 @@ export async function ingestArtifactWorkbook(params: {
       serviceDate: artifact.service_date ?? undefined,
       uploadedByAuthUserId,
       uploadedByProfileId,
+      artifactLineage: lineage.metadata,
     });
   }
 
-  if (artifact.report_family_key === "DRO") {
+  if (reportFamilyKey === "DRO") {
     if (artifactKey !== "DRO_PACKAGE_DETAIL") {
       throw new Error(`Unsupported DRO artifact ${artifactKey || "UNKNOWN"}.`);
     }
@@ -118,8 +130,9 @@ export async function ingestArtifactWorkbook(params: {
       filename,
       artifact,
       uploadedByProfileId,
+      artifactLineage: lineage.metadata,
     });
   }
 
-  throw new Error(`Unsupported artifact family ${artifact.report_family_key ?? "UNKNOWN"}.`);
+  throw new Error(`Unsupported artifact family ${reportFamilyKey ?? "UNKNOWN"}.`);
 }

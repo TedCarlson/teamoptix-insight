@@ -1,3 +1,5 @@
+import { declaredArtifactKey } from "./artifactWarehouseLineage";
+
 export const MANIFEST_COLLECTION_ARTIFACT_KEYS = new Set([
   "COMBINED_MANIFEST",
   "DELIVERY_MANIFEST",
@@ -18,9 +20,7 @@ export type IngestionManifestIdentity = {
 };
 
 export function collectionArtifactKey(row: any) {
-  return String(row?.runner_artifact_json?.artifact_key ?? "")
-    .trim()
-    .toUpperCase();
+  return declaredArtifactKey(row) ?? "";
 }
 
 export function isManifestCollectionArtifact(row: any) {

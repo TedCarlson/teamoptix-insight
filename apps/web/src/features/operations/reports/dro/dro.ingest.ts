@@ -22,6 +22,7 @@ export async function ingestDroPackageDetailWorkbook(params: {
   filename: string;
   artifact: ArtifactRow;
   uploadedByProfileId?: string | null;
+  artifactLineage?: Record<string, unknown>;
 }) {
   const {
     supabase,
@@ -30,6 +31,7 @@ export async function ingestDroPackageDetailWorkbook(params: {
     filename,
     artifact,
     uploadedByProfileId = null,
+    artifactLineage,
   } = params;
   const serviceDate = droCellText(artifact.service_date);
   if (!serviceDate) {
@@ -155,6 +157,7 @@ export async function ingestDroPackageDetailWorkbook(params: {
         matched: matchedCount,
         unmatched: stagedRows.length - matchedCount,
       },
+      ...(artifactLineage ? { artifact_lineage: artifactLineage } : {}),
     },
     p_rows: stagedRows,
   });
