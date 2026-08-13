@@ -61,7 +61,7 @@ export const grid4: CSSProperties = {
 
 export const executiveSignalGrid: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "0.8fr 1.4fr 0.8fr",
+  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
   gap: 10,
   marginTop: 12,
 };

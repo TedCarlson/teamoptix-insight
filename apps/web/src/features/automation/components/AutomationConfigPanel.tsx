@@ -30,9 +30,9 @@ import {
 import type {
   AutomationConfigPanelProps,
   AutomationStatusResponse,
+  CollectionHealthTimes,
   CollectionRecoveryCandidate,
   CollectionRequest,
-  CollectionRuntimeBaseline,
   CredentialResponse,
   RunnerSchedule,
 } from "./automation.types";
@@ -125,9 +125,10 @@ export default function AutomationConfigPanel(
   const [recoveryCandidates, setRecoveryCandidates] = useState<
     CollectionRecoveryCandidate[]
   >([]);
-  const [runtimeBaselines, setRuntimeBaselines] = useState<
-    CollectionRuntimeBaseline[]
-  >([]);
+  const [healthTimes, setHealthTimes] = useState<CollectionHealthTimes>({
+    latest_collection_success_at: null,
+    latest_ingestion_success_at: null,
+  });
   const [runnerSchedule, setRunnerSchedule] =
     useState<RunnerSchedule | null>(null);
 
@@ -141,6 +142,9 @@ export default function AutomationConfigPanel(
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [collectionTrailError, setCollectionTrailError] = useState<
+    string | null
+  >(null);
   const [observedRequestIds, setObservedRequestIds] = useState<string[]>([]);
   const completedRequestIds = useRef(new Set<string>());
 
@@ -211,9 +215,16 @@ export default function AutomationConfigPanel(
     setCollectionRequests(
       Array.isArray(data?.rows) ? data.rows : []
     );
-    setRuntimeBaselines(
-      Array.isArray(data?.baselines) ? data.baselines : []
-    );
+    setHealthTimes({
+      latest_collection_success_at:
+        typeof data?.latest_collection_success_at === "string"
+          ? data.latest_collection_success_at
+          : null,
+      latest_ingestion_success_at:
+        typeof data?.latest_ingestion_success_at === "string"
+          ? data.latest_ingestion_success_at
+          : null,
+    });
   }, [props.slug]);
 
   const loadRecoveryCandidates = useCallback(async () => {
@@ -250,19 +261,31 @@ export default function AutomationConfigPanel(
     );
   }, [props.slug, props.workspaceMode]);
 
+  const loadCollectionTrail = useCallback(async () => {
+    try {
+      await Promise.all([
+        loadCollectionRequests(),
+        loadRecoveryCandidates(),
+      ]);
+      setCollectionTrailError(null);
+    } catch {
+      setCollectionTrailError(
+        "Detailed collection history is temporarily unavailable. Collection and ingestion health remain authoritative."
+      );
+    }
+  }, [loadCollectionRequests, loadRecoveryCandidates]);
+
   const loadAll = useCallback(async () => {
     await Promise.all([
       loadStatus(),
       loadCredential(),
-      loadCollectionRequests(),
-      loadRecoveryCandidates(),
+      loadCollectionTrail(),
       loadRunnerSchedule(),
     ]);
   }, [
     loadStatus,
     loadCredential,
-    loadCollectionRequests,
-    loadRecoveryCandidates,
+    loadCollectionTrail,
     loadRunnerSchedule,
   ]);
 
@@ -270,10 +293,9 @@ export default function AutomationConfigPanel(
     () =>
       Promise.all([
         loadStatus(),
-        loadCollectionRequests(),
-        loadRecoveryCandidates(),
+        loadCollectionTrail(),
       ]),
-    [loadCollectionRequests, loadRecoveryCandidates, loadStatus]
+    [loadCollectionTrail, loadStatus]
   );
 
   useEffect(() => {
@@ -402,14 +424,6 @@ export default function AutomationConfigPanel(
     };
   }, [activeRequestIds, loadQueueSnapshot]);
 
-  const latestSuccessfulCollection = useMemo(
-    () =>
-      collectionRequests.find(
-        (request) => request.request_status === "COMPLETE" && !request.error_message
-      ) ?? null,
-    [collectionRequests]
-  );
-
   const queuedCount = collectionRequests.filter(
     (request) => request.request_status === "QUEUED"
   ).length;
@@ -476,7 +490,11 @@ export default function AutomationConfigPanel(
       await Promise.all([loadCollectionRequests(), loadRecoveryCandidates()]);
       setMessage(`Recovery queued for ${candidate.service_date}.`);
     } catch (error) {
-      setStatusError(error instanceof Error ? error.message : "Failed to queue recovery.");
+      setCollectionTrailError(
+        error instanceof Error
+          ? error.message
+          : "Failed to queue recovery."
+      );
     } finally {
       setQueuingRecovery(null);
     }
@@ -706,9 +724,12 @@ export default function AutomationConfigPanel(
 
           <MiniStat
             label="Last Successful Collection"
-            value={formatTime(
-              latestSuccessfulCollection?.updated_at ?? null
-            )}
+            value={formatTime(healthTimes.latest_collection_success_at)}
+          />
+
+          <MiniStat
+            label="Last Successful Ingestion"
+            value={formatTime(healthTimes.latest_ingestion_success_at)}
           />
         </div>
 
@@ -906,35 +927,17 @@ export default function AutomationConfigPanel(
           <MiniStat label="Complete" value={completeCount} />
         </div>
 
-        {runtimeBaselines.length ? (
-          <div
+        {collectionTrailError ? (
+          <p
+            role="status"
             style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 8,
-              marginTop: 12,
+              color: "#9a6700",
+              fontWeight: 800,
+              marginBottom: 0,
             }}
           >
-            {runtimeBaselines.map((baseline) => (
-              <span
-                key={`${baseline.request_type}:${baseline.execution_mode}`}
-                style={{
-                  border: "1px solid #dbe4ef",
-                  borderRadius: 999,
-                  padding: "7px 10px",
-                  color: "#526681",
-                  fontSize: 10,
-                  fontWeight: 800,
-                }}
-              >
-                {baseline.request_type.replaceAll("_", " ")} ·{" "}
-                {baseline.execution_mode.toLowerCase()} ·{" "}
-                {baseline.measured_run_count} runs · median{" "}
-                {compactDuration(baseline.median_end_to_end_ms)} · p95{" "}
-                {compactDuration(baseline.p95_end_to_end_ms)}
-              </span>
-            ))}
-          </div>
+            {collectionTrailError}
+          </p>
         ) : null}
 
         <div style={{ overflowX: "auto", marginTop: 12 }}>

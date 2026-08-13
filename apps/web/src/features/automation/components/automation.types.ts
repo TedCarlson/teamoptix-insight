@@ -28,6 +28,11 @@ export type AutomationStatusResponse = {
   runner_applied_version?: number | null;
 };
 
+export type CollectionHealthTimes = {
+  latest_collection_success_at: string | null;
+  latest_ingestion_success_at: string | null;
+};
+
 export type CredentialResponse = {
   username?: string;
   has_secret: boolean;
