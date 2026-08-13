@@ -36,9 +36,40 @@ describe("artifactWarehouseLineage", () => {
       declared_artifact_key: "PICKUP_MANIFEST",
       source_lane: "FCC_PICKUP_MANIFESTS",
       payload_authority: "INGESTION_PIPELINE",
+      artifact_purpose_resolution_source: "STRUCTURED_HANDOFF",
+      company_authority: "DATABASE_COMPANY_SCOPE",
+      company_filename_reconciled: true,
       filename_routing_authority: false,
       filename_identity_role: "LAST_RESORT_RECONCILIATION",
       filename_identity_verified: true,
+    });
+  });
+
+  it("uses the transport filename only as the final artifact-purpose reconciliation", () => {
+    const lineage = artifactWarehouseLineage({
+      companySlug: "acme-ground",
+      artifact: {
+        id: "7bb90e2a-ff29-43d7-93ab-7869d021cad0",
+        service_date: "2026-08-13",
+        original_filename: "generic.xls",
+        normalized_filename:
+          "acme-ground__2026-08-13__fcc-pickup-manifests__pickup-manifest__7bb90e2a-ff29-43d7-93ab-7869d021cad0.xls",
+        report_family_key: null,
+        runner_artifact_json: {
+          handoff_contract: "operations_artifact_handoff_v2",
+          artifact_key: "UNKNOWN",
+          transport_filename:
+            "acme-ground__2026-08-13__fcc-pickup-manifests__pickup-manifest__7bb90e2a-ff29-43d7-93ab-7869d021cad0.xls",
+        },
+      },
+    });
+
+    expect(lineage.metadata).toMatchObject({
+      declared_artifact_key: "PICKUP_MANIFEST",
+      artifact_purpose_resolution_source: "TRANSPORT_FILENAME_LAST_RESORT",
+      company_authority: "DATABASE_COMPANY_SCOPE",
+      company_filename_reconciled: true,
+      filename_routing_authority: false,
     });
   });
 
