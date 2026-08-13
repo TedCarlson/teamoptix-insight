@@ -786,9 +786,43 @@ h1 {
 .dispatch-right-column { grid-area: right; }
 
 .dispatch-workforce-rail__summary {
-  color: #166534;
-  font-size: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  border-bottom: 1px solid #e6edf5;
+}
+
+.dispatch-workforce-rail__summary > div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  padding: 7px 9px;
+}
+
+.dispatch-workforce-rail__summary > div:first-child {
+  border-right: 1px solid #e6edf5;
+}
+
+.dispatch-workforce-rail__summary dt {
+  color: #64748b;
+  font-size: 9px;
   font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dispatch-workforce-rail__summary dd {
+  margin: 0;
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.dispatch-workforce-rail__summary > div:last-child dd {
+  color: #b91c1c;
 }
 
 .dispatch-workforce-rail__legend {
