@@ -2360,6 +2360,112 @@ h1 {
   justify-content: flex-end;
 }
 
+.operations-status-popover {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.operations-status-popover__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 7px 11px;
+  border: 1px solid #dbe4ef;
+  border-radius: 999px;
+  background: #fff;
+  color: #475569;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 750;
+  list-style: none;
+  user-select: none;
+}
+
+.operations-status-popover__trigger::-webkit-details-marker {
+  display: none;
+}
+
+.operations-status-popover__trigger::before {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #94a3b8;
+  content: "";
+}
+
+.operations-status-popover__trigger.is-active::before {
+  background: #10b981;
+}
+
+.operations-status-popover__trigger.is-waiting::before {
+  background: #f59e0b;
+}
+
+.operations-status-popover__panel {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 7px);
+  left: 0;
+  display: grid;
+  width: min(340px, calc(100vw - 32px));
+  overflow: hidden;
+  border: 1px solid #dbe4ef;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 14px 35px rgba(15, 23, 42, 0.16);
+}
+
+.operations-status-popover__signal {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.operations-status-popover__signal:last-child {
+  border-bottom: 0;
+}
+
+.operations-status-popover__signal > span {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.operations-status-popover__signal strong {
+  color: #334155;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+}
+
+.operations-status-popover__signal small {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.operations-status-popover__signal.is-active strong {
+  color: #047857;
+}
+
+.operations-status-popover__signal.is-waiting strong {
+  color: #92400e;
+}
+
+.operations-status-popover__signal.is-critical {
+  background: #fff7f7;
+}
+
+.operations-status-popover__signal.is-critical strong {
+  color: #b91c1c;
+}
+
 .operations-workspace-toolbar__status {
   display: inline-flex;
   align-items: center;
@@ -2443,6 +2549,15 @@ h1 {
 
   .operations-workspace-toolbar__status {
     padding-inline: 2px;
+  }
+
+  .operations-status-popover__panel {
+    position: fixed;
+    top: auto;
+    right: 16px;
+    bottom: 16px;
+    left: 16px;
+    width: auto;
   }
 
   .operations-workspace-toolbar__actions {

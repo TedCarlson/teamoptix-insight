@@ -646,7 +646,7 @@ export default function OperationsWorkspacePage({
     const supabase = getSupabaseBrowserClient();
     let channel: ReturnType<typeof supabase.channel> | null = null;
 
-    async function loadCollectionRequests() {
+    async function loadCollectionRequests(subscribeToRequests = false) {
       try {
         const response = await fetch(
           `/api/company/${slug}/collection-requests?mode=status&limit=10`,
@@ -692,7 +692,7 @@ export default function OperationsWorkspacePage({
 
         const companyId =
           typeof data?.company_id === "string" ? data.company_id : null;
-        if (!companyId || !mounted) return;
+        if (!companyId || !mounted || !subscribeToRequests) return;
 
         const handleRequestChange = (payload: {
           new: Record<string, unknown>;
@@ -745,10 +745,15 @@ export default function OperationsWorkspacePage({
       }
     }
 
-    void loadCollectionRequests();
+    void loadCollectionRequests(true);
+    const statusTimerId = window.setInterval(
+      () => void loadCollectionRequests(false),
+      60_000
+    );
 
     return () => {
       mounted = false;
+      window.clearInterval(statusTimerId);
       if (channel) void supabase.removeChannel(channel);
     };
   }, [active, refreshWorkspace, slug]);
@@ -1503,8 +1508,7 @@ export default function OperationsWorkspacePage({
 
       <OperationsWorkspaceToolbar
         slug={slug}
-        statusText={collectionSignal.copy}
-        statusTone={collectionSignal.tone}
+        collectionSignal={collectionSignal}
         refreshing={loading}
         onActions={() => setEventOverlayOpen(true)}
         actionsLabel="Actions"
@@ -1521,18 +1525,7 @@ export default function OperationsWorkspacePage({
         <section className="ou-collection" aria-label="Route operational units">
           <header>
             <span>
-              <small
-                className={
-                  collectionSignal.tone === "active"
-                    ? "is-active"
-                    : collectionSignal.tone === "critical"
-                      ? "is-critical"
-                      : ""
-                }
-              >
-                {routeUnits.length} routes · {serviceDate} ·{" "}
-                {collectionSignal.copy}
-              </small>
+              <small>{routeUnits.length} routes · {serviceDate}</small>
               {operatingDateDecision.override === "OPERATING" ? (
                 <small className="ou-supplemental-day-signal">
                   Supplemental collection day

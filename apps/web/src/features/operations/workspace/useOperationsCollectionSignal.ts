@@ -17,11 +17,11 @@ type StatusPayload = {
   operating_calendar?: OperationsSignalCalendar | null;
 };
 
-export function useOperationsCollectionSignal(slug: string) {
+export function useOperationsCollectionSignal(slug: string, enabled = true) {
   const [signal, setSignal] = useState<OperationsCollectionSignal | null>(null);
 
   const refresh = useCallback(async () => {
-    if (!slug) return;
+    if (!slug || !enabled) return;
     try {
       const response = await fetch(
         `/api/company/${slug}/collection-requests?mode=status&limit=10`,
@@ -45,13 +45,14 @@ export function useOperationsCollectionSignal(slug: string) {
       // Preserve the last authoritative signal during a transient refresh
       // failure instead of replacing it with page-local data.
     }
-  }, [slug]);
+  }, [enabled, slug]);
 
   useEffect(() => {
+    if (!enabled) return;
     void refresh();
-    const timerId = window.setInterval(() => void refresh(), 30_000);
+    const timerId = window.setInterval(() => void refresh(), 60_000);
     return () => window.clearInterval(timerId);
-  }, [refresh]);
+  }, [enabled, refresh]);
 
   return { signal, refresh };
 }

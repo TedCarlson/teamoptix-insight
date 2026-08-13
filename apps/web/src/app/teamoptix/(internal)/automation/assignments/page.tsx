@@ -44,7 +44,7 @@ async function saveWorkOrderRule(formData: FormData) {
   const requestType = String(payload.request_type ?? "OPERATIONS_PULSE");
   if (DAILY_PACKAGE_REQUEST_TYPES.has(requestType)) {
     throw new Error(
-      "Prior Day, DRO AM, and Operations Pulse are controlled by the signed daily-package gate, not company ticket assignments."
+      "Prior Day, DRO AM, and Continuous Collection are controlled by the signed daily-package gate, not company ticket assignments."
     );
   }
   const operationalContract = requestType === "PREVIOUS_DAY_CLOSE" ? "PREVIOUS_DAY_FINAL" : requestType === "HISTORICAL_BACKFILL" ? "HISTORICAL_SWEEP" : requestType === "LAST_LOOK" ? "LAST_LOOK" : "IN_DAY_OPERATIONS";
@@ -262,7 +262,7 @@ export default async function Page() {
                   </label>
                 </div></div>
 
-                <div className="assignment-control-group"><div><span className="workspace-eyebrow">Operating calendar</span><h3>Which days can in-day collection run?</h3><p>Used only by Operations Pulse. Dated exceptions override the weekly pattern.</p></div>
+                <div className="assignment-control-group"><div><span className="workspace-eyebrow">Operating calendar</span><h3>Which days can in-day collection run?</h3><p>Used only by Continuous Collection. Dated exceptions override the weekly pattern.</p></div>
                   <div className="assignment-weekday-grid">
                     {[{ value: "0", label: "Sun", checked: false }, { value: "1", label: "Mon", checked: true }, { value: "2", label: "Tue", checked: true }, { value: "3", label: "Wed", checked: true }, { value: "4", label: "Thu", checked: true }, { value: "5", label: "Fri", checked: true }, { value: "6", label: "Sat", checked: true }].map((day) => (
                       <label key={day.value} className="assignment-enable"><input name="operatingWeekdays" type="checkbox" value={day.value} defaultChecked={day.checked} /> <span>{day.label}</span></label>

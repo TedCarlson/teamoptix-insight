@@ -1,9 +1,11 @@
 "use client";
 
 import { useOperationsCollectionSignal } from "@/features/operations/workspace/useOperationsCollectionSignal";
+import type { OperationsCollectionSignal } from "@/features/operations/workspace/operationsCollectionSignal";
 
 type OperationsWorkspaceToolbarProps = {
   slug: string;
+  collectionSignal?: OperationsCollectionSignal;
   statusText?: string;
   statusTone?: "active" | "waiting" | "critical" | "neutral";
   refreshing?: boolean;
@@ -21,6 +23,7 @@ type OperationsWorkspaceToolbarProps = {
 export default function OperationsWorkspaceToolbar(props: OperationsWorkspaceToolbarProps) {
   const {
     slug,
+    collectionSignal,
     statusText,
     statusTone = "neutral",
     refreshing = false,
@@ -35,10 +38,8 @@ export default function OperationsWorkspaceToolbar(props: OperationsWorkspaceToo
     actions,
   } = props;
   const { signal: authoritativeSignal, refresh: refreshCollectionSignal } =
-    useOperationsCollectionSignal(slug);
-  const renderedStatusText =
-    authoritativeSignal?.copy ?? statusText ?? "Loading collection status…";
-  const renderedStatusTone = authoritativeSignal?.tone ?? statusTone;
+    useOperationsCollectionSignal(slug, !collectionSignal);
+  const renderedSignal = collectionSignal ?? authoritativeSignal;
 
   function refreshAll() {
     void refreshCollectionSignal();
@@ -56,12 +57,43 @@ export default function OperationsWorkspaceToolbar(props: OperationsWorkspaceToo
         marginBottom: 10,
       }}
     >
-      <span
-        className={`operations-workspace-toolbar__status${renderedStatusText ? ` has-signal is-${renderedStatusTone}` : ""}`}
-        style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}
-      >
-        {renderedStatusText}
-      </span>
+      {renderedSignal ? (
+        <details className="operations-status-popover">
+          <summary
+            className={`operations-status-popover__trigger is-${renderedSignal.collection.tone}`}
+            aria-label={`Open status details. Collection ${renderedSignal.collection.value}`}
+            title={`Collection ${renderedSignal.collection.value}`}
+          >
+            <span>Status</span>
+          </summary>
+          <div
+            className="operations-status-popover__panel"
+            aria-label="Collection and ingestion status"
+          >
+            {[
+              renderedSignal.collection,
+              renderedSignal.activity,
+              renderedSignal.ingestion,
+            ].map((signal) => (
+              <div
+                key={signal.key}
+                className={`operations-status-popover__signal is-${signal.tone}`}
+              >
+                <span>{signal.label}</span>
+                <strong>{signal.value}</strong>
+                <small>{signal.detail}</small>
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : (
+        <span
+          className={`operations-workspace-toolbar__status${statusText ? ` has-signal is-${statusTone}` : ""}`}
+          style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}
+        >
+          {statusText ?? "Loading collection status…"}
+        </span>
+      )}
 
       <div className="operations-workspace-toolbar__actions operations-action-rail__actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {onActions ? (

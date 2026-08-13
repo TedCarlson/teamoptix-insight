@@ -284,7 +284,7 @@ export default function RunnerScheduleEditor(props: {
 
         <div style={{ border: "1px solid #dbe7f3", borderRadius: 14, padding: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-            <strong>Operations Pulse</strong>
+            <strong>Continuous Collection</strong>
             <button
               type="button"
               className={props.row.operations_pulse_enabled ? "button button-primary" : "button"}
@@ -339,8 +339,8 @@ export default function RunnerScheduleEditor(props: {
             </label>
           </div>
           <p style={{ color: "#166534", fontSize: 12, fontWeight: 850, lineHeight: 1.5 }}>
-            Starts at clock-in, then starts the next collection immediately
-            after each successful cycle until stop time.
+            Collects and hands off each file independently. The next collection
+            starts after the current collection cycle finishes.
           </p>
           <div style={{ display: "grid", gap: 6, marginTop: 12 }}>
             {REPORT_OPTIONS.map(([key, label]) => (
