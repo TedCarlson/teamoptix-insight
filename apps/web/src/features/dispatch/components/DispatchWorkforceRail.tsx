@@ -71,7 +71,7 @@ export function DispatchWorkforceRail(props: DispatchWorkforceRailProps) {
 
       <div className="dispatch-workforce-rail__legend" aria-hidden="true">
         <span>Attendance</span>
-        <span>Route assignment</span>
+        <span>Workforce</span>
       </div>
 
       <div className="dispatch-workforce-rail__body">
