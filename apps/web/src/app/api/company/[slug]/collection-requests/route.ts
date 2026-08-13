@@ -14,6 +14,70 @@ const ALLOWED_REQUEST_TYPES = new Set([
   "TARGETED_RECOVERY",
 ]);
 
+const COLLECTION_TRAIL_COLUMNS = [
+  "id",
+  "company_id",
+  "company_slug",
+  "request_type",
+  "request_status",
+  "priority",
+  "service_date",
+  "service_date_start",
+  "service_date_end",
+  "requested_reports",
+  "request_payload",
+  "duration_ms",
+  "report_batch_ids",
+  "error_message",
+  "created_at",
+  "updated_at",
+  "report_count",
+  "manifest_count",
+  "route_count",
+  "output_receipt_json",
+  "lane_priority",
+  "registered_count",
+  "ready_count",
+  "ingesting_count",
+  "ingested_count",
+  "failed_count",
+].join(",");
+
+async function loadAuthoritativeHealthTimes(supabase: any, companyId: string) {
+  const [
+    { data: latestCollection, error: collectionError },
+    { data: latestIngestion, error: ingestionError },
+  ] = await Promise.all([
+    supabase
+      .from("operations_collection_request_v")
+      .select("completed_at")
+      .eq("company_id", companyId)
+      .eq("request_status", "COMPLETE")
+      .not("completed_at", "is", null)
+      .order("completed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("operations_collection_artifact_v")
+      .select("ingest_completed_at")
+      .eq("company_id", companyId)
+      .in("artifact_status", ["INGESTED", "IGNORED"])
+      .not("ingest_completed_at", "is", null)
+      .order("ingest_completed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  if (collectionError) throw new Error(collectionError.message);
+  if (ingestionError) throw new Error(ingestionError.message);
+
+  return {
+    latest_collection_success_at: latestCollection?.completed_at ?? null,
+    latest_ingestion_success_at:
+      latestIngestion?.ingest_completed_at ?? null,
+  };
+}
+
 function normalizeReports(value: unknown) {
   if (!Array.isArray(value)) return [];
   return value
@@ -112,7 +176,7 @@ export async function GET(
         { data, error },
         { data: runnerSchedule, error: scheduleError },
         { data: inDayAssignment, error: assignmentError },
-        { data: latestIngestionSuccess, error: ingestionSuccessError },
+        healthTimes,
       ] = await Promise.all([
         service
           .from("operations_collection_request_v")
@@ -146,17 +210,7 @@ export async function GET(
           .order("release_order", { ascending: true })
           .limit(1)
           .maybeSingle(),
-        // Keep the polling response bounded: return one authoritative scalar
-        // instead of expanding every request with artifact-ingest details.
-        service
-          .from("operations_collection_request_v")
-          .select("ingestion_completed_at")
-          .eq("company_id", resolved.company.id)
-          .eq("ingestion_status", "COMPLETE")
-          .not("ingestion_completed_at", "is", null)
-          .order("ingestion_completed_at", { ascending: false })
-          .limit(1)
-          .maybeSingle(),
+        loadAuthoritativeHealthTimes(service, resolved.company.id),
       ]);
 
       if (error) {
@@ -177,13 +231,6 @@ export async function GET(
           { status: 500 }
         );
       }
-      if (ingestionSuccessError) {
-        return NextResponse.json(
-          { error: ingestionSuccessError.message, rows: [] },
-          { status: 500 }
-        );
-      }
-
       const assignmentPayload =
         inDayAssignment?.assignment_payload_json &&
         typeof inDayAssignment.assignment_payload_json === "object"
@@ -195,8 +242,7 @@ export async function GET(
           operational_date: operationalDate,
           company_id: resolved.company.id,
           rows: data ?? [],
-          latest_ingestion_success_at:
-            latestIngestionSuccess?.ingestion_completed_at ?? null,
+          ...healthTimes,
           runner_schedule: runnerSchedule ?? null,
           operating_calendar: inDayAssignment
             ? {
@@ -247,46 +293,26 @@ export async function GET(
 
     if (mode === "today") {
       const { operationalDate, start, end } = easternOperationalDayBounds();
-
-      const [
-        { data, error },
-        { data: baselines, error: baselineError },
-      ] = await Promise.all([
+      const service = createSupabaseServiceRoleClient();
+      const [{ data, error }, healthTimes] = await Promise.all([
         supabase
           .from("operations_collection_request_v")
-          .select("*")
+          .select(COLLECTION_TRAIL_COLUMNS)
           .eq("company_id", resolved.company.id)
           .gte("created_at", start.toISOString())
           .lt("created_at", end.toISOString())
           .order("created_at", { ascending: false })
           .limit(limit),
-        supabase
-          .from("operations_collection_runtime_baseline_v")
-          .select("*")
-          .eq("company_id", resolved.company.id),
+        loadAuthoritativeHealthTimes(service, resolved.company.id),
       ]);
 
       if (error) {
         return NextResponse.json({ error: error.message, rows: [] }, { status: 500 });
       }
-      if (
-        baselineError &&
-        baselineError.code !== "PGRST205" &&
-        baselineError.code !== "PGRST204"
-      ) {
-        return NextResponse.json(
-          { error: baselineError.message, rows: [] },
-          { status: 500 }
-        );
-      }
-
       return NextResponse.json({
         operational_date: operationalDate,
-        rows: await enrichRowsWithRuntime(supabase, data ?? []),
-        baselines:
-          baselineError?.code === "PGRST205" || baselineError?.code === "PGRST204"
-            ? []
-            : baselines ?? [],
+        rows: data ?? [],
+        ...healthTimes,
       });
     }
 
