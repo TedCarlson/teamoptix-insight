@@ -4,8 +4,9 @@ import { useState } from "react";
 import type { RosterRow } from "@/features/people/types/roster.types";
 import { DrawerSection } from "@/features/people/components/person-drawer/PersonDrawerRows";
 import RosterAssetAssignmentOverlay from "./RosterAssetAssignmentOverlay";
+import RosterPinEditorOverlay from "./RosterPinEditorOverlay";
 
-type AssetTypeKey = "SCANNER" | "FUEL_CARD" | "PIN";
+type AssetTypeKey = "SCANNER" | "FUEL_CARD";
 
 type ResourceDefinition = {
   key: AssetTypeKey;
@@ -26,6 +27,7 @@ export default function RosterAssignedResourcesSection({
 }: Props) {
   const [activeType, setActiveType] =
     useState<AssetTypeKey | null>(null);
+  const [editingPin, setEditingPin] = useState(false);
 
   const resources: ResourceDefinition[] = [
     {
@@ -38,11 +40,6 @@ export default function RosterAssignedResourcesSection({
       label: "Fuel card",
       value: person.fuel_card,
     },
-    {
-      key: "PIN",
-      label: "PIN",
-      value: person.pin_id_no,
-    },
   ];
 
   const activeResource =
@@ -54,7 +51,7 @@ export default function RosterAssignedResourcesSection({
     <>
       <DrawerSection
         eyebrow="Resources"
-        title="Assigned assets"
+        title="Assigned resources"
       >
         <div style={{ display: "grid", gap: 8 }}>
           {resources.map((resource) => (
@@ -95,6 +92,34 @@ export default function RosterAssignedResourcesSection({
               </button>
             </div>
           ))}
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "128px minmax(0, 1fr) auto",
+              gap: 10,
+              alignItems: "center",
+              minHeight: 36,
+            }}
+          >
+            <span className="hero-stat__label">PIN</span>
+            <strong
+              style={{
+                minWidth: 0,
+                overflowWrap: "anywhere",
+              }}
+            >
+              {person.pin_id_no || "Not entered"}
+            </strong>
+            <button
+              className="button"
+              type="button"
+              onClick={() => setEditingPin(true)}
+              style={{ minHeight: 32, padding: "0 10px" }}
+            >
+              {person.pin_id_no ? "Edit" : "Enter"}
+            </button>
+          </div>
         </div>
       </DrawerSection>
 
@@ -110,6 +135,16 @@ export default function RosterAssignedResourcesSection({
           onChanged={onChanged}
         />
       ) : null}
+
+      <RosterPinEditorOverlay
+        open={editingPin}
+        companySlug={companySlug}
+        rosterMemberId={person.roster_member_id}
+        rosterMemberName={person.full_name}
+        currentPin={person.pin_id_no}
+        onClose={() => setEditingPin(false)}
+        onChanged={onChanged}
+      />
     </>
   );
 }

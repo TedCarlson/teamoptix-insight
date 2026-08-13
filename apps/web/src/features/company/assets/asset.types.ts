@@ -21,6 +21,8 @@ export type CompanyAssetRow = {
   assigned_person_name: string | null;
   assigned_roster_member_id: string | null;
   assigned_roster_member_name: string | null;
+  /** Authoritative PIN from the assigned roster member's operations fact. */
+  assigned_roster_pin?: string | null;
   assigned_at: string | null;
   released_at: string | null;
   updated_at: string | null;

@@ -94,7 +94,6 @@ export async function loadRosterAuthoritativeDto({
   const assets = assetValues.get(rosterId) ?? {
     scanner_serial: null,
     fuel_card: null,
-    pin_id_no: null,
   };
 
   return {
@@ -128,7 +127,9 @@ export async function loadRosterAuthoritativeDto({
     scanner_serial:
       assets.scanner_serial ?? operations?.scanner_serial ?? null,
     fuel_card: assets.fuel_card ?? operations?.fuel_card ?? null,
-    pin_id_no: assets.pin_id_no ?? operations?.pin_id_no ?? null,
+    // PIN belongs to the roster member. It is never hydrated from asset
+    // inventory or assignment state.
+    pin_id_no: operations?.pin_id_no ?? null,
 
     // Identifiers live in company_roster_identifier and are exposed by the
     // roster view. The legacy operations columns are compatibility mirrors.

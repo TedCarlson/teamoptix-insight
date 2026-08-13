@@ -75,7 +75,12 @@ export default function AssetEditDrawer(props: Props) {
           asset_identifier: assetIdentifier,
           asset_status_key: statusKey,
           asset_provider_id: assetProviderId || null,
-          secondary_identifier: secondaryIdentifier,
+          // A fuel-card PIN belongs to its assigned roster member. Preserve
+          // any legacy asset value without presenting it as editable state.
+          secondary_identifier:
+            props.assetTypeKey === "FUEL_CARD"
+              ? (props.row?.secondary_identifier ?? "")
+              : secondaryIdentifier,
           notes,
           assignment_muted: assignmentMuted,
         }),
@@ -166,7 +171,7 @@ export default function AssetEditDrawer(props: Props) {
               </select>
             </label>
 
-            {props.showSecondary !== false ? (
+            {props.showSecondary !== false && props.assetTypeKey !== "FUEL_CARD" ? (
               <label style={{ display: "grid", gap: 5 }}>
                 <span className="hero-stat__label">PIN / Secondary</span>
                 <input value={secondaryIdentifier} onChange={(e) => setSecondaryIdentifier(e.target.value)} style={inputStyle} />

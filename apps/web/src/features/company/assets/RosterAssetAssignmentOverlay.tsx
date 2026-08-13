@@ -13,7 +13,7 @@ type Props = {
   companySlug: string;
   rosterMemberId: string;
   rosterMemberName: string;
-  assetTypeKey: "SCANNER" | "FUEL_CARD" | "PIN";
+  assetTypeKey: "SCANNER" | "FUEL_CARD";
   assetTypeLabel: string;
   onClose: () => void;
   onChanged: () => Promise<void> | void;

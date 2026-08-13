@@ -3,13 +3,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export type RosterAssetValues = {
   scanner_serial: string | null;
   fuel_card: string | null;
-  pin_id_no: string | null;
 };
 
 const EMPTY_ASSET_VALUES: RosterAssetValues = {
   scanner_serial: null,
   fuel_card: null,
-  pin_id_no: null,
 };
 
 export async function loadRosterAssetValues(
@@ -45,8 +43,6 @@ export async function loadRosterAssetValues(
       current.scanner_serial = assetIdentifier || null;
     } else if (assetTypeKey === "FUEL_CARD") {
       current.fuel_card = assetIdentifier || null;
-    } else if (assetTypeKey === "PIN") {
-      current.pin_id_no = assetIdentifier || null;
     }
 
     result.set(rosterId, current);

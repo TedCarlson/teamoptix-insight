@@ -239,7 +239,7 @@ export default function ManagePersonDrawer({
               <div className={styles.tabIntro}>
                 <p className="workspace-eyebrow">Resources</p>
                 <h3>Assigned company resources</h3>
-                <p>Review and manage the assets currently connected to this roster member.</p>
+                <p>Manage assigned assets and driver-owned resource identifiers.</p>
               </div>
               <RosterAssignedResourcesSection
                 companySlug={companySlug}

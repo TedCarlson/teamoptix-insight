@@ -2,6 +2,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import CompanyAssetsPageShell from "@/features/company/assets/CompanyAssetsPageShell";
 import CompanyAssetsTable from "@/features/company/assets/CompanyAssetsTable";
 import type { CompanyAssetRow } from "@/features/company/assets/asset.types";
+import { loadAssetsWithAssignedRosterPins } from "@/features/company/assets/server/assignedRosterPins";
 
 function cleanSearch(value: unknown) {
   if (typeof value !== "string") return "";
@@ -20,7 +21,7 @@ export default async function FuelCardsPage({
   const q = cleanSearch(resolvedSearchParams?.q);
   const supabase = await getSupabaseServerClient();
 
-  let query = supabase
+  const query = supabase
     .from("company_assets_v")
     .select("*")
     .eq("company_slug", slug)
@@ -29,21 +30,15 @@ export default async function FuelCardsPage({
     .order("assigned_roster_member_name", { ascending: true, nullsFirst: false })
     .order("asset_identifier", { ascending: true });
 
-  if (q) {
-    query = query.or(
-      [
-        `asset_identifier.ilike.%${q}%`,
-        `display_name.ilike.%${q}%`,
-        `provider.ilike.%${q}%`,
-        `secondary_identifier.ilike.%${q}%`,
-        `notes.ilike.%${q}%`,
-        `status_label.ilike.%${q}%`,
-        `assigned_roster_member_name.ilike.%${q}%`,
-      ].join(",")
-    );
-  }
+  const { data, error } = await query;
 
-  const { data } = await query;
+  if (error) {
+    throw new Error(`Failed to load fuel card assets: ${error.message}`);
+  }
+  const rows = await loadAssetsWithAssignedRosterPins(
+    supabase,
+    (data ?? []) as CompanyAssetRow[],
+  );
 
   return (
     <CompanyAssetsPageShell
@@ -54,7 +49,7 @@ export default async function FuelCardsPage({
         eyebrow="Fuel card assets"
         title="Fuel Card Inventory"
         emptyLabel="No fuel card assets have been seeded yet."
-        rows={(data || []) as CompanyAssetRow[]}
+        rows={rows}
         searchQuery={q}
         assetLabel="Fuel Card"
       />

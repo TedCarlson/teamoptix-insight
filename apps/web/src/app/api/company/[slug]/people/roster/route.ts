@@ -48,7 +48,7 @@ export async function GET(
     let opsByRosterId = new Map<string, any>();
     let licenseByRosterId = new Map<string, any>();
     let traineePayByRosterId = new Map<string, any>();
-    let assetValuesByRosterId = new Map<string, { scanner_serial: string | null; fuel_card: string | null; pin_id_no: string | null }>();
+    let assetValuesByRosterId = new Map<string, { scanner_serial: string | null; fuel_card: string | null }>();
 
     if (rosterIds.length > 0) {
       const { data: opsRows } = await supabase
@@ -113,7 +113,6 @@ export async function GET(
         const assetValues = assetValuesByRosterId.get(row.roster_member_id) ?? {
           scanner_serial: null,
           fuel_card: null,
-          pin_id_no: null,
         };
 
         return {
@@ -132,7 +131,9 @@ export async function GET(
           trainee_daily_pay_rate: traineePay?.trainee_daily_pay_rate ?? null,
           trainee_pay_effective_start: traineePay?.effective_start ?? null,
           fuel_card: assetValues.fuel_card ?? ops?.fuel_card ?? null,
-          pin_id_no: assetValues.pin_id_no ?? ops?.pin_id_no ?? null,
+          // The roster operations fact is the sole authority for a driver's
+          // PIN. Asset records may display it, but cannot override it.
+          pin_id_no: ops?.pin_id_no ?? null,
           candidate_stage_key: stage?.stage_key ?? null,
           candidate_stage_label: stage?.default_label ?? null,
           candidate_stage_is_terminal: Boolean(stage?.is_terminal ?? false),

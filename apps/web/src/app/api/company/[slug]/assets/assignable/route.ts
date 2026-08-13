@@ -3,7 +3,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-const ALLOWED_TYPES = new Set(["SCANNER", "FUEL_CARD", "PIN"]);
+const ALLOWED_TYPES = new Set(["SCANNER", "FUEL_CARD"]);
 
 export async function GET(
   req: NextRequest,

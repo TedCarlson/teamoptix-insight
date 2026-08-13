@@ -35,6 +35,12 @@ function statusSort(row: CompanyAssetRow) {
   return row.status_sort_order ?? 999;
 }
 
+function displayedPin(row: CompanyAssetRow) {
+  return row.asset_type_key === "FUEL_CARD"
+    ? row.assigned_roster_pin
+    : row.secondary_identifier;
+}
+
 export default function CompanyAssetsTable(props: CompanyAssetsTableProps) {
   const [activeAsset, setActiveAsset] = useState<CompanyAssetRow | null>(null);
   const [editingAsset, setEditingAsset] = useState<CompanyAssetRow | null>(null);
@@ -63,7 +69,7 @@ export default function CompanyAssetsTable(props: CompanyAssetsTableProps) {
         row.asset_identifier,
         row.display_name,
         row.provider,
-        row.secondary_identifier,
+        displayedPin(row),
         row.notes,
         row.status_label,
         row.assignment_muted ? "Unavailable for Assignment" : "",
@@ -162,7 +168,7 @@ export default function CompanyAssetsTable(props: CompanyAssetsTableProps) {
                           <strong>{row.asset_identifier}</strong>
                           <div style={{ color: "#64748b", fontSize: 12 }}>{row.display_name || row.asset_type_label}</div>
                         </td>
-                        {props.showSecondary !== false ? <td style={{ padding: "10px 10px", verticalAlign: "top" }}>{row.secondary_identifier || "—"}</td> : null}
+                        {props.showSecondary !== false ? <td style={{ padding: "10px 10px", verticalAlign: "top" }}>{displayedPin(row) || "—"}</td> : null}
                         <td style={{ padding: "10px 10px", verticalAlign: "top" }}><AssetStatusBadge label={displayStatus(row)} /></td>
                         <td style={{ padding: "10px 10px", verticalAlign: "top", color: "#64748b", maxWidth: 300 }}>{row.notes || "—"}</td>
                         <td style={{ padding: "10px 10px", verticalAlign: "top" }}>{formatDate(row.updated_at)}</td>

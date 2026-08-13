@@ -6,6 +6,7 @@ import AssetAssignmentCell from "./AssetAssignmentCell";
 import AssetStatusBadge from "./AssetStatusBadge";
 import type { CompanyAssetRow } from "./asset.types";
 import type { AssetDriverOption } from "./useCompanyRoster";
+import { updateRosterPin } from "./rosterPin.client";
 
 type Props = {
   row: CompanyAssetRow | null;
@@ -42,12 +43,22 @@ export default function AssetWorkspaceDrawer(props: Props) {
   const [assignmentMuted, setAssignmentMuted] = useState(Boolean(assetRow?.assignment_muted));
   const [savingAdmin, setSavingAdmin] = useState(false);
   const [adminError, setAdminError] = useState<string | null>(null);
+  const [driverPin, setDriverPin] = useState(assetRow?.assigned_roster_pin ?? "");
+  const [savingPin, setSavingPin] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
 
   useEffect(() => {
     setNotes(assetRow?.notes ?? "");
     setAssignmentMuted(Boolean(assetRow?.assignment_muted));
+    setDriverPin(assetRow?.assigned_roster_pin ?? "");
     setAdminError(null);
-  }, [assetRow?.asset_id, assetRow?.notes, assetRow?.assignment_muted]);
+    setPinError(null);
+  }, [
+    assetRow?.asset_id,
+    assetRow?.notes,
+    assetRow?.assignment_muted,
+    assetRow?.assigned_roster_pin,
+  ]);
 
   if (!assetRow) return null;
   const row = assetRow;
@@ -79,6 +90,29 @@ export default function AssetWorkspaceDrawer(props: Props) {
       router.refresh();
     } finally {
       setSavingAdmin(false);
+    }
+  }
+
+  async function saveDriverPin() {
+    if (!row.assigned_roster_member_id) return;
+
+    setSavingPin(true);
+    setPinError(null);
+
+    try {
+      await updateRosterPin({
+        companySlug: row.company_slug,
+        rosterMemberId: row.assigned_roster_member_id,
+        pin: driverPin,
+      });
+      props.onClose();
+      router.refresh();
+    } catch (error) {
+      setPinError(
+        error instanceof Error ? error.message : "Failed to save driver PIN.",
+      );
+    } finally {
+      setSavingPin(false);
     }
   }
 
@@ -136,11 +170,69 @@ export default function AssetWorkspaceDrawer(props: Props) {
             <DetailRow label="Type" value={row.asset_type_label} />
             <DetailRow label="Status" value={<AssetStatusBadge label={row.assignment_muted ? "Unavailable for Assignment" : row.status_label} />} />
             <DetailRow label="Provider" value={row.provider ?? "—"} />
-            {props.showSecondary !== false ? <DetailRow label="PIN / Secondary" value={row.secondary_identifier ?? "—"} /> : null}
+            {props.showSecondary !== false ? (
+              <DetailRow
+                label={row.asset_type_key === "FUEL_CARD" ? "Driver PIN" : "PIN / Secondary"}
+                value={
+                  row.asset_type_key === "FUEL_CARD"
+                    ? (row.assigned_roster_pin ?? "—")
+                    : (row.secondary_identifier ?? "—")
+                }
+              />
+            ) : null}
             <DetailRow label="Assigned Driver" value={row.assigned_roster_member_name ?? "—"} />
             <DetailRow label="Updated" value={formatDate(row.updated_at)} />
           </div>
         </article>
+
+        {props.showSecondary !== false && row.asset_type_key === "FUEL_CARD" ? (
+          <article className="app-card" style={{ padding: 14 }}>
+            <p className="value-card__eyebrow">Driver PIN</p>
+            {row.assigned_roster_member_id ? (
+              <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+                <p className="app-card__body" style={{ margin: 0 }}>
+                  Stored on {row.assigned_roster_member_name ?? "the assigned driver"}&apos;s roster record.
+                </p>
+                <input
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={driverPin}
+                  onChange={(event) => setDriverPin(event.target.value)}
+                  placeholder="Enter PIN"
+                  style={{
+                    width: "100%",
+                    height: 40,
+                    borderRadius: 10,
+                    border: "1px solid #d6dfeb",
+                    padding: "0 10px",
+                    background: "#fff",
+                  }}
+                />
+                <small style={{ color: "#64748b" }}>
+                  This value follows the driver, not the fuel card.
+                </small>
+                {pinError ? <p style={{ color: "#c62828", margin: 0 }}>{pinError}</p> : null}
+                <div className="cta-row">
+                  <button
+                    className="button button-primary"
+                    type="button"
+                    disabled={
+                      savingPin ||
+                      driverPin.trim() === (row.assigned_roster_pin ?? "").trim()
+                    }
+                    onClick={saveDriverPin}
+                  >
+                    {savingPin ? "Saving..." : "Save driver PIN"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="app-card__body" style={{ marginTop: 8 }}>
+                Assign this fuel card to a driver to view or edit that driver&apos;s PIN.
+              </p>
+            )}
+          </article>
+        ) : null}
 
         <article className="app-card" style={{ padding: 14 }}>
           <p className="value-card__eyebrow">Assignment</p>

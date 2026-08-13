@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import type { CompanyAssetRow } from "@/features/company/assets/asset.types";
+import { loadAssetsWithAssignedRosterPins } from "@/features/company/assets/server/assignedRosterPins";
 
 export async function GET(
   _request: Request,
@@ -22,5 +24,21 @@ export async function GET(
     );
   }
 
-  return NextResponse.json({ assets: data ?? [] });
+  try {
+    const assets = await loadAssetsWithAssignedRosterPins(
+      supabase,
+      (data ?? []) as CompanyAssetRow[],
+    );
+    return NextResponse.json({ assets });
+  } catch (pinError) {
+    return NextResponse.json(
+      {
+        error:
+          pinError instanceof Error
+            ? pinError.message
+            : "Failed to load driver PINs.",
+      },
+      { status: 500 },
+    );
+  }
 }
