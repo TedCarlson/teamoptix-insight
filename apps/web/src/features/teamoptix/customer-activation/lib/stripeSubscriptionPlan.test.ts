@@ -13,6 +13,7 @@ describe("initial Stripe subscription request", () => {
       operatorTierKey: "operator_3",
       firstBillingDate: "2026-08-07",
       implementationPaymentId: "payment-1",
+      now: new Date("2026-08-03T16:00:00.000Z"),
     });
 
     expect(request).toMatchObject({
@@ -21,6 +22,7 @@ describe("initial Stripe subscription request", () => {
         items: [{ price: "price_live_weekly_1" }],
         default_payment_method: "pm_live_1",
         collection_method: "charge_automatically",
+        payment_behavior: "error_if_incomplete",
         billing_cycle_anchor: Date.UTC(2026, 7, 7, 4, 0, 0) / 1000,
         proration_behavior: "none",
         metadata: {
@@ -28,11 +30,36 @@ describe("initial Stripe subscription request", () => {
           company_id: "company-1",
           payment_purpose: "subscription",
           first_billing_date: "2026-08-07",
+          billing_start_mode: "scheduled_anchor",
         },
       },
       options: {
         idempotencyKey: "insight-company-company-1-initial-subscription-v1",
       },
+      schedule: {
+        mode: "scheduled_anchor",
+        billingCycleAnchor: Date.UTC(2026, 7, 7, 4, 0, 0) / 1000,
+      },
+    });
+  });
+
+  it("omits a past-midnight anchor so Stripe charges immediately on day one", () => {
+    const request = buildInitialStripeSubscriptionRequest({
+      companyId: "company-1",
+      companySlug: "beacon-point-ventures",
+      customerId: "cus_live_1",
+      priceId: "price_live_weekly_1",
+      paymentMethodId: "pm_live_1",
+      operatorTierKey: "operator_3",
+      firstBillingDate: "2026-08-14",
+      implementationPaymentId: "payment-1",
+      now: new Date("2026-08-14T10:30:00.000Z"),
+    });
+
+    expect(request.params.billing_cycle_anchor).toBeUndefined();
+    expect(request.params.payment_behavior).toBe("error_if_incomplete");
+    expect(request.params.metadata).toMatchObject({
+      billing_start_mode: "immediate_same_day_recovery",
     });
   });
 });

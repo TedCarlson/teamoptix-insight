@@ -6,6 +6,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import { executeActivationRun } from "@/features/teamoptix/customer-activation/executor/activationExecutor";
 import { initialActivationSteps } from "@/features/teamoptix/customer-activation/executor/defaultActivationSteps";
+import { liveBillingRecoveryStepKeys } from "@/features/teamoptix/customer-activation/lib/activationRecovery";
 import { calculateFirstFridayAfterGoLive } from "@/features/teamoptix/customer-activation/lib/billingCalendar";
 
 export { calculateFirstFridayAfterGoLive };
@@ -1178,6 +1179,86 @@ const GO_LIVE_STEP_DEFINITIONS = [
   },
 ] as const;
 
+async function reopenRecoverableLiveBillingSteps(input: {
+  admin: SupabaseClient;
+  activation: CompanyActivationRecord;
+  activationRunId: string;
+  companyId: string;
+  requestedAt: string;
+}) {
+  const { data: subscription, error: subscriptionError } = await input.admin
+    .schema("billing")
+    .from("subscription")
+    .select("provider_subscription_id")
+    .eq("company_id", input.companyId)
+    .eq("provider", "stripe")
+    .in("subscription_status", ["active", "trialing"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ provider_subscription_id: string | null }>();
+
+  if (subscriptionError) {
+    throwDatabaseError(
+      "Unable to inspect persisted Stripe subscription",
+      subscriptionError
+    );
+  }
+
+  const recoveryStepKeys = liveBillingRecoveryStepKeys({
+    providerSubscriptionId: subscription?.provider_subscription_id ?? null,
+    subscriptionActivationStatus:
+      input.activation.subscription_activation_status,
+    lifecycleStatus: input.activation.lifecycle_status,
+  });
+
+  if (recoveryStepKeys.length === 0) return;
+
+  const { data: reopenedSteps, error: reopenError } = await input.admin
+    .schema("commercial")
+    .from("company_activation_step")
+    .update({
+      status: "pending",
+      started_at: null,
+      completed_at: null,
+      last_error: null,
+      result_metadata: {
+        recovery_reason:
+          "Reopened because Insight does not have a completed live Stripe subscription state.",
+        recovery_requested_at: input.requestedAt,
+      },
+    })
+    .eq("activation_run_id", input.activationRunId)
+    .in("step_key", recoveryStepKeys)
+    .in("status", ["complete", "skipped"])
+    .select("id");
+
+  if (reopenError) {
+    throwDatabaseError(
+      "Unable to reopen stale live billing activation steps",
+      reopenError
+    );
+  }
+
+  if ((reopenedSteps?.length ?? 0) === 0) return;
+
+  const { error: runError } = await input.admin
+    .schema("commercial")
+    .from("company_activation_run")
+    .update({
+      status: "pending",
+      completed_at: null,
+      failure_summary: null,
+    })
+    .eq("id", input.activationRunId);
+
+  if (runError) {
+    throwDatabaseError(
+      "Unable to reopen the live billing activation run",
+      runError
+    );
+  }
+}
+
 export async function beginCompanyGoLive(
   slug: string
 ): Promise<CompanyActivationSnapshot> {
@@ -1321,6 +1402,14 @@ export async function beginCompanyGoLive(
       stepError
     );
   }
+
+  await reopenRecoverableLiveBillingSteps({
+    admin,
+    activation,
+    activationRunId,
+    companyId: company.id,
+    requestedAt: nowIso,
+  });
 
   const { error: activationError } = await admin
     .schema("commercial")

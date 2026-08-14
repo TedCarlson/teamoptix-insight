@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 
 import {
   resolveInvoicePaymentIntentId,
+  resolveInvoiceMetadata,
   resolveInvoicePurpose,
   stripeAmount,
   stripeInvoiceRecord,
@@ -85,5 +86,31 @@ describe("Stripe finance record mapping", () => {
     expect(stripeSubscriptionStatus("canceled")).toBe("cancelled");
     expect(stripeSubscriptionStatus("incomplete_expired")).toBe("cancelled");
     expect(stripeSubscriptionStatus("past_due")).toBe("past_due");
+  });
+
+  it("uses the subscription snapshot metadata carried by recurring invoices", () => {
+    const invoice = {
+      metadata: {},
+      parent: {
+        type: "subscription_details",
+        subscription_details: {
+          subscription: "sub_live_1",
+          metadata: {
+            source: "insight",
+            company_id: "company-1",
+            operator_tier_key: "operator_3",
+            payment_purpose: "subscription",
+          },
+        },
+      },
+    } as unknown as Stripe.Invoice;
+
+    expect(resolveInvoiceMetadata(invoice)).toMatchObject({
+      source: "insight",
+      company_id: "company-1",
+      operator_tier_key: "operator_3",
+      payment_purpose: "subscription",
+    });
+    expect(resolveInvoicePurpose(invoice)).toBe("subscription");
   });
 });

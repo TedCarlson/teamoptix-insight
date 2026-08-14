@@ -38,10 +38,19 @@ export function resolveInvoiceSubscriptionId(invoice: Stripe.Invoice): string | 
   return resolveStripeId(subscription);
 }
 
+export function resolveInvoiceMetadata(
+  invoice: Stripe.Invoice
+): Record<string, string> {
+  return {
+    ...(invoice.parent?.subscription_details?.metadata ?? {}),
+    ...(invoice.metadata ?? {}),
+  };
+}
+
 export function resolveInvoicePurpose(
   invoice: Stripe.Invoice
 ): "implementation" | "subscription" | null {
-  const purpose = invoice.metadata?.payment_purpose;
+  const purpose = resolveInvoiceMetadata(invoice).payment_purpose;
   if (purpose === "implementation" || purpose === "subscription") {
     return purpose;
   }
@@ -66,6 +75,8 @@ export function stripeInvoiceRecord(
     (total, tax) => total + tax.amount,
     0
   );
+
+  const metadata = resolveInvoiceMetadata(invoice);
 
   return {
     provider: "stripe",
@@ -100,7 +111,7 @@ export function stripeInvoiceRecord(
     paid_at: paidAt,
     period_start: stripeTimestamp(invoice.period_start),
     period_end: stripeTimestamp(invoice.period_end),
-    provider_metadata: invoice.metadata ?? {},
+    provider_metadata: metadata,
   };
 }
 
@@ -116,7 +127,8 @@ export function stripeInvoiceLineRecord(
       : null;
   const priceId = resolveStripeId(priceDetails?.price);
   const purpose = resolveInvoicePurpose(invoice);
-  const tierKey = invoice.metadata?.operator_tier_key?.trim() || null;
+  const tierKey =
+    resolveInvoiceMetadata(invoice).operator_tier_key?.trim() || null;
 
   return {
     invoice_id: invoiceId,
@@ -180,9 +192,17 @@ export function resolveEventObjectId(event: Stripe.Event): string | null {
 
 export function resolveEventCompanyId(event: Stripe.Event): string | null {
   const object = event.data.object as {
+    object?: string;
     metadata?: Record<string, string> | null;
     client_reference_id?: string | null;
   };
+
+  if (object.object === "invoice") {
+    const companyId = resolveInvoiceMetadata(
+      event.data.object as Stripe.Invoice
+    ).company_id?.trim();
+    if (companyId) return companyId;
+  }
 
   return (
     object.metadata?.company_id?.trim() ||
