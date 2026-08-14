@@ -10521,9 +10521,11 @@ button.payroll-ledger-status {
 @media (max-width: 1120px) {
   .brand-site-nav { gap: 18px; }
   .brand-hero__layout,
-  .product-hero__layout { grid-template-columns: 1fr; padding-top: 70px; }
+  .product-hero__layout { grid-template-columns: minmax(0, 1fr); padding-top: 70px; }
   .brand-hero__copy,
   .product-hero__copy { max-width: 850px; }
+  .brand-hero__copy,
+  .brand-hero__product { min-width: 0; }
   .brand-hero__product { width: min(850px, 100%); margin-left: auto; }
   .brand-hero { min-height: 1200px; }
   .product-hero { min-height: 1250px; }
@@ -10555,8 +10557,8 @@ button.payroll-ledger-status {
   .brand-pathways,
   .product-platform,
   .product-workflows { width: min(100% - 32px, 1360px); }
-  .brand-hero { min-height: 1080px; }
-  .brand-hero__layout { min-height: 0; padding: 85px 0 90px; }
+  .brand-hero { min-height: 0; overflow: hidden; }
+  .brand-hero__layout { min-height: 0; padding: 68px 0 72px; }
   .brand-hero h1,
   .product-hero h1 { font-size: clamp(52px, 15vw, 76px); }
   .brand-hero__image { object-position: 62% center; }
@@ -10609,8 +10611,17 @@ button.payroll-ledger-status {
   .brand-site-actions { gap: 3px; }
   .brand-site-primary { font-size: 11px; }
   .brand-site-signin { font-size: 11px; }
+  .brand-hero__layout { padding: 56px 0 64px; }
+  .brand-hero h1 { font-size: clamp(43px, 11.7vw, 50px); line-height: .92; letter-spacing: -.065em; }
+  .brand-hero .brand-eyebrow { gap: 8px; margin-bottom: 20px; font-size: 9px; }
+  .brand-hero .brand-eyebrow > span { width: 26px; }
+  .brand-hero__lede { margin-top: 24px; font-size: 16px; line-height: 1.55; }
   .brand-action-row { align-items: stretch; flex-direction: column; }
-  .brand-button { width: 100%; }
+  .brand-button { width: 100%; min-height: 52px; }
+  .brand-hero__promise { margin-top: 26px; font-size: 11px; }
+  .brand-hero__promise span { min-width: 0; }
+  .brand-hero__promise strong { display: block; }
+  .brand-hero__product { margin-top: 46px; }
   .brand-system-preview__rail { display: none; }
   .brand-system-preview__body { grid-template-columns: 1fr; }
   .brand-system-preview__workspace { padding: 18px; }
@@ -11000,8 +11011,19 @@ html[data-theme="dark"] .insight-analytics-preview__bar i { background: rgba(87,
 }
 
 @media (max-width: 520px) {
-  .insight-product-preview__chrome { min-height: 60px; }
-  .insight-product-preview__primary span { min-width: 57px; }
+  .insight-product-preview { border-radius: 22px; }
+  .insight-product-preview__chrome { min-height: 60px; padding-inline: 11px; }
+  .insight-product-preview__brand img { width: 48px; height: 32px; }
+  .insight-product-preview__brand strong { font-size: 16px; }
+  .insight-product-preview__identity { display: none; }
+  .insight-product-preview__primary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .insight-product-preview__primary span { min-width: 0; padding-inline: 4px; }
+  .insight-product-preview__primary span:nth-child(2),
+  .insight-product-preview__primary span:nth-child(5),
+  .insight-product-preview__primary span:nth-child(6) { display: none; }
+  .insight-product-preview__secondary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .insight-product-preview__secondary span { padding-inline: 4px; }
+  .insight-product-preview__secondary span:nth-child(n+4) { display: none; }
   .insight-product-preview__heading > small { display: none; }
   .insight-product-preview__toolbar div span:not(.is-action, .is-upload) { display: none; }
   .insight-product-preview__grid { grid-template-columns: 1fr; }
