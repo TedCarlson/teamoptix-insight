@@ -182,6 +182,7 @@ export default function PayrollReportEmailDialog({
       }}
     >
       <aside
+        className="payroll-dialog-surface payroll-report-email-dialog"
         role="dialog"
         aria-modal="true"
         onMouseDown={(event) => event.stopPropagation()}

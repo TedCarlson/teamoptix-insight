@@ -961,7 +961,7 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 16 }}>
               <div style={{ display: "grid", gap: 2 }}>
                 <h2 style={{ margin: 0, fontSize: 22 }}>{payload?.company_name ?? "Company"}</h2>
-                <div style={{ fontSize: 18, fontWeight: 750, color: "#475569" }}>Daily Operations Brief</div>
+                <div className="daily-operations-title" style={{ fontSize: 18, fontWeight: 750, color: "#475569" }}>Daily Operations Brief</div>
               </div>
               <button className="button" type="button" disabled={!summary} onClick={() => { setShareStatus(null); setShareOpen(true); }}>Share report</button>
             </div>
@@ -1128,7 +1128,7 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
               ))}
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginTop: 4 }}>
+            <div className="ops-report-calendar-grid" style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginTop: 4 }}>
               {calendarCells(visibleMonth).map((dateIso, index) => {
                 const inMonth = dateIso.slice(0, 7) === visibleMonth.slice(0, 7);
                 const status = calendarMap.get(dateIso) ?? "empty";
@@ -1136,6 +1136,7 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
 
                 return (
                   <button
+                    className={`ops-report-calendar-day ops-report-calendar-day--${status}`}
                     key={dateIso}
                     type="button"
                     disabled={!inMonth}

@@ -207,7 +207,7 @@ export default function ScheduleBaselineEditor(props: {
   }
 
   return (
-    <article className="value-card" style={{ gridColumn: "1 / -1" }}>
+    <article className="value-card schedule-baseline-editor" style={{ gridColumn: "1 / -1" }}>
       <p className="value-card__eyebrow">Schedule setup</p>
       <h3 className="value-card__title">{driverName}</h3>
       <p className="value-card__body" style={{ marginTop: 8 }}>

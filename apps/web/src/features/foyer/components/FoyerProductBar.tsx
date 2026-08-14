@@ -70,8 +70,8 @@ export default function FoyerProductBar() {
           className="foyer-product-bar__nav"
           aria-label="Insight product navigation"
         >
-          <Link href="/explore" tabIndex={isVisible ? 0 : -1}>
-            Explore Insight
+          <Link href="/insight" tabIndex={isVisible ? 0 : -1}>
+            Insight
           </Link>
           <Link href="/company-owner" tabIndex={isVisible ? 0 : -1}>
             Operators
@@ -79,7 +79,7 @@ export default function FoyerProductBar() {
           <Link href="/teams" tabIndex={isVisible ? 0 : -1}>
             Teams
           </Link>
-          <Link href="/teamoptix" tabIndex={isVisible ? 0 : -1}>
+          <Link href="/company" tabIndex={isVisible ? 0 : -1}>
             Company
           </Link>
         </nav>

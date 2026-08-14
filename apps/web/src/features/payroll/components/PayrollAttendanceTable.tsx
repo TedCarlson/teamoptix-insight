@@ -33,8 +33,8 @@ export default function PayrollAttendanceTable({
   days: string[];
 }) {
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 860 }}>
+    <div className="payroll-family-table-wrap" style={{ overflowX: "auto" }}>
+      <table className="payroll-family-table" style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 860 }}>
         <thead>
           <tr>
             <th style={thStyle}>Employee</th>

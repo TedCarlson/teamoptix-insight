@@ -497,14 +497,14 @@ export default function CandidateWorkflowDrawer({
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
-      className={styles.backdrop}
+      className={`${styles.backdrop} people-dialog-backdrop`}
     >
       <aside
         aria-label={`${person.full_name} candidate workflow`}
         aria-modal="true"
         role="dialog"
         onMouseDown={(event) => event.stopPropagation()}
-        className={styles.drawer}
+        className={`${styles.drawer} people-dialog-surface`}
       >
         <header className={styles.header}>
           <div className={styles.identity}>

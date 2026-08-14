@@ -1,4 +1,5 @@
 import FoyerHeader from "@/features/foyer/components/FoyerHeader";
+import FoyerFooter from "@/features/foyer/components/FoyerFooter";
 import TeamChoiceCard from "./TeamChoiceCard";
 
 const choices = [
@@ -38,6 +39,7 @@ export default function TeamChoicePage() {
           ))}
         </div>
       </section>
+      <FoyerFooter />
     </main>
   );
 }

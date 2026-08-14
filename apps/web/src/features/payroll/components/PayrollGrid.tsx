@@ -669,6 +669,7 @@ export default function PayrollGrid({
         ) : null}
 
         <div
+          className="payroll-week-summary"
           style={{
             border: "1px solid #e6edf5",
             borderRadius: 14,
@@ -767,6 +768,7 @@ export default function PayrollGrid({
           onClick={() => setRepairOpen(false)}
         >
           <div
+            className="payroll-dialog-surface"
             style={{
               width: "min(980px, 96vw)",
               maxHeight: "86vh",
@@ -835,6 +837,7 @@ export default function PayrollGrid({
           onClick={() => setAliasOpen(false)}
         >
           <div
+            className="payroll-dialog-surface"
             style={{
               width: "min(980px, 96vw)",
               maxHeight: "86vh",

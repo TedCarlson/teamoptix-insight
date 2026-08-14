@@ -18,15 +18,7 @@ function WorkedDaysCell({ row }: { row: PayrollSummaryRow }) {
   }
 
   return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "flex-end",
-        gap: 3,
-        whiteSpace: "nowrap",
-      }}
-    >
+    <span className="payroll-summary-table__worked-days">
       <span>{row.days_worked} ·</span>
       {workedDays.map((serviceDate) => {
         const kind = row.worked_day_kinds?.[serviceDate] ?? null;
@@ -63,51 +55,15 @@ function DayToken({
 
   return (
     <span
+      className="payroll-summary-table__day-token"
       title={title}
       aria-label={`${code}: ${title}`}
-      style={{
-        display: "inline-flex",
-        minWidth: 18,
-        height: 18,
-        padding: "0 5px",
-        alignItems: "center",
-        justifyContent: "center",
-        border: "1px solid #86efac",
-        borderRadius: 999,
-        background: "#f0fdf4",
-        color: "#166534",
-        fontSize: 11,
-        fontWeight: 950,
-        lineHeight: 1,
-        cursor: "help",
-      }}
     >
       {code}
     </span>
   );
 }
 
-
-const thStyle = {
-  position: "sticky" as const,
-  top: 0,
-  background: "#f8fafc",
-  borderBottom: "1px solid #e6edf5",
-  padding: "9px 10px",
-  color: "#64748b",
-  fontSize: 11,
-  fontWeight: 950,
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.05em",
-  textAlign: "left" as const,
-};
-
-const tdStyle = {
-  borderBottom: "1px solid #eef2f7",
-  padding: "9px 10px",
-  color: "#334155",
-  fontSize: 13,
-};
 
 function PayrollMemoCell({
   row,
@@ -143,9 +99,10 @@ function PayrollMemoCell({
   }
 
   return (
-    <div style={{ display: "grid", gap: 4, minWidth: 220 }}>
-      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+    <div className="payroll-summary-table__memo-field">
+      <div className="payroll-summary-table__memo-control">
         <input
+          className="payroll-summary-table__memo-input"
           value={draft}
           maxLength={2000}
           onChange={(event) => setDraft(event.target.value)}
@@ -157,38 +114,19 @@ function PayrollMemoCell({
           }}
           placeholder="Add payroll memo"
           aria-label={`Payroll memo for ${row.person_name}`}
-          style={{
-            width: "100%",
-            minWidth: 0,
-            height: 34,
-            border: "1px solid #d6dfeb",
-            borderRadius: 9,
-            padding: "0 9px",
-            color: "#334155",
-            font: "inherit",
-          }}
         />
         <button
           type="button"
+          className={`payroll-summary-table__memo-save${changed ? " is-changed" : ""}`}
           onClick={() => void save()}
           disabled={!changed || saving || !row.roster_member_id}
           title={draft.trim() ? "Save payroll memo" : "Clear payroll memo"}
-          style={{
-            height: 34,
-            padding: "0 10px",
-            border: "1px solid #cbd5e1",
-            borderRadius: 9,
-            background: changed ? "#eff6ff" : "#f8fafc",
-            color: changed ? "#1d4ed8" : "#94a3b8",
-            fontWeight: 850,
-            cursor: changed && !saving ? "pointer" : "default",
-          }}
         >
           {saving ? "Saving" : "Save"}
         </button>
       </div>
       {error ? (
-        <span style={{ color: "#991b1b", fontSize: 11, fontWeight: 750 }}>
+        <span className="payroll-summary-table__memo-error">
           {error}
         </span>
       ) : null}
@@ -207,63 +145,54 @@ export default function PayrollSummaryTable({
   onSaveMemo: (rosterMemberId: string, memo: string) => Promise<void>;
 }) {
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1040 }}>
+    <div className="payroll-summary-table-wrap">
+      <table className="payroll-summary-table">
         <thead>
           <tr>
-            <th style={thStyle}>Employee</th>
-            <th style={thStyle}>Memo</th>
-            <th style={{ ...thStyle, textAlign: "right" }}>Days Worked</th>
-            <th style={{ ...thStyle, textAlign: "right" }}>Base Pay</th>
-            <th style={{ ...thStyle, textAlign: "right" }}>Threshold Pay</th>
-            <th style={{ ...thStyle, textAlign: "right" }}>Adjustments</th>
-            <th style={{ ...thStyle, textAlign: "right" }}>Total Earnings</th>
+            <th>Employee</th>
+            <th>Memo</th>
+            <th className="is-numeric">Days Worked</th>
+            <th className="is-numeric">Base Pay</th>
+            <th className="is-numeric">Threshold Pay</th>
+            <th className="is-numeric">Adjustments</th>
+            <th className="is-numeric">Total Earnings</th>
           </tr>
         </thead>
         <tbody>
           {groupedSummaryRows.length === 0 ? (
             <tr>
-              <td colSpan={7} style={{ padding: 16, color: "#64748b", fontWeight: 800 }}>
+              <td className="payroll-summary-table__empty" colSpan={7}>
                 No payroll activity found for this week.
               </td>
             </tr>
           ) : (
             groupedSummaryRows.flatMap(({ group, rows }) => [
-              <tr key={`group-${group}`}>
+              <tr className="payroll-summary-table__group" key={`group-${group}`}>
                 <td
                   colSpan={7}
-                  style={{
-                    ...tdStyle,
-                    background: "#f8fafc",
-                    color: "#64748b",
-                    fontSize: 11,
-                    fontWeight: 950,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                  }}
                 >
                   {group}
                 </td>
               </tr>,
               ...rows.map((row, rowIndex) => (
-                <tr key={`${group}-${row.roster_member_id ?? row.person_name}-${rowIndex}`}>
-                  <td style={tdStyle}><strong>{row.person_name}</strong></td>
-                  <td style={tdStyle}>
+                <tr className="payroll-summary-table__row" key={`${group}-${row.roster_member_id ?? row.person_name}-${rowIndex}`}>
+                  <td><strong>{row.person_name}</strong></td>
+                  <td>
                     <PayrollMemoCell row={row} onSave={onSaveMemo} />
                   </td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>
+                  <td className="is-numeric">
                     <WorkedDaysCell row={row} />
                   </td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>
+                  <td className="is-numeric">
                     {money(row.daily_pay_total)}
                   </td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>
+                  <td className="is-numeric">
                     {money(row.threshold_pay_total)}
                   </td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>
+                  <td className="is-numeric">
                     {money(row.adjustment_total ?? 0)}
                   </td>
-                  <td style={{ ...tdStyle, textAlign: "right", fontWeight: 950 }}>
+                  <td className="is-numeric is-total">
                     {money(row.estimated_total)}
                   </td>
                 </tr>

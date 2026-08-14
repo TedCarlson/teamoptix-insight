@@ -304,7 +304,7 @@ export default function PickupReconciliationPage({ slug }: { slug: string }) {
   }, [activeWeek, slug]);
 
   return (
-    <main className={styles.page}>
+    <main className={`${styles.page} operations-pickup-page`}>
       <header className={styles.hero}>
         <div>
           <p>Operations · Pickup integrity</p>

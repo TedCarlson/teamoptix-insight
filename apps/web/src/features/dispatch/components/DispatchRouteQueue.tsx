@@ -90,6 +90,7 @@ function SeatButton(props: {
   return (
     <button
       type="button"
+      className="dispatch-route-row__seat-button"
       onClick={onClick}
       aria-expanded={active}
       style={{
@@ -469,6 +470,7 @@ export function DispatchRouteQueue(props: DispatchRouteQueueProps) {
                   <div style={{ minWidth: 0 }}>
                   {planSignalsByRouteKey[route.route_key] || dswSignalsByRouteKey[route.route_key] ? (
                     <span
+                      className="dispatch-route-row__plan-signal"
                       style={{
                         display: "inline-grid",
                         gap: 2,

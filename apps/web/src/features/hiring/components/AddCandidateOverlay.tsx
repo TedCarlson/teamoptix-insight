@@ -231,6 +231,7 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
 
   return (
     <div
+      className="people-dialog-backdrop"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
@@ -246,6 +247,7 @@ export default function AddCandidateOverlay(props: AddCandidateOverlayProps) {
       }}
     >
       <section
+        className="people-dialog-surface"
         onMouseDown={(event) => event.stopPropagation()}
         style={{
           width: "min(860px, 100%)",

@@ -11,7 +11,7 @@ const outcomeMetrics = [
 
 export default function PayrollComplianceWorkspace({ slug }: { slug: string }) {
   return (
-    <section style={{ display: "grid", gap: 16 }}>
+    <section className="payroll-compliance-workspace" style={{ display: "grid", gap: 16 }}>
       <header>
         <p className="value-card__eyebrow">Payroll compliance</p>
         <h1 style={{ margin: "4px 0 6px", color: "#0f172a" }}>Weekly payroll impact</h1>
@@ -43,7 +43,7 @@ export default function PayrollComplianceWorkspace({ slug }: { slug: string }) {
       <article className="app-card" style={{ padding: 16, overflowX: "auto" }}>
         <p className="value-card__eyebrow">Weekly outcome ledger</p>
         <h2 className="app-card__title" style={{ fontSize: 18 }}>Payroll-relevant determinations</h2>
-        <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 14, minWidth: 900 }}>
+        <table className="payroll-family-table payroll-compliance-table" style={{ width: "100%", borderCollapse: "collapse", marginTop: 14, minWidth: 900 }}>
           <thead>
             <tr style={{ textAlign: "left", color: "#475569", borderBottom: "1px solid #e2e8f0" }}>
               {["Workweek", "Employee", "Outcome", "Hours", "OT hours", "Regular rate", "OT premium", "Final status", "Audit"].map((heading) => (

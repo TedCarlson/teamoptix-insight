@@ -30,6 +30,7 @@ function Pill(props: {
 
   return (
     <span
+      className={`people-status-pill people-status-pill--${tone}`}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -61,8 +62,9 @@ export default function RosterTable(props: Props) {
   }
 
   return (
-    <div style={{ overflowX: "auto" }}>
+    <div className="people-family-table-wrap" style={{ overflowX: "auto" }}>
       <table
+        className="people-family-table"
         style={{
           width: "100%",
           borderCollapse: "collapse",

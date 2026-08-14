@@ -75,6 +75,7 @@ export default function TraineePayOverrideOverlay({
 
   return (
     <div
+      className="people-dialog-backdrop"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
@@ -90,6 +91,7 @@ export default function TraineePayOverrideOverlay({
       }}
     >
       <aside
+        className="people-dialog-surface"
         role="dialog"
         aria-modal="true"
         onMouseDown={(event) => event.stopPropagation()}

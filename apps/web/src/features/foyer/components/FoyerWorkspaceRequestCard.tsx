@@ -6,8 +6,16 @@ import InsightSignal from "@/features/brand/components/InsightSignal";
 
 export default function FoyerWorkspaceRequestCard({
   buttonLabel = "Start with Insight",
+  kicker = "When you are ready...",
+  title = "Start with Insight.",
+  intro = "Tell us a little about your operation. We'll use what you share to prepare a focused introduction around your business.",
+  supportingText = "You don't need to be great to start. You do need to start to be great.",
 }: {
   buttonLabel?: string;
+  kicker?: string;
+  title?: string;
+  intro?: string;
+  supportingText?: string;
 }) {
   const [requestOpen, setRequestOpen] = useState(false);
   const turnstileRef = useRef<HTMLDivElement | null>(null);
@@ -81,15 +89,10 @@ export default function FoyerWorkspaceRequestCard({
 
   return (
     <section className="foyer-workspace-request-card foyer-workspace-request-card--standalone">
-      <p className="foyer-kicker">When you are ready...</p>
-      <h3>Start with Insight.</h3>
-      <p>
-        Tell us a little about your operation. We&apos;ll use what you share to prepare
-        a focused introduction around your business.
-      </p>
-      <p>
-        You don&apos;t need to be great to start. You do need to start to be great.
-      </p>
+      <p className="foyer-kicker">{kicker}</p>
+      <h3>{title}</h3>
+      <p>{intro}</p>
+      <p>{supportingText}</p>
       <div className="cta-row" style={{ marginTop: 0 }}>
         <button
           type="button"

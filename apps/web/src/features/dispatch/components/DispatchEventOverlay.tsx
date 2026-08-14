@@ -718,6 +718,7 @@ export function DispatchEventOverlay(props: DispatchEventOverlayProps) {
       }}
     >
       <section
+        className="operations-dialog-surface"
         style={{
           width: "min(920px, 100%)",
           border: "1px solid #d6dfeb",

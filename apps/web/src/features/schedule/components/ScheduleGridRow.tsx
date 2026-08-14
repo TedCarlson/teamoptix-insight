@@ -277,6 +277,7 @@ export default function ScheduleGridRow(props: Props) {
   return (
     <>
       <tr
+        className="schedule-workbench-row"
         role="button"
         tabIndex={0}
         aria-expanded={isOpen}
@@ -395,6 +396,7 @@ export default function ScheduleGridRow(props: Props) {
       {isOpen ? (
         <tr>
           <td
+            className="schedule-workbench-row-editor"
             colSpan={10}
             style={{
               padding: 0,

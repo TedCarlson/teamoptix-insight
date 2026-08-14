@@ -1,6 +1,13 @@
+import type { Metadata } from "next";
 import { teamOptixAbout } from "@/features/foyer/content/teamoptix-about";
+import FoyerFooter from "@/features/foyer/components/FoyerFooter";
 import FoyerHeader from "@/features/foyer/components/FoyerHeader";
 import FoyerWorkspaceRequestCard from "@/features/foyer/components/FoyerWorkspaceRequestCard";
+
+export const metadata: Metadata = {
+  title: "Company",
+  description: "Why Team Optix builds operational software for the people responsible for real-world execution.",
+};
 
 export default function TeamOptixAboutPage() {
   return (
@@ -30,6 +37,7 @@ export default function TeamOptixAboutPage() {
 
         <FoyerWorkspaceRequestCard />
       </div>
+      <FoyerFooter />
     </main>
   );
 }

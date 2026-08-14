@@ -86,7 +86,7 @@ export default function ComplianceReportOverlay({ open, slug, onClose }: Props) 
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Compliance Report" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 80, background: "rgba(2,6,23,.62)", display: "grid", placeItems: "center", padding: 16 }}>
-      <section onClick={(event) => event.stopPropagation()} style={{ width: "min(900px, 100%)", maxHeight: "90vh", overflow: "auto", background: "#f8fafc", borderRadius: 20, padding: 18, boxShadow: "0 30px 90px rgba(2,6,23,.38)" }}>
+      <section className="operations-dialog-surface" onClick={(event) => event.stopPropagation()} style={{ width: "min(900px, 100%)", maxHeight: "90vh", overflow: "auto", background: "#f8fafc", borderRadius: 20, padding: 18, boxShadow: "0 30px 90px rgba(2,6,23,.38)" }}>
         <header style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 14 }}>
           <div>
             <p className="workspace-eyebrow">Operations · Compliance Report</p>

@@ -109,6 +109,7 @@ export default function RosterControlsBar(props: Props) {
         </div>
 
         <input
+          className="people-control"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search name, worker type, market, supervisor..."

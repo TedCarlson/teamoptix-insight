@@ -37,6 +37,7 @@ export default function ScheduleFilters(props: Props) {
 
   return (
     <div
+      className="schedule-workbench-filters"
       style={{
         display: "grid",
         gap: 12,
@@ -66,6 +67,7 @@ export default function ScheduleFilters(props: Props) {
       </select>
 
       <label
+        className="schedule-workbench-filter-toggle"
         style={{
           display: "flex",
           alignItems: "center",

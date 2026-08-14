@@ -64,7 +64,7 @@ export default function OperationsWorkspace({
     activeSurface === surface || visitedSurfaces.has(surface);
 
   return (
-    <>
+    <div className="operations-theme-scope">
       {shouldMount("operations") ? (
         <div hidden={activeSurface !== "operations"}>
           <OperationsWorkspacePage
@@ -94,6 +94,6 @@ export default function OperationsWorkspace({
       ) : null}
 
       {activeSurface ? null : children}
-    </>
+    </div>
   );
 }

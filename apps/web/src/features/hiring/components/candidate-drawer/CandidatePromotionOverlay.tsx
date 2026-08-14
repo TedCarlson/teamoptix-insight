@@ -107,6 +107,7 @@ export default function CandidatePromotionOverlay({
 
   return (
     <div
+      className="people-dialog-backdrop"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !submitting) onClose();
@@ -122,6 +123,7 @@ export default function CandidatePromotionOverlay({
       }}
     >
       <aside
+        className="people-dialog-surface"
         aria-label={`Promote ${person.full_name}`}
         aria-modal="true"
         role="dialog"

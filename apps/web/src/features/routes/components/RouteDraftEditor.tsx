@@ -62,7 +62,7 @@ export default function RouteDraftEditor(props: {
   }
 
   return (
-    <article className="value-card" style={{ gridColumn: "1 / -1" }}>
+    <article className="value-card route-draft-editor" style={{ gridColumn: "1 / -1" }}>
       <p className="value-card__eyebrow">
         {mode === "create" ? "Add route" : "Edit route"}
       </p>
@@ -71,6 +71,7 @@ export default function RouteDraftEditor(props: {
       </h3>
 
       <div
+        className="route-draft-editor__fields"
         style={{
           marginTop: 16,
           display: "grid",
@@ -177,7 +178,7 @@ export default function RouteDraftEditor(props: {
           />
         </label>
 
-        <label style={{ display: "grid", gap: 5 }}>
+        <div style={{ display: "grid", gap: 5 }}>
           <span className="hero-stat__label">Status</span>
           <label style={checkboxLabelStyle}>
             <input
@@ -192,10 +193,11 @@ export default function RouteDraftEditor(props: {
             />
             Active
           </label>
-        </label>
+        </div>
       </div>
 
       <div
+        className="route-draft-editor__days"
         style={{
           marginTop: 16,
           display: "grid",

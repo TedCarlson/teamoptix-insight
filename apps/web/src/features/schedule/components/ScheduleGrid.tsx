@@ -117,6 +117,7 @@ export default function ScheduleGrid(props: Props) {
 
   return (
     <div
+      className="schedule-workbench-grid"
       style={{
         marginTop: 16,
         maxHeight: "70vh",
@@ -127,6 +128,7 @@ export default function ScheduleGrid(props: Props) {
       }}
     >
       <table
+        className="schedule-family-table"
         style={{
           width: "100%",
           borderCollapse: "collapse",

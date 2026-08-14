@@ -13,5 +13,5 @@ export default async function ScheduleLayout(props: {
     redirect(`/company/${slug}/driver/schedule`);
   }
 
-  return props.children;
+  return <div className="schedule-theme-scope">{props.children}</div>;
 }

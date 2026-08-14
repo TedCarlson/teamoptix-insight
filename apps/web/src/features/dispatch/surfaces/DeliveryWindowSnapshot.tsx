@@ -1111,6 +1111,7 @@ function ProgressPill(props: {
 }) {
   return (
     <span
+      className="delivery-window__progress-pill"
       style={{
         display: "inline-flex",
         alignItems: "center",

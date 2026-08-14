@@ -241,6 +241,7 @@ export default function SchedulePresetsPage() {
 
             <div style={{ marginTop: 16, overflowX: "auto" }}>
               <table
+                className="schedule-family-table schedule-presets-table"
                 style={{
                   width: "100%",
                   borderCollapse: "collapse",

@@ -29,6 +29,7 @@ export default function SchedulePostureBand(props: Props) {
 
   return (
     <div
+      className="schedule-posture-band"
       style={{
         marginTop: 16,
         border: "1px solid #d6dfeb",
@@ -184,6 +185,8 @@ export default function SchedulePostureBand(props: Props) {
           return (
             <div key={`delta-${key}`} style={{ textAlign: "center" }}>
               <span
+                className="schedule-delta-pill"
+                data-tone={deltaTotals[key] < 0 ? "deficit" : deltaTotals[key] > 0 ? "surplus" : "neutral"}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -211,6 +214,8 @@ export default function SchedulePostureBand(props: Props) {
           return (
             <div style={{ textAlign: "center" }}>
               <span
+                className="schedule-delta-pill"
+                data-tone={deltaWeekTotal < 0 ? "deficit" : deltaWeekTotal > 0 ? "surplus" : "neutral"}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",

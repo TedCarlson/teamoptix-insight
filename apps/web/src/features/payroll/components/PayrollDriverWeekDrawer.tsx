@@ -31,6 +31,7 @@ export default function PayrollDriverWeekDrawer({
       }}
     >
       <div
+        className="payroll-driver-week-drawer"
         onClick={(event) => event.stopPropagation()}
         style={{
           width: "min(980px, 94vw)",
@@ -69,8 +70,8 @@ export default function PayrollDriverWeekDrawer({
           <Stat label="Total" value={money(total)} />
         </div>
 
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 920 }}>
+        <div className="payroll-family-table-wrap" style={{ overflowX: "auto" }}>
+          <table className="payroll-family-table" style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 920 }}>
             <thead>
               <tr>
                 <Th>Date</Th>
@@ -110,7 +111,7 @@ export default function PayrollDriverWeekDrawer({
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ border: "1px solid #e6edf5", borderRadius: 12, padding: 12, background: "#f8fafc" }}>
+    <div className="payroll-driver-week-drawer__stat" style={{ border: "1px solid #e6edf5", borderRadius: 12, padding: 12, background: "#f8fafc" }}>
       <div className="context-stat__label">{label}</div>
       <strong style={{ fontSize: 18 }}>{value}</strong>
     </div>

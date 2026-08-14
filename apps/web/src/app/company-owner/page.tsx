@@ -1,4 +1,5 @@
 import Image from "next/image";
+import FoyerFooter from "@/features/foyer/components/FoyerFooter";
 import FoyerHeader from "@/features/foyer/components/FoyerHeader";
 import FoyerWorkspaceRequestCard from "@/features/foyer/components/FoyerWorkspaceRequestCard";
 
@@ -67,6 +68,7 @@ export default function CompanyOwnerPage() {
       </section>
 
       <FoyerWorkspaceRequestCard />
+      <FoyerFooter />
     </main>
   );
 }

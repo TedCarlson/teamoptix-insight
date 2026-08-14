@@ -355,6 +355,7 @@ function renderOverviewLegend() {
 
   return (
     <div
+      className="payroll-time-legend"
       style={{
         display: "flex",
         alignItems: "center",
@@ -437,8 +438,8 @@ function renderOverviewRows(
     .sort((a, b) => a.employee_name.localeCompare(b.employee_name));
 
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1240 }}>
+    <div className="payroll-family-table-wrap" style={{ overflowX: "auto" }}>
+      <table className="payroll-family-table" style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1240 }}>
         <thead>
           <tr>
             <th style={{ ...thStyle, position: "sticky", left: 0, zIndex: 3, background: "#f8fafc", minWidth: 220, boxShadow: "1px 0 0 #e6edf5" }}>
@@ -604,8 +605,8 @@ function renderTimeSheetRows(
   }
 
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1060 }}>
+    <div className="payroll-family-table-wrap" style={{ overflowX: "auto" }}>
+      <table className="payroll-family-table" style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1060 }}>
         <thead>
           <tr>
             <th style={{ ...thStyle, position: "sticky", left: 0, zIndex: 3, background: "#f8fafc", minWidth: 220, boxShadow: "1px 0 0 #e6edf5" }}>
@@ -689,8 +690,8 @@ function renderTimeSheetRows(
 
 function renderDriverRows(rows: PayrollTimeKeepingRow[]) {
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 920 }}>
+    <div className="payroll-family-table-wrap" style={{ overflowX: "auto" }}>
+      <table className="payroll-family-table" style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 920 }}>
         <thead>
           <tr>
             <th style={thStyle}>Driver</th>
@@ -734,8 +735,8 @@ function renderDutyRows(rows: DswTimeRow[], days: string[]) {
   const weeklyRows = buildDswDriverWeekRows(rows);
 
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1060 }}>
+    <div className="payroll-family-table-wrap" style={{ overflowX: "auto" }}>
+      <table className="payroll-family-table" style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1060 }}>
         <thead>
           <tr>
             <th style={{ ...thStyle, position: "sticky", left: 0, zIndex: 3, background: "#f8fafc", minWidth: 220, boxShadow: "1px 0 0 #e6edf5" }}>
@@ -796,8 +797,8 @@ function renderDotRows(rows: DswTimeRow[], days: string[]) {
   const weeklyRows = buildDswDriverWeekRows(rows);
 
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1060 }}>
+    <div className="payroll-family-table-wrap" style={{ overflowX: "auto" }}>
+      <table className="payroll-family-table" style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1060 }}>
         <thead>
           <tr>
             <th style={{ ...thStyle, position: "sticky", left: 0, zIndex: 3, background: "#f8fafc", minWidth: 220, boxShadow: "1px 0 0 #e6edf5" }}>
@@ -992,6 +993,7 @@ export default function PayrollTimeTrackingGrid({
       </div>
 
       <div
+        className="payroll-time-summary"
         style={{
           border: "1px solid #e6edf5",
           borderRadius: 14,
@@ -1046,6 +1048,7 @@ export default function PayrollTimeTrackingGrid({
           onClick={() => setSelectedBreadcrumb(null)}
         >
           <div
+            className="payroll-time-location-dialog"
             style={{
               width: "min(1380px, 96vw)",
               background: "#fff",

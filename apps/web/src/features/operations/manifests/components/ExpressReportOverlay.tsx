@@ -399,6 +399,7 @@ export default function ExpressReportOverlay({
       onClick={onClose}
     >
       <section
+        className="operations-dialog-surface"
         style={{
           width: "min(1080px, 100%)",
           maxHeight: "min(92vh, 980px)",

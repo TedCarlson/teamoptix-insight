@@ -629,6 +629,7 @@ export default function CompanyPage() {
         {activeSurface === "payroll" ? <PayrollWorkspace slug={slug} /> : null}
 
         {activeSurface === "prior-day" ? (
+          <div className="operations-reports-scope">
           <SectionCard
             eyebrow="Daily operations"
             title="Summary"
@@ -644,6 +645,7 @@ export default function CompanyPage() {
           >
             <DailyOperationsSummary slug={slug} />
           </SectionCard>
+          </div>
         ) : null}
 
         {activeSurface === "analytics" ? (

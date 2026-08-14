@@ -285,6 +285,7 @@ export default function ScheduleCalendarPage() {
             return (
               <div
                 key={iso}
+                className="schedule-calendar-day"
                 onClick={() => setSelectedDate(iso)}
                 style={{
                   cursor: "pointer",
@@ -344,7 +345,7 @@ export default function ScheduleCalendarPage() {
                   </strong>
                 </div>
 
-                <div style={{ marginTop: 12, fontSize: 13 }}>
+                <div className="schedule-calendar-day__body" style={{ marginTop: 12, fontSize: 13 }}>
                   <div>
                     <strong>{capacity.routeDemand}</strong> routes
                   </div>
@@ -453,6 +454,7 @@ export default function ScheduleCalendarPage() {
 
             return (
               <div
+                className="schedule-day-drawer-backdrop"
                 style={{
                   position: "fixed",
                   inset: 0,
@@ -464,6 +466,7 @@ export default function ScheduleCalendarPage() {
                 onClick={() => setSelectedDate(null)}
               >
                 <div
+                  className="schedule-day-drawer"
                   style={{
                     width: 420,
                     maxWidth: "90vw",
@@ -529,6 +532,7 @@ export default function ScheduleCalendarPage() {
                       }}
                     >
                       <section
+                        className="schedule-day-drawer-section"
                         style={{
                           border: "1px solid #e2e8f0",
                           borderRadius: 10,
@@ -576,6 +580,7 @@ export default function ScheduleCalendarPage() {
                       </section>
 
                       <section
+                        className="schedule-day-drawer-section"
                         style={{
                           border: "1px solid #e2e8f0",
                           borderRadius: 10,
@@ -619,6 +624,7 @@ export default function ScheduleCalendarPage() {
                       </section>
 
                       <section
+                        className="schedule-day-drawer-section"
                         style={{
                           border: "1px solid #e2e8f0",
                           borderRadius: 10,
@@ -665,6 +671,7 @@ export default function ScheduleCalendarPage() {
                       </section>
 
                       <section
+                        className="schedule-day-drawer-section"
                         style={{
                           border: "1px solid #e2e8f0",
                           borderRadius: 10,
@@ -714,6 +721,7 @@ export default function ScheduleCalendarPage() {
                       </section>
 
                       <section
+                        className="schedule-day-drawer-section"
                         style={{
                           border: "1px solid #e2e8f0",
                           borderRadius: 10,

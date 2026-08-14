@@ -24,9 +24,9 @@ export default function PayrollDriverWeekInlineDetail({
   const totalPay = totalThresholdPay + totalDailyPay + totalAdjustmentPay;
 
   return (
-    <div style={{ padding: 12, background: "#f8fafc", border: "1px solid #e6edf5", borderRadius: 12 }}>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1040 }}>
+    <div className="payroll-family-table-detail" style={{ padding: 12, background: "#f8fafc", border: "1px solid #e6edf5", borderRadius: 12 }}>
+      <div className="payroll-family-table-wrap" style={{ overflowX: "auto" }}>
+        <table className="payroll-family-table" style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1040 }}>
           <thead>
             <tr>
               <Th>Audit Row</Th>

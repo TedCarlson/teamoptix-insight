@@ -301,7 +301,7 @@ export default function WalkOnsPage({ slug }: { slug: string }) {
   }
 
   return (
-    <main className="workspace-shell">
+    <main className="workspace-shell operations-walk-ons">
       <section className={styles.page}>
         <header className={styles.briefingHeader}>
           <div>
@@ -367,8 +367,8 @@ export default function WalkOnsPage({ slug }: { slug: string }) {
           </div>
 
           {loading ? <p className="value-card__body" style={{ padding: 16 }}>Loading walk-ons…</p> : filteredRows.length === 0 ? <p className="value-card__body" style={{ padding: 16 }}>No walk-on rows match this view.</p> : (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 980 }}>
+            <div className="operations-family-table-wrap" style={{ overflowX: "auto" }}>
+              <table className="operations-family-table" style={{ width: "100%", borderCollapse: "collapse", minWidth: 980 }}>
                 <thead><tr>{["Driver", "DSWID", "Workforce unit", "First / last service", "Days", "Status", "Actions"].map((label) => <th key={label} style={{ ...cellStyle, textAlign: "left", fontSize: 11, textTransform: "uppercase", color: "#64748b" }}>{label}</th>)}</tr></thead>
                 <tbody>
                   {filteredRows.map((row) => {

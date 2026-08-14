@@ -59,7 +59,7 @@ export default async function CompanyBillingPage(props: PageProps) {
           <div style={headerRow}>
             <div>
               <p style={eyebrow}>Company · Billing</p>
-              <h1 style={title}>Billing Profile</h1>
+              <h1 className="company-billing-title" style={title}>Billing Profile</h1>
             </div>
             <Link href={`/company/${slug}`} style={backLink}>
               Back to Company
@@ -67,7 +67,7 @@ export default async function CompanyBillingPage(props: PageProps) {
           </div>
 
           <div className="company-billing-commercial-grid">
-            <section style={panel}>
+            <section className="company-billing-panel" style={panel}>
               <div style={panelHeader}>
                 <div>
                   <h2 style={panelTitle}>Commercial Billing Setup</h2>
@@ -87,7 +87,7 @@ export default async function CompanyBillingPage(props: PageProps) {
             <CommercialTierEvidencePanel evidence={tierEvidence} />
           </div>
 
-          <section style={panel}>
+          <section className="company-billing-panel" style={panel}>
             <div style={panelHeader}>
               <div>
                 <h2 style={panelTitle}>Billing Workflow</h2>

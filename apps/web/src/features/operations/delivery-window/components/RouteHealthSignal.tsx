@@ -42,6 +42,7 @@ export default function RouteHealthSignal(props: RouteHealthSignalProps) {
   if (onClick) {
     return (
       <button
+        className="route-health-signal"
         type="button"
         title={title ?? health.tooltip}
         aria-label={title ?? health.label}
@@ -59,6 +60,7 @@ export default function RouteHealthSignal(props: RouteHealthSignalProps) {
 
   return (
     <span
+      className="route-health-signal"
       title={title ?? health.tooltip}
       aria-label={title ?? health.label}
       style={sharedStyle}

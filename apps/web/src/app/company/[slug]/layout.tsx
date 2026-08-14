@@ -10,16 +10,9 @@ export default async function CompanyLayout(props: {
 
   return (
     <LobProvider>
-      <div
-        style={{
-          minHeight: "100vh",
-          display: "grid",
-          gridTemplateRows: "auto 1fr",
-          background: "#f8fafc",
-        }}
-      >
+      <div className="company-workspace-frame">
         <CompanyBranchNav slug={slug} />
-        {children}
+        <div className="company-workspace-stage">{children}</div>
       </div>
     </LobProvider>
   );

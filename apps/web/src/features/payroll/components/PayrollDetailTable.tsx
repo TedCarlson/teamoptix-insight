@@ -32,8 +32,8 @@ export default function PayrollDetailTable({
   const weeklyRows = useMemo(() => buildDriverWeekRows(rows), [rows]);
 
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1060 }}>
+    <div className="payroll-family-table-wrap" style={{ overflowX: "auto" }}>
+      <table className="payroll-family-table" style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1060 }}>
         <thead>
           <tr>
             <th style={{ ...thStyle, position: "sticky", left: 0, zIndex: 3, background: "#f8fafc", minWidth: 220, boxShadow: "1px 0 0 #e6edf5" }}>
@@ -68,6 +68,7 @@ export default function PayrollDetailTable({
                 <tr
                   key={row.key}
                   onClick={() => setSelectedKey(isSelected ? null : row.key)}
+                  className={isSelected ? "is-selected" : undefined}
                   style={{ cursor: "pointer", background: isSelected ? "#f8fafc" : "#fff" }}
                   title={isSelected ? "Click to collapse detail" : "Click to expand detail"}
                 >
@@ -105,7 +106,7 @@ export default function PayrollDetailTable({
                 </tr>,
                 isSelected ? (
                   <tr key={`${row.key}-detail`}>
-                    <td colSpan={days.length + 7} style={{ padding: 10, background: "#fff" }}>
+                    <td className="payroll-family-table__detail-cell" colSpan={days.length + 7} style={{ padding: 10, background: "#fff" }}>
                       <PayrollDriverWeekInlineDetail rows={row.days} />
                     </td>
                   </tr>

@@ -1,167 +1,164 @@
+import type { Metadata } from "next";
 import Image from "next/image";
-import FoyerDoorCard from "@/features/foyer/components/FoyerDoorCard";
+import Link from "next/link";
+import { ArrowRight, Blocks, CircleCheck, Database, Fingerprint, Sparkles } from "lucide-react";
+import FoyerFooter from "@/features/foyer/components/FoyerFooter";
 import FoyerHeader from "@/features/foyer/components/FoyerHeader";
-import FoyerProductBar from "@/features/foyer/components/FoyerProductBar";
-import FoyerProofStrip from "@/features/foyer/components/FoyerProofStrip";
 import FoyerWorkspaceRequestCard from "@/features/foyer/components/FoyerWorkspaceRequestCard";
+import InsightAnalyticsPreview from "@/features/foyer/components/InsightAnalyticsPreview";
+import InsightSystemPreview from "@/features/foyer/components/InsightSystemPreview";
 
-const operationalModules = [
-  {
-    eyebrow: "Proven operational module",
-    title: "FedEx Pickup & Delivery",
-    body: "Insight was first developed alongside pickup and delivery operators managing routes, people, service, planning, and daily execution.",
-    status: "Available",
-  },
-  {
-    eyebrow: "Emerging operational module",
-    title: "Utility Locate",
-    body: "A natural extension for organizations managing locate tickets, technicians, response obligations, reporting, and field accountability.",
-    status: "In discovery",
-  },
-  {
-    eyebrow: "Emerging operational module",
-    title: "Communications",
-    body: "Operational support for contractors coordinating technicians, work orders, service activity, assets, and customer commitments.",
-    status: "In discovery",
-  },
+export const metadata: Metadata = {
+  title: "Operational software built by operators",
+  description: "Team Optix builds Insight, the governed operating system connecting people, work, assets, and daily decisions for field organizations.",
+};
+
+const foundations = [
+  { icon: Fingerprint, title: "One operational identity", body: "People, roles, access, and responsibility stay connected across the work." },
+  { icon: Database, title: "One governed record", body: "Current activity and historical context contribute to the same source of truth." },
+  { icon: Blocks, title: "Workflows that fit", body: "Industry-specific work can evolve without fragmenting the operating foundation." },
+  { icon: Sparkles, title: "Intelligence with context", body: "Automation starts from operational evidence and keeps people in control." },
 ];
 
-const doors = [
-  {
-    eyebrow: "Operator experience",
-    title: "For Operators",
-    body: "See how Insight helps operational leaders manage people, work, assets, and intelligence with greater clarity.",
-    href: "/company-owner",
-    cta: "Operator Experience",
-  },
-  {
-    eyebrow: "Workforce experience",
-    title: "For Teams",
-    body: "Explore the connected experience for schedules, time off, performance, communication, and daily work.",
-    href: "/teams",
-    cta: "Team Experience",
-  },
-  {
-    eyebrow: "Platform experience",
-    title: "Explore Insight",
-    body: "Follow a day inside the platform and see how operational functions come together in one system.",
-    href: "/explore",
-    cta: "A Day with Insight",
-  },
-  {
-    eyebrow: "Company story",
-    title: "About Team Optix",
-    body: "Learn why we build for operators, how Insight began, and where the platform is going next.",
-    href: "/teamoptix",
-    cta: "Our Story",
-  },
+const pathways = [
+  { kicker: "Evaluate the platform", title: "For operators", body: "See how Insight can connect the responsibilities that currently compete for your attention.", href: "/company-owner", cta: "Start with your operation" },
+  { kicker: "Experience the workday", title: "For teams", body: "Explore the connected experience for schedules, communication, performance, and daily work.", href: "/teams", cta: "Choose your team path" },
+  { kicker: "Continue your work", title: "For current users", body: "Enter your authorized Insight workspace and return to the operating picture that belongs to you.", href: "/sign-in", cta: "Sign in to Insight" },
 ];
 
 export default function HomePage() {
   return (
-    <main className="foyer-page">
-      <section id="foyer-hero" className="foyer-hero">
+    <main className="brand-home">
+      <section id="foyer-hero" className="brand-hero">
+        <Image
+          className="brand-hero__image"
+          src="/foyer/images/hero-terminal-bright.png"
+          alt="Field operator at the beginning of an operational day"
+          fill
+          priority
+          sizes="100vw"
+        />
+        <div className="brand-hero__veil" />
         <FoyerHeader />
 
-        <div className="foyer-hero__content">
-          <div className="foyer-product-lockup">
-            <Image
-              src="/icons/logo-2-insight-cutout.png"
-              alt="Insight"
-              width={188}
-              height={188}
-              priority
-            />
-            <div className="foyer-product-lockup__text">
-              <strong>Insight</strong>
-              <span>by Team Optix</span>
+        <div className="brand-hero__layout">
+          <div className="brand-hero__copy">
+            <p className="brand-eyebrow"><span /> Insight by Team Optix</p>
+            <h1>See the operation.<br /><em>Run it better.</em></h1>
+            <p className="brand-hero__lede">
+              Insight connects people, schedules, routes, assets, records, and daily decisions in one governed operating system.
+            </p>
+            <div className="brand-action-row">
+              <Link className="brand-button brand-button--primary" href="/insight">
+                See Insight in action <ArrowRight aria-hidden="true" />
+              </Link>
+              <Link className="brand-button brand-button--ghost" href="/company-owner">
+                Start with your operation
+              </Link>
+            </div>
+            <div className="brand-hero__promise">
+              <CircleCheck aria-hidden="true" />
+              <span><strong>Built for Operators. By Operators.</strong> Shaped by real responsibility, not abstract process.</span>
             </div>
           </div>
 
-          <div className="foyer-product-lockup__rule" />
+          <div className="brand-hero__product">
+            <InsightSystemPreview compact />
+          </div>
+        </div>
 
-          <h1>Run the Business.</h1>
-          <p className="foyer-welcome">
-            Built for Operators. By Operators.
+        <a className="brand-scroll-cue" href="#flagship"><span>Discover Team Optix</span><i /></a>
+      </section>
+
+      <section className="brand-intro" id="flagship">
+        <div className="brand-section-heading">
+          <p className="brand-eyebrow brand-eyebrow--dark"><span /> Team Optix</p>
+          <h2>One company. One flagship operating system. A foundation built to grow.</h2>
+        </div>
+        <div className="brand-intro__statement">
+          <p>
+            Team Optix builds operational software for organizations responsible for people, work, assets, and real-world execution.
           </p>
-          <p className="foyer-hero__lede">
-            Team Optix builds operational software for organizations responsible for
-            people, work, assets, and real-world execution.
-          </p>
+          <Link href="/company">Why we build this way <ArrowRight aria-hidden="true" /></Link>
         </div>
       </section>
 
-      <FoyerProductBar />
-
-      <FoyerProofStrip />
-
-      <section className="foyer-product">
-        <div>
-          <p className="foyer-kicker">Our flagship platform</p>
-          <h2>Insight.</h2>
-          <p>
-            One operational foundation for organizations that need their business to
-            run better today and scale with confidence tomorrow.
+      <section className="brand-flagship">
+        <div className="brand-flagship__copy">
+          <p className="brand-overline">Our flagship product</p>
+          <h2>Insight</h2>
+          <p className="brand-display-copy">
+            The operating picture behind a better-run day.
           </p>
-          <ul>
-            <li>People, work, assets, and operational records in one platform</li>
-            <li>Current visibility supported by historical context</li>
-            <li>Industry-specific workflows without fragmenting the business</li>
-            <li>Intelligence and automation built around real operations</li>
-          </ul>
+          <p>
+            Insight brings operational responsibilities into one connected system so leaders can see what is happening, understand why it matters, and move the right work forward.
+          </p>
+          <Link className="brand-text-link" href="/insight">Explore the product <ArrowRight aria-hidden="true" /></Link>
         </div>
-
-        <aside className="foyer-product__placeholder">
-          <span>One platform</span>
-          <strong>Shared foundation · Operational modules · Connected intelligence</strong>
-          <p>
-            Insight adapts to the work an organization performs while preserving one
-            source of operational truth.
-          </p>
-        </aside>
+        <InsightAnalyticsPreview />
       </section>
 
-      <section className="foyer-origin">
-        <p className="foyer-kicker">Built from operational experience</p>
-        <h2>Proven in the work. Designed to reach beyond it.</h2>
-        <p>
-          Insight was originally developed alongside FedEx Pickup &amp; Delivery
-          operators working in a demanding, time-sensitive environment. That experience
-          remains part of the platform&apos;s foundation—not a limit on where it can go.
-        </p>
-      </section>
-
-      <section className="foyer-section foyer-modules">
-        <p className="foyer-kicker">Operational modules</p>
-        <h2>One platform shaped around the work you perform.</h2>
-        <p className="foyer-section__lede">
-          Operational modules extend Insight for specific lines of business while shared
-          services such as people, scheduling, assets, reporting, permissions, and
-          intelligence remain connected.
-        </p>
-
-        <div className="foyer-module-grid">
-          {operationalModules.map((module) => (
-            <article className="foyer-module" key={module.title}>
-              <span>{module.eyebrow}</span>
-              <h3>{module.title}</h3>
-              <p>{module.body}</p>
-              <strong>{module.status}</strong>
+      <section className="brand-foundation" id="platform">
+        <div className="brand-section-heading brand-section-heading--light">
+          <p className="brand-eyebrow"><span /> Shared foundation</p>
+          <h2>Specific to the work. Connected at the core.</h2>
+          <p>Insight adapts to the operation without creating another set of disconnected tools.</p>
+        </div>
+        <div className="brand-foundation__grid">
+          {foundations.map(({ icon: Icon, title, body }, index) => (
+            <article key={title}>
+              <div><Icon aria-hidden="true" /><span>0{index + 1}</span></div>
+              <h3>{title}</h3>
+              <p>{body}</p>
             </article>
           ))}
         </div>
       </section>
 
-      <section className="foyer-section">
-        <h2>Experience Team Optix and Insight.</h2>
-        <div className="foyer-door-grid">
-          {doors.map((door) => (
-            <FoyerDoorCard key={door.href} {...door} />
+      <section className="brand-proof">
+        <div>
+          <p className="brand-eyebrow brand-eyebrow--dark"><span /> Proven in the work</p>
+          <h2>Operational experience is the starting point—not the limit.</h2>
+        </div>
+        <div>
+          <p>
+            Insight was first developed alongside pickup and delivery operators working in a demanding, time-sensitive environment. That origin created a discipline around evidence, accountability, and respect for the people doing the work.
+          </p>
+          <p>
+            The same foundation can support other field organizations without pretending that every industry works the same way.
+          </p>
+        </div>
+      </section>
+
+      <section className="brand-pathways" id="workflows">
+        <div className="brand-section-heading">
+          <p className="brand-eyebrow brand-eyebrow--dark"><span /> Find your way in</p>
+          <h2>One front door. A clear path for every visitor.</h2>
+        </div>
+        <div className="brand-pathways__grid">
+          {pathways.map((path, index) => (
+            <Link key={path.href} href={path.href} className="brand-pathway-card">
+              <div><span>0{index + 1}</span><ArrowRight aria-hidden="true" /></div>
+              <p>{path.kicker}</p>
+              <h3>{path.title}</h3>
+              <p>{path.body}</p>
+              <strong>{path.cta}</strong>
+            </Link>
           ))}
         </div>
       </section>
 
-      <FoyerWorkspaceRequestCard />
+      <div className="brand-request-wrap">
+        <FoyerWorkspaceRequestCard
+          kicker="A focused introduction"
+          title="Start with your operation."
+          intro="Tell us how the work runs today. We’ll use that context to prepare an introduction to Insight around your responsibilities—not someone else’s checklist."
+          supportingText="No generic demo. No obligation to force the fit."
+          buttonLabel="Request an Insight introduction"
+        />
+      </div>
+
+      <FoyerFooter />
     </main>
   );
 }

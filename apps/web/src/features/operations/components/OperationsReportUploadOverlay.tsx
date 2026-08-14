@@ -223,6 +223,7 @@ export default function OperationsReportUploadOverlay(props: OperationsReportUpl
       }}
     >
       <section
+        className="operations-dialog-surface"
         style={{
           width: "min(720px, 100%)",
           maxHeight: "calc(100vh - 32px)",

@@ -58,7 +58,7 @@ export default function SchedulePresetEditor(props: {
   }
 
   return (
-    <article className="value-card" style={{ gridColumn: "1 / -1" }}>
+    <article className="value-card schedule-preset-editor" style={{ gridColumn: "1 / -1" }}>
       <p className="value-card__eyebrow">Schedule presets</p>
       <h3 className="value-card__title">
         {mode === "edit" ? "Edit preset" : "Create preset"}

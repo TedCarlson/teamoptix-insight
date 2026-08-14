@@ -52,6 +52,8 @@ function formatRouteType(value: string) {
 function dayCell(active: boolean) {
   return (
     <span
+      className="routes-day-pill"
+      data-active={active}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -444,6 +446,7 @@ export default function RoutesLandingPage() {
             <h3 className="value-card__title">Current route posture</h3>
 
             <div
+              className="routes-filter-controls"
               style={{
                 marginTop: 16,
                 display: "grid",
@@ -485,6 +488,7 @@ export default function RoutesLandingPage() {
               </select>
 
               <label
+                className="routes-filter-toggle"
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -506,6 +510,7 @@ export default function RoutesLandingPage() {
             </div>
 
             <div
+              className="routes-family-table-wrap"
               style={{
                 marginTop: 16,
                 maxHeight: "68vh",
@@ -516,6 +521,7 @@ export default function RoutesLandingPage() {
               }}
             >
               <table
+                className="routes-family-table"
                 style={{
                   width: "100%",
                   borderCollapse: "collapse",
@@ -616,6 +622,7 @@ export default function RoutesLandingPage() {
             </div>
 
             <div
+              className="routes-table-footer-rail"
               style={{
                 position: "sticky",
                 bottom: 0,
@@ -648,11 +655,12 @@ function FragmentRow(props: {
 
   return (
     <>
-      <tr>
+      <tr className="routes-family-table-row">
         <td style={cellStyle}>
           <div style={{ display: "grid", gap: 2 }}>
             <span>{row.route_name}</span>
             <span
+              className="routes-table-secondary"
               style={{
                 fontSize: 11,
                 lineHeight: 1.2,
@@ -699,7 +707,7 @@ function FragmentRow(props: {
       </tr>
 
       {isOpen ? (
-        <tr>
+        <tr className="route-history-row-editor">
           <td
             colSpan={showThresholds ? 14 : 12}
             style={{
@@ -709,6 +717,7 @@ function FragmentRow(props: {
             }}
           >
             <div
+              className="route-history-row-editor__surface"
               style={{
                 padding: 14,
                 borderTop: "1px solid #e6edf5",

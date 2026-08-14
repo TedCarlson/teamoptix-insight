@@ -30,8 +30,8 @@ export default function PayrollRowDetailTable({
   detailRows: PayrollActivityRow[];
 }) {
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1220 }}>
+    <div className="payroll-family-table-wrap" style={{ overflowX: "auto" }}>
+      <table className="payroll-family-table" style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1220 }}>
         <thead>
           <tr>
             <th style={{ ...thStyle, position: "sticky", left: 0, zIndex: 3, background: "#f8fafc", minWidth: 220, boxShadow: "1px 0 0 #e6edf5" }}>Employee</th>

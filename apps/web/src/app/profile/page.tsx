@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import IdentityPill from "@/features/access/components/IdentityPill";
 import { useAccess } from "@/features/access/AccessProvider";
+import AppearanceSettings from "@/features/theme/AppearanceSettings";
 
 type CandidateApplication = { id: string; company_name?: string | null; company_slug?: string | null; role_interest?: string | null; location_interest?: string | null; application_status: string; association_status: string; scheduling_policy: string; submitted_at: string };
 
@@ -197,16 +198,9 @@ export default function ProfilePage() {
           <WorkspaceCard
             eyebrow="Services"
             title="Account services"
-            body="Manage platform services that belong to you, including security, passkeys, notifications, appearance, and future personal preferences."
+            body="Choose how Insight looks for you. Light is the default, and changing appearance never changes the layout or workflow."
             action={
-              <>
-                <button className="button" type="button" disabled>
-                  Set up passkey
-                </button>
-                <button className="button" type="button" disabled>
-                  Appearance
-                </button>
-              </>
+              <AppearanceSettings />
             }
           />
         </section>

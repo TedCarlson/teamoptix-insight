@@ -124,7 +124,7 @@ export default function ManagePersonDrawer({
 
   return (
     <div
-      className={styles.backdrop}
+      className={`${styles.backdrop} people-dialog-backdrop`}
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
@@ -133,7 +133,7 @@ export default function ManagePersonDrawer({
       <aside
         aria-label={`${person.full_name} roster record`}
         aria-modal="true"
-        className={styles.drawer}
+        className={`${styles.drawer} people-dialog-surface`}
         onMouseDown={(event) => event.stopPropagation()}
         role="dialog"
       >

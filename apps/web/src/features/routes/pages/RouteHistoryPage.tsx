@@ -33,6 +33,8 @@ function formatRouteType(value: string) {
 function dayCell(active: boolean) {
   return (
     <span
+      className="routes-day-pill"
+      data-active={active}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -222,7 +224,7 @@ export default function RouteHistoryPage() {
             <p className="value-card__eyebrow">History</p>
             <h3 className="value-card__title">Previous route shapes</h3>
 
-            <div style={{ marginTop: 16, maxWidth: 320 }}>
+            <div className="routes-history-controls" style={{ marginTop: 16, maxWidth: 320 }}>
               <input
                 value={routeFilter}
                 onChange={(e) => setRouteFilter(e.target.value)}
@@ -238,8 +240,9 @@ export default function RouteHistoryPage() {
               />
             </div>
 
-            <div style={{ marginTop: 16, overflowX: "auto" }}>
+            <div className="routes-family-table-wrap" style={{ marginTop: 16, overflowX: "auto" }}>
               <table
+                className="routes-family-table"
                 style={{
                   width: "100%",
                   borderCollapse: "collapse",
@@ -306,6 +309,7 @@ export default function RouteHistoryPage() {
                           <div style={{ display: "grid", gap: 2 }}>
                             <span>{row.route_name}</span>
                             <span
+                              className="routes-table-secondary"
                               style={{
                                 fontSize: 11,
                                 lineHeight: 1.2,

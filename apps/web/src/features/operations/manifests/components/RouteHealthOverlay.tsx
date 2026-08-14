@@ -146,6 +146,7 @@ export default function RouteHealthOverlay({
       onClick={onClose}
     >
       <section
+        className="operations-dialog-surface"
         style={{
           width: "min(620px, 100vw)",
           height: "100%",
