@@ -262,7 +262,45 @@ async function processInvoiceEvent(
         .schema("billing")
         .from("payment")
         .insert({ ...paymentPayload, provider_event_id: event.id });
-      if (error) throw new Error(error.message);
+      if (error?.code === "23505") {
+        // Stripe does not guarantee webhook ordering. A concurrent invoice
+        // event may have inserted the same payment after our lookup, so reload
+        // the winning row and apply this event's latest provider state.
+        let concurrentPaymentQuery = admin
+          .schema("billing")
+          .from("payment")
+          .select("id")
+          .eq("provider", "stripe");
+
+        if (mapped.provider_payment_intent_id) {
+          concurrentPaymentQuery = concurrentPaymentQuery.eq(
+            "provider_payment_intent_id",
+            mapped.provider_payment_intent_id
+          );
+        } else {
+          concurrentPaymentQuery = concurrentPaymentQuery.eq(
+            "provider_invoice_id",
+            invoice.id
+          );
+        }
+
+        const { data: concurrentPayment, error: concurrentPaymentError } =
+          await concurrentPaymentQuery.maybeSingle<{ id: string }>();
+
+        if (concurrentPaymentError || !concurrentPayment) {
+          throw new Error(concurrentPaymentError?.message ?? error.message);
+        }
+
+        const { error: updateError } = await admin
+          .schema("billing")
+          .from("payment")
+          .update(paymentPayload)
+          .eq("id", concurrentPayment.id);
+
+        if (updateError) throw new Error(updateError.message);
+      } else if (error) {
+        throw new Error(error.message);
+      }
     }
   }
 
