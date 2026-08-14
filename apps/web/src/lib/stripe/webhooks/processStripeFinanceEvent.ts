@@ -2,9 +2,11 @@ import type Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
+import { getStripeServerClient } from "@/lib/stripe/server";
 import { processCheckoutSessionCompleted } from "./processCheckoutSessionCompleted";
 import {
   resolveInvoicePurpose,
+  resolveInvoiceMetadata,
   resolveStripeId,
   stripeAmount,
   stripeInvoiceLineRecord,
@@ -118,10 +120,11 @@ async function processInvoiceEvent(
   invoice: Stripe.Invoice
 ): Promise<StripeFinanceEventResult> {
   const providerCustomerId = resolveStripeId(invoice.customer);
+  const invoiceMetadata = resolveInvoiceMetadata(invoice);
   const customer = await findBillingCustomer(
     admin,
     providerCustomerId,
-    invoice.metadata?.company_id?.trim() || null
+    invoiceMetadata.company_id?.trim() || null
   );
 
   if (!customer || !providerCustomerId) return unhandled(invoice.id);
@@ -179,6 +182,18 @@ async function processInvoiceEvent(
   const isFailed = event.type === "invoice.payment_failed";
 
   if (purpose && (isPaid || isFailed)) {
+    let paymentIntent: Stripe.PaymentIntent | null = null;
+    let charge: Stripe.Charge | null = null;
+
+    if (mapped.provider_payment_intent_id) {
+      const stripe = getStripeServerClient();
+      paymentIntent = await stripe.paymentIntents.retrieve(
+        mapped.provider_payment_intent_id
+      );
+      const chargeId = resolveStripeId(paymentIntent.latest_charge);
+      charge = chargeId ? await stripe.charges.retrieve(chargeId) : null;
+    }
+
     let existingPaymentQuery = admin
       .schema("billing")
       .from("payment")
@@ -209,6 +224,7 @@ async function processInvoiceEvent(
       provider: "stripe",
       payment_purpose: purpose,
       provider_payment_intent_id: mapped.provider_payment_intent_id,
+      provider_charge_id: charge?.id ?? null,
       provider_invoice_id: invoice.id,
       provider_livemode: invoice.livemode,
       amount: stripeAmount(isPaid ? invoice.amount_paid : invoice.amount_due),
@@ -218,9 +234,17 @@ async function processInvoiceEvent(
         ? stripeTimestamp(invoice.status_transitions.paid_at) ??
           stripeTimestamp(event.created)
         : null,
-      failure_message: isFailed ? "Stripe reported invoice payment failure." : null,
+      receipt_url: charge?.receipt_url ?? null,
+      amount_refunded: stripeAmount(charge?.amount_refunded),
+      failure_code:
+        paymentIntent?.last_payment_error?.code ?? charge?.failure_code ?? null,
+      failure_message: isFailed
+        ? paymentIntent?.last_payment_error?.message ??
+          charge?.failure_message ??
+          "Stripe reported invoice payment failure."
+        : null,
       provider_metadata: {
-        ...invoice.metadata,
+        ...invoiceMetadata,
         invoice_number: invoice.number,
         billing_reason: invoice.billing_reason,
       },
@@ -264,7 +288,7 @@ async function processSubscriptionEvent(
   if (!customer) return unhandled(subscription.id);
 
   const mapped = stripeSubscriptionRecord(subscription);
-  const { error } = await admin
+  const { data: savedSubscription, error } = await admin
     .schema("billing")
     .from("subscription")
     .upsert(
@@ -274,9 +298,23 @@ async function processSubscriptionEvent(
         company_id: customer.company_id,
       },
       { onConflict: "provider,provider_subscription_id" }
-    );
+    )
+    .select("id")
+    .single<{ id: string }>();
 
-  if (error) throw new Error(error.message);
+  if (error || !savedSubscription) {
+    throw new Error(error?.message ?? "Unable to sync Stripe subscription.");
+  }
+
+  const { error: invoiceLinkError } = await admin
+    .schema("billing")
+    .from("invoice")
+    .update({ subscription_id: savedSubscription.id })
+    .eq("provider", "stripe")
+    .eq("provider_subscription_id", subscription.id)
+    .is("subscription_id", null);
+
+  if (invoiceLinkError) throw new Error(invoiceLinkError.message);
 
   const billingStatus =
     mapped.subscription_status === "active" || mapped.subscription_status === "trialing"
@@ -454,6 +492,7 @@ export async function processStripeFinanceEvent(
 
     case "invoice.created":
     case "invoice.finalized":
+    case "invoice.finalization_failed":
     case "invoice.paid":
     case "invoice.payment_failed":
     case "invoice.voided":
@@ -463,6 +502,8 @@ export async function processStripeFinanceEvent(
     case "customer.subscription.created":
     case "customer.subscription.updated":
     case "customer.subscription.deleted":
+    case "customer.subscription.paused":
+    case "customer.subscription.resumed":
       return processSubscriptionEvent(admin, event.data.object);
 
     case "payment_intent.succeeded":

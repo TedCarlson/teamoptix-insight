@@ -21,8 +21,13 @@ export default function GoLiveControl({
   const [error, setError] = useState<string | null>(null);
 
   async function handleGoLive() {
+    const isResume =
+      lifecycleStatus === "activation_in_progress" ||
+      lifecycleStatus === "activation_failed";
     const confirmed = window.confirm(
-      "Begin Go Live for this customer? This creates the durable activation run and executes all currently implemented activation steps."
+      isResume
+        ? "Resume Go Live for this customer? Insight will reconcile the durable activation run and execute every incomplete live billing step."
+        : "Begin Go Live for this customer? This creates the durable activation run and executes all currently implemented activation steps."
     );
 
     if (!confirmed) {
@@ -76,9 +81,10 @@ export default function GoLiveControl({
     }
   }
 
-  const alreadyStarted =
+  const active = lifecycleStatus === "active";
+  const resumable =
     lifecycleStatus === "activation_in_progress" ||
-    lifecycleStatus === "active";
+    lifecycleStatus === "activation_failed";
 
   return (
     <div
@@ -91,17 +97,19 @@ export default function GoLiveControl({
       <button
         type="button"
         className="button button-primary"
-        disabled={disabled || running || alreadyStarted}
+        disabled={disabled || running || active}
         onClick={handleGoLive}
       >
         {running
           ? "Starting Go Live…"
-          : alreadyStarted
-            ? "Go Live started"
-            : "Begin Go Live"}
+          : active
+            ? "Go Live complete"
+            : resumable
+              ? "Resume Go Live"
+              : "Begin Go Live"}
       </button>
 
-      {disabled && !alreadyStarted ? (
+      {disabled && !active ? (
         <span className="app-card__body">
           {blockingCount} readiness item
           {blockingCount === 1 ? "" : "s"} blocking

@@ -3,10 +3,7 @@ import type Stripe from "stripe";
 import type {
   ActivationStepDefinition,
 } from "@/features/teamoptix/customer-activation/executor/activationExecutor";
-import {
-  calculateFirstFridayAfterGoLive,
-  newYorkBillingDateToStripeAnchor,
-} from "@/features/teamoptix/customer-activation/lib/billingCalendar";
+import { calculateFirstFridayAfterGoLive } from "@/features/teamoptix/customer-activation/lib/billingCalendar";
 import { buildInitialStripeSubscriptionRequest } from "@/features/teamoptix/customer-activation/lib/stripeSubscriptionPlan";
 import { getStripeServerClient } from "@/lib/stripe/server";
 import {
@@ -477,19 +474,13 @@ export const initialActivationSteps: ActivationStepDefinition[] = [
           ) ?? null;
       }
 
-      const billingAnchor = newYorkBillingDateToStripeAnchor(
-        activation.first_billing_date
-      );
-
-      if (!stripeSubscription && billingAnchor <= Math.floor(Date.now() / 1000)) {
-        return {
-          status: "failed",
-          message: "The persisted first billing date is no longer in the future; Team Optix review is required before creating a subscription.",
-        };
-      }
+      let subscriptionRequest: ReturnType<
+        typeof buildInitialStripeSubscriptionRequest
+      > | null = null;
+      let initialInvoice: Stripe.Invoice | null = null;
 
       if (!stripeSubscription) {
-        const request = buildInitialStripeSubscriptionRequest({
+        subscriptionRequest = buildInitialStripeSubscriptionRequest({
           companyId: context.company_id,
           companySlug: context.company_slug,
           customerId: billingCustomer.provider_customer_id,
@@ -498,11 +489,54 @@ export const initialActivationSteps: ActivationStepDefinition[] = [
           operatorTierKey: profile.operator_tier_key,
           firstBillingDate: activation.first_billing_date,
           implementationPaymentId: payment.id,
+          now: new Date(),
         });
         stripeSubscription = await stripe.subscriptions.create(
-          request.params,
-          request.options
+          subscriptionRequest.params,
+          subscriptionRequest.options
         );
+
+        if (
+          subscriptionRequest.schedule.mode ===
+          "immediate_same_day_recovery"
+        ) {
+          const initialInvoiceId = resolveStripeId(
+            stripeSubscription.latest_invoice
+          );
+
+          if (!initialInvoiceId) {
+            return {
+              status: "failed",
+              message:
+                "Stripe created the same-day subscription without an initial invoice.",
+              metadata: {
+                provider_subscription_id: stripeSubscription.id,
+                reconciliation_required: true,
+              },
+            };
+          }
+
+          initialInvoice = await stripe.invoices.retrieve(initialInvoiceId);
+
+          if (
+            initialInvoice.status !== "paid" ||
+            initialInvoice.amount_paid !== expectedWeeklyAmount
+          ) {
+            return {
+              status: "failed",
+              message:
+                "Stripe created the same-day subscription but the first weekly invoice was not paid for the approved amount.",
+              metadata: {
+                provider_subscription_id: stripeSubscription.id,
+                provider_invoice_id: initialInvoice.id,
+                provider_invoice_status: initialInvoice.status,
+                amount_paid: initialInvoice.amount_paid,
+                expected_amount: expectedWeeklyAmount,
+                reconciliation_required: true,
+              },
+            };
+          }
+        }
       }
 
       const mapped = stripeSubscriptionRecord(stripeSubscription);
@@ -602,7 +636,15 @@ export const initialActivationSteps: ActivationStepDefinition[] = [
           operator_tier_key: profile.operator_tier_key,
           weekly_subscription: profile.weekly_subscription,
           first_billing_date: activation.first_billing_date,
-          billing_cycle_anchor: billingAnchor,
+          billing_cycle_anchor: stripeSubscription.billing_cycle_anchor,
+          billing_start_mode:
+            stripeSubscription.metadata?.billing_start_mode ??
+            subscriptionRequest?.schedule.mode ??
+            "existing_provider_subscription",
+          initial_invoice_id:
+            initialInvoice?.id ??
+            resolveStripeId(stripeSubscription.latest_invoice),
+          initial_invoice_status: initialInvoice?.status ?? null,
           proration_behavior: "none",
           execution_mode: "live_provider_and_insight_persisted",
         },

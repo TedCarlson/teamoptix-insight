@@ -125,3 +125,42 @@ export function newYorkBillingDateToStripeAnchor(dateValue: string): number {
 
   return Math.floor(instant / 1000);
 }
+
+export type InitialStripeBillingSchedule = {
+  mode: "scheduled_anchor" | "immediate_same_day_recovery";
+  billingCycleAnchor: number | null;
+};
+
+export function resolveInitialStripeBillingSchedule(
+  dateValue: string,
+  now: Date = new Date()
+): InitialStripeBillingSchedule {
+  const billingCycleAnchor = newYorkBillingDateToStripeAnchor(dateValue);
+  const today = getNewYorkDateParts(now);
+  const todayValue = [
+    today.year,
+    String(today.month).padStart(2, "0"),
+    String(today.day).padStart(2, "0"),
+  ].join("-");
+
+  if (dateValue < todayValue) {
+    throw new Error(
+      `The first billing date ${dateValue} is before the current New York billing date ${todayValue}.`
+    );
+  }
+
+  if (
+    dateValue === todayValue &&
+    billingCycleAnchor <= Math.floor(now.getTime() / 1000)
+  ) {
+    return {
+      mode: "immediate_same_day_recovery",
+      billingCycleAnchor: null,
+    };
+  }
+
+  return {
+    mode: "scheduled_anchor",
+    billingCycleAnchor,
+  };
+}
