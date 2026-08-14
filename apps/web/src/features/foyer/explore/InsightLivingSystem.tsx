@@ -122,6 +122,7 @@ export default function InsightLivingSystem() {
               className={`product-living-system__node${index === activeIndex ? " is-active" : ""}`}
               style={signalPositions[index]}
               onClick={() => setActiveIndex(index)}
+              aria-label={title}
               aria-pressed={index === activeIndex}
               key={title}
             >

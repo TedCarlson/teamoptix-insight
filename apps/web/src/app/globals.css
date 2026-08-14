@@ -12940,7 +12940,7 @@ html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .button:dis
   .product-living-system { padding: 34px 18px; border-radius: 28px; }
   .product-living-system__heading h2 { font-size: 43px; }
   .product-living-system__narrative { padding: 22px 0 22px 20px; }
-  .product-living-system__orbit { width: min(540px, 112vw); margin-inline: -8vw; }
+  .product-living-system__orbit { width: min(540px, 100%); margin-inline: 0; }
   .product-living-system__node { width: 68px; gap: 5px; }
   .product-living-system__node > span { width: 40px; height: 40px; }
   .product-living-system__node strong { font-size: 8px; }
@@ -12950,7 +12950,6 @@ html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .button:dis
 }
 
 @media (max-width: 430px) {
-  .product-living-system__orbit { width: 118vw; margin-inline: -13vw; }
   .product-living-system__node strong { display: none; }
   .product-living-system__node.is-active strong { display: block; position: absolute; top: 45px; white-space: nowrap; }
   .product-living-system__core img { width: 34px; height: 34px; }
