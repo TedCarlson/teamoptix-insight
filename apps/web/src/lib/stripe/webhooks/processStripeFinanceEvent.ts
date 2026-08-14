@@ -29,6 +29,36 @@ type BillingCustomer = {
   billing_status: string;
 };
 
+async function findBillingPayment(
+  admin: SupabaseClient,
+  providerPaymentIntentId: string | null,
+  providerInvoiceId: string
+): Promise<{ id: string } | null> {
+  if (providerPaymentIntentId) {
+    const { data, error } = await admin
+      .schema("billing")
+      .from("payment")
+      .select("id")
+      .eq("provider", "stripe")
+      .eq("provider_payment_intent_id", providerPaymentIntentId)
+      .maybeSingle<{ id: string }>();
+
+    if (error) throw new Error(error.message);
+    if (data) return data;
+  }
+
+  const { data, error } = await admin
+    .schema("billing")
+    .from("payment")
+    .select("id")
+    .eq("provider", "stripe")
+    .eq("provider_invoice_id", providerInvoiceId)
+    .maybeSingle<{ id: string }>();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 async function findBillingCustomer(
   admin: SupabaseClient,
   providerCustomerId: string | null,
@@ -206,28 +236,11 @@ async function processInvoiceEvent(
       charge = chargeId ? await stripe.charges.retrieve(chargeId) : null;
     }
 
-    let existingPaymentQuery = admin
-      .schema("billing")
-      .from("payment")
-      .select("id")
-      .eq("provider", "stripe");
-
-    if (mapped.provider_payment_intent_id) {
-      existingPaymentQuery = existingPaymentQuery.eq(
-        "provider_payment_intent_id",
-        mapped.provider_payment_intent_id
-      );
-    } else {
-      existingPaymentQuery = existingPaymentQuery.eq(
-        "provider_invoice_id",
-        invoice.id
-      );
-    }
-
-    const { data: existingPayment, error: existingPaymentError } =
-      await existingPaymentQuery.maybeSingle<{ id: string }>();
-
-    if (existingPaymentError) throw new Error(existingPaymentError.message);
+    const existingPayment = await findBillingPayment(
+      admin,
+      mapped.provider_payment_intent_id,
+      invoice.id
+    );
 
     const paymentPayload = {
       customer_id: customer.id,
@@ -278,30 +291,13 @@ async function processInvoiceEvent(
         // Stripe does not guarantee webhook ordering. A concurrent invoice
         // event may have inserted the same payment after our lookup, so reload
         // the winning row and apply this event's latest provider state.
-        let concurrentPaymentQuery = admin
-          .schema("billing")
-          .from("payment")
-          .select("id")
-          .eq("provider", "stripe");
+        const concurrentPayment = await findBillingPayment(
+          admin,
+          mapped.provider_payment_intent_id,
+          invoice.id
+        );
 
-        if (mapped.provider_payment_intent_id) {
-          concurrentPaymentQuery = concurrentPaymentQuery.eq(
-            "provider_payment_intent_id",
-            mapped.provider_payment_intent_id
-          );
-        } else {
-          concurrentPaymentQuery = concurrentPaymentQuery.eq(
-            "provider_invoice_id",
-            invoice.id
-          );
-        }
-
-        const { data: concurrentPayment, error: concurrentPaymentError } =
-          await concurrentPaymentQuery.maybeSingle<{ id: string }>();
-
-        if (concurrentPaymentError || !concurrentPayment) {
-          throw new Error(concurrentPaymentError?.message ?? error.message);
-        }
+        if (!concurrentPayment) throw new Error(error.message);
 
         const { error: updateError } = await admin
           .schema("billing")
