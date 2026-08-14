@@ -7,7 +7,7 @@ const volume = [43, 47, 42, 51, 46, 54, 58, 49, 62, 70, 64, 53, 59, 55, 61, 66, 
 
 export default function InsightAnalyticsPreview() {
   return (
-    <div className="insight-product-preview insight-analytics-preview">
+    <div className="insight-product-preview insight-analytics-preview" data-preview-theme="light">
       <div className="insight-product-preview__chrome">
         <div className="insight-product-preview__brand">
           <Image src="/icons/logo-2-insight-cutout-xsm.png" alt="" width={70} height={46} />

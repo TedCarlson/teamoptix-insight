@@ -1,4 +1,9 @@
+"use client";
+
 import Image from "next/image";
+import { useState } from "react";
+
+type PreviewTheme = "light" | "dark";
 
 const workspaceAreas = ["Home", "Admin", "Operations", "People", "Schedule", "Fleet", "Routes"];
 const operationAreas = ["Dispatch", "Service", "Planning", "Ops Reports", "Walk Ons"];
@@ -13,8 +18,13 @@ const routeUnits = [
 ];
 
 export default function InsightSystemPreview({ compact = false }: { compact?: boolean }) {
+  const [previewTheme, setPreviewTheme] = useState<PreviewTheme>("light");
+
   return (
-    <div className={`insight-product-preview${compact ? " insight-product-preview--compact" : ""}`}>
+    <div
+      className={`insight-product-preview${compact ? " insight-product-preview--compact" : ""}`}
+      data-preview-theme={previewTheme}
+    >
       <div className="insight-product-preview__chrome">
         <div className="insight-product-preview__brand">
           <Image
@@ -25,10 +35,24 @@ export default function InsightSystemPreview({ compact = false }: { compact?: bo
           />
           <div><strong>Insight</strong><small>by Team Optix</small></div>
         </div>
-        <div className="insight-product-preview__identity">
-          <span>My Workspace</span>
-          <i>OP</i>
-          <div><strong>Demo operator</strong><small>Workspace owner</small></div>
+        <div className="insight-product-preview__controls">
+          <div className="insight-product-preview__theme-switch" aria-label="Preview appearance">
+            {(["light", "dark"] as const).map((theme) => (
+              <button
+                key={theme}
+                type="button"
+                aria-pressed={previewTheme === theme}
+                onClick={() => setPreviewTheme(theme)}
+              >
+                {theme === "light" ? "Light" : "Dark"}
+              </button>
+            ))}
+          </div>
+          <div className="insight-product-preview__identity">
+            <span>My Workspace</span>
+            <i>OP</i>
+            <div><strong>Demo operator</strong><small>Workspace owner</small></div>
+          </div>
         </div>
       </div>
 
