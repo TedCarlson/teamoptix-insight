@@ -5,7 +5,7 @@ import FoyerWorkspaceRequestCard from "@/features/foyer/components/FoyerWorkspac
 
 export default function CompanyOwnerPage() {
   return (
-    <main className="foyer-page foyer-page--light">
+    <main className="foyer-page foyer-page--light foyer-page--company-owner">
       <FoyerHeader />
 
       <section className="foyer-owner-hero">

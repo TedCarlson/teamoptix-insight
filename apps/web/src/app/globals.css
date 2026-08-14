@@ -7655,6 +7655,10 @@ button.payroll-ledger-status {
   box-shadow: 0 28px 80px rgba(2, 6, 23, 0.24);
 }
 
+.foyer-page--company-owner > .foyer-workspace-request-card--standalone {
+  margin-bottom: clamp(64px, 6vw, 104px);
+}
+
 .foyer-workspace-request-card--standalone h3 {
   max-width: 860px;
   font-size: clamp(32px, 4vw, 58px);
