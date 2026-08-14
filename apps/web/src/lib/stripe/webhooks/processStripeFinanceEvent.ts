@@ -7,6 +7,7 @@ import { processCheckoutSessionCompleted } from "./processCheckoutSessionComplet
 import {
   resolveInvoicePurpose,
   resolveInvoiceMetadata,
+  resolveInvoicePaymentsPaymentIntentId,
   resolveStripeId,
   stripeAmount,
   stripeInvoiceLineRecord,
@@ -129,7 +130,19 @@ async function processInvoiceEvent(
 
   if (!customer || !providerCustomerId) return unhandled(invoice.id);
 
+  const purpose = resolveInvoicePurpose(invoice);
   const mapped = stripeInvoiceRecord(invoice, event.id);
+
+  if (purpose && !mapped.provider_payment_intent_id) {
+    const stripe = getStripeServerClient();
+    const invoicePayments = await stripe.invoicePayments.list({
+      invoice: invoice.id,
+      limit: 10,
+    });
+    mapped.provider_payment_intent_id =
+      resolveInvoicePaymentsPaymentIntentId(invoicePayments.data);
+  }
+
   const providerSubscriptionId = mapped.provider_subscription_id;
   let subscriptionId: string | null = null;
 
@@ -177,7 +190,6 @@ async function processInvoiceEvent(
     if (lineError) throw new Error(lineError.message);
   }
 
-  const purpose = resolveInvoicePurpose(invoice);
   const isPaid = event.type === "invoice.paid" || invoice.status === "paid";
   const isFailed = event.type === "invoice.payment_failed";
 

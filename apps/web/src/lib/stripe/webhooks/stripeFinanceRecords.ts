@@ -23,7 +23,13 @@ export function resolveInvoicePaymentIntentId(invoice: Stripe.Invoice): string |
   const legacyId = resolveStripeId(legacy.payment_intent);
   if (legacyId) return legacyId;
 
-  for (const invoicePayment of invoice.payments?.data ?? []) {
+  return resolveInvoicePaymentsPaymentIntentId(invoice.payments?.data ?? []);
+}
+
+export function resolveInvoicePaymentsPaymentIntentId(
+  invoicePayments: Stripe.InvoicePayment[]
+): string | null {
+  for (const invoicePayment of invoicePayments) {
     const payment = invoicePayment.payment;
     if (payment?.type === "payment_intent") {
       return resolveStripeId(payment.payment_intent);

@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 
 import {
   resolveInvoicePaymentIntentId,
+  resolveInvoicePaymentsPaymentIntentId,
   resolveInvoiceMetadata,
   resolveInvoicePurpose,
   stripeAmount,
@@ -112,5 +113,20 @@ describe("Stripe finance record mapping", () => {
       payment_purpose: "subscription",
     });
     expect(resolveInvoicePurpose(invoice)).toBe("subscription");
+  });
+
+  it("resolves payment intent evidence returned by the Invoice Payments API", () => {
+    const invoicePayments = [
+      {
+        payment: {
+          type: "payment_intent",
+          payment_intent: "pi_live_subscription_1",
+        },
+      },
+    ] as Stripe.InvoicePayment[];
+
+    expect(resolveInvoicePaymentsPaymentIntentId(invoicePayments)).toBe(
+      "pi_live_subscription_1"
+    );
   });
 });
