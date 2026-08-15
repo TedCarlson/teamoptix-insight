@@ -38,4 +38,14 @@ describe("buildRunnerHealthEmail", () => {
     expect(message.subject).toContain("RECOVERED");
     expect(message.html).toContain("Collection runner recovered");
   });
+
+  it("describes stale collection evidence as an overdue check-in", () => {
+    const message = buildRunnerHealthEmail(
+      { ...payload, issue_type: "STALE_HEARTBEAT" },
+      null
+    );
+    expect(message.html).toContain("Collection check-in overdue");
+    expect(message.html).toContain("Last collection check-in");
+    expect(message.html).not.toContain("Runner heartbeat stopped");
+  });
 });

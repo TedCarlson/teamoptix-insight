@@ -35,8 +35,22 @@ function formatEastern(value: string | null) {
 
 function issueLabel(issueType: RunnerHealthNotificationPayload["issue_type"]) {
   return issueType === "STALE_HEARTBEAT"
-    ? "Runner heartbeat stopped"
+    ? "Collection check-in overdue"
     : "Runner entered an error state";
+}
+
+function incidentSummary(
+  issueType: RunnerHealthNotificationPayload["issue_type"],
+  recovered: boolean
+) {
+  if (issueType === "STALE_HEARTBEAT") {
+    return recovered
+      ? "Collection check-ins have resumed."
+      : `${issueLabel(issueType)}. No collection check-in was received within the expected operating window. Scheduled collection may be incomplete until check-ins resume.`;
+  }
+  return recovered
+    ? "The runner is reporting normally again."
+    : `${issueLabel(issueType)}. Scheduled collection may be incomplete until the runner recovers.`;
 }
 
 export function buildRunnerHealthEmail(
@@ -50,9 +64,7 @@ export function buildRunnerHealthEmail(
   const title = recovered
     ? "Collection runner recovered"
     : "Collection runner requires attention";
-  const summary = recovered
-    ? `The runner is reporting again after a ${issueLabel(payload.issue_type).toLowerCase()} incident.`
-    : `${issueLabel(payload.issue_type)}. Scheduled collection may be incomplete until the runner recovers.`;
+  const summary = incidentSummary(payload.issue_type, recovered);
   const error = payload.runner_last_error?.trim() || "No runner error message was recorded.";
   const action = incidentUrl
     ? `<p style="margin:24px 0 0"><a href="${escapeHtml(incidentUrl)}" style="display:inline-block;padding:11px 16px;border-radius:8px;background:#2563eb;color:#fff;text-decoration:none;font-weight:700">Open collection health</a></p>`
@@ -70,7 +82,7 @@ export function buildRunnerHealthEmail(
             <tr><td style="padding:8px;border-top:1px solid #e2e8f0;font-weight:700">Company</td><td style="padding:8px;border-top:1px solid #e2e8f0">${escapeHtml(payload.company_name)}</td></tr>
             <tr><td style="padding:8px;border-top:1px solid #e2e8f0;font-weight:700">Runner</td><td style="padding:8px;border-top:1px solid #e2e8f0">${escapeHtml(payload.runner_key)}</td></tr>
             <tr><td style="padding:8px;border-top:1px solid #e2e8f0;font-weight:700">State</td><td style="padding:8px;border-top:1px solid #e2e8f0">${escapeHtml(payload.runner_state)}</td></tr>
-            <tr><td style="padding:8px;border-top:1px solid #e2e8f0;font-weight:700">Last heartbeat</td><td style="padding:8px;border-top:1px solid #e2e8f0">${escapeHtml(formatEastern(payload.runner_last_seen_at))}</td></tr>
+            <tr><td style="padding:8px;border-top:1px solid #e2e8f0;font-weight:700">Last collection check-in</td><td style="padding:8px;border-top:1px solid #e2e8f0">${escapeHtml(formatEastern(payload.runner_last_seen_at))}</td></tr>
             <tr><td style="padding:8px;border-top:1px solid #e2e8f0;font-weight:700">Incident opened</td><td style="padding:8px;border-top:1px solid #e2e8f0">${escapeHtml(formatEastern(payload.opened_at))}</td></tr>
             <tr><td style="padding:8px;border-top:1px solid #e2e8f0;font-weight:700">Reported detail</td><td style="padding:8px;border-top:1px solid #e2e8f0">${escapeHtml(error)}</td></tr>
           </tbody>
