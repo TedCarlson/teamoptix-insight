@@ -11714,6 +11714,113 @@ html[data-theme="dark"] .company-workspace-stage .payroll-driver-week-drawer__st
   background: var(--surface-2) !important;
 }
 
+.payroll-report-recipient {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #b8dccb;
+  border-radius: 11px;
+  padding: 10px 11px;
+  background: #f0fdf7;
+}
+
+.payroll-report-recipient small,
+.payroll-report-bc-options small {
+  color: #64748b;
+}
+
+.payroll-report-recipient__status {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #d9f7e8;
+  color: #166534;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.payroll-report-bc-options {
+  display: grid;
+  grid-template-columns: minmax(0, .7fr) minmax(0, 1.3fr);
+  gap: 7px;
+  margin: 2px 0 0;
+  padding: 8px;
+  border: 1px solid #dbe6f3;
+  border-radius: 11px;
+}
+
+.payroll-report-bc-options legend {
+  padding: 0 4px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.payroll-report-bc-options legend span {
+  color: #64748b;
+  font-weight: 650;
+}
+
+.payroll-report-bc-options label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  border-radius: 8px;
+  padding: 7px 8px;
+  cursor: pointer;
+}
+
+.payroll-report-bc-options label:has(input:checked) {
+  background: #f1f5f9;
+}
+
+.payroll-report-bc-options input {
+  margin-top: 2px;
+}
+
+.payroll-report-bc-options label > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.payroll-report-fallback-field {
+  display: grid;
+  gap: 5px;
+  border-top: 1px solid #e8eef5;
+  padding-top: 11px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.payroll-report-fallback-field > span {
+  font-weight: 750;
+}
+
+.payroll-report-fallback-field input {
+  height: 38px;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  padding: 0 10px;
+  background: #f8fafc;
+  color: #334155;
+  font: inherit;
+}
+
+@media (max-width: 560px) {
+  .payroll-report-recipient {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .payroll-report-bc-options {
+    grid-template-columns: 1fr;
+  }
+}
+
 html[data-theme="dark"] .company-workspace-stage .payroll-dialog-surface {
   border-color: var(--line) !important;
   background: var(--surface) !important;
@@ -11733,9 +11840,22 @@ html[data-theme="dark"] .company-workspace-stage .payroll-dialog-surface > div:f
   background: var(--surface-2) !important;
 }
 
-html[data-theme="dark"] .company-workspace-stage .payroll-report-email-dialog label:has(input[type="checkbox"]) {
+html[data-theme="dark"] .company-workspace-stage .payroll-report-email-dialog :where(.payroll-report-recipient, .payroll-report-bc-options) {
   border-color: var(--line) !important;
   background: var(--surface-2) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-report-email-dialog .payroll-report-recipient__status {
+  background: rgba(34, 197, 94, .16) !important;
+  color: #86efac !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-report-email-dialog .payroll-report-bc-options label:has(input:checked) {
+  background: var(--surface-3) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-report-email-dialog .payroll-report-fallback-field {
+  border-color: var(--line) !important;
 }
 
 html[data-theme="dark"] .company-workspace-stage .payroll-adjustment-desk__rail {

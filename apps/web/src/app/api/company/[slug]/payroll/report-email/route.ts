@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getCompanyPayrollConfig } from "@/features/payroll/lib/payroll.config";
 import { isDriverType } from "@/features/payroll/lib/payroll.classification";
+import {
+  composePayrollReportRecipients,
+  isPayrollRecipientEmail,
+} from "@/features/payroll/lib/payrollReportRecipients";
 
 export const runtime = "nodejs";
 
@@ -70,7 +74,7 @@ export async function POST(
     const groupedSummaryRows = Array.isArray(body.groupedSummaryRows)
       ? body.groupedSummaryRows
       : [];
-    const manualRecipients = Array.isArray(body.recipients)
+    const optionalRecipients = Array.isArray(body.recipients)
       ? body.recipients.map((email: unknown) => String(email).trim()).filter(Boolean)
       : [];
 
@@ -88,18 +92,40 @@ export async function POST(
       error: userError,
     } = await supabase.auth.getUser();
 
-    if (userError || !user?.email) {
-      return NextResponse.json({ error: "Signed-in sender email not found." }, { status: 401 });
+    if (userError || !user) {
+      return NextResponse.json({ error: "Signed-in user not found." }, { status: 401 });
     }
 
     const { data: company, error: companyError } = await supabase
       .from("companies")
-      .select("id")
+      .select("id, contact_email")
       .eq("company_slug", slug)
       .single();
 
     if (companyError || !company) {
       return NextResponse.json({ error: "Company not found." }, { status: 404 });
+    }
+
+    const authorizedOperatorEmail = String(company.contact_email ?? "").trim();
+    if (!isPayrollRecipientEmail(authorizedOperatorEmail)) {
+      return NextResponse.json(
+        { error: "The Authorized Operator email is not configured in Company Profile." },
+        { status: 400 }
+      );
+    }
+
+    const invalidOptionalRecipients = optionalRecipients.filter(
+      (email: string) => !isPayrollRecipientEmail(email)
+    );
+    if (invalidOptionalRecipients.length) {
+      return NextResponse.json(
+        {
+          error: `Check the additional email address${
+            invalidOptionalRecipients.length === 1 ? "" : "es"
+          }: ${invalidOptionalRecipients.join(", ")}`,
+        },
+        { status: 400 }
+      );
     }
 
     const { data: persistedMemos, error: memoError } = await supabase.rpc(
@@ -190,7 +216,10 @@ export async function POST(
       }
     }
 
-    const recipients = Array.from(new Set([user.email, ...manualRecipients]));
+    const recipients = composePayrollReportRecipients(
+      authorizedOperatorEmail,
+      optionalRecipients
+    );
 
     const resendApiKey = requireEnv("RESEND_API_KEY");
     const emailFrom = requireEnv("RESEND_FROM_EMAIL");
