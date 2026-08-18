@@ -6,11 +6,20 @@ import { ThemeProvider } from "@/features/theme/ThemeProvider";
 
 const themeBootstrap = `
   (() => {
-    let theme = "light";
+    let preference = "system";
     try {
-      const saved = window.localStorage.getItem("insight-theme");
-      if (saved === "dark" || saved === "light") theme = saved;
+      const savedPreference = window.localStorage.getItem("insight-theme-preference");
+      const legacyTheme = window.localStorage.getItem("insight-theme");
+      if (savedPreference === "system" || savedPreference === "dark" || savedPreference === "light") {
+        preference = savedPreference;
+      } else if (legacyTheme === "dark" || legacyTheme === "light") {
+        preference = legacyTheme;
+      }
     } catch {}
+    const theme = preference === "system"
+      ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+      : preference;
+    document.documentElement.dataset.themePreference = preference;
     document.documentElement.dataset.theme = theme;
   })();
 `;
@@ -48,9 +57,9 @@ export default function RootLayout(props: { children: React.ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
       </head>
       <body>
-        <ThemeProvider>
-          <AccessProvider>{props.children}</AccessProvider>
-        </ThemeProvider>
+        <AccessProvider>
+          <ThemeProvider>{props.children}</ThemeProvider>
+        </AccessProvider>
         <Analytics />
       </body>
     </html>

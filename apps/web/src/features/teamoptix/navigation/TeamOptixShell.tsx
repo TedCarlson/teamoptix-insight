@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import IdentityPill from "@/features/access/components/IdentityPill";
+import ThemeToggle from "@/features/theme/ThemeToggle";
 import CompanySwitcher from "@/features/teamoptix/navigation/CompanySwitcher";
 
 type NavItem = {
@@ -37,8 +38,9 @@ const secondaryLinksByDomain: Record<string, NavItem[]> = {
   ],
   products: [
     { href: "/teamoptix/products", label: "Overview" },
-    { href: "/teamoptix/products/insight", label: "Insight" },
-    { href: "/teamoptix/products/itg", label: "ITG v2.0" },
+    { href: "/teamoptix/products/insight", label: "P&D Last Mile" },
+    { href: "/teamoptix/products/itg", label: "Telecom Fulfillment" },
+    { href: "/teamoptix/products/uls", label: "Utility Locate" },
   ],
   customers: [
     { href: "/teamoptix/customers", label: "Customer Workspace" },
@@ -119,6 +121,7 @@ export default function TeamOptixShell(props: { children: React.ReactNode }) {
 
         <div className="teamoptix-header__right">
           <CompanySwitcher />
+          <ThemeToggle />
           <Link className="button" href="/profile">
             Profile
           </Link>

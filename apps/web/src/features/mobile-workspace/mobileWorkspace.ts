@@ -1,7 +1,4 @@
-import {
-  COMPANY_WORKSPACE_GRANTS,
-  type CompanyWorkspaceGrantKey,
-} from "@/features/company/config/companyAccessModel";
+import type { CompanyWorkspaceGrantKey } from "@/features/company/config/companyAccessModel";
 import type {
   CompanyWorkspaceAccessContext,
   CompanyWorkspaceMembership,
@@ -163,6 +160,10 @@ const DESTINATIONS: Array<Omit<MobileWorkspaceDestination, "href"> & {
   },
 ];
 
+const MOBILE_WORKSPACE_GRANTS = Array.from(
+  new Set(DESTINATIONS.map((destination) => destination.requiredGrant))
+);
+
 function activeMembership(
   access: CompanyWorkspaceAccessContext | null | undefined,
   slug: string
@@ -192,10 +193,10 @@ export function mobileWorkspaceGrantKeys(
   if (!membership && !access?.is_platform_owner) return [];
 
   if (isCompanyAdminAccess(access, slug)) {
-    return COMPANY_WORKSPACE_GRANTS.map((grant) => grant.key);
+    return MOBILE_WORKSPACE_GRANTS;
   }
 
-  const validKeys = new Set(COMPANY_WORKSPACE_GRANTS.map((grant) => grant.key));
+  const validKeys = new Set(MOBILE_WORKSPACE_GRANTS);
   const grants = Array.isArray(membership?.grants) ? membership.grants : [];
 
   return grants.filter(

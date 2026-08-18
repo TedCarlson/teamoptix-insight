@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import IdentityPill from "@/features/access/components/IdentityPill";
 import { useAccess } from "@/features/access/AccessProvider";
+import ThemeToggle from "@/features/theme/ThemeToggle";
 
 function NavLink(props: { href: string; children: React.ReactNode }) {
   const pathname = usePathname();
@@ -49,6 +50,7 @@ export default function SiteHeader() {
             <NavLink href="/profile">Profile</NavLink>
           </nav>
 
+          <ThemeToggle />
           <IdentityPill />
         </div>
       </div>

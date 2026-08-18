@@ -24,4 +24,5 @@ tmp/automation-downloads/
 tmp/pdfs/
 *.xls
 *.xlsx
+!apps/web/public/downloads/itf/ITF_Roster_Import_Template.xlsx
 .vercel/

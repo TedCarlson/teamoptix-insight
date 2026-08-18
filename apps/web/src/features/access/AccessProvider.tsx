@@ -31,6 +31,7 @@ type AccessState = {
   mobile_phone?: string | null;
   profile_status?: string;
   is_platform_owner?: boolean;
+  theme_preference?: "system" | "light" | "dark";
   memberships: Membership[];
 };
 
@@ -80,6 +81,9 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
         mobile_phone: data.mobile_phone ?? null,
         profile_status: data.profile_status,
         is_platform_owner: Boolean(data.is_platform_owner),
+        theme_preference: ["system", "light", "dark"].includes(data.theme_preference)
+          ? data.theme_preference
+          : undefined,
         memberships: Array.isArray(data.memberships) ? data.memberships : [],
       });
     } catch (err) {

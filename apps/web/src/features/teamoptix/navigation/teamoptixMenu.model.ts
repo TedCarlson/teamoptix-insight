@@ -29,9 +29,10 @@ export function buildTeamOptixMenu(): AppMenuSection[] {
           label: "Products",
           href: "/teamoptix/products",
           children: [
-            { key: "product-insight", label: "Insight", href: "/teamoptix/products/insight" },
+            { key: "product-insight", label: "Insight — P&D Last Mile", href: "/teamoptix/products/insight" },
             { key: "launch-insight-companies", label: "Launch Insight Companies", href: "/companies" },
-            { key: "product-itg", label: "ITG v2.0", href: "/teamoptix/products/itg" },
+            { key: "product-itg", label: "Insight — Telecom Fulfillment", href: "/teamoptix/products/itg" },
+            { key: "product-uls", label: "Utility Locate Service", href: "/teamoptix/products/uls" },
           ],
         },
         {
