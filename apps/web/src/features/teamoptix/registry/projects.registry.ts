@@ -6,8 +6,9 @@ export const projectSections: TeamOptixRegistrySection[] = [
     eyebrow: "Projects",
     title: "Active Portfolio",
     signals: [
-      { label: "Insight", value: "Active", detail: "Workspace Standard" },
-      { label: "ITG v2.0", value: "Planning", detail: "Bring into TeamOptix" },
+      { label: "Insight — P&D Last Mile", value: "In service", detail: "Workspace standard" },
+      { label: "Insight — Telecom Fulfillment", value: "In review", detail: "Interface consolidation" },
+      { label: "Utility Locate Service", value: "Planned", detail: "Independent product foundation" },
       { label: "Presentations", value: "Open", detail: "Sales and leadership materials" },
     ],
   },

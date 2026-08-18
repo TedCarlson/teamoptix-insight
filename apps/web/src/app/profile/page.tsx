@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import IdentityPill from "@/features/access/components/IdentityPill";
 import { useAccess } from "@/features/access/AccessProvider";
 import AppearanceSettings from "@/features/theme/AppearanceSettings";
+import ThemeToggle from "@/features/theme/ThemeToggle";
 
 type CandidateApplication = { id: string; company_name?: string | null; company_slug?: string | null; role_interest?: string | null; location_interest?: string | null; application_status: string; association_status: string; scheduling_policy: string; submitted_at: string };
 
@@ -127,6 +128,7 @@ export default function ProfilePage() {
         </Link>
 
         <div className="teamoptix-header__right">
+          <ThemeToggle />
           <IdentityPill />
         </div>
       </header>
@@ -198,7 +200,7 @@ export default function ProfilePage() {
           <WorkspaceCard
             eyebrow="Services"
             title="Account services"
-            body="Choose how Insight looks for you. Light is the default, and changing appearance never changes the layout or workflow."
+            body="Choose how TeamOptix and Insight look for you. Your selection follows your profile without changing layout, permissions, or workflow."
             action={
               <AppearanceSettings />
             }

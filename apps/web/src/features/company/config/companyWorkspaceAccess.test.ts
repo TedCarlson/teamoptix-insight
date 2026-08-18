@@ -21,3 +21,27 @@ describe("Fleet workspace access", () => {
     expect(canAccessCompanyWorkspace({ memberships: [{ company_slug: "acme", membership_status: "pending", relationship_type: "member", grants: ["fleet"] }] }, "acme", "fleet")).toBe(false);
   });
 });
+
+describe("ITF workspace grant", () => {
+  it("publishes one company-scoped product entry grant", () => {
+    const grantKeys: string[] = COMPANY_WORKSPACE_GRANTS.map((grant) => grant.key);
+
+    expect(grantKeys).toContain("insight_telecom_fulfillment");
+    expect(
+      canAccessCompanyWorkspace(
+        {
+          memberships: [
+            {
+              company_slug: "acme",
+              membership_status: "active",
+              relationship_type: "member",
+              grants: ["insight_telecom_fulfillment"],
+            },
+          ],
+        },
+        "acme",
+        "insight_telecom_fulfillment"
+      )
+    ).toBe(true);
+  });
+});

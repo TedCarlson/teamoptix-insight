@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { MouseEvent } from "react";
 import IdentityPill from "@/features/access/components/IdentityPill";
+import ThemeToggle from "@/features/theme/ThemeToggle";
 import { useAccess } from "@/features/access/AccessProvider";
 import { canAccessCompanyWorkspace } from "@/features/company/config/companyWorkspaceAccess";
 
@@ -445,6 +446,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
             </Link>
           ) : null}
 
+          <ThemeToggle />
           <IdentityPill />
         </div>
       </div>

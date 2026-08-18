@@ -1,0 +1,148 @@
+.reviewNotice {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  min-height: 42px;
+  padding: 8px 14px;
+  border: 1px solid color-mix(in srgb, #10b981 38%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, #10b981 7%, var(--surface));
+  color: var(--muted);
+  font-size: 11px;
+}
+.reviewNotice strong { color: var(--text); }
+.reviewDot { width: 8px; height: 8px; border-radius: 999px; background: #10b981; box-shadow: 0 0 0 4px color-mix(in srgb, #10b981 17%, transparent); }
+
+.workspaceSection { overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: var(--shadow-sm); }
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; padding: 14px 16px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--surface-2) 58%, var(--surface)); }
+.toolbar label { display: grid; flex: 0 1 145px; gap: 5px; min-width: 125px; }
+.toolbar label > span,
+.formGrid label > span { color: var(--muted); font-size: 9px; font-weight: 850; letter-spacing: .07em; text-transform: uppercase; }
+.searchControl { flex: 1 1 300px !important; min-width: 240px !important; }
+.toolbar input,
+.toolbar select,
+.formGrid input,
+.formGrid select,
+.structureForm input,
+.structureForm select { width: 100%; min-height: 38px; padding: 0 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--text); font: inherit; font-size: 12px; }
+.toolbarStatus { margin: 0 auto 10px 0; color: var(--muted); font-size: 10px; font-weight: 750; white-space: nowrap; }
+
+.locationRail { display: flex; gap: 6px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.locationRail button { padding: 7px 11px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+.locationRail button:hover { color: var(--text); background: var(--surface-2); }
+.locationRail .locationActive { border-color: color-mix(in srgb, var(--brand) 38%, var(--line)); background: color-mix(in srgb, var(--brand) 10%, var(--surface)); color: var(--brand); }
+
+.groupingRail { display: flex; gap: 6px; align-items: center; justify-content: flex-end; padding: 8px 16px; border-bottom: 1px solid var(--line); }
+.groupingRail > span { margin-right: 2px; color: var(--muted); font-size: 9px; font-weight: 850; letter-spacing: .07em; text-transform: uppercase; }
+.groupingRail button { padding: 6px 10px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 10px; font-weight: 800; cursor: pointer; }
+.groupingRail button:hover { color: var(--text); background: var(--surface-2); }
+.groupingRail .groupingActive { border-color: color-mix(in srgb, var(--brand) 38%, var(--line)); background: color-mix(in srgb, var(--brand) 10%, var(--surface)); color: var(--brand); }
+
+.tableWrap { overflow-x: auto; }
+.table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 12px; }
+.table th,
+.table td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+.table th { background: var(--surface-2); color: var(--muted); font-size: 9px; letter-spacing: .06em; text-transform: uppercase; }
+.table tbody tr:not(:only-child) { cursor: pointer; }
+.table tbody tr:not(:only-child):hover { background: color-mix(in srgb, var(--brand) 5%, var(--surface)); }
+.table .positionGroupRow { cursor: default; }
+.table .positionGroupRow:hover { background: transparent; }
+.positionGroupRow th { padding: 9px 14px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--brand) 7%, var(--surface-2)); color: var(--text); text-align: left; }
+.positionGroupRow th span:first-child { font-size: 10px; font-weight: 850; letter-spacing: .07em; text-transform: uppercase; }
+.positionGroupRow th span:last-child { float: right; color: var(--muted); font-size: 10px; font-weight: 800; }
+.techIdentity { min-width: 230px; }
+.techIdentity strong,
+.techIdentity span { display: block; }
+.techIdentity strong { color: var(--text); font-size: 15px; letter-spacing: .01em; }
+.techIdentity span { margin-top: 3px; color: var(--muted); font-size: 10px; }
+.status,
+.source { display: inline-flex; padding: 5px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: 9px; font-weight: 850; text-transform: capitalize; }
+.status_active { background: color-mix(in srgb, #10b981 13%, var(--surface)); color: #059669; }
+.status_onboarding { background: color-mix(in srgb, var(--brand) 13%, var(--surface)); color: var(--brand); }
+.status_inactive,
+.status_onboarding_closed { background: color-mix(in srgb, #64748b 13%, var(--surface)); color: var(--muted); }
+.lifecycle { display: inline-flex; padding: 5px 8px; border-radius: 999px; background: color-mix(in srgb, var(--brand) 10%, var(--surface)); color: var(--brand); font-size: 9px; font-weight: 850; }
+.lifecycleAction { background: color-mix(in srgb, #f59e0b 15%, var(--surface)); color: #d97706; }
+.source { background: color-mix(in srgb, var(--brand) 8%, var(--surface)); }
+.emptyState { height: 240px; color: var(--muted); text-align: center !important; white-space: normal !important; }
+.emptyState strong,
+.emptyState span { display: block; }
+.emptyState strong { color: var(--text); font-size: 14px; }
+.emptyState span { max-width: 520px; margin: 7px auto 0; line-height: 1.5; }
+
+.overlayBackdrop { position: fixed; z-index: 80; inset: 0; display: grid; place-items: center; overflow: hidden; padding: 24px; background: rgb(2 8 23 / 62%); backdrop-filter: blur(5px); }
+.overlay { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: min(900px, calc(100vw - 48px)); max-height: min(860px, calc(100dvh - 48px)); overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--bg); box-shadow: 0 28px 80px rgb(2 8 23 / 38%); }
+.overlayHeader { display: flex; align-items: center; justify-content: space-between; min-height: 82px; padding: 16px 20px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.overlayHeader div { display: grid; gap: 4px; }
+.overlayHeader span { color: var(--muted); font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.overlayHeader h2 { margin: 0; font-size: 20px; }
+.overlayHeader button { display: grid; width: 36px; height: 36px; place-items: center; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); color: var(--text); font-size: 22px; cursor: pointer; }
+.overlayBody { display: grid; grid-auto-rows: max-content; min-height: 0; align-content: start; gap: 16px; overflow-y: auto; overscroll-behavior: contain; padding: 18px; scrollbar-gutter: stable; }
+.formSection { min-height: max-content; overflow: hidden; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); }
+.formSection > header { display: flex; justify-content: space-between; padding: 13px 15px; border-bottom: 1px solid var(--line); }
+.formSection > header strong { font-size: 13px; }
+.formSection > header span { color: var(--muted); font-size: 10px; }
+.lifecyclePanel { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); }
+.lifecyclePanel > div { display: grid; gap: 4px; padding: 14px 15px; background: var(--surface); }
+.lifecyclePanel > div > span { color: var(--muted); font-size: 9px; font-weight: 850; letter-spacing: .07em; text-transform: uppercase; }
+.lifecyclePanel > div > strong { color: var(--text); font-size: 12px; }
+.lifecycleNote { grid-column: 1 / -1; }
+.placementDecision { grid-column: 1 / -1; display: flex !important; flex-direction: row; align-items: center; justify-content: space-between; gap: 18px !important; background: color-mix(in srgb, #f59e0b 7%, var(--surface)) !important; }
+.placementDecision > div:first-child { display: grid; gap: 5px; }
+.placementDecision > div:first-child span { max-width: 580px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.placementDecision > div:last-child { display: flex; flex: 0 0 auto; gap: 7px; }
+.placementDecision button { min-height: 34px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 10px; font-weight: 800; cursor: pointer; }
+.placementDecision .placementActive { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 12%, var(--surface)); color: var(--brand); }
+.formGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; padding: 15px; }
+.formGrid label { display: grid; gap: 5px; }
+.officeControl { display: flex; gap: 8px; }
+.officeControl select { flex: 1; }
+.officeControl button { flex: 0 0 auto; }
+.officeForm { display: grid; grid-template-columns: 1fr 1.6fr 1fr; gap: 12px; padding: 13px; border: 1px solid color-mix(in srgb, var(--brand) 32%, var(--line)); border-radius: 11px; background: color-mix(in srgb, var(--brand) 4%, var(--surface-2)); }
+.officeActions { display: flex; grid-column: 1 / -1; gap: 12px; align-items: center; justify-content: space-between; }
+.officeActions span { color: var(--muted); font-size: 10px; }
+.officeActions span[role="alert"] { color: #dc2626; }
+.structureForm { display: grid; grid-template-columns: 1.4fr 1fr auto; gap: 12px; align-items: end; padding: 13px; border: 1px solid color-mix(in srgb, var(--brand) 32%, var(--line)); border-radius: 11px; background: color-mix(in srgb, var(--brand) 4%, var(--surface-2)); }
+.structureSummary { display: grid; grid-column: 1 / -1; gap: 3px; }
+.structureSummary strong { color: var(--text); font-size: 14px; }
+.structureSummary span,
+.structureForm small { color: var(--muted); font-size: 10px; }
+.newRegionRow { display: grid; grid-template-columns: 1.5fr 1fr auto; grid-column: 1 / -1; gap: 12px; align-items: end; padding-top: 12px; border-top: 1px solid var(--line); }
+.structureForm label { display: grid; gap: 5px; }
+.structureForm label > span { color: var(--muted); font-size: 9px; font-weight: 850; letter-spacing: .07em; text-transform: uppercase; }
+.formError { grid-column: 1 / -1; color: #dc2626; font-size: 10px; }
+.responsibilityCard { display: grid; gap: 6px; margin: 15px; padding: 13px; border: 1px dashed var(--line); border-radius: 11px; background: var(--surface-2); }
+.responsibilityCard strong { font-size: 12px; }
+.responsibilityCard span { color: var(--text); font-size: 11px; }
+.responsibilityCard small { color: var(--muted); font-size: 10px; line-height: 1.45; }
+.fieldHint { color: var(--muted); font-size: 9px; line-height: 1.35; }
+.fullField { grid-column: 1 / -1; }
+.overlayFooter { display: flex; gap: 18px; align-items: center; justify-content: space-between; min-height: 70px; padding: 12px 18px; border-top: 1px solid var(--line); background: var(--surface); }
+.overlayFooter > span { color: var(--muted); font-size: 10px; }
+.overlayFooter > .saveError { color: #dc2626; }
+.overlayFooter > div { display: flex; gap: 8px; }
+
+@media (max-width: 900px) {
+  .toolbar { flex-wrap: wrap; }
+  .toolbarStatus { width: 100%; margin: 0; }
+}
+
+@media (max-width: 620px) {
+  .reviewNotice { align-items: flex-start; flex-wrap: wrap; }
+  .searchControl,
+  .toolbar label { min-width: 100% !important; }
+  .formGrid { grid-template-columns: 1fr; }
+  .lifecyclePanel { grid-template-columns: 1fr; }
+  .lifecycleNote,
+  .placementDecision { grid-column: auto; }
+  .placementDecision { align-items: flex-start; flex-direction: column; }
+  .officeForm { grid-template-columns: 1fr; }
+  .structureForm,
+  .newRegionRow { grid-template-columns: 1fr; }
+  .fullField { grid-column: auto; }
+  .overlayFooter { align-items: flex-start; flex-direction: column; }
+  .overlayFooter > div { width: 100%; }
+  .overlayFooter > div button { flex: 1; }
+  .overlayBackdrop { padding: 8px; }
+  .overlay { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); border-radius: 14px; }
+}
