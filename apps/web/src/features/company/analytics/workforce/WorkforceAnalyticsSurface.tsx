@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAnalyticsData } from "../AnalyticsDataProvider";
 import styles from "./workforce-analytics.module.css";
 import { buildWorkforcePlan, type WorkforcePlanScenario } from "./workforcePlanning";
+import { activeRosterHeadcount } from "./workforceRoster";
 import type { WorkforceTenureProfile } from "./workforceTenure";
 import type { WorkforceResignationNotice } from "./resignationNotice";
 
@@ -207,6 +208,7 @@ export default function WorkforceAnalyticsSurface({ slug }: { slug: string }) {
     1
   );
   const summary = workforce?.summary;
+  const activeHeadcount = activeRosterHeadcount(summary);
   const schedulePatterns = workforce?.schedule_patterns;
   const scheduleHistoryPartial = Boolean(
     workforce?.coverage.schedule_start && startDate && workforce.coverage.schedule_start > startDate
@@ -255,9 +257,9 @@ export default function WorkforceAnalyticsSurface({ slug }: { slug: string }) {
               <section className={styles.summary}>
                 <article className={noticeResignations.length ? styles.offRampCard : ""}>
                   <span>Active workforce</span>
-                  <strong>{formatNumber((summary?.active ?? 0) + (summary?.trainees ?? 0))}</strong>
+                  <strong>{formatNumber(activeHeadcount)}</strong>
                   <small>
-                    {formatNumber(summary?.trainees ?? 0)} trainees included
+                    {formatNumber(summary?.trainees ?? 0)} trainees tracked separately
                     {noticeResignations.length ? ` · ${formatNumber(noticeResignations.length)} on notice` : ""}
                   </small>
                 </article>
@@ -313,7 +315,7 @@ export default function WorkforceAnalyticsSurface({ slug }: { slug: string }) {
                     <div>
                       <p>Demand-based workforce guidance</p>
                       <h2>Workforce readiness target</h2>
-                      <span>Route-ready headcount for normal operations, six-day flex, and a seven-day seasonal ramp. Trainees are shown in workforce count but excluded from independent route capacity.</span>
+                      <span>Route-ready headcount for normal operations, six-day flex, and a seven-day seasonal ramp. Trainees are tracked separately and excluded from active workforce headcount and independent route capacity.</span>
                     </div>
                     <div className={styles.currentCapacity}>
                       <span>{routeReadyNoticeDepartures ? "Current → projected" : "Current route-ready"}</span>
@@ -477,7 +479,7 @@ export default function WorkforceAnalyticsSurface({ slug }: { slug: string }) {
                   <div><b>{formatNumber(summary?.late_arrivals ?? 0)}</b><small>Late arrivals</small></div>
                 </article>
                 <article className={styles.miniPanel}>
-                  <span>Workforce composition</span><strong>{formatNumber((summary?.active ?? 0) + (summary?.trainees ?? 0))} active</strong>
+                  <span>Active workforce composition</span><strong>{formatNumber(activeHeadcount)} active</strong>
                   {(workforce.worker_types ?? []).slice(0, 3).map((type) => <div key={type.label}><b>{formatNumber(type.count)}</b><small>{type.label}</small></div>)}
                   <p>{formatNumber(summary?.pending_time_off ?? 0)} time-off requests await review.</p>
                 </article>
