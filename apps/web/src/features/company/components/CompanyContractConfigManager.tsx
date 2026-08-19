@@ -44,6 +44,9 @@ export default function CompanyContractConfigManager(props: {
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<ContractConfigRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const sortedRows = useMemo(
     () =>
@@ -54,6 +57,7 @@ export default function CompanyContractConfigManager(props: {
       ),
     [rows]
   );
+  const canDeleteRows = rows.length > 1;
 
   async function loadRows() {
     setLoading(true);
@@ -92,11 +96,13 @@ export default function CompanyContractConfigManager(props: {
   }, [slug]);
 
   function openCreate() {
+    setError(null);
     setDraft(emptyDraft);
     setOverlayOpen(true);
   }
 
   function openEdit(row: ContractConfigRow) {
+    setError(null);
     setDraft({
       id: row.id,
       contract_number: row.contract_number ?? "",
@@ -107,6 +113,42 @@ export default function CompanyContractConfigManager(props: {
       status: row.status ?? "ACTIVE",
     });
     setOverlayOpen(true);
+  }
+
+  function requestDelete(row: ContractConfigRow) {
+    setError(null);
+    setDeleteError(null);
+    setDeleteTarget(row);
+  }
+
+  async function deleteRow() {
+    if (!deleteTarget) return;
+
+    setDeleting(true);
+    setDeleteError(null);
+
+    try {
+      const res = await fetch(
+        `/api/company/${slug}/config/contracts/${deleteTarget.id}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        }
+      );
+      const data = await res.json();
+
+      if (!res.ok) {
+        setDeleteError(data?.error ?? "Failed to delete contract configuration.");
+        return;
+      }
+
+      setRows((current) => current.filter((row) => row.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch {
+      setDeleteError("Failed to delete contract configuration.");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   async function saveDraft(event: React.FormEvent) {
@@ -224,14 +266,47 @@ export default function CompanyContractConfigManager(props: {
                   <td style={td}>{row.status}</td>
                   <td style={td}>
                     {canEdit ? (
-                      <button
-                        type="button"
-                        className="button"
-                        onClick={() => openEdit(row)}
-                        style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}
-                      >
-                        Edit
-                      </button>
+                      <div style={{ display: "flex", gap: 7 }}>
+                        <button
+                          type="button"
+                          className="button"
+                          onClick={() => openEdit(row)}
+                          disabled={deleting}
+                          style={{ minHeight: 30, padding: "0 10px", fontSize: 12 }}
+                        >
+                          Edit
+                        </button>
+                        {canDeleteRows ? (
+                          <button
+                            type="button"
+                            className="button"
+                            onClick={() => requestDelete(row)}
+                            disabled={deleting}
+                            aria-label={`Delete ${row.contract_number} configuration starting ${row.effective_start_date}`}
+                            style={{
+                              minHeight: 30,
+                              padding: "0 10px",
+                              borderColor: "#fecaca",
+                              color: "#b91c1c",
+                              fontSize: 12,
+                            }}
+                          >
+                            Delete
+                          </button>
+                        ) : (
+                          <span
+                            title="At least one contract configuration must remain."
+                            style={{
+                              alignSelf: "center",
+                              color: "#64748b",
+                              fontSize: 11,
+                              fontWeight: 800,
+                            }}
+                          >
+                            Edit only
+                          </span>
+                        )}
+                      </div>
                     ) : (
                       <span style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>
                         Read only
@@ -378,6 +453,89 @@ export default function CompanyContractConfigManager(props: {
               </button>
             </div>
           </form>
+        </div>
+      ) : null}
+
+      {canEdit && deleteTarget ? (
+        <div
+          role="presentation"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 80,
+            display: "grid",
+            placeItems: "center",
+            padding: 16,
+            background: "rgba(15, 23, 42, 0.46)",
+          }}
+        >
+          <section
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-contract-config-title"
+            aria-describedby="delete-contract-config-description"
+            style={{
+              width: "min(520px, 100%)",
+              display: "grid",
+              gap: 14,
+              border: "1px solid color-mix(in srgb, #ef4444 45%, var(--line))",
+              borderRadius: 22,
+              background: "var(--surface)",
+              color: "var(--text)",
+              padding: 20,
+              boxShadow: "var(--shadow-md)",
+            }}
+          >
+            <div>
+              <p className="value-card__eyebrow" style={{ color: "#b91c1c" }}>
+                Delete configuration
+              </p>
+              <h3 className="app-card__title" id="delete-contract-config-title">
+                Remove {deleteTarget.contract_number}?
+              </h3>
+            </div>
+
+            <p className="app-card__body" id="delete-contract-config-description">
+              This permanently removes the configuration for terminal {deleteTarget.terminal_identity},
+              service area {deleteTarget.service_area}, starting {deleteTarget.effective_start_date}.
+              A final database check will reconfirm that another configuration remains and that
+              this date window has no warehouse uploads or analytics records. If any are found,
+              deletion will be blocked and this row must be edited or marked Historical instead.
+            </p>
+
+            {deleteError ? (
+              <p style={{ margin: 0, color: "#b91c1c", fontWeight: 800 }}>
+                {deleteError}
+              </p>
+            ) : null}
+
+            <div className="cta-row" style={{ justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="button"
+                onClick={() => {
+                  setDeleteTarget(null);
+                  setDeleteError(null);
+                }}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="button"
+                onClick={() => void deleteRow()}
+                disabled={deleting}
+                style={{
+                  borderColor: "#b91c1c",
+                  background: "#b91c1c",
+                  color: "#fff",
+                }}
+              >
+                {deleting ? "Deleting…" : "Delete configuration"}
+              </button>
+            </div>
+          </section>
         </div>
       ) : null}
     </div>

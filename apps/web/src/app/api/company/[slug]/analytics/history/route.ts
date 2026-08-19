@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { buildMonthRanges } from "@/features/company/analytics/historyRanges";
 
 export const runtime = "nodejs";
 
@@ -31,11 +32,6 @@ type PickupReliabilityRow = {
   pickup_reliability_complete?: boolean | null;
 };
 
-type MonthRange = {
-  start_date: string;
-  end_date: string;
-};
-
 function integer(value: string | null): number | null {
   if (!value || !/^\d{4}$/.test(value)) {
     return null;
@@ -60,14 +56,6 @@ function isoDateInNewYork(): string {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
-function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function parseIsoDate(value: string): Date {
-  return new Date(`${value.slice(0, 10)}T12:00:00Z`);
-}
-
 function minDate(left: string, right: string): string {
   return left <= right ? left : right;
 }
@@ -83,50 +71,6 @@ function contractOperatingYear(
       : today;
 
   return Number(effectiveEnd.slice(0, 4));
-}
-
-function buildMonthRanges(
-  startDate: string,
-  endDate: string
-): MonthRange[] {
-  const ranges: MonthRange[] = [];
-
-  let cursor = parseIsoDate(startDate);
-  const finalDate = parseIsoDate(endDate);
-
-  while (cursor <= finalDate) {
-    const year = cursor.getUTCFullYear();
-    const month = cursor.getUTCMonth();
-
-    const monthStart = new Date(
-      Date.UTC(year, month, 1, 12, 0, 0)
-    );
-
-    const monthEnd = new Date(
-      Date.UTC(year, month + 1, 0, 12, 0, 0)
-    );
-
-    const rangeStart =
-      isoDate(monthStart) < startDate
-        ? startDate
-        : isoDate(monthStart);
-
-    const rangeEnd =
-      isoDate(monthEnd) > endDate
-        ? endDate
-        : isoDate(monthEnd);
-
-    ranges.push({
-      start_date: rangeStart,
-      end_date: rangeEnd,
-    });
-
-    cursor = new Date(
-      Date.UTC(year, month + 1, 1, 12, 0, 0)
-    );
-  }
-
-  return ranges;
 }
 
 function sortHistoryRows(rows: HistoryRow[]): HistoryRow[] {
@@ -339,6 +283,8 @@ export async function GET(
     );
 
     const collectedRows: HistoryRow[] = [];
+    const collectedPickupReliabilityRows: PickupReliabilityRow[] = [];
+    let pickupReliabilityUnavailable = false;
     const monthBlocks: Array<{
       start_date: string;
       end_date: string;
@@ -396,50 +342,59 @@ export async function GET(
         finalized_operating_day_count:
           deduplicateHistoryRows(rows).length,
       });
+
+      if (!pickupReliabilityUnavailable) {
+        const {
+          data: pickupReliabilityData,
+          error: pickupReliabilityError,
+        } = await supabase.rpc(
+          "get_company_pickup_reliability_history",
+          {
+            p_company_id: company.id,
+            p_start_date: range.start_date,
+            p_end_date: range.end_date,
+          }
+        );
+
+        pickupReliabilityUnavailable =
+          pickupReliabilityError?.code === "PGRST202" ||
+          pickupReliabilityError?.code === "42883";
+
+        if (pickupReliabilityError && !pickupReliabilityUnavailable) {
+          const status =
+            pickupReliabilityError.code === "42501"
+              ? 403
+              : pickupReliabilityError.code === "22023"
+                ? 400
+                : 500;
+
+          return NextResponse.json(
+            {
+              error:
+                `Failed to load pickup reliability block ` +
+                `${range.start_date} through ${range.end_date}: ` +
+                pickupReliabilityError.message,
+              available_years: availableContracts,
+              metadata: null,
+              rows: [],
+            },
+            { status }
+          );
+        }
+
+        if (Array.isArray(pickupReliabilityData)) {
+          collectedPickupReliabilityRows.push(
+            ...(pickupReliabilityData as PickupReliabilityRow[])
+          );
+        }
+      }
     }
 
     const rows =
       deduplicateHistoryRows(collectedRows);
 
-    const {
-      data: pickupReliabilityData,
-      error: pickupReliabilityError,
-    } = await supabase.rpc(
-      "get_company_pickup_reliability_history",
-      {
-        p_company_id: company.id,
-        p_start_date: startDate,
-        p_end_date: endDate,
-      }
-    );
-
-    const pickupReliabilityUnavailable =
-      pickupReliabilityError?.code === "PGRST202" ||
-      pickupReliabilityError?.code === "42883";
-
-    if (
-      pickupReliabilityError &&
-      !pickupReliabilityUnavailable
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "Failed to load pickup reliability history: " +
-            pickupReliabilityError.message,
-          available_years: availableContracts,
-          metadata: null,
-          rows: [],
-        },
-        { status: 500 }
-      );
-    }
-
     const pickupReliabilityByDate = new Map(
-      (
-        Array.isArray(pickupReliabilityData)
-          ? (pickupReliabilityData as PickupReliabilityRow[])
-          : []
-      ).map((row) => [
+      collectedPickupReliabilityRows.map((row) => [
         String(row.service_date ?? "").slice(0, 10),
         row,
       ])
