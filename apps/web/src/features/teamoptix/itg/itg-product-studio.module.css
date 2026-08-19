@@ -58,7 +58,7 @@
 .tab:hover { color: #12233f; background: #fff; }
 .tabActive { color: #fff; background: #1764ff; box-shadow: 0 4px 12px rgba(23, 100, 255, .22); }
 
-.perspectivePicker { display: flex; align-items: center; gap: 9px; color: #64748b; font-size: 12px; font-weight: 800; }
+.perspectivePicker { display: flex; align-items: center; gap: 9px; color: #526179; font-size: 12px; font-weight: 800; }
 .perspectivePicker select,
 .filters select,
 .filters input,
@@ -87,7 +87,7 @@
 .uploadButton:hover { filter: brightness(.96); }
 .notice { margin: 0 0 16px; padding: 11px 14px; border-radius: 12px; color: #155e48; background: #eaf8f3; font-size: 13px; font-weight: 700; }
 .stack { display: grid; gap: 16px; }
-.eyebrow { margin: 0 0 8px; color: #159a70; font-size: 12px; font-weight: 900; letter-spacing: .11em; text-transform: uppercase; }
+.eyebrow { margin: 0 0 8px; color: #087a55; font-size: 12px; font-weight: 900; letter-spacing: .11em; text-transform: uppercase; }
 
 .homeHero {
   display: flex;
@@ -108,18 +108,18 @@
 .metricCards article { display: grid; gap: 5px; min-height: 104px; padding: 15px; border: 1px solid #dce5ef; border-radius: 14px; background: #fff; }
 .metricCards span { color: #66758b; font-size: 10px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
 .metricCards strong { color: #14243f; font-size: 25px; letter-spacing: -.03em; }
-.metricCards small { color: #8591a3; font-size: 10px; line-height: 1.35; }
+.metricCards small { color: #56647a; font-size: 10px; line-height: 1.35; }
 .homeGrid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(360px, .85fr); gap: 16px; }
 .attentionList { display: grid; padding: 0 25px 22px; }
 .attentionList button { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px 3px; border: 0; border-top: 1px solid #e7ecf2; color: inherit; background: transparent; text-align: left; cursor: pointer; }
 .attentionList button > span:first-child { display: grid; place-items: center; width: 31px; height: 31px; border-radius: 10px; font-size: 12px; font-weight: 900; }
 .attentionList button > span:nth-child(2) { display: grid; gap: 3px; }
 .attentionList strong { color: #1a2c47; font-size: 13px; }
-.attentionList small { color: #748197; font-size: 11px; }
+.attentionList small { color: #56647a; font-size: 11px; }
 .attentionList b { color: #1764ff; font-size: 11px; }
 .workforceMix { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; padding: 0 25px 22px; }
 .workforceMix div { display: grid; gap: 5px; padding: 13px; border: 1px solid #e0e7ef; border-radius: 12px; background: #f8fafc; }
-.workforceMix span { color: #738096; font-size: 10px; font-weight: 850; }
+.workforceMix span { color: #56647a; font-size: 10px; font-weight: 850; }
 .workforceMix strong { color: #172943; font-size: 22px; }
 .homeFoot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 25px; border-top: 1px solid #e4eaf1; color: #69778c; font-size: 11px; }
 .homeFoot button { padding: 0; border: 0; color: #1764ff; background: transparent; font: inherit; font-weight: 900; cursor: pointer; }
@@ -129,9 +129,9 @@
 .messageCount { flex: 0 0 auto; padding: 8px 11px; border-radius: 999px; color: #8b4c08; background: #fff0cf; font-size: 10px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; }
 .messageList { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 0 22px 22px; }
 .messageList article { display: grid; align-content: start; min-height: 190px; padding: 17px; border: 1px solid #dce5ef; border-radius: 15px; background: #f8fafc; }
-.messageMeta { display: flex; justify-content: space-between; gap: 10px; color: #718095; font-size: 9px; font-weight: 850; letter-spacing: .05em; text-transform: uppercase; }
+.messageMeta { display: flex; justify-content: space-between; gap: 10px; color: #56647a; font-size: 9px; font-weight: 850; letter-spacing: .05em; text-transform: uppercase; }
 .messageList h3 { margin: 14px 0 7px; color: #172943; font-size: 15px; }
-.messageList p { margin: 0; color: #66758b; font-size: 11px; line-height: 1.55; }
+.messageList p { margin: 0; color: #526179; font-size: 11px; line-height: 1.55; }
 .messageList footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; padding-top: 15px; }
 .messageList footer span { color: #8b4c08; font-size: 9px; font-weight: 900; text-transform: uppercase; }
 .messageList footer button { min-height: 30px; padding: 6px 9px; border: 0; border-radius: 8px; color: #fff; background: #1764ff; font: inherit; font-size: 10px; font-weight: 900; cursor: pointer; }
@@ -601,6 +601,63 @@
 :global(html[data-theme="dark"]) .nextAction strong { color: #b8d1ff; }
 :global(html[data-theme="dark"]) .nextAction small { color: #91a9cb; }
 :global(html[data-theme="dark"]) .overlayBackdrop { background: rgba(2, 7, 14, .78); }
+
+:global(html[data-theme="dark"]) .safetyBar {
+  border-color: #285746;
+  background: #102c28;
+  color: #95dec7;
+}
+
+:global(html[data-theme="dark"]) .safetyBar span:last-child {
+  color: #9fc8bc;
+}
+
+:global(html[data-theme="dark"]) .safetyDot {
+  background: #34d399;
+  box-shadow: 0 0 0 4px rgba(52, 211, 153, .16);
+}
+
+:global(html[data-theme="dark"]) .tab {
+  color: #b7c5d7;
+}
+
+:global(html[data-theme="dark"]) .tab:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
+:global(html[data-theme="dark"]) .messageCount,
+:global(html[data-theme="dark"]) .signalProgress,
+:global(html[data-theme="dark"]) .accessGrant {
+  color: #fbd38d;
+  background: rgba(245, 158, 11, .18);
+}
+
+:global(html[data-theme="dark"]) .messageList footer span {
+  color: #fbd38d;
+}
+
+:global(html[data-theme="dark"]) .messageList .messageAcknowledged footer span {
+  color: #86e5bd;
+}
+
+:global(html[data-theme="dark"]) .signalBlocked {
+  color: #fca5a5;
+  background: rgba(220, 38, 38, .18);
+}
+
+:global(html[data-theme="dark"]) .scopeBadge,
+:global(html[data-theme="dark"]) .source {
+  border-color: #3d5d82;
+  color: #b8d1ff;
+  background: #102849;
+}
+
+:global(html[data-theme="dark"]) .eyebrow,
+:global(html[data-theme="dark"]) .conceptGrid p,
+:global(html[data-theme="dark"]) .operationModule > span {
+  color: #5ad1a3;
+}
 
 @media (max-width: 1100px) {
   .heroGrid { grid-template-columns: 1fr; }

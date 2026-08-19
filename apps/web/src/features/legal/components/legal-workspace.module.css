@@ -12,7 +12,7 @@
   gap: 16px;
   border: 1px solid var(--line, #d6dfeb);
   border-radius: var(--radius-xl, 24px);
-  background: rgba(255, 255, 255, 0.92);
+  background: color-mix(in srgb, var(--surface, #ffffff) 92%, transparent);
   box-shadow: var(--shadow-sm, 0 8px 24px rgba(15, 23, 42, 0.06));
   padding: 18px;
 }
@@ -90,7 +90,7 @@
 .emptyState {
   border: 1px solid var(--line, #d6dfeb);
   border-radius: var(--radius-xl, 24px);
-  background: rgba(255, 255, 255, 0.92);
+  background: color-mix(in srgb, var(--surface, #ffffff) 92%, transparent);
   box-shadow: var(--shadow-sm, 0 8px 24px rgba(15, 23, 42, 0.06));
 }
 
@@ -159,7 +159,7 @@
 }
 
 .sectionButtonActive {
-  background: var(--text, #13203a);
+  background: var(--brand, #246bff);
   color: #ffffff;
 }
 
@@ -292,7 +292,7 @@
 }
 
 .saveStatus {
-  color: #059669;
+  color: #047857;
   font-size: 12px;
   font-weight: 800;
 }
@@ -667,8 +667,8 @@
 
 /* Legal workflow signals */
 .actionButtonGo {
-  border-color: #059669 !important;
-  background: #059669 !important;
+  border-color: #047857 !important;
+  background: #047857 !important;
   color: #ffffff !important;
 }
 
@@ -702,7 +702,7 @@
   align-items: start;
   border: 1px solid var(--line, #d6dfeb);
   border-radius: 14px;
-  background: #ffffff;
+  background: var(--surface, #ffffff);
   padding: 10px;
 }
 
@@ -788,4 +788,55 @@
 .workflowStep_muted em {
   background: #e2e8f0;
   color: #475569;
+}
+
+:global(html[data-theme="dark"]) .workflowStep {
+  border-color: var(--line);
+  background: var(--surface);
+}
+
+:global(html[data-theme="dark"]) .workflowStepNumber {
+  background: rgba(99, 102, 241, 0.2);
+  color: #c7d2fe;
+}
+
+:global(html[data-theme="dark"]) .workflowStep_go,
+:global(html[data-theme="dark"]) .workflowStep_done {
+  border-color: #285746;
+  background: #102c28;
+}
+
+:global(html[data-theme="dark"]) .workflowStep_go em,
+:global(html[data-theme="dark"]) .workflowStep_done em {
+  background: rgba(5, 150, 105, 0.22);
+  color: #86e5bd;
+}
+
+:global(html[data-theme="dark"]) .workflowStep_next {
+  border-color: #745b2e;
+  background: #312714;
+}
+
+:global(html[data-theme="dark"]) .workflowStep_next em {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbd38d;
+}
+
+:global(html[data-theme="dark"]) .workflowStep_blocked {
+  border-color: #713b42;
+  background: #321b22;
+}
+
+:global(html[data-theme="dark"]) .workflowStep_blocked em {
+  background: rgba(220, 38, 38, 0.2);
+  color: #fca5a5;
+}
+
+:global(html[data-theme="dark"]) .workflowStep_muted {
+  background: var(--surface-2);
+}
+
+:global(html[data-theme="dark"]) .workflowStep_muted em {
+  background: #26384d;
+  color: #b7c5d7;
 }
