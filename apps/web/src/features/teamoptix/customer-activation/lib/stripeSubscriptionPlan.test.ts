@@ -13,6 +13,11 @@ describe("initial Stripe subscription request", () => {
       operatorTierKey: "operator_3",
       firstBillingDate: "2026-08-07",
       implementationPaymentId: "payment-1",
+      taxPolicy: {
+        taxBehavior: "exclusive",
+        taxCode: "txcd_10103001",
+        taxCodeSource: "product",
+      },
       now: new Date("2026-08-03T16:00:00.000Z"),
     });
 
@@ -21,6 +26,9 @@ describe("initial Stripe subscription request", () => {
         customer: "cus_live_1",
         items: [{ price: "price_live_weekly_1" }],
         default_payment_method: "pm_live_1",
+        automatic_tax: {
+          enabled: true,
+        },
         collection_method: "charge_automatically",
         payment_behavior: "error_if_incomplete",
         billing_cycle_anchor: Date.UTC(2026, 7, 7, 4, 0, 0) / 1000,
@@ -31,6 +39,10 @@ describe("initial Stripe subscription request", () => {
           payment_purpose: "subscription",
           first_billing_date: "2026-08-07",
           billing_start_mode: "scheduled_anchor",
+          tax_calculation: "automatic",
+          tax_behavior: "exclusive",
+          tax_code: "txcd_10103001",
+          tax_code_source: "product",
         },
       },
       options: {
@@ -53,6 +65,11 @@ describe("initial Stripe subscription request", () => {
       operatorTierKey: "operator_3",
       firstBillingDate: "2026-08-14",
       implementationPaymentId: "payment-1",
+      taxPolicy: {
+        taxBehavior: "exclusive",
+        taxCode: "txcd_10103001",
+        taxCodeSource: "product",
+      },
       now: new Date("2026-08-14T10:30:00.000Z"),
     });
 
