@@ -1,5 +1,9 @@
 import type Stripe from "stripe";
 
+import {
+  stripeAutomaticTaxMetadata,
+  type StripeTaxPolicy,
+} from "@/lib/stripe/taxPolicy";
 import { resolveInitialStripeBillingSchedule } from "./billingCalendar";
 
 export function buildInitialStripeSubscriptionRequest(input: {
@@ -11,6 +15,7 @@ export function buildInitialStripeSubscriptionRequest(input: {
   operatorTierKey: string;
   firstBillingDate: string;
   implementationPaymentId: string;
+  taxPolicy: StripeTaxPolicy;
   now?: Date;
 }): {
   params: Stripe.SubscriptionCreateParams;
@@ -25,6 +30,9 @@ export function buildInitialStripeSubscriptionRequest(input: {
     customer: input.customerId,
     items: [{ price: input.priceId }],
     default_payment_method: input.paymentMethodId,
+    automatic_tax: {
+      enabled: true,
+    },
     collection_method: "charge_automatically",
     payment_behavior: "error_if_incomplete",
     proration_behavior: "none",
@@ -40,6 +48,7 @@ export function buildInitialStripeSubscriptionRequest(input: {
       first_billing_date: input.firstBillingDate,
       billing_start_mode: schedule.mode,
       implementation_payment_id: input.implementationPaymentId,
+      ...stripeAutomaticTaxMetadata(input.taxPolicy),
     },
   };
 

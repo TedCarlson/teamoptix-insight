@@ -7,6 +7,12 @@ import { calculateFirstFridayAfterGoLive } from "@/features/teamoptix/customer-a
 import { buildInitialStripeSubscriptionRequest } from "@/features/teamoptix/customer-activation/lib/stripeSubscriptionPlan";
 import { getStripeServerClient } from "@/lib/stripe/server";
 import {
+  assertStripeCustomerTaxLocation,
+  hasManualSubscriptionTaxRates,
+  resolveStripeTaxPolicy,
+  stripeAutomaticTaxMetadata,
+} from "@/lib/stripe/taxPolicy";
+import {
   resolveStripeId,
   stripeSubscriptionRecord,
 } from "@/lib/stripe/webhooks/stripeFinanceRecords";
@@ -411,8 +417,19 @@ export const initialActivationSteps: ActivationStepDefinition[] = [
       }
 
       const stripe = getStripeServerClient();
-      const [price, implementationIntent] = await Promise.all([
+      const [
+        price,
+        product,
+        taxSettings,
+        stripeCustomer,
+        implementationIntent,
+      ] = await Promise.all([
         stripe.prices.retrieve(tier.stripe_subscription_price_id),
+        stripe.products.retrieve(tier.stripe_subscription_product_id),
+        stripe.tax.settings.retrieve(),
+        stripe.customers.retrieve(billingCustomer.provider_customer_id, {
+          expand: ["tax"],
+        }),
         stripe.paymentIntents.retrieve(payment.provider_payment_intent_id),
       ]);
       const priceProductId = resolveStripeId(price.product);
@@ -421,6 +438,8 @@ export const initialActivationSteps: ActivationStepDefinition[] = [
       if (
         !price.active ||
         !price.livemode ||
+        !product.active ||
+        !product.livemode ||
         price.currency !== "usd" ||
         price.unit_amount !== expectedWeeklyAmount ||
         price.recurring?.interval !== "week" ||
@@ -431,6 +450,24 @@ export const initialActivationSteps: ActivationStepDefinition[] = [
         return {
           status: "failed",
           message: "The recurring Stripe price does not match the approved live weekly commercial terms.",
+        };
+      }
+
+      let taxPolicy;
+      try {
+        assertStripeCustomerTaxLocation(stripeCustomer);
+        taxPolicy = resolveStripeTaxPolicy({
+          settings: taxSettings,
+          price,
+          product,
+        });
+      } catch (error) {
+        return {
+          status: "failed",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Stripe automatic tax configuration is incomplete.",
         };
       }
 
@@ -474,6 +511,35 @@ export const initialActivationSteps: ActivationStepDefinition[] = [
           ) ?? null;
       }
 
+      if (
+        stripeSubscription &&
+        hasManualSubscriptionTaxRates(stripeSubscription)
+      ) {
+        return {
+          status: "failed",
+          message:
+            "The existing Stripe subscription has manual tax rates that must be removed before automatic tax can be enabled.",
+          metadata: {
+            provider_subscription_id: stripeSubscription.id,
+          },
+        };
+      }
+
+      let automaticTaxReconciled = false;
+      if (stripeSubscription && !stripeSubscription.automatic_tax.enabled) {
+        stripeSubscription = await stripe.subscriptions.update(
+          stripeSubscription.id,
+          {
+            automatic_tax: {
+              enabled: true,
+            },
+            proration_behavior: "none",
+            metadata: stripeAutomaticTaxMetadata(taxPolicy),
+          }
+        );
+        automaticTaxReconciled = true;
+      }
+
       let subscriptionRequest: ReturnType<
         typeof buildInitialStripeSubscriptionRequest
       > | null = null;
@@ -489,6 +555,7 @@ export const initialActivationSteps: ActivationStepDefinition[] = [
           operatorTierKey: profile.operator_tier_key,
           firstBillingDate: activation.first_billing_date,
           implementationPaymentId: payment.id,
+          taxPolicy,
           now: new Date(),
         });
         stripeSubscription = await stripe.subscriptions.create(
@@ -518,20 +585,35 @@ export const initialActivationSteps: ActivationStepDefinition[] = [
 
           initialInvoice = await stripe.invoices.retrieve(initialInvoiceId);
 
+          const invoiceWithTaxes = initialInvoice as Stripe.Invoice & {
+            total_taxes?: Array<{ amount: number }> | null;
+          };
+          const initialTaxAmount = (invoiceWithTaxes.total_taxes ?? []).reduce(
+            (total, tax) => total + tax.amount,
+            0
+          );
+
           if (
             initialInvoice.status !== "paid" ||
-            initialInvoice.amount_paid !== expectedWeeklyAmount
+            initialInvoice.subtotal !== expectedWeeklyAmount ||
+            initialInvoice.amount_paid !== initialInvoice.total ||
+            !initialInvoice.automatic_tax.enabled ||
+            initialInvoice.automatic_tax.status !== "complete"
           ) {
             return {
               status: "failed",
               message:
-                "Stripe created the same-day subscription but the first weekly invoice was not paid for the approved amount.",
+                "Stripe created the same-day subscription but the first weekly invoice did not preserve the approved subtotal, completed tax calculation, and paid total.",
               metadata: {
                 provider_subscription_id: stripeSubscription.id,
                 provider_invoice_id: initialInvoice.id,
                 provider_invoice_status: initialInvoice.status,
+                invoice_subtotal: initialInvoice.subtotal,
+                invoice_tax_amount: initialTaxAmount,
+                invoice_total: initialInvoice.total,
                 amount_paid: initialInvoice.amount_paid,
-                expected_amount: expectedWeeklyAmount,
+                expected_subtotal: expectedWeeklyAmount,
+                automatic_tax_status: initialInvoice.automatic_tax.status,
                 reconciliation_required: true,
               },
             };
@@ -546,6 +628,7 @@ export const initialActivationSteps: ActivationStepDefinition[] = [
         !stripeSubscription.livemode ||
         resolveStripeId(stripeSubscription.customer) !== billingCustomer.provider_customer_id ||
         subscriptionPriceId !== tier.stripe_subscription_price_id ||
+        !stripeSubscription.automatic_tax.enabled ||
         !["active", "trialing"].includes(stripeSubscription.status)
       ) {
         return {
@@ -645,6 +728,11 @@ export const initialActivationSteps: ActivationStepDefinition[] = [
             initialInvoice?.id ??
             resolveStripeId(stripeSubscription.latest_invoice),
           initial_invoice_status: initialInvoice?.status ?? null,
+          automatic_tax_enabled: stripeSubscription.automatic_tax.enabled,
+          automatic_tax_reconciled: automaticTaxReconciled,
+          tax_behavior: taxPolicy.taxBehavior,
+          tax_code: taxPolicy.taxCode,
+          tax_code_source: taxPolicy.taxCodeSource,
           proration_behavior: "none",
           execution_mode: "live_provider_and_insight_persisted",
         },

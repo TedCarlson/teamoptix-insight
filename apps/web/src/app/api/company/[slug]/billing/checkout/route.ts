@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getStripeServerClient } from "@/lib/stripe/server";
+import {
+  resolveStripeTaxPolicy,
+  STRIPE_CHECKOUT_INTEGRATION_IDENTIFIER,
+  stripeAutomaticTaxMetadata,
+} from "@/lib/stripe/taxPolicy";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 
@@ -134,14 +139,22 @@ export async function POST(
 
     const tier = tierData as OperatorTierStripeMapping | null;
 
-    if (!tier?.stripe_setup_price_id || !tier?.stripe_subscription_price_id) {
+    if (
+      !tier?.stripe_setup_product_id ||
+      !tier.stripe_setup_price_id ||
+      !tier.stripe_subscription_price_id
+    ) {
       return NextResponse.json(
         { error: "The selected operator tier is not mapped to Stripe Checkout prices." },
         { status: 400 }
       );
     }
 
-    const setupPrice = await stripe.prices.retrieve(tier.stripe_setup_price_id);
+    const [setupPrice, setupProduct, taxSettings] = await Promise.all([
+      stripe.prices.retrieve(tier.stripe_setup_price_id),
+      stripe.products.retrieve(tier.stripe_setup_product_id),
+      stripe.tax.settings.retrieve(),
+    ]);
     const setupProductId =
       typeof setupPrice.product === "string"
         ? setupPrice.product
@@ -154,6 +167,8 @@ export async function POST(
     if (
       !setupPrice.active ||
       !setupPrice.livemode ||
+      !setupProduct.active ||
+      !setupProduct.livemode ||
       setupPrice.recurring != null ||
       setupPrice.currency !== "usd" ||
       setupPrice.unit_amount !== expectedSetupAmount ||
@@ -165,12 +180,26 @@ export async function POST(
       );
     }
 
+    const taxPolicy = resolveStripeTaxPolicy({
+      settings: taxSettings,
+      price: setupPrice,
+      product: setupProduct,
+    });
+    const taxMetadata = stripeAutomaticTaxMetadata(taxPolicy);
+
     const origin = request.nextUrl.origin;
     const billingUrl = `${origin}/company/${slug}/billing`;
 
     const checkoutSession = await stripe.checkout.sessions.create({
       mode: "payment",
       customer: billingCustomer.provider_customer_id,
+      automatic_tax: {
+        enabled: true,
+      },
+      customer_update: {
+        address: "auto",
+      },
+      integration_identifier: STRIPE_CHECKOUT_INTEGRATION_IDENTIFIER,
       line_items: [
         {
           price: tier.stripe_setup_price_id,
@@ -186,6 +215,7 @@ export async function POST(
             operator_tier_key: tier.tier_key,
             payment_purpose: "implementation",
             source: "insight",
+            ...taxMetadata,
           },
         },
       },
@@ -197,6 +227,7 @@ export async function POST(
           operator_tier_key: tier.tier_key,
           payment_purpose: "implementation",
           source: "insight",
+          ...taxMetadata,
         },
       },
       client_reference_id: company.id,
@@ -207,7 +238,9 @@ export async function POST(
         company_id: company.id,
         company_slug: company.company_slug,
         operator_tier_key: tier.tier_key,
+        payment_purpose: "implementation",
         source: "insight",
+        ...taxMetadata,
       },
     });
 

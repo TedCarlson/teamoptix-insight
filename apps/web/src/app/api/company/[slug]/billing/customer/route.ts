@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getStripeServerClient } from "@/lib/stripe/server";
+import { STRIPE_AUTOMATIC_TAX_METADATA } from "@/lib/stripe/taxPolicy";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 
@@ -206,6 +207,7 @@ export async function POST(
           company_slug: company.company_slug,
           operator_tier_key: commercialProfile.operator_tier_key,
           source: "insight",
+          ...STRIPE_AUTOMATIC_TAX_METADATA,
         },
       },
       {
