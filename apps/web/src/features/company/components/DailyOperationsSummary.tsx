@@ -234,50 +234,11 @@ function safeDiv(a: number, b: number) {
   return b ? a / b : 0;
 }
 
-function statusStyle(status: CalendarStatus, selected: boolean): CSSProperties {
-  const base: CSSProperties = {
-    height: 26,
-    minWidth: 26,
-    borderRadius: 8,
-    border: "1px solid #e2e8f0",
-    fontSize: 11,
-    fontWeight: 900,
-    cursor: "pointer",
-    background: "#fff",
-  };
-
-  if (status === "final") Object.assign(base, { background: "#ecfdf5", borderColor: "#16a34a", color: "#166534" });
-  if (status === "in_day") Object.assign(base, { background: "#fffbeb", borderColor: "#f59e0b", color: "#92400e" });
-  if (status === "inactive") Object.assign(base, { background: "#f8fafc", color: "#94a3b8", textDecoration: "line-through" });
-  if (selected) Object.assign(base, { outline: "2px solid #0f172a", outlineOffset: 1 });
-
-  return base;
-}
-
 function ReportSection(props: { title: string; children: React.ReactNode; style?: CSSProperties }) {
   return (
-    <section
-      style={{
-        border: "1px solid #d7e2f2",
-        borderRadius: 14,
-        background: "#ffffff",
-        padding: 12,
-        ...props.style,
-      }}
-    >
-      <h3
-        style={{
-          margin: 0,
-          color: "#0f172a",
-          fontSize: 12,
-          fontWeight: 950,
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-        }}
-      >
-        {props.title}
-      </h3>
-      <div style={{ marginTop: 9 }}>{props.children}</div>
+    <section className="daily-operations-section" style={props.style}>
+      <h3 className="daily-operations-section__title">{props.title}</h3>
+      <div className="daily-operations-section__body">{props.children}</div>
     </section>
   );
 }
@@ -351,68 +312,24 @@ function CodePerformanceGrid({
 }
 
 function SignalRow(props: { tone: "clear" | "watch" | "risk"; title: string; detail: string }) {
-  const toneStyle =
-    props.tone === "clear"
-      ? { bg: "#ffffff", border: "#d7e2f2", fg: "#166534", dot: "#22c55e" }
-      : props.tone === "watch"
-        ? { bg: "#fffbeb", border: "#fde68a", fg: "#92400e", dot: "#f59e0b" }
-        : { bg: "#fef2f2", border: "#fecaca", fg: "#991b1b", dot: "#ef4444" };
-
   return (
-    <div
-      style={{
-        border: `1px solid ${toneStyle.border}`,
-        background: toneStyle.bg,
-        borderRadius: 12,
-        padding: "8px 10px",
-        display: "grid",
-        gridTemplateColumns: "10px 1fr",
-        gap: 8,
-        alignItems: "start",
-      }}
-    >
-      <span
-        style={{
-          width: 8,
-          height: 8,
-          borderRadius: 999,
-          background: toneStyle.dot,
-          marginTop: 5,
-        }}
-      />
+    <div className={`daily-operations-signal daily-operations-signal--${props.tone}`}>
+      <span className="daily-operations-signal__dot" />
       <span>
-        <strong style={{ display: "block", color: toneStyle.fg, fontSize: 12 }}>{props.title}</strong>
-        <span style={{ display: "block", color: "#475569", fontSize: 12, marginTop: 2 }}>{props.detail}</span>
+        <strong>{props.title}</strong>
+        <span>{props.detail}</span>
       </span>
     </div>
   );
 }
 
 function KpiCard(props: { label: string; value: string; detail: string; tone?: "neutral" | "good" | "watch" | "risk" | "data" }) {
-  const tones = {
-    neutral: { border: "#cbd5e1", bg: "#ffffff", fg: "#0f172a" },
-    good: { border: "#22c55e", bg: "#f0fdf4", fg: "#166534" },
-    watch: { border: "#f59e0b", bg: "#fffbeb", fg: "#92400e" },
-    risk: { border: "#ef4444", bg: "#fef2f2", fg: "#991b1b" },
-    data: { border: "#8b5cf6", bg: "#f5f3ff", fg: "#6d28d9" },
-  };
-  const tone = tones[props.tone ?? "neutral"];
+  const tone = props.tone ?? "neutral";
   return (
-    <article
-      style={{
-        borderTop: `4px solid ${tone.border}`,
-        borderRight: `1px solid ${tone.border}`,
-        borderBottom: `1px solid ${tone.border}`,
-        borderLeft: `1px solid ${tone.border}`,
-        borderRadius: 14,
-        padding: "12px 13px",
-        background: tone.bg,
-        minHeight: 92,
-      }}
-    >
-      <div style={{ color: "#64748b", fontSize: 10, fontWeight: 950, letterSpacing: "0.08em", textTransform: "uppercase" }}>{props.label}</div>
-      <strong style={{ display: "block", color: tone.fg, fontSize: 23, lineHeight: 1.1, marginTop: 7 }}>{props.value}</strong>
-      <span style={{ display: "block", color: "#64748b", fontSize: 11, marginTop: 6 }}>{props.detail}</span>
+    <article className={`daily-operations-kpi daily-operations-kpi--${tone}`}>
+      <div>{props.label}</div>
+      <strong>{props.value}</strong>
+      <span>{props.detail}</span>
     </article>
   );
 }
@@ -659,7 +576,7 @@ function WatchlistDrawer(props: {
             </div>
             <div className="ops-watch-panel__footer">
               <label className="ops-watch-visibility"><input type="checkbox" checked={clientVisible} onChange={(event) => setClientVisible(event.target.checked)} /><span><strong>Client report visibility</strong><small>Include this item in shared operating briefs.</small></span></label>
-              <button className="button buttonPrimary" type="button" disabled={props.busy} onClick={() => props.onUpdate({ status, assigned_profile_id: null, due_at: dueAt || null, resolution_class: status === "DISMISSED" ? "NO_ACTION_REQUIRED" : status === "RESOLVED" ? resolutionClass || null : null, client_visible: clientVisible })}>{props.busy ? "Saving…" : "Save changes"}</button>
+              <button className="button button-primary" type="button" disabled={props.busy} onClick={() => props.onUpdate({ status, assigned_profile_id: null, due_at: dueAt || null, resolution_class: status === "DISMISSED" ? "NO_ACTION_REQUIRED" : status === "RESOLVED" ? resolutionClass || null : null, client_visible: clientVisible })}>{props.busy ? "Saving…" : "Save changes"}</button>
             </div>
           </section>
 
@@ -687,7 +604,7 @@ function WatchlistDrawer(props: {
               <label className="ops-watch-visibility ops-watch-visibility--compact"><input type="checkbox" checked={noteVisible} onChange={(event) => setNoteVisible(event.target.checked)} /><span><strong>Client visible</strong><small>Show in the shared report.</small></span></label>
             </div>
             <textarea className="ops-watch-composer__textarea" value={noteBody} onChange={(event) => setNoteBody(event.target.value)} rows={4} placeholder={workflow.notePrompt} />
-            <div className="ops-watch-composer__footer"><span>{noteBody.trim().length ? `${noteBody.trim().length} characters` : "A concise operational record is best."}</span><button className="button buttonPrimary" type="button" disabled={props.busy || !noteBody.trim()} onClick={async () => { await props.onAddNote(noteBody.trim(), noteType, noteVisible); setNoteBody(""); }}>Add entry</button></div>
+            <div className="ops-watch-composer__footer"><span>{noteBody.trim().length ? `${noteBody.trim().length} characters` : "A concise operational record is best."}</span><button className="button button-primary" type="button" disabled={props.busy || !noteBody.trim()} onClick={async () => { await props.onAddNote(noteBody.trim(), noteType, noteVisible); setNoteBody(""); }}>Add entry</button></div>
           </div>
         </section>
         </div>
@@ -956,27 +873,27 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
         alignItems: "start",
       }}
     >
-      <section style={{ border: "1px solid #d7e2f2", borderRadius: 18, background: "#fff", padding: 16, boxShadow: "0 16px 32px rgba(15, 23, 42, 0.04)" }}>
-          <header style={{ borderBottom: "1px solid #e2e8f0", paddingBottom: 10, marginBottom: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 16 }}>
-              <div style={{ display: "grid", gap: 2 }}>
+      <section className="daily-operations-report">
+          <header className="daily-operations-report__header">
+            <div className="daily-operations-report__heading">
+              <div className="daily-operations-report__identity">
                 <h2 style={{ margin: 0, fontSize: 22 }}>{payload?.company_name ?? "Company"}</h2>
-                <div className="daily-operations-title" style={{ fontSize: 18, fontWeight: 750, color: "#475569" }}>Daily Operations Brief</div>
+                <div className="daily-operations-title">Daily Operations Brief</div>
               </div>
               <button className="button" type="button" disabled={!summary} onClick={() => { setShareStatus(null); setShareOpen(true); }}>Share report</button>
             </div>
 
-            <div className="daily-operations-meta" style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 8, marginTop: 12 }}>
+            <div className="daily-operations-meta">
               {reportMeta.map(([label, value]) => (
-                <div key={label} style={{ borderLeft: "3px solid #d7e2f2", paddingLeft: 8 }}>
-                  <div style={{ color: "#64748b", fontSize: 10, fontWeight: 950, textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</div>
-                  <strong style={{ color: "#0f172a", fontSize: 12 }}>{value}</strong>
+                <div key={label}>
+                  <div>{label}</div>
+                  <strong>{value}</strong>
                 </div>
               ))}
             </div>
           </header>
 
-          {error ? <p style={{ color: "#c62828", fontWeight: 900 }}>{error}</p> : null}
+          {error ? <p className="daily-operations-error" role="alert">{error}</p> : null}
 
           {!summary ? (
             <ReportSection title="Report artifact">
@@ -1042,23 +959,23 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
                 </ReportSection>
 
                 <ReportSection title="Watchlist">
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {watchlistError ? <div style={{ color: "#b91c1c", fontWeight: 800, fontSize: 12 }}>{watchlistError}</div> : null}
+                  <div className="daily-operations-watchlist">
+                    {watchlistError ? <div className="daily-operations-error" role="alert">{watchlistError}</div> : null}
                     {openWatchlist.length ? openWatchlist.map((item) => {
-                      const tone = item.severity === "CRITICAL" ? { border: "#ef4444", bg: "#fef2f2" } : item.severity === "RISK" ? { border: "#f59e0b", bg: "#fffbeb" } : { border: "#60a5fa", bg: "#eff6ff" };
+                      const tone = item.severity === "CRITICAL" ? "critical" : item.severity === "RISK" ? "risk" : "info";
                       return (
-                        <button key={item.id} type="button" onClick={() => setSelectedItemId(item.id)} style={{ width: "100%", textAlign: "left", border: `1px solid ${tone.border}`, borderLeftWidth: 5, borderRadius: 12, padding: "10px 11px", background: tone.bg, cursor: "pointer" }}>
-                          <span style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                            <strong style={{ color: "#0f172a" }}>{item.title}</strong>
-                            <span style={{ color: "#475569", fontSize: 10, fontWeight: 950, textTransform: "uppercase" }}>{prettyStatus(item.status)}</span>
+                        <button key={item.id} className={`daily-operations-watchlist__item daily-operations-watchlist__item--${tone}`} type="button" onClick={() => setSelectedItemId(item.id)}>
+                          <span className="daily-operations-watchlist__heading">
+                            <strong>{item.title}</strong>
+                            <span>{prettyStatus(item.status)}</span>
                           </span>
-                          <span style={{ display: "block", color: "#475569", fontSize: 11, marginTop: 3 }}>{item.detail}</span>
-                          <span style={{ display: "block", color: "#64748b", fontSize: 10, marginTop: 6 }}>Owner: {item.assigned_to_name ?? "Unassigned"} · {item.notes.length} action note{item.notes.length === 1 ? "" : "s"}</span>
+                          <span className="daily-operations-watchlist__detail">{item.detail}</span>
+                          <span className="daily-operations-watchlist__meta">Owner: {item.assigned_to_name ?? "Unassigned"} · {item.notes.length} action note{item.notes.length === 1 ? "" : "s"}</span>
                         </button>
                       );
                     }) : (
-                      <div style={{ border: "1px dashed #86efac", borderRadius: 12, padding: "10px 11px", background: "#f0fdf4", color: "#166534", fontSize: 12 }}>
-                        <strong style={{ display: "block" }}>No open operational concerns.</strong>
+                      <div className="daily-operations-empty daily-operations-empty--clear">
+                        <strong>No open operational concerns.</strong>
                         The FINAL report has no materialized Express, pickup, or service-quality signals requiring action.
                       </div>
                     )}
@@ -1068,16 +985,16 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
 
               <ReportSection title="Actions taken and resolutions">
                 {watchlist.flatMap((item) => item.notes.filter((note) => note.client_visible && ["ACTION", "RESOLUTION", "CORRECTION"].includes(note.note_type)).map((note) => ({ item, note }))).length ? (
-                  <div style={{ display: "grid", gap: 7 }}>
+                  <div className="daily-operations-actions">
                     {watchlist.flatMap((item) => item.notes.filter((note) => note.client_visible && ["ACTION", "RESOLUTION", "CORRECTION"].includes(note.note_type)).map((note) => ({ item, note }))).slice(0, 8).map(({ item, note }) => (
-                      <button key={note.id} type="button" onClick={() => setSelectedItemId(item.id)} style={{ display: "grid", gridTemplateColumns: "150px 1fr auto", gap: 12, alignItems: "center", border: 0, borderBottom: "1px solid #e2e8f0", background: "transparent", padding: "8px 0", textAlign: "left", cursor: "pointer" }}>
-                        <strong style={{ color: "#0f172a", fontSize: 12 }}>{item.title}</strong>
-                        <span style={{ color: "#475569", fontSize: 12 }}>{note.body}</span>
-                        <span style={{ color: "#64748b", fontSize: 10 }}>{prettyStatus(note.note_type)}</span>
+                      <button className="daily-operations-actions__item" key={note.id} type="button" onClick={() => setSelectedItemId(item.id)}>
+                        <strong>{item.title}</strong>
+                        <span>{note.body}</span>
+                        <small>{prettyStatus(note.note_type)}</small>
                       </button>
                     ))}
                   </div>
-                ) : <p style={{ margin: 0, color: "#64748b", fontSize: 13 }}>No client-visible actions have been recorded for this service date.</p>}
+                ) : <p className="daily-operations-empty-copy">No client-visible actions have been recorded for this service date.</p>}
               </ReportSection>
 
               <ReportSection title="Dispatch actions">
@@ -1100,35 +1017,35 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
                     })}
                   </div>
                 ) : (
-                  <p style={{ margin: 0, color: "#64748b", fontSize: 13 }}>
+                  <p className="daily-operations-empty-copy">
                     No dispatch actions were recorded for this service date.
                   </p>
                 )}
               </ReportSection>
 
 
-              <footer style={{ borderTop: "1px solid #d7e2f2", paddingTop: 6, color: "#64748b", fontSize: 11, fontStyle: "italic", textAlign: "center" }}>
+              <footer className="daily-operations-disclaimer">
                 Disclaimer: The P&amp;D results section reflects pickup and delivery data as recorded through the source artifact and does not reflect later reconciliation adjustments.
               </footer>
             </div>
           )}
         </section>
 
-        <aside style={{ position: "sticky", top: 12 }}>
-          <section style={{ border: "1px solid #d7e2f2", borderRadius: 16, background: "#fff", padding: 10 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <button className="button" type="button" onClick={() => setVisibleMonth(addMonths(visibleMonth, -1))} style={{ width: 30, height: 30, padding: 0 }}>‹</button>
-              <strong style={{ fontSize: 12, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em" }}>{monthLabel(visibleMonth)}</strong>
-              <button className="button" type="button" onClick={() => setVisibleMonth(addMonths(visibleMonth, 1))} style={{ width: 30, height: 30, padding: 0 }}>›</button>
+        <aside className="daily-operations-calendar-rail">
+          <section className="daily-operations-calendar">
+            <div className="daily-operations-calendar__header">
+              <button className="button" type="button" aria-label="Previous month" onClick={() => setVisibleMonth(addMonths(visibleMonth, -1))}>‹</button>
+              <strong>{monthLabel(visibleMonth)}</strong>
+              <button className="button" type="button" aria-label="Next month" onClick={() => setVisibleMonth(addMonths(visibleMonth, 1))}>›</button>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, fontSize: 10, color: "#64748b", fontWeight: 900 }}>
+            <div className="daily-operations-calendar__weekdays" aria-hidden="true">
               {["S", "U", "M", "T", "W", "H", "F"].map((d, index) => (
-                <span key={`${d}-${index}`} style={{ textAlign: "center" }}>{d}</span>
+                <span key={`${d}-${index}`}>{d}</span>
               ))}
             </div>
 
-            <div className="ops-report-calendar-grid" style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginTop: 4 }}>
+            <div className="ops-report-calendar-grid">
               {calendarCells(visibleMonth).map((dateIso, index) => {
                 const inMonth = dateIso.slice(0, 7) === visibleMonth.slice(0, 7);
                 const status = calendarMap.get(dateIso) ?? "empty";
@@ -1136,16 +1053,13 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
 
                 return (
                   <button
-                    className={`ops-report-calendar-day ops-report-calendar-day--${status}`}
+                    className={`ops-report-calendar-day ops-report-calendar-day--${status}${isWeekendColumn ? " ops-report-calendar-day--weekend" : ""}`}
                     key={dateIso}
                     type="button"
                     disabled={!inMonth}
+                    aria-label={`${dateLabel(dateIso)} · ${status === "final" ? "Final report" : status === "in_day" ? "In-day only" : status === "inactive" ? "Inactive" : "No record"}`}
+                    aria-pressed={selectedDate === dateIso}
                     onClick={() => setSelectedDate(dateIso)}
-                    style={{
-                      ...statusStyle(status, selectedDate === dateIso),
-                      boxShadow: isWeekendColumn ? "inset 0 0 0 999px rgba(15, 23, 42, 0.025)" : undefined,
-                      opacity: inMonth ? 1 : 0.22,
-                    }}
                   >
                     {Number(dateIso.slice(-2))}
                   </button>
@@ -1153,37 +1067,21 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
               })}
             </div>
 
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "end",
-                gap: 8,
-                marginTop: 10,
-              }}
-            >
-              <div style={{ display: "grid", gap: 4, color: "#64748b", fontSize: 11, fontWeight: 800 }}>
-                <span>🟢 Final report</span>
-                <span>🟠 In-day only</span>
-                <span>⚪ No record</span>
+            <div className="daily-operations-calendar__footer">
+              <div className="daily-operations-calendar__legend">
+                <span><i className="is-final" />Final report</span>
+                <span><i className="is-in-day" />In-day only</span>
+                <span><i className="is-empty" />No record</span>
               </div>
 
               <button
                 type="button"
-                className="button"
                 onClick={() => {
                   const today = new Date().toISOString().slice(0, 10);
                   setSelectedDate(today);
                   setVisibleMonth(today);
                 }}
-                style={{
-                  minHeight: 28,
-                  padding: "0 9px",
-                  borderRadius: 999,
-                  fontSize: 11,
-                  fontWeight: 900,
-                  whiteSpace: "nowrap",
-                }}
+                className="button daily-operations-calendar__today"
               >
                 Today
               </button>
@@ -1201,23 +1099,23 @@ export default function DailyOperationsSummary({ slug }: { slug: string }) {
         />
       ) : null}
       {shareOpen ? (
-        <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(15,23,42,.44)", display: "grid", placeItems: "center", padding: 20 }} onMouseDown={() => setShareOpen(false)}>
-          <section onMouseDown={(event) => event.stopPropagation()} style={{ width: "min(520px, 100%)", borderRadius: 20, background: "#fff", padding: 22, boxShadow: "0 30px 80px rgba(15,23,42,.25)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-              <div><div style={{ color: "#059669", fontSize: 11, fontWeight: 950, textTransform: "uppercase", letterSpacing: ".1em" }}>Governed report share</div><h2 style={{ margin: "5px 0 0" }}>Email Daily Operations Brief</h2></div>
-              <button className="button" type="button" onClick={() => setShareOpen(false)} style={{ width: 40, height: 40, padding: 0 }}>×</button>
+        <div className="daily-operations-share-backdrop" onMouseDown={() => setShareOpen(false)}>
+          <section className="daily-operations-share" role="dialog" aria-modal="true" aria-labelledby="daily-operations-share-title" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="daily-operations-share__header">
+              <div><div className="daily-operations-share__eyebrow">Governed report share</div><h2 id="daily-operations-share-title">Email Daily Operations Brief</h2></div>
+              <button className="button" type="button" aria-label="Close report sharing" onClick={() => setShareOpen(false)}>×</button>
             </div>
-            <p style={{ color: "#64748b" }}>A snapshot of the FINAL report, Express posture, and client-visible action state will be recorded at send time.</p>
-            <label style={{ display: "grid", gap: 5, fontWeight: 800, color: "#334155" }}>Recipients
+            <p>A snapshot of the FINAL report, Express posture, and client-visible action state will be recorded at send time.</p>
+            <label className="daily-operations-share__field">Recipients
               <input type="text" value={shareRecipients} onChange={(event) => setShareRecipients(event.target.value)} placeholder="name@example.com, leader@example.com" />
             </label>
-            <label style={{ display: "grid", gap: 5, fontWeight: 800, color: "#334155", marginTop: 12 }}>Message (optional)
+            <label className="daily-operations-share__field">Message (optional)
               <textarea rows={4} value={shareMessage} onChange={(event) => setShareMessage(event.target.value)} placeholder="Add context for the operating team…" />
             </label>
-            {shareStatus ? <p style={{ color: shareStatus.startsWith("Sent") ? "#166534" : "#b91c1c", fontWeight: 800 }}>{shareStatus}</p> : null}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 9, marginTop: 16 }}>
+            {shareStatus ? <p className={`daily-operations-share__status daily-operations-share__status--${shareStatus.startsWith("Sent") ? "success" : "error"}`}>{shareStatus}</p> : null}
+            <div className="daily-operations-share__actions">
               <button className="button" type="button" onClick={() => setShareOpen(false)}>Cancel</button>
-              <button className="button buttonPrimary" type="button" disabled={shareBusy || !shareRecipients.trim()} onClick={shareReport}>{shareBusy ? "Sending…" : "Send report"}</button>
+              <button className="button button-primary" type="button" disabled={shareBusy || !shareRecipients.trim()} onClick={shareReport}>{shareBusy ? "Sending…" : "Send report"}</button>
             </div>
           </section>
         </div>
