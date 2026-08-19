@@ -181,6 +181,7 @@ export default async function Page() {
               {status.catalog.map((item) => (
                 <div
                   key={item.priceId}
+                  className="stripe-catalog-row"
                   style={{
                     display: "grid",
                     gridTemplateColumns: "minmax(260px, 1fr) 120px 120px 100px",
@@ -214,6 +215,7 @@ export default async function Page() {
 function BillingStatusCard(props: { label: string; value: string }) {
   return (
     <div
+      className="stripe-status-card"
       style={{
         border: "1px solid #dbe3ef",
         borderRadius: 18,
