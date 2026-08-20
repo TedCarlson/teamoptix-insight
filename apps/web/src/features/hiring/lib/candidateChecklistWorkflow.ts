@@ -12,7 +12,12 @@ export type CandidateWorkflowStepKind =
   | "tsa"
   | "other";
 
-export type CandidateWorkflowGroup = "Interview" | "Background" | "Screening" | "Terminal access" | "Readiness";
+export type CandidateWorkflowGroup =
+  | "Interview"
+  | "Sent"
+  | "Passed"
+  | "Terminal access"
+  | "Readiness";
 
 export function candidateWorkflowText(item: WorkflowItem) {
   return [item.item_key, item.display_label, item.default_label]
@@ -74,8 +79,18 @@ export function candidateWorkflowGroup(item: WorkflowItem): CandidateWorkflowGro
   const kind = candidateWorkflowStepKind(item);
 
   if (kind.startsWith("interview")) return "Interview";
-  if (kind.startsWith("background")) return "Background";
-  if (kind.startsWith("drug") || kind.startsWith("dot")) return "Screening";
+  if (["background_submitted", "drug_sent", "dot_sent"].includes(kind)) return "Sent";
+  if (["background_complete", "drug_passed", "dot_passed"].includes(kind)) return "Passed";
   if (kind === "tsa") return "Terminal access";
   return "Readiness";
+}
+
+export function candidateWorkflowPrerequisiteKinds(
+  kind: CandidateWorkflowStepKind
+): CandidateWorkflowStepKind[] {
+  if (kind === "interview_complete") return ["interview_scheduled"];
+  if (["background_submitted", "drug_sent", "dot_sent"].includes(kind)) {
+    return ["interview_complete"];
+  }
+  return [];
 }
