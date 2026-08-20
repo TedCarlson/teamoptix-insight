@@ -62,7 +62,9 @@ function DroSignalLine(props: { label: string; signal: DispatchPlanSignal }) {
       <span>📍 {props.signal.stops}</span>
       <span>📦 {props.signal.packages}</span>
       <span style={{ color: timeCriticalColor(props.signal.timeCritical) }}>🕒 {props.signal.timeCritical}</span>
-      <span style={{ color: "#4d148c" }}>🚚 {props.signal.milesLabel}</span>
+      <span className="dispatch-route-row__plan-mileage">
+        🚚 {props.signal.milesLabel}
+      </span>
     </span>
   );
 }

@@ -1072,6 +1072,10 @@ h1 {
   color: #7c3aed;
 }
 
+.dispatch-route-row__plan-mileage {
+  color: #4d148c;
+}
+
 .dispatch-route-row__support-assignment small {
   min-width: 0;
   overflow: hidden;
@@ -12714,6 +12718,10 @@ html[data-theme="dark"] .company-workspace-stage .operations-theme-scope :where(
 
 html[data-theme="dark"] .company-workspace-stage .operations-theme-scope :where(.dispatch-route-row__support-assignment, .dispatch-route-row__seat-editor-hint, .dispatch-workforce-group__label, .dispatch-attendance-empty) {
   color: var(--muted) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .operations-theme-scope .dispatch-route-row__plan-mileage {
+  color: #c4b5fd !important;
 }
 
 /* Service */
