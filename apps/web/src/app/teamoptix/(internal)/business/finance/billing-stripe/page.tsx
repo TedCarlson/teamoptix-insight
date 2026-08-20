@@ -1,5 +1,11 @@
 import TeamOptixShell from "@/features/teamoptix/navigation/TeamOptixShell";
+import StripeCredentialRotation from "@/features/teamoptix/billing/StripeCredentialRotation";
 import { WorkspaceHeader, WorkspaceSection } from "@/features/ui/workspace";
+import {
+  describeStripeApiKey,
+  describeStripeConnectionError,
+  type StripeApiKeyMode,
+} from "@/lib/stripe/apiKey";
 import { getStripeServerClient } from "@/lib/stripe/server";
 
 type BillingMetric = {
@@ -16,27 +22,28 @@ type BillingCatalogItem = {
   status: string;
 };
 
-type StripeMode = "Live" | "Sandbox" | "Unknown";
-
 async function loadStripeBillingStatus() {
   const secretKey = process.env.STRIPE_SECRET_KEY;
   const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-
-  const mode: StripeMode = secretKey?.startsWith("sk_live_")
-    ? "Live"
-    : secretKey?.startsWith("sk_test_")
-      ? "Sandbox"
-      : "Unknown";
+  const credential = describeStripeApiKey(secretKey);
+  const mode: StripeApiKeyMode = credential.mode;
+  const credentialAutomationReady = Boolean(
+    process.env.VERCEL_ACCESS_TOKEN && process.env.VERCEL_PROJECT_ID
+  );
 
   if (!secretKey || !publishableKey) {
     return {
       connected: false,
       mode,
       error: "Stripe API keys are not configured.",
+      errorCode: "stripe_keys_not_configured",
       metrics: [] as BillingMetric[],
       catalog: [] as BillingCatalogItem[],
       webhookConfigured: Boolean(webhookSecret),
+      credentialLabel: credential.maskedLabel,
+      credentialKind: credential.kind,
+      credentialAutomationReady,
     };
   }
 
@@ -75,7 +82,11 @@ async function loadStripeBillingStatus() {
       connected: true,
       mode,
       error: null,
+      errorCode: null,
       webhookConfigured: Boolean(webhookSecret),
+      credentialLabel: credential.maskedLabel,
+      credentialKind: credential.kind,
+      credentialAutomationReady,
       metrics: [
         { label: "Customers", value: String(customers.data.length) },
         { label: "Products", value: String(products.data.length) },
@@ -86,11 +97,16 @@ async function loadStripeBillingStatus() {
       catalog,
     };
   } catch (error) {
+    const connectionError = describeStripeConnectionError(error);
     return {
       connected: false,
       mode,
-      error: error instanceof Error ? error.message : "Stripe connection failed.",
+      error: connectionError.message,
+      errorCode: connectionError.code,
       webhookConfigured: Boolean(webhookSecret),
+      credentialLabel: credential.maskedLabel,
+      credentialKind: credential.kind,
+      credentialAutomationReady,
       metrics: [] as BillingMetric[],
       catalog: [] as BillingCatalogItem[],
     };
@@ -144,6 +160,10 @@ export default async function Page() {
               <BillingStatusCard label="API" value={status.connected ? "Connected" : "Not connected"} />
               <BillingStatusCard label="Mode" value={status.mode} />
               <BillingStatusCard
+                label="Credential"
+                value={status.credentialKind}
+              />
+              <BillingStatusCard
                 label="Webhook Secret"
                 value={status.webhookConfigured ? "Configured" : "Missing"}
               />
@@ -152,6 +172,12 @@ export default async function Page() {
             {status.error ? (
               <p style={{ marginTop: 16, color: "#b91c1c", fontWeight: 700 }}>{status.error}</p>
             ) : null}
+
+            <StripeCredentialRotation
+              automationReady={status.credentialAutomationReady}
+              connected={status.connected}
+              credentialLabel={status.credentialLabel}
+            />
           </WorkspaceSection>
 
           <WorkspaceSection

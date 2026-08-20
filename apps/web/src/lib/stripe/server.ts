@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { describeStripeApiKey } from "./apiKey";
 
 let stripeClient: Stripe | null = null;
 
@@ -27,4 +28,8 @@ export function getStripeWebhookSecret() {
   }
 
   return secret;
+}
+
+export function isStripeLiveModeConfigured() {
+  return describeStripeApiKey(process.env.STRIPE_SECRET_KEY).mode === "Live";
 }

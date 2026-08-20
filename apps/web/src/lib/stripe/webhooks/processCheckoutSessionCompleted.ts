@@ -1,6 +1,7 @@
 import type Stripe from "stripe";
 
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
+import { isStripeLiveModeConfigured } from "@/lib/stripe/server";
 
 type CheckoutCompletedResult =
   | {
@@ -45,7 +46,7 @@ export async function processCheckoutSessionCompleted(
     };
   }
 
-  const configuredLivemode = process.env.STRIPE_SECRET_KEY?.startsWith("sk_live_") ?? false;
+  const configuredLivemode = isStripeLiveModeConfigured();
 
   if (event.livemode !== configuredLivemode || session.livemode !== configuredLivemode) {
     throw new Error(
