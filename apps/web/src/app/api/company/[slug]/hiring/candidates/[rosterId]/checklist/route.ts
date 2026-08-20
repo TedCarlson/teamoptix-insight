@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import {
   candidateWorkflowGroup,
+  candidateWorkflowPrerequisiteKinds,
   candidateWorkflowStepKind,
   isTsaStep,
 } from "@/features/hiring/lib/candidateChecklistWorkflow";
@@ -106,20 +107,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       const fact = factByItemTypeId.get(row.item_type_id);
       const isComplete = Boolean(fact?.is_complete);
       const stepKind = candidateWorkflowStepKind(row);
-      const prerequisiteKinds =
-        stepKind === "interview_complete"
-          ? ["interview_scheduled"]
-          : stepKind === "background_submitted"
-            ? ["interview_complete"]
-            : stepKind === "background_complete"
-              ? ["background_submitted"]
-              : stepKind === "drug_sent" || stepKind === "dot_sent"
-                ? ["background_submitted", "background_complete"]
-                : stepKind === "drug_passed"
-                  ? ["drug_sent"]
-                  : stepKind === "dot_passed"
-                    ? ["dot_sent"]
-                    : [];
+      const prerequisiteKinds = candidateWorkflowPrerequisiteKinds(stepKind);
       const incompletePrerequisites = isComplete
         ? []
         : incompleteRowsForKinds(prerequisiteKinds);
