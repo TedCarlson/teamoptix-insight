@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
+  isDriverSeatWorker,
+  isTraineeWorker,
   resolveBaselineScheduledOffDrivers,
   resolveDailyScheduleCapacity,
   resolveOverrideOffRows,
@@ -16,6 +18,7 @@ type GeneratedScheduleRow = {
   roster_member_id: string;
   full_name: string | null;
   worker_type: string | null;
+  employment_status: string | null;
   planned_on: boolean;
   route_name: string | null;
   override_type: string | null;
@@ -430,18 +433,17 @@ export default function ScheduleCalendarPage() {
             });
 
             const assignedDrivers = selectedRows.filter((row) => {
-              const workerType = String(row.worker_type ?? "").toLowerCase();
-
               return (
                 row.planned_on &&
                 Boolean(row.route_name?.trim()) &&
-                !workerType.includes("helper") &&
-                !workerType.includes("jumper") &&
-                !workerType.includes("trainee")
+                isDriverSeatWorker(row.worker_type, row.employment_status)
               );
             });
 
             const unassignedDrivers = capacity.standbyDrivers;
+            const traineeRows = selectedRows.filter((row) =>
+              isTraineeWorker(row.worker_type, row.employment_status)
+            );
             const drawerSignal = getDeltaSignal(
               capacity.capacityDelta,
               capacity.scheduledDrivers,
@@ -450,7 +452,9 @@ export default function ScheduleCalendarPage() {
 
             const scheduledOffRows =
               resolveBaselineScheduledOffDrivers(selectedRows);
-            const overrideOffRows = resolveOverrideOffRows(selectedRows);
+            const overrideOffRows = resolveOverrideOffRows(selectedRows).filter(
+              (row) => !isTraineeWorker(row.worker_type, row.employment_status)
+            );
 
             return (
               <div
@@ -577,6 +581,63 @@ export default function ScheduleCalendarPage() {
                             </span>
                           </div>
                         ))}
+                      </section>
+
+                      <section
+                        className="schedule-day-drawer-section"
+                        style={{
+                          border: "1px solid #fed7aa",
+                          borderRadius: 10,
+                          padding: 12,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            marginBottom: 8,
+                          }}
+                        >
+                          <strong style={{ color: "#b45309" }}>
+                            Trainees
+                          </strong>
+                          <span style={{ color: "#64748b" }}>
+                            {traineeRows.length}
+                          </span>
+                        </div>
+
+                        {traineeRows.length === 0 ? (
+                          <div style={{ color: "#64748b" }}>
+                            None
+                          </div>
+                        ) : (
+                          traineeRows.map((row) => {
+                            const traineeScheduleLabel = row.planned_on
+                              ? row.route_name?.trim() || "Scheduled"
+                              : row.override_type || "Scheduled off";
+
+                            return (
+                              <div
+                                key={scheduleRowKey(row)}
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  gap: 12,
+                                  padding: "6px 0",
+                                  borderBottom: "1px solid #ffedd5",
+                                  fontSize: 14,
+                                }}
+                              >
+                                <span style={{ fontWeight: 600 }}>
+                                  {row.full_name ?? "Unknown"}
+                                </span>
+                                <span style={{ color: "#9a3412" }}>
+                                  {traineeScheduleLabel}
+                                </span>
+                              </div>
+                            );
+                          })
+                        )}
                       </section>
 
                       <section

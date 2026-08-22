@@ -12,6 +12,10 @@ import type {
   ScheduleBaselineDraft,
 } from "@/features/schedule/components/ScheduleBaselineEditor";
 import type { DayCounts } from "@/features/schedule/lib/scheduleWorkbench";
+import {
+  isDriverSeatWorker,
+  isTraineeWorker,
+} from "@/features/schedule/lib/scheduleCapacity";
 
 type ScheduleGridRow = {
   roster_member_id: string;
@@ -284,9 +288,11 @@ export default function ScheduleLandingPage() {
             : row.rotation_mode === rotationFilter;
 
       const rowPeopleGroup: PeopleFilter =
-        row.role_bucket === "DRIVER_HELPER"
-          ? "drivers_helpers"
-          : "others";
+        isTraineeWorker(row.role_label, row.employment_status)
+          ? "trainees"
+          : row.role_bucket === "DRIVER_HELPER"
+            ? "drivers_helpers"
+            : "others";
 
       const matchesPeople = peopleFilter === rowPeopleGroup;
 
@@ -305,6 +311,7 @@ export default function ScheduleLandingPage() {
     const counts: DayCounts = { s: 0, u: 0, m: 0, t: 0, w: 0, h: 0, f: 0 };
 
     for (const row of filteredRows) {
+      if (!isDriverSeatWorker(row.role_label, row.employment_status)) continue;
       if (!row.preset_id) continue;
       if (row.preset_works_s === true) counts.s += 1;
       if (row.preset_works_u === true) counts.u += 1;

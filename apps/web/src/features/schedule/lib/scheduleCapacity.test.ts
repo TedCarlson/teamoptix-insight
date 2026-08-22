@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  isDriverSeatWorker,
+  resolveDailyScheduleCapacity,
   resolveBaselineScheduledOffDrivers,
   resolveOverrideOffRows,
+  resolveScheduleOverrideImpact,
   type ScheduleCapacityPerson,
 } from "./scheduleCapacity";
 
@@ -12,6 +15,7 @@ function person(
     roster_member_id: "driver-1",
     full_name: "Driver One",
     worker_type: "Driver",
+    employment_status: "Active",
     planned_on: false,
     route_name: null,
     override_type: null,
@@ -31,11 +35,94 @@ describe("resolveBaselineScheduledOffDrivers", () => {
       person({ roster_member_id: "helper-off", worker_type: "Helper" }),
       person({ roster_member_id: "jumper-off", worker_type: "Jumper" }),
       person({ roster_member_id: "trainee-off", worker_type: "Trainee" }),
+      person({
+        roster_member_id: "driver-labelled-trainee-off",
+        worker_type: "Driver",
+        employment_status: "Trainee",
+      }),
     ]);
 
     expect(scheduledOff.map((row) => row.roster_member_id)).toEqual([
       "driver-off",
     ]);
+  });
+});
+
+describe("driver readiness classification", () => {
+  it("uses trainee lifecycle status even when the worker type says Driver", () => {
+    expect(isDriverSeatWorker("Driver", "Trainee")).toBe(false);
+    expect(isDriverSeatWorker("Driver", "Active")).toBe(true);
+  });
+
+  it("does not count scheduled trainees as available driver capacity", () => {
+    const capacity = resolveDailyScheduleCapacity({
+      serviceDate: "2026-08-22",
+      routes: [
+        {
+          id: "route-1",
+          route_name: "Route 1",
+          current_wa_num: "WA-1",
+          runs_s: true,
+          runs_u: false,
+          runs_m: false,
+          runs_t: false,
+          runs_w: false,
+          runs_h: false,
+          runs_f: false,
+        },
+        {
+          id: "route-2",
+          route_name: "Route 2",
+          current_wa_num: "WA-2",
+          runs_s: true,
+          runs_u: false,
+          runs_m: false,
+          runs_t: false,
+          runs_w: false,
+          runs_h: false,
+          runs_f: false,
+        },
+      ],
+      scheduleRows: [
+        person({
+          roster_member_id: "active-driver",
+          planned_on: true,
+          route_name: "WA-1",
+        }),
+        person({
+          roster_member_id: "trainee-with-driver-label",
+          employment_status: "Trainee",
+          planned_on: true,
+        }),
+      ],
+    });
+
+    expect(capacity.scheduledDrivers).toBe(1);
+    expect(capacity.assignedDrivers).toBe(1);
+    expect(capacity.standbyDrivers).toEqual([]);
+    expect(capacity.openRoutes.map((route) => route.id)).toEqual(["route-2"]);
+    expect(capacity.capacityDelta).toBe(-1);
+  });
+
+  it("does not report a trainee add-in as a driver-readiness change", () => {
+    const impact = resolveScheduleOverrideImpact({
+      requestedDates: ["2026-08-22"],
+      rosterMemberId: "trainee-with-driver-label",
+      overrideType: "ADD_IN",
+      routes: [],
+      scheduleRows: [],
+      worker: {
+        full_name: "Trainee One",
+        worker_type: "Driver",
+        employment_status: "Trainee",
+      },
+    });
+
+    expect(impact.days[0]).toMatchObject({
+      currentScheduledDrivers: 0,
+      projectedScheduledDrivers: 0,
+      affectsSchedule: false,
+    });
   });
 });
 
