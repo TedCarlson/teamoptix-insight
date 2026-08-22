@@ -65,7 +65,7 @@ const periodLabels: Record<ScorecardPeriodKey, string> = {
   LAST_5_WEEKS: "Last 5 complete weeks",
   LAST_MONTH: "Last month",
   MTD: "Month to date",
-  CONTRACT: "Contract year",
+  CONTRACT: "Selected range",
 };
 
 function loadIndex(
@@ -357,12 +357,12 @@ export default function DriverScorecardSurface({ slug }: { slug: string }) {
               </span>
             </div>
             <div className={styles.contractContext}>
-              <span>Shared contract context</span>
-              <strong>Contract year {loadedYear ?? "—"}</strong>
+              <span>Shared analytics context</span>
+              <strong>Calendar year {loadedYear ?? "—"}</strong>
               <small>
                 {startDate && endDate
                   ? `${date(startDate)} – ${date(endDate)}`
-                  : "Loading contract block…"}
+                  : "Loading calendar range…"}
               </small>
               <small>Warehouse current through {date(asOfDate)}</small>
             </div>

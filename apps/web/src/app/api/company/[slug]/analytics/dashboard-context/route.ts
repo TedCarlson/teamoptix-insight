@@ -39,18 +39,25 @@ export async function GET(
 ) {
   try {
     const { slug } = await context.params;
+    const startDate = request.nextUrl.searchParams.get("start");
     const endDate = request.nextUrl.searchParams.get("end");
 
-    if (!isIsoDate(endDate)) {
+    if (
+      !isIsoDate(startDate) ||
+      !isIsoDate(endDate) ||
+      startDate > endDate
+    ) {
       return NextResponse.json(
-        { error: "A valid dashboard through date is required." },
+        { error: "A valid dashboard calendar range is required." },
         { status: 400 }
       );
     }
 
     // Express is not part of the DSW history payload. Keep this supplemental
     // read intentionally bounded to the recent six calendar weeks.
-    const expressStart = addDays(endDate, -41);
+    const sixWeekStart = addDays(endDate, -41);
+    const expressStart =
+      startDate > sixWeekStart ? startDate : sixWeekStart;
     const supabase = await getSupabaseServerClient();
     const serviceRole = createSupabaseServiceRoleClient();
     const { data: company, error: companyError } = await supabase

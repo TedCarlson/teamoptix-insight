@@ -240,10 +240,10 @@ export default function RouteIntelligenceSurface({ slug }: { slug: string }) {
         <article className={styles.report}>
           <header className={styles.hero}>
             <div><p>Analytics · Route Intelligence</p><h1>Route Intelligence</h1><span>General contract route behavior from the shared analytics record, with route-specific reports calculated only when selected.</span></div>
-            <div className={styles.contractContext}><span>Shared contract context</span><strong>Contract year {loadedYear ?? "—"}</strong><small>{startDate && contractEndDate ? `${date(startDate)} – ${date(contractEndDate)}` : "Loading contract block…"}</small><small>Current through {date(throughDate)}</small></div>
+            <div className={styles.contractContext}><span>Shared analytics context</span><strong>Calendar year {loadedYear ?? "—"}</strong><small>{startDate && contractEndDate ? `${date(startDate)} – ${date(contractEndDate)}` : "Loading calendar range…"}</small><small>Current through {date(throughDate)}</small></div>
           </header>
 
-          {payloadLoading ? <div className={styles.state}>Reading the shared contract record…</div> : null}
+          {payloadLoading ? <div className={styles.state}>Reading the shared analytics range…</div> : null}
           {contractError ? <div className={`${styles.state} ${styles.error}`}><strong>Route Intelligence unavailable.</strong><span>{contractError}</span></div> : null}
 
           {!payloadLoading && !contractError && contract ? (
@@ -302,7 +302,7 @@ export default function RouteIntelligenceSurface({ slug }: { slug: string }) {
                       </div>
                     </>
                   ) : null}
-                  {selectedRouteId && !detailLoading && !detailError && detail && !profile ? <div className={styles.selectPrompt}><span>No DSW matches</span><h2>{selectedRoute?.route_name}</h2><p>No FINAL DSW facts were connected to this permanent route ID in the selected contract block.</p></div> : null}
+                  {selectedRouteId && !detailLoading && !detailError && detail && !profile ? <div className={styles.selectPrompt}><span>No DSW matches</span><h2>{selectedRoute?.route_name}</h2><p>No FINAL DSW facts were connected to this permanent route ID in the selected calendar range.</p></div> : null}
                 </article>
               </section>
 
@@ -381,7 +381,7 @@ export default function RouteIntelligenceSurface({ slug }: { slug: string }) {
 
               {profile && detail && driverEvidence.length === 0 ? (
                 <section className={styles.driverEvidencePanel}>
-                  <header className={styles.sectionHead}><div><p>Drivers with evidence on this route</p><h2>No primary-driver evidence</h2><span>The selected route has no roster-matched records with primary-driver duty-hour evidence in this contract block.</span></div></header>
+                  <header className={styles.sectionHead}><div><p>Drivers with evidence on this route</p><h2>No primary-driver evidence</h2><span>The selected route has no roster-matched records with primary-driver duty-hour evidence in this calendar range.</span></div></header>
                 </section>
               ) : null}
 

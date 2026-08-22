@@ -1,4 +1,5 @@
 import { AnalyticsDataProvider } from "@/features/company/analytics/AnalyticsDataProvider";
+import AnalyticsContextControls from "@/features/company/analytics/AnalyticsContextControls";
 
 type Props = {
   children: React.ReactNode;
@@ -13,6 +14,7 @@ export default async function AnalyticsLayout({
 
   return (
     <AnalyticsDataProvider slug={slug}>
+      <AnalyticsContextControls />
       {children}
     </AnalyticsDataProvider>
   );

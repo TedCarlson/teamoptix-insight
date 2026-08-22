@@ -1,21 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  buildAnalyticsCalendarSegments,
+  isAnalyticsComparisonMode,
+  isAnalyticsRangePreset,
+  resolveAnalyticsContext,
+  type AnalyticsContractPeriod,
+} from "@/features/company/analytics/analyticsContext";
 import { buildMonthRanges } from "@/features/company/analytics/historyRanges";
 
 export const runtime = "nodejs";
 
 type RouteContext = {
   params: Promise<{ slug: string }>;
-};
-
-type ContractConfig = {
-  id: string;
-  contract_number: string | null;
-  terminal_identity: string | null;
-  service_area: string | null;
-  effective_start_date: string;
-  effective_end_date: string | null;
-  status: string | null;
 };
 
 type HistoryRow = {
@@ -56,23 +53,6 @@ function isoDateInNewYork(): string {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
-function minDate(left: string, right: string): string {
-  return left <= right ? left : right;
-}
-
-function contractOperatingYear(
-  contract: ContractConfig,
-  today: string
-): number {
-  const effectiveEnd =
-    contract.effective_end_date &&
-    contract.effective_end_date < today
-      ? contract.effective_end_date
-      : today;
-
-  return Number(effectiveEnd.slice(0, 4));
-}
-
 function sortHistoryRows(rows: HistoryRow[]): HistoryRow[] {
   return [...rows].sort((left, right) =>
     String(left.service_date ?? "").localeCompare(
@@ -110,19 +90,82 @@ export async function GET(
     const url = new URL(req.url);
 
     const yearParam = url.searchParams.get("year");
-    const requestedOperatingYear = integer(yearParam);
+    const requestedCalendarYear = integer(yearParam);
+    const presetParam = url.searchParams.get("preset");
+    const comparisonParam = url.searchParams.get("compare");
+    const contractIdParam = url.searchParams.get("contractId");
+    const targetParam = url.searchParams.get("target") ?? "primary";
 
     if (
       yearParam !== null &&
       (
-        requestedOperatingYear === null ||
-        requestedOperatingYear < 2020 ||
-        requestedOperatingYear > 2100
+        requestedCalendarYear === null ||
+        requestedCalendarYear < 2020 ||
+        requestedCalendarYear > 2100
       )
     ) {
       return NextResponse.json(
         {
-          error: "A valid contract operating year is required.",
+          error: "A valid analytics calendar year is required.",
+          available_years: [],
+          metadata: null,
+          rows: [],
+        },
+        { status: 400 }
+      );
+    }
+
+    if (
+      presetParam !== null &&
+      !isAnalyticsRangePreset(presetParam)
+    ) {
+      return NextResponse.json(
+        {
+          error: "A valid analytics range preset is required.",
+          available_years: [],
+          metadata: null,
+          rows: [],
+        },
+        { status: 400 }
+      );
+    }
+
+    if (
+      comparisonParam !== null &&
+      !isAnalyticsComparisonMode(comparisonParam)
+    ) {
+      return NextResponse.json(
+        {
+          error: "A valid analytics comparison mode is required.",
+          available_years: [],
+          metadata: null,
+          rows: [],
+        },
+        { status: 400 }
+      );
+    }
+
+    if (
+      contractIdParam !== null &&
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        contractIdParam
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error: "A valid contract lock is required.",
+          available_years: [],
+          metadata: null,
+          rows: [],
+        },
+        { status: 400 }
+      );
+    }
+
+    if (targetParam !== "primary" && targetParam !== "comparison") {
+      return NextResponse.json(
+        {
+          error: "A valid analytics payload target is required.",
           available_years: [],
           metadata: null,
           rows: [],
@@ -183,51 +226,42 @@ export async function GET(
       Array.isArray(contractData)
         ? contractData
         : []
-    ) as unknown as ContractConfig[];
+    ) as unknown as AnalyticsContractPeriod[];
 
     const contracts = contractRows.filter(
       (row) =>
         Boolean(row.id && row.effective_start_date)
     );
 
-    const availableContracts = contracts
-      .filter(
-        (contract) =>
-          contract.effective_start_date <= today
-      )
-      .map((contract) => {
-        const operatingYear = contractOperatingYear(
-          contract,
-          today
-        );
-
-        const effectiveEnd = minDate(
-          contract.effective_end_date ?? today,
-          today
-        );
-
-        return {
-          operating_year: operatingYear,
-          contract_id: contract.id,
-          contract_number: contract.contract_number,
-          terminal_identity: contract.terminal_identity,
-          service_area: contract.service_area,
-          effective_start_date:
-            contract.effective_start_date,
-          effective_end_date: effectiveEnd,
-          status: contract.status,
-        };
-      })
+    const availableContracts = buildAnalyticsCalendarSegments(
+      contracts.filter(
+        (contract) => contract.effective_start_date <= today
+      ),
+      today
+    )
+      .map((segment) => ({
+        calendar_year: segment.calendar_year,
+        operating_year: segment.calendar_year,
+        contract_id: segment.id,
+        contract_number: segment.contract_number,
+        terminal_identity: segment.terminal_identity,
+        service_area: segment.service_area,
+        effective_start_date: segment.effective_start_date,
+        effective_end_date: segment.effective_end_date,
+        segment_start_date: segment.segment_start_date,
+        segment_end_date: segment.segment_end_date,
+        status: segment.status,
+      }))
       .sort(
         (left, right) =>
-          right.operating_year -
-            left.operating_year ||
-          right.effective_start_date.localeCompare(
-            left.effective_start_date
-          )
+          right.calendar_year - left.calendar_year ||
+          right.segment_start_date.localeCompare(
+            left.segment_start_date
+          ) ||
+          left.contract_id.localeCompare(right.contract_id)
       );
 
-    if (requestedOperatingYear === null) {
+    if (requestedCalendarYear === null) {
       return NextResponse.json(
         {
           available_years: availableContracts,
@@ -238,18 +272,25 @@ export async function GET(
       );
     }
 
-    const contract = contracts.find(
-      (candidate) =>
-        contractOperatingYear(candidate, today) ===
-        requestedOperatingYear
-    );
+    const resolvedContext = resolveAnalyticsContext({
+      calendarYear: requestedCalendarYear,
+      preset: isAnalyticsRangePreset(presetParam)
+        ? presetParam
+        : "calendar_year",
+      comparisonMode: isAnalyticsComparisonMode(comparisonParam)
+        ? comparisonParam
+        : "none",
+      contractId: contractIdParam,
+      contracts,
+      today,
+    });
 
-    if (!contract) {
+    if (!resolvedContext) {
       return NextResponse.json(
         {
           error:
-            `No contract period was found for operating year ` +
-            `${requestedOperatingYear}.`,
+            `No elapsed contract-attributed range was found for calendar year ` +
+            `${requestedCalendarYear}.`,
           available_years: availableContracts,
           metadata: null,
           rows: [],
@@ -258,17 +299,16 @@ export async function GET(
       );
     }
 
-    const startDate = contract.effective_start_date;
-    const endDate = minDate(
-      contract.effective_end_date ?? today,
-      today
-    );
+    const requestedRange =
+      targetParam === "comparison"
+        ? resolvedContext.comparison
+        : resolvedContext.primary;
 
-    if (startDate > endDate) {
+    if (!requestedRange) {
       return NextResponse.json(
         {
           error:
-            "The selected contract period has no elapsed operating dates.",
+            "The selected comparison has no contract-attributed operating dates.",
           available_years: availableContracts,
           metadata: null,
           rows: [],
@@ -276,6 +316,21 @@ export async function GET(
         { status: 400 }
       );
     }
+
+    const startDate = requestedRange.start_date;
+    const endDate = requestedRange.end_date;
+    const selectedContract = resolvedContext.contract_id
+      ? contracts.find(
+          (contract) => contract.id === resolvedContext.contract_id
+        ) ?? null
+      : null;
+    const contributingContracts = availableContracts.filter(
+      (segment) =>
+        segment.segment_start_date <= endDate &&
+        segment.segment_end_date >= startDate &&
+        (!resolvedContext.contract_id ||
+          segment.contract_id === resolvedContext.contract_id)
+    );
 
     const monthRanges = buildMonthRanges(
       startDate,
@@ -417,20 +472,29 @@ export async function GET(
     return NextResponse.json(
       {
         available_years: availableContracts,
-        contract: {
-          id: contract.id,
-          contract_number:
-            contract.contract_number,
-          terminal_identity:
-            contract.terminal_identity,
-          service_area: contract.service_area,
-          status: contract.status,
-          effective_start_date: startDate,
-          effective_end_date: endDate,
-          operating_year: requestedOperatingYear,
-        },
+        contract: selectedContract
+          ? {
+              id: selectedContract.id,
+              contract_number: selectedContract.contract_number,
+              terminal_identity: selectedContract.terminal_identity,
+              service_area: selectedContract.service_area,
+              status: selectedContract.status,
+              effective_start_date:
+                selectedContract.effective_start_date,
+              effective_end_date:
+                selectedContract.effective_end_date,
+            }
+          : null,
         metadata: {
-          requested_year: requestedOperatingYear,
+          requested_year: requestedCalendarYear,
+          calendar_year: requestedCalendarYear,
+          preset: resolvedContext.preset,
+          comparison_mode: resolvedContext.comparison_mode,
+          payload_target: targetParam,
+          contract_id: resolvedContext.contract_id,
+          contributing_contracts: contributingContracts,
+          primary_range: resolvedContext.primary,
+          comparison_range: resolvedContext.comparison,
           start_date: startDate,
           end_date: endDate,
           generated_at: new Date().toISOString(),

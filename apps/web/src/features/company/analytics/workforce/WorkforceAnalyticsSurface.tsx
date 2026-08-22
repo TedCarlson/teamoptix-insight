@@ -239,12 +239,12 @@ export default function WorkforceAnalyticsSurface({ slug }: { slug: string }) {
             <div>
               <p>Analytics · Workforce</p>
               <h1>Workforce Analytics</h1>
-              <span>People supply, schedule capacity, attendance pressure, hiring flow, and retention across the shared contract block.</span>
+              <span>People supply, schedule capacity, attendance pressure, hiring flow, and retention across the selected operating range.</span>
             </div>
             <div className={styles.contractContext}>
-              <span>Shared contract context</span>
-              <strong>Contract year {loadedYear ?? "—"}</strong>
-              <small>{startDate && contractEndDate ? `${formatDate(startDate)} – ${formatDate(contractEndDate)}` : "Loading contract block…"}</small>
+              <span>Shared analytics context</span>
+              <strong>Calendar year {loadedYear ?? "—"}</strong>
+              <small>{startDate && contractEndDate ? `${formatDate(startDate)} – ${formatDate(contractEndDate)}` : "Loading calendar range…"}</small>
               <small>Current through {formatDate(throughDate)}</small>
             </div>
           </header>
@@ -264,8 +264,8 @@ export default function WorkforceAnalyticsSurface({ slug }: { slug: string }) {
                   </small>
                 </article>
                 <article><span>Candidate pipeline</span><strong>{formatNumber(readiness?.onboarding_candidates ?? 0)}</strong><small>Current candidates in Onboarding</small></article>
-                <article><span>Contract hires</span><strong>{formatNumber(summary?.contract_hires ?? 0)}</strong><small>Hire date inside shared contract block</small></article>
-                <article><span>Contract separations</span><strong>{formatNumber(summary?.contract_separations ?? 0)}</strong><small>Separation date inside shared contract block</small></article>
+                <article><span>Range hires</span><strong>{formatNumber(summary?.contract_hires ?? 0)}</strong><small>Hire date inside the selected range</small></article>
+                <article><span>Range separations</span><strong>{formatNumber(summary?.contract_separations ?? 0)}</strong><small>Separation date inside the selected range</small></article>
                 <article className={attendanceSignals ? styles.signalCard : ""}><span>Attendance signals</span><strong>{formatNumber(attendanceSignals)}</strong><small>{formatNumber(summary?.call_outs ?? 0)} call-outs · {formatNumber(summary?.no_shows ?? 0)} no-shows · {formatNumber(summary?.late_arrivals ?? 0)} late</small></article>
               </section>
 

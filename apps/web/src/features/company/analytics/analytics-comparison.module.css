@@ -1,0 +1,230 @@
+.card {
+  overflow: hidden;
+  padding: 0;
+}
+
+.header {
+  align-items: start;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 18px 20px 16px;
+}
+
+.title {
+  font-size: 23px;
+  margin-top: 3px;
+}
+
+.range {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.5;
+  margin: 7px 0 0;
+}
+
+.coverage {
+  align-items: flex-end;
+  display: grid;
+  gap: 5px;
+  justify-items: end;
+  text-align: right;
+}
+
+.coverage strong {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.07em;
+  padding: 6px 9px;
+  text-transform: uppercase;
+}
+
+.coverage span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.coverage[data-coverage="strong"] strong {
+  background: color-mix(in srgb, var(--brand-2) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--brand-2) 24%, var(--line));
+  color: #087653;
+}
+
+.coverage[data-coverage="limited"] strong,
+.coverage[data-coverage="insufficient"] strong {
+  background: #fff8e9;
+  border-color: #edcf8f;
+  color: #946200;
+}
+
+.metrics {
+  border-bottom: 1px solid var(--line);
+  border-top: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.metric {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 14px 16px 15px;
+}
+
+.metric + .metric {
+  border-left: 1px solid var(--line);
+}
+
+.metricLabel {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.metricValue {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.metricValue strong {
+  color: var(--text);
+  font-size: 20px;
+  letter-spacing: -0.035em;
+}
+
+.delta {
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 950;
+  padding: 4px 6px;
+}
+
+.delta[data-tone="neutral"] {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.delta[data-tone="positive"] {
+  background: color-mix(in srgb, var(--brand-2) 10%, var(--surface));
+  color: #087653;
+}
+
+.delta[data-tone="negative"] {
+  background: #fff1ed;
+  color: #c2412d;
+}
+
+.baseline {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.reading {
+  align-items: center;
+  background: color-mix(in srgb, var(--surface-2) 62%, var(--surface));
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(220px, 0.4fr) minmax(0, 1fr);
+  padding: 14px 20px 15px;
+}
+
+.reading strong {
+  color: var(--text);
+  font-size: 15px;
+  letter-spacing: -0.02em;
+}
+
+.reading p {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.state {
+  align-content: center;
+  display: grid;
+  gap: 6px;
+  min-height: 132px;
+  padding: 20px;
+}
+
+.state strong {
+  font-size: 15px;
+}
+
+.state span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.state[data-error="true"] strong {
+  color: #b42318;
+}
+
+@media (max-width: 1080px) {
+  .metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .metric:nth-child(4) {
+    border-left: 0;
+  }
+
+  .metric:nth-child(n + 4) {
+    border-top: 1px solid var(--line);
+  }
+}
+
+@media (max-width: 700px) {
+  .header,
+  .reading {
+    grid-template-columns: 1fr;
+  }
+
+  .coverage {
+    align-items: start;
+    justify-items: start;
+    text-align: left;
+  }
+
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .metric:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+}
+
+:global(html[data-theme="dark"]) .coverage[data-coverage="strong"] strong,
+:global(html[data-theme="dark"]) .delta[data-tone="positive"] {
+  color: #65d7ad;
+}
+
+:global(html[data-theme="dark"]) .coverage[data-coverage="limited"] strong,
+:global(html[data-theme="dark"]) .coverage[data-coverage="insufficient"] strong {
+  background: #332811;
+  border-color: #6c551f;
+  color: #f3cc70;
+}
+
+:global(html[data-theme="dark"]) .delta[data-tone="negative"] {
+  background: #351d22;
+  color: #ffb4ab;
+}

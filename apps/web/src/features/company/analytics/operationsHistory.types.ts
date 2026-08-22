@@ -1,11 +1,44 @@
 export type AvailableOperationsHistoryYear = {
+  calendar_year: number | string;
   operating_year: number | string;
-  finalized_operating_day_count: number | string;
-  through_service_date: string | null;
+  contract_id: string;
+  contract_number: string | null;
+  terminal_identity: string | null;
+  service_area: string | null;
+  effective_start_date: string;
+  effective_end_date: string | null;
+  segment_start_date: string;
+  segment_end_date: string;
+  status: string | null;
 };
 
 export type OperationsHistoryMetadata = {
   requested_year: number;
+  calendar_year: number;
+  preset:
+    | "calendar_year"
+    | "q1"
+    | "q2"
+    | "q3"
+    | "q4"
+    | "last_30_days"
+    | "last_60_days"
+    | "last_90_days";
+  comparison_mode:
+    | "none"
+    | "previous_period"
+    | "prior_year";
+  payload_target: "primary" | "comparison";
+  contract_id: string | null;
+  contributing_contracts: AvailableOperationsHistoryYear[];
+  primary_range: {
+    start_date: string;
+    end_date: string;
+  };
+  comparison_range: {
+    start_date: string;
+    end_date: string;
+  } | null;
   start_date: string;
   end_date: string;
   generated_at: string;
