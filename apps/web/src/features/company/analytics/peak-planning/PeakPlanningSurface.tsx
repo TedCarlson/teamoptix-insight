@@ -226,9 +226,9 @@ export default function PeakPlanningSurface({ slug }: { slug: string }) {
               <span>Translate observed seasonal route pressure into a practical staffing range, then test a session-specific operating plan.</span>
             </div>
             <div className={styles.contractContext}>
-              <span>Shared contract context</span>
-              <strong>Contract year {loadedYear ?? "—"}</strong>
-              <small>{startDate && endDate ? `${formatDate(startDate)} – ${formatDate(endDate)}` : "Loading contract block…"}</small>
+              <span>Shared analytics context</span>
+              <strong>Calendar year {loadedYear ?? "—"}</strong>
+              <small>{startDate && endDate ? `${formatDate(startDate)} – ${formatDate(endDate)}` : "Loading calendar range…"}</small>
               <small>Current through {formatDate(throughDate)}</small>
             </div>
           </header>

@@ -309,16 +309,16 @@ export default function OperationsReportCalendar({
       <header className={styles.header}>
         <div>
           <p className="value-card__eyebrow">The operating record</p>
-          <h2 className={styles.title}>Contract operating calendar</h2>
+          <h2 className={styles.title}>Operating calendar</h2>
           <p className={styles.description}>
-            The complete contract year in one chronological view. Select a day
+            The selected calendar range in one chronological view. Select a day
             for its operating slice or a week number for weekly totals.
           </p>
         </div>
 
         <div className={styles.headerControls}>
           <div className={styles.contractYear}>
-            <span>Contract year</span>
+            <span>Calendar year</span>
             <strong>{contractYear ?? "—"}</strong>
           </div>
         </div>
@@ -368,7 +368,7 @@ export default function OperationsReportCalendar({
                   <button
                     type="button"
                     className={styles.weekNumber}
-                    aria-label={`Open totals for contract week ${row.number}`}
+                    aria-label={`Open totals for range week ${row.number}`}
                     onClick={() =>
                       setActiveWeek({
                         number: row.number,
@@ -438,12 +438,12 @@ export default function OperationsReportCalendar({
           />
           <aside
             className={styles.weekRail}
-            aria-label={`Contract week ${weekSummary.number} totals`}
+            aria-label={`Range week ${weekSummary.number} totals`}
           >
             <header>
               <div>
                 <p className="value-card__eyebrow">Weekly totals</p>
-                <h3>Contract week {String(weekSummary.number).padStart(2, "0")}</h3>
+                <h3>Range week {String(weekSummary.number).padStart(2, "0")}</h3>
                 <span>
                   {formatRange(weekSummary.startDate, weekSummary.endDate)} · Saturday–Friday
                 </span>

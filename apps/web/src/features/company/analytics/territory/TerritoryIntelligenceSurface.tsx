@@ -165,7 +165,7 @@ export default function TerritoryIntelligenceSurface({ slug }: { slug: string })
         <article className={styles.report}>
           <header className={styles.hero}>
             <div><p>Analytics · Territory</p><h1>Territory Intelligence</h1><span>Known service geography derived from normalized manifest ZIP facts and the same demographic, rurality, and centroid references used by Opportunity Analysis.</span></div>
-            <div className={styles.contractContext}><span>Shared contract context</span><strong>Contract year {loadedYear ?? "—"}</strong><small>{startDate && endDate ? `${displayDate(startDate)} – ${displayDate(endDate)}` : "Loading contract block…"}</small><small>Report mode · sale-readiness foundation</small></div>
+            <div className={styles.contractContext}><span>Shared analytics context</span><strong>Calendar year {loadedYear ?? "—"}</strong><small>{startDate && endDate ? `${displayDate(startDate)} – ${displayDate(endDate)}` : "Loading calendar range…"}</small><small>Report mode · sale-readiness foundation</small></div>
           </header>
 
           {contractLoading || loading ? <div className={styles.state}>Building the known territory record…</div> : null}
@@ -182,7 +182,7 @@ export default function TerritoryIntelligenceSurface({ slug }: { slug: string })
                 <article className={styles.signalCard}><span>Rurality factor</span><strong>{model.workloadRurality === null ? "—" : format(model.workloadRurality, 2)}</strong><small>Observed workload weighting</small></article>
               </section>
 
-              <div className={styles.coverageNotice}><strong>Known territory</strong><span>This report grows with normalized manifest history. It currently covers {format(zipNumber(coverage?.manifest_days))} manifest days inside the selected contract block with {zipCoverage === null ? "no" : `${format(zipCoverage * 100, 1)}%`} ZIP attribution.</span></div>
+              <div className={styles.coverageNotice}><strong>Known territory</strong><span>This report grows with normalized manifest history. It currently covers {format(zipNumber(coverage?.manifest_days))} manifest days inside the selected calendar range with {zipCoverage === null ? "no" : `${format(zipCoverage * 100, 1)}%`} ZIP attribution.</span></div>
 
               <section className={styles.mapPanel}>
                 <header className={styles.sectionHead}><div><p>Observed service footprint</p><h2>Interactive ZIP dominance map</h2><span>Pan, zoom, or select a ZIP for detail. Larger ZIP labels indicate greater observed delivery-plus-pickup stop volume.</span></div><div className={styles.mapKey}><span><i className={styles.terminalMark} />Terminal</span><span>Label color follows RUCA context</span></div></header>
