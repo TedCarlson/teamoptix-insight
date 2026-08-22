@@ -16,6 +16,7 @@ export type ScheduleCapacityPerson = {
   roster_member_id: string;
   full_name: string | null;
   worker_type: string | null;
+  employment_status?: string | null;
   planned_on: boolean;
   route_name: string | null;
   override_type?: string | null;
@@ -68,12 +69,25 @@ function routeAliases(route: ScheduleCapacityRoute) {
   );
 }
 
-export function isDriverSeatWorker(workerType: string | null) {
+export function isTraineeWorker(
+  workerType: string | null,
+  employmentStatus?: string | null
+) {
+  const normalizedStatus = String(employmentStatus ?? "").trim().toLowerCase();
+  const normalizedWorkerType = String(workerType ?? "").trim().toLowerCase();
+
+  return normalizedStatus === "trainee" || normalizedWorkerType.includes("trainee");
+}
+
+export function isDriverSeatWorker(
+  workerType: string | null,
+  employmentStatus?: string | null
+) {
   const normalized = String(workerType ?? "").trim().toLowerCase();
 
   return !normalized.includes("helper") &&
     !normalized.includes("jumper") &&
-    !normalized.includes("trainee");
+    !isTraineeWorker(workerType, employmentStatus);
 }
 
 export function resolveBaselineScheduledOffDrivers<
@@ -83,7 +97,7 @@ export function resolveBaselineScheduledOffDrivers<
     (row) =>
       !row.planned_on &&
       !row.override_type &&
-      isDriverSeatWorker(row.worker_type)
+      isDriverSeatWorker(row.worker_type, row.employment_status)
   );
 }
 
@@ -106,7 +120,9 @@ export function resolveDailyScheduleCapacity(params: {
   const demandedRoutes = routes.filter((route) => route[runFlag] === true);
 
   const scheduledDrivers = scheduleRows.filter(
-    (row) => row.planned_on && isDriverSeatWorker(row.worker_type)
+    (row) =>
+      row.planned_on &&
+      isDriverSeatWorker(row.worker_type, row.employment_status)
   );
 
   const assignedDrivers = scheduledDrivers.filter((row) =>
@@ -260,6 +276,7 @@ export function resolveScheduleOverrideImpact(params: {
   worker: {
     full_name: string | null;
     worker_type: string | null;
+    employment_status?: string | null;
   };
 }): TimeOffRequestImpact {
   const {
@@ -288,7 +305,6 @@ export function resolveScheduleOverrideImpact(params: {
       ) ?? null;
 
     let projectedRows = rowsForDate;
-    let affectsSchedule = false;
 
     if (overrideType === "ADD_IN") {
       if (!currentWorkerRow?.planned_on) {
@@ -300,19 +316,16 @@ export function resolveScheduleOverrideImpact(params: {
             roster_member_id: rosterMemberId,
             full_name: worker.full_name,
             worker_type: worker.worker_type,
+            employment_status: worker.employment_status,
             planned_on: true,
             route_name: null,
           },
         ];
-
-        affectsSchedule = true;
       }
     } else if (currentWorkerRow?.planned_on) {
       projectedRows = rowsForDate.filter(
         (row) => row.roster_member_id !== rosterMemberId
       );
-
-      affectsSchedule = true;
     }
 
     const projected = resolveDailyScheduleCapacity({
@@ -328,7 +341,8 @@ export function resolveScheduleOverrideImpact(params: {
       projectedScheduledDrivers: projected.scheduledDrivers,
       currentDelta: current.capacityDelta,
       projectedDelta: projected.capacityDelta,
-      affectsSchedule,
+      affectsSchedule:
+        projected.scheduledDrivers !== current.scheduledDrivers,
       signalLabel: scheduleCapacitySignalLabel(projected.capacityDelta),
     };
   });

@@ -17,6 +17,7 @@ type WorkerRow = {
   roster_member_id: string;
   full_name: string;
   worker_type: string | null;
+  employment_status: string | null;
 };
 
 type ScheduleRowResponse = {
@@ -24,6 +25,7 @@ type ScheduleRowResponse = {
   full_name: string;
   role_label: string | null;
   role_bucket: "DRIVER_HELPER" | "OTHER";
+  employment_status: string | null;
 };
 
 type OverrideRow = {
@@ -251,6 +253,7 @@ export default function ScheduleOverridesPage() {
         roster_member_id: row.roster_member_id,
         full_name: row.full_name,
         worker_type: row.role_label ?? null,
+        employment_status: row.employment_status,
       }))
       .sort((a, b) => a.full_name.localeCompare(b.full_name));
 
@@ -739,6 +742,7 @@ export default function ScheduleOverridesPage() {
       worker: {
         full_name: selectedOverrideWorker.full_name,
         worker_type: selectedOverrideWorker.worker_type,
+        employment_status: selectedOverrideWorker.employment_status,
       },
     });
   }, [

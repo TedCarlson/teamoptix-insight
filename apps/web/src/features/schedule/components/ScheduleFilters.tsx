@@ -1,6 +1,6 @@
 "use client";
 
-export type PeopleFilter = "drivers_helpers" | "others";
+export type PeopleFilter = "drivers_helpers" | "trainees" | "others";
 
 type Props = {
   search: string;
@@ -42,7 +42,7 @@ export default function ScheduleFilters(props: Props) {
         display: "grid",
         gap: 12,
         gridTemplateColumns:
-          "minmax(240px, 1.15fr) minmax(170px, 0.65fr) minmax(170px, 0.65fr) minmax(250px, 0.8fr)",
+          "minmax(240px, 1.15fr) minmax(170px, 0.65fr) minmax(170px, 0.65fr) minmax(330px, 1fr)",
       }}
     >
       <input
@@ -92,13 +92,14 @@ export default function ScheduleFilters(props: Props) {
         role="group"
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
           gap: 6,
           minWidth: 0,
         }}
       >
         {([
           ["drivers_helpers", "Drivers / Helpers"],
+          ["trainees", "Trainees"],
           ["others", "All others"],
         ] as const).map(([value, label]) => (
           <button
