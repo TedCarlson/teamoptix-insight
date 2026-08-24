@@ -9,6 +9,13 @@
 **Device build status:** Local iOS development build installed and tested; no
 EAS cloud builds consumed; Android device parity remains pending
 
+> **Superseded rollout boundary — August 24, 2026:** The original foreground-
+> only MC-1 scope below is retained as implementation history. The approved
+> 1.0 distribution scope now includes Face ID/device authentication and
+> background GPS only inside an intent-confirmed duty session. See
+> `MOBILE_COMPANION_1_0_DUTY_LOCATION_AND_DEVICE_AUTH.md` for the controlling
+> launch contract.
+
 The MC-0, MC-1, and driver-preflight migrations are committed to GitHub `main`,
 applied to the linked Supabase project, and ledger-aligned through
 `20260809162000`. GitHub CI, the Supabase alignment guard, and Vercel passed on

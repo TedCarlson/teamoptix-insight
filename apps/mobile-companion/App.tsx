@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   AppState,
+  type AppStateStatus,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -134,9 +135,15 @@ import {
 import { colors } from "./src/theme";
 import {
   captureForegroundPoint,
-  FOREGROUND_BREADCRUMB_INTERVAL_MS,
-  requirePreciseForegroundLocation,
 } from "./src/tracking/location";
+import {
+  DutyLocationAuthorizationError,
+  requireDutyLocationAuthorization,
+  resumeDutyLocationTracking,
+  startDutyLocationTracking,
+  stopDutyLocationTracking,
+} from "./src/tracking/backgroundLocation";
+import { authenticateDeviceAccess } from "./src/security/deviceAuthentication";
 
 const EMPTY_MOBILE_COUNTS: MobileOutboxCounts = {
   queued: 0,
@@ -292,6 +299,7 @@ function AuthenticatedApp(props: { session: Session }) {
   const [notificationError, setNotificationError] = useState<string | null>(null);
   const [notificationState, setNotificationState] = useState<PushRegistrationState>("CHECKING");
   const [dutyIntent, setDutyIntent] = useState<"START" | "STOP" | null>(null);
+  const [locationSettingsRequired, setLocationSettingsRequired] = useState(false);
   const [busy, setBusy] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [status, setStatus] = useState<string | null>("Preparing your secure Mobile Companion workspace…");
@@ -299,7 +307,6 @@ function AuthenticatedApp(props: { session: Session }) {
   const [scheduleNotice, setScheduleNotice] = useState<string | null>(null);
   const [lastSynchronizedAt, setLastSynchronizedAt] = useState<Date | null>(null);
   const syncingRef = useRef(false);
-  const capturingBreadcrumbRef = useRef(false);
 
   const selectedContext = useMemo(
     () => contexts.find((item) => item.context_key === selectedContextKey) ?? null,
@@ -562,54 +569,25 @@ function AuthenticatedApp(props: { session: Session }) {
   }, [outbox, synchronize, syncMembership]);
 
   useEffect(() => {
-    if (!outbox || !dutySession || !dutyMembership) return;
-    let active = true;
-
-    const capture = async () => {
-      if (
-        !active
-        || AppState.currentState !== "active"
-        || capturingBreadcrumbRef.current
-      ) return;
-      try {
-        capturingBreadcrumbRef.current = true;
-        const point = await captureForegroundPoint(
-          dutySession.sessionId,
-          dutyMembership.context_key,
-        );
-        if (!active) return;
-        await outbox.enqueuePoint(point);
-        await refreshLocal(outbox, dutyMembership.context_key);
-        void synchronize();
-      } catch (caught) {
-        if (active) {
-          setStatus(`Foreground location evidence paused: ${errorMessage(caught)}`);
-        }
-      } finally {
-        capturingBreadcrumbRef.current = false;
-      }
-    };
-
-    const interval = setInterval(
-      () => void capture(),
-      FOREGROUND_BREADCRUMB_INTERVAL_MS,
-    );
-    const listener = AppState.addEventListener("change", (nextState) => {
-      if (nextState === "active") void capture();
+    if (!dutySession || !dutyMembership) return;
+    void resumeDutyLocationTracking({
+      userId: props.session.user.id,
+      membership: dutyMembership,
+      session: dutySession,
+    }).catch((caught) => {
+      setLocationSettingsRequired(caught instanceof DutyLocationAuthorizationError
+        && caught.settingsRequired);
+      setStatus(`Duty tracking needs attention: ${errorMessage(caught)}`);
     });
-    return () => {
-      active = false;
-      clearInterval(interval);
-      listener.remove();
-    };
-  }, [dutyMembership, dutySession, outbox, refreshLocal, synchronize]);
+  }, [dutyMembership, dutySession, props.session.user.id]);
 
   async function startDuty() {
     if (!outbox || !membership || busy) return;
     try {
       setBusy(true);
       setStatus(null);
-      await requirePreciseForegroundLocation();
+      setLocationSettingsRequired(false);
+      await requireDutyLocationAuthorization();
       const started = await outbox.startSession(
         membership.context_key,
         membership.company_slug,
@@ -617,17 +595,25 @@ function AuthenticatedApp(props: { session: Session }) {
       try {
         const point = await captureForegroundPoint(started.sessionId, membership.context_key);
         await outbox.enqueuePoint(point);
+        await startDutyLocationTracking({
+          userId: props.session.user.id,
+          membership,
+          session: started,
+        });
       } catch (caught) {
+        await stopDutyLocationTracking().catch(() => undefined);
         await outbox.stopSession(membership.context_key, started.sessionId);
         throw caught;
       }
       setDutySession(started);
       setStatus(membership.access_mode === "ADMIN_DEMO"
         ? "Demo duty started. Location evidence is isolated from operational driver records."
-        : "Duty started. Foreground location evidence was saved on this device.");
+        : "Duty started. Work location tracking is active until you stop duty.");
       await refreshLocal(outbox, membership.context_key);
       void synchronize();
     } catch (caught) {
+      setLocationSettingsRequired(caught instanceof DutyLocationAuthorizationError
+        && caught.settingsRequired);
       setStatus(errorMessage(caught));
     } finally {
       setBusy(false);
@@ -649,12 +635,13 @@ function AuthenticatedApp(props: { session: Session }) {
       } catch {
         // Stop Duty is never blocked by a missing final foreground point.
       }
+      await stopDutyLocationTracking().catch(() => undefined);
       await outbox.sealNextBatch(membership.context_key, stoppingSession.sessionId);
       await outbox.stopSession(membership.context_key, stoppingSession.sessionId);
       await refreshLocal(outbox, membership.context_key);
       setStatus(membership.access_mode === "ADMIN_DEMO"
         ? "Demo duty stopped. Test evidence remains isolated from operational records."
-        : "Duty stopped. Any unsent evidence is saved securely on this device.");
+        : "Duty stopped. Location tracking is off and any unsent evidence is saved securely on this device.");
       void synchronize();
     } catch (caught) {
       setStatus(`Duty was closed locally. ${errorMessage(caught)}`);
@@ -1043,6 +1030,11 @@ function AuthenticatedApp(props: { session: Session }) {
 
   async function signOut() {
     setSettingsOpen(false);
+    if (dutySession) {
+      setStatus("Stop duty before signing out so work location tracking closes cleanly.");
+      return;
+    }
+    await stopDutyLocationTracking().catch(() => undefined);
     await deactivatePushDevice().catch(() => undefined);
     await getSupabaseClient().auth.signOut();
   }
@@ -1268,6 +1260,8 @@ function AuthenticatedApp(props: { session: Session }) {
             onOpenMessages={() => changeTab("messages")}
             onOpenSchedule={() => changeTab("schedule")}
             onSettings={() => setSettingsOpen(true)}
+            locationSettingsRequired={locationSettingsRequired}
+            onOpenDeviceSettings={() => void Linking.openSettings()}
             onStartDuty={() => setDutyIntent("START")}
             onStopDuty={() => setDutyIntent("STOP")}
             schedule={schedule}
@@ -1345,6 +1339,9 @@ function AuthenticatedApp(props: { session: Session }) {
         <IntentVerificationModal
           actionLabel={dutyIntent === "START" ? "start duty" : "stop duty"}
           busy={busy}
+          detail={dutyIntent === "START"
+            ? "Starting duty turns on precise work-location tracking, including while Insight is in the background. Tracking ends when you stop duty; Insight does not collect your location while you are off duty."
+            : "Stopping duty turns work-location tracking off. Any unsent duty evidence remains encrypted on this device until it can synchronize."}
           onCancel={() => setDutyIntent(null)}
           onConfirm={() => {
             const action = dutyIntent;
@@ -1390,12 +1387,60 @@ export default function App() {
         ) : session === undefined ? (
           <View style={styles.loadingPage}><ActivityIndicator color={colors.primary} /></View>
         ) : session ? (
-          <AuthenticatedApp session={session} />
+          <DeviceAccessGate session={session} />
         ) : (
           <SignInScreen />
         )}
       </SafeAreaView>
     </SafeAreaProvider>
+  );
+}
+
+function DeviceAccessGate(props: { session: Session }) {
+  const [unlocked, setUnlocked] = useState(false);
+  const [authenticating, setAuthenticating] = useState(false);
+  const [message, setMessage] = useState("Use Face ID or device authentication to unlock Insight.");
+  const authenticatingRef = useRef(false);
+
+  const unlock = useCallback(async () => {
+    if (authenticatingRef.current || AppState.currentState !== "active") return;
+    authenticatingRef.current = true;
+    setAuthenticating(true);
+    const result = await authenticateDeviceAccess().catch((caught) => ({
+      authenticated: false as const,
+      message: errorMessage(caught),
+    }));
+    if (result.authenticated) {
+      setUnlocked(true);
+      setMessage("Use Face ID or device authentication to unlock Insight.");
+    } else {
+      setMessage(result.message);
+    }
+    setAuthenticating(false);
+    authenticatingRef.current = false;
+  }, []);
+
+  useEffect(() => {
+    void unlock();
+    const listener = AppState.addEventListener("change", (state: AppStateStatus) => {
+      if (state === "active") void unlock();
+      else setUnlocked(false);
+    });
+    return () => listener.remove();
+  }, [unlock]);
+
+  if (unlocked) return <AuthenticatedApp session={props.session} />;
+  return (
+    <View style={styles.loadingPage}>
+      <Text style={styles.brand}>INSIGHT</Text>
+      <Text style={styles.signInTitle}>Workspace locked</Text>
+      <Text style={styles.loadingText}>{message}</Text>
+      <PrimaryButton
+        disabled={authenticating}
+        label={authenticating ? "Authenticating…" : "Unlock Insight"}
+        onPress={() => void unlock()}
+      />
+    </View>
   );
 }
 
@@ -1409,7 +1454,7 @@ const styles = StyleSheet.create({
   loadingPage: { flex: 1, alignItems: "center", justifyContent: "center", gap: 14, padding: 24 },
   loadingText: { color: colors.muted, fontSize: 14, lineHeight: 20, textAlign: "center" },
   configurationPage: { flex: 1, justifyContent: "center", padding: 24, gap: 14 },
-  signInPage: { flexGrow: 1, justifyContent: "center", padding: 24, gap: 12, backgroundColor: colors.white },
+  signInPage: { flexGrow: 1, width: "100%", maxWidth: 560, alignSelf: "center", justifyContent: "center", padding: 24, gap: 12, backgroundColor: colors.white },
   brand: { color: colors.primary, fontSize: 18, fontWeight: "900", letterSpacing: 3 },
   signInTitle: { color: colors.ink, fontSize: 36, fontWeight: "800", lineHeight: 43 },
   signInLead: { color: colors.muted, fontSize: 20, lineHeight: 28, marginBottom: 20 },

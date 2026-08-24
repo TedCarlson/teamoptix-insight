@@ -4,6 +4,12 @@
 
 **Status:** Design only — no Driver Home implementation or activation authorized
 
+> **Superseded rollout boundary — August 24, 2026:** Driver Home has been
+> implemented and the approved 1.0 scope now permits background GPS only while
+> an explicit duty session is active. The original foreground-only design notes
+> remain below as historical context. The controlling launch contract is
+> `MOBILE_COMPANION_1_0_DUTY_LOCATION_AND_DEVICE_AUTH.md`.
+
 ## Outcome
 
 Replace the development-oriented `Duty & outbox` presentation with a calm,

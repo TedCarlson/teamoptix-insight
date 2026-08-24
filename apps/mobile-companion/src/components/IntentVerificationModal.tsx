@@ -7,6 +7,7 @@ import { sharedStyles } from "./ui";
 
 type IntentVerificationModalProps = {
   actionLabel: string;
+  detail?: string;
   busy?: boolean;
   visible: boolean;
   onCancel: () => void;
@@ -37,6 +38,7 @@ export function IntentVerificationModal(props: IntentVerificationModalProps) {
         <View accessibilityViewIsModal style={styles.sheet}>
           <Text style={sharedStyles.eyebrow}>CONFIRM {props.actionLabel.toUpperCase()}</Text>
           <Text style={sharedStyles.h1}>Select {intent.correct}</Text>
+          {props.detail ? <Text style={sharedStyles.bodyStrong}>{props.detail}</Text> : null}
           <Text style={sharedStyles.muted}>Select the matching number to continue.</Text>
           <View style={styles.choices}>
             {intent.choices.map((choice) => (
@@ -74,9 +76,14 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   sheet: {
+    width: "100%",
+    maxWidth: 640,
+    alignSelf: "center",
     backgroundColor: colors.white,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
     padding: 24,
     paddingBottom: 40,
     gap: 12,

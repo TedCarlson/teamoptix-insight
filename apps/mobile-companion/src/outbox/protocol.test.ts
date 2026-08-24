@@ -124,17 +124,43 @@ describe("MC-1 Edge Outbox protocol", () => {
     );
   });
 
-  it("keeps background location disabled on iOS and Android", () => {
+  it("enables background location with an explicit duty-only purpose", () => {
     const locationPlugin = appConfig.expo.plugins.find(
       (plugin) => Array.isArray(plugin) && plugin[0] === "expo-location",
     );
     expect(locationPlugin).toEqual([
       "expo-location",
       expect.objectContaining({
-        isIosBackgroundLocationEnabled: false,
-        isAndroidBackgroundLocationEnabled: false,
-        isAndroidForegroundServiceEnabled: false,
+        isIosBackgroundLocationEnabled: true,
+        isAndroidBackgroundLocationEnabled: true,
+        isAndroidForegroundServiceEnabled: true,
+        locationAlwaysPermission: false,
+        locationAlwaysAndWhenInUsePermission: expect.stringContaining("while you are clocked in"),
+        motionUsagePermission: false,
       }),
     ]);
+  });
+
+  it("declares Face ID without declaring motion access", () => {
+    const faceIdPlugin = appConfig.expo.plugins.find(
+      (plugin) => Array.isArray(plugin) && plugin[0] === "expo-local-authentication",
+    );
+    expect(faceIdPlugin).toEqual([
+      "expo-local-authentication",
+      expect.objectContaining({
+        faceIDPermission: expect.stringContaining("protect access"),
+      }),
+    ]);
+    expect(JSON.stringify(appConfig)).not.toContain("NSMotionUsageDescription");
+  });
+
+  it("enables a bounded iPad layout with all iPad orientations", () => {
+    expect(appConfig.expo.ios.supportsTablet).toBe(true);
+    expect(appConfig.expo.ios.infoPlist["UISupportedInterfaceOrientations~ipad"])
+      .toEqual(expect.arrayContaining([
+        "UIInterfaceOrientationPortrait",
+        "UIInterfaceOrientationLandscapeLeft",
+        "UIInterfaceOrientationLandscapeRight",
+      ]));
   });
 });

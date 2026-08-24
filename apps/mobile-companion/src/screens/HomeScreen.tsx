@@ -12,7 +12,9 @@ type HomeScreenProps = {
   busy: boolean;
   unreadMessages: number;
   status: string | null;
+  locationSettingsRequired: boolean;
   onSettings: () => void;
+  onOpenDeviceSettings: () => void;
   onStartDuty: () => void;
   onStopDuty: () => void;
   onOpenSchedule: () => void;
@@ -77,6 +79,14 @@ export function HomeScreen(props: HomeScreenProps) {
       {props.status ? (
         <Card tone={props.status.toLowerCase().includes("requires") ? "danger" : "primary"}>
           <Text style={sharedStyles.muted}>{props.status}</Text>
+          {props.locationSettingsRequired ? (
+            <PrimaryButton
+              compact
+              label="Open device settings"
+              onPress={props.onOpenDeviceSettings}
+              secondary
+            />
+          ) : null}
         </Card>
       ) : null}
 
