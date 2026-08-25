@@ -1,59 +1,7 @@
--- Retain identifiable manifest and FCC route-summary history for no more than
--- seven calendar days measured from the represented service date.
-
-create table if not exists core.operations_route_last_delivery_fact (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references core.companies(id) on delete cascade,
-  service_date date not null,
-  route_key text not null,
-  route_label text,
-  last_delivery_time_local text,
-  last_delivery_postal_code text,
-  deliveries_complete boolean not null default false,
-  transformed_at timestamptz not null default now(),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-
-  constraint operations_route_last_delivery_fact_identity_uidx
-    unique (company_id, service_date, route_key),
-  constraint operations_route_last_delivery_fact_postal_code_chk
-    check (
-      last_delivery_postal_code is null
-      or last_delivery_postal_code ~ '^[0-9]{5}$'
-    )
-);
-
-alter table core.operations_route_last_delivery_fact enable row level security;
-
-create policy operations_route_last_delivery_fact_select_access
-on core.operations_route_last_delivery_fact
-for select
-to authenticated
-using (core.is_platform_owner() or core.can_access_company(company_id));
-
-create index if not exists operations_route_last_delivery_fact_lookup_idx
-  on core.operations_route_last_delivery_fact
-  (company_id, service_date desc, route_key);
-
-create or replace view public.operations_route_last_delivery_fact_v
-with (security_invoker = true)
-as
-select
-  fact.id,
-  fact.company_id,
-  company.company_slug,
-  fact.service_date,
-  fact.route_key,
-  fact.route_label,
-  fact.last_delivery_time_local,
-  fact.last_delivery_postal_code,
-  fact.deliveries_complete,
-  fact.transformed_at
-from core.operations_route_last_delivery_fact fact
-join core.companies company on company.id = fact.company_id;
-
-grant select on core.operations_route_last_delivery_fact to authenticated;
-grant select on public.operations_route_last_delivery_fact_v to authenticated, service_role;
+-- A service date remains available through the entire seventh following
+-- Eastern calendar day. It becomes eligible for transformation and purge at
+-- the start of day eight. For example, 2026-08-18 remains available throughout
+-- 2026-08-25 and expires at 2026-08-26 00:00 America/New_York.
 
 create or replace function public.materialize_operations_route_last_delivery_facts(
   p_limit integer default 50000
@@ -76,7 +24,7 @@ begin
       and batch.service_date is not null
       and (
         batch.service_date::timestamp at time zone 'America/New_York'
-      ) + interval '7 days' <= now()
+      ) + interval '8 days' <= now()
     order by
       batch.company_id,
       batch.service_date,
@@ -184,7 +132,7 @@ as $$
     from core.operations_manifest_artifact artifact
     where (
       artifact.service_date::timestamp at time zone 'America/New_York'
-    ) + interval '7 days' <= now()
+    ) + interval '8 days' <= now()
 
     union all
 
@@ -199,7 +147,7 @@ as $$
     where artifact.service_date is not null
       and (
         artifact.service_date::timestamp at time zone 'America/New_York'
-      ) + interval '7 days' <= now()
+      ) + interval '8 days' <= now()
       and (
         upper(coalesce(artifact.report_family_key, '')) = 'FCC'
         or upper(coalesce(artifact.runner_artifact_json ->> 'artifact_key', ''))
@@ -234,7 +182,7 @@ begin
   where artifact.id = any(coalesce(p_manifest_artifact_ids, '{}'::uuid[]))
     and (
       artifact.service_date::timestamp at time zone 'America/New_York'
-    ) + interval '7 days' <= now();
+    ) + interval '8 days' <= now();
   get diagnostics v_manifest_deleted = row_count;
 
   delete from core.operations_collection_artifact artifact
@@ -242,7 +190,7 @@ begin
     and artifact.service_date is not null
     and (
       artifact.service_date::timestamp at time zone 'America/New_York'
-    ) + interval '7 days' <= now()
+    ) + interval '8 days' <= now()
     and (
       upper(coalesce(artifact.report_family_key, '')) = 'FCC'
       or upper(coalesce(artifact.runner_artifact_json ->> 'artifact_key', ''))
@@ -253,7 +201,7 @@ begin
   delete from core.operations_manifest_capture_plan plan
   where (
       plan.service_date::timestamp at time zone 'America/New_York'
-    ) + interval '7 days' <= now()
+    ) + interval '8 days' <= now()
     and not exists (
       select 1
       from core.operations_manifest_artifact artifact
@@ -292,7 +240,7 @@ begin
       and batch.service_date is not null
       and (
         batch.service_date::timestamp at time zone 'America/New_York'
-      ) + interval '7 days' <= now()
+      ) + interval '8 days' <= now()
     order by batch.service_date, batch.created_at, batch.id
     limit greatest(1, least(coalesce(p_limit, 5000), 50000))
     for update skip locked
@@ -329,10 +277,11 @@ grant execute on function public.materialize_operations_route_last_delivery_fact
   to service_role;
 
 comment on function public.list_operations_manifest_history_artifacts_for_purge(integer)
-  is 'Lists expired FCC and manifest source files that must be deleted after the seven-day operational window.';
+  is 'Lists FCC and manifest source files after the full seventh following service day has ended.';
 comment on function public.complete_operations_manifest_history_artifact_purge(uuid[], uuid[])
-  is 'Deletes expired manifest warehouse records only after their source files have been removed.';
+  is 'Deletes eligible manifest warehouse records only after their source files have been removed.';
 comment on function public.purge_operations_fcc_delivery_history(integer)
-  is 'Preserves date, route, delivery time, and five-digit ZIP before deleting expired FCC raw rows.';
+  is 'Preserves date, route, delivery time, and five-digit ZIP before deleting FCC raw rows older than the inclusive seven-day reach.';
 comment on function public.materialize_operations_route_last_delivery_facts(integer)
-  is 'Transforms expired FCC route summaries into de-identified date, route, time, and ZIP facts.';
+  is 'Transforms FCC route summaries into de-identified date, route, time, and ZIP facts after the inclusive seven-day reach.';
+;
