@@ -50,6 +50,13 @@ export function expectedManifestType(
   return null;
 }
 
+export function selectedWorkAreaRouteKey(value: unknown) {
+  const match = String(value ?? "")
+    .trim()
+    .match(/^(?:WA\s*#?\s*)?0*(\d+)(?:\s|$)/i);
+  return match?.[1] ?? null;
+}
+
 export function manifestPreparationPayload(params: {
   artifact: any;
   identity: IngestionManifestIdentity;
@@ -70,6 +77,14 @@ export function manifestPreparationPayload(params: {
   if (artifact.service_date && artifact.service_date !== identity.service_date) {
     throw new Error(
       `Manifest identity mismatch: artifact date ${artifact.service_date}, Header date ${identity.service_date}.`
+    );
+  }
+  const selectedWorkArea =
+    artifact.runner_artifact_json?.collection_context?.selected_work_area;
+  const selectedRouteKey = selectedWorkAreaRouteKey(selectedWorkArea);
+  if (selectedRouteKey && selectedRouteKey !== identity.route_key) {
+    throw new Error(
+      `Manifest selection mismatch: collector selected route ${selectedRouteKey}, Header identifies route ${identity.route_key}.`
     );
   }
 

@@ -19,6 +19,10 @@ from datetime import datetime, timezone
 from webdriver_manager.chrome import ChromeDriverManager
 
 from runtime_events import emit_runtime_event
+from manifest_identity import (
+    quarantineRejectedManifest,
+    renameDownloadedManifest,
+)
 from dsw_package_status import (
     collect_dsw_daily_service,
     collect_dsw_package_status,
@@ -156,7 +160,12 @@ def checkDownloads(index):
     # thread.start()
 
 
-def recordObservedDownload(artifact_key, lane_key, requested_at):
+def recordObservedDownload(
+    artifact_key,
+    lane_key,
+    requested_at,
+    route_identity=None,
+):
     candidates = [
         os.path.join(DOWNLOAD_FOLDER, filename)
         for filename in os.listdir(DOWNLOAD_FOLDER)
@@ -166,11 +175,60 @@ def recordObservedDownload(artifact_key, lane_key, requested_at):
         and os.path.splitext(filename)[1].lower() in {".xls", ".xlsx"}
     ]
     if not candidates:
-        return
+        return None
     downloaded_path = max(candidates, key=os.path.getmtime)
+    expected_type = {
+        "COMBINED_MANIFEST": "combined",
+        "DELIVERY_MANIFEST": "delivery",
+        "PICKUP_MANIFEST": "pickup",
+    }.get(artifact_key)
+    manifest_identity = {}
+    if route_identity:
+        try:
+            downloaded_path, manifest_identity = renameDownloadedManifest(
+                downloaded_path,
+                expected_type=expected_type,
+                selected_route_identity=route_identity,
+                selected_service_date=current_date.strftime("%Y-%m-%d"),
+            )
+        except Exception as identity_error:
+            rejected_path = quarantineRejectedManifest(
+                downloaded_path,
+                identity_error,
+            )
+            raise RuntimeError(
+                f"Manifest Header identification failed; preserved "
+                f"{os.path.basename(rejected_path or downloaded_path)}: "
+                f"{identity_error}"
+            ) from identity_error
+        sidecar_path = downloaded_path + ".runner.json"
+        temporary_path = sidecar_path + f".{os.getpid()}.tmp"
+        with open(temporary_path, "w", encoding="utf-8") as sidecar:
+            json.dump(
+                {
+                    **manifest_identity,
+                    "artifact_key": artifact_key,
+                    "report_family_key": "FCC",
+                    "source_download_filename": manifest_identity.get(
+                        "source_download_filename"
+                    ),
+                    "collection_context": {
+                        "selected_work_area": route_identity,
+                        "selected_service_date": current_date.strftime(
+                            "%Y-%m-%d"
+                        ),
+                        "source_lane": lane_key,
+                    },
+                    "payload_authority": "INGESTION_PIPELINE",
+                },
+                sidecar,
+                sort_keys=True,
+            )
+        os.replace(temporary_path, sidecar_path)
     event_common = {
         "artifact_key": artifact_key,
         "lane_key": lane_key,
+        "route_identity": manifest_identity.get("work_area") or route_identity,
         "filename": os.path.basename(downloaded_path),
     }
     emit_runtime_event(
@@ -189,6 +247,7 @@ def recordObservedDownload(artifact_key, lane_key, requested_at):
         ).isoformat().replace("+00:00", "Z"),
         **event_common,
     )
+    return downloaded_path
 
 def getDriver():
     global PERSIST_DSW_WINDOW_HANDLE, PERSIST_ORIGINAL_WINDOW_HANDLES
@@ -502,6 +561,47 @@ REQUESTED_MANIFEST_TYPES = requested_manifest_types()
 def should_download_manifest(manifest_type):
     return manifest_type in REQUESTED_MANIFEST_TYPES
 
+def normalize_manifest_work_area(value):
+    text = str(value or "").strip().upper()
+    match = re.search(r"(?<!\d)(\d{1,4})(?!\d)", text)
+    if match:
+        return str(int(match.group(1)))
+    return re.sub(r"[^A-Z0-9]+", "", text)
+
+def requested_manifest_work_areas():
+    return {
+        normalize_manifest_work_area(value)
+        for value in os.environ.get(
+            "FCMS_MANIFEST_WORK_AREAS",
+            "",
+        ).split(",")
+        if normalize_manifest_work_area(value)
+    }
+
+REQUESTED_MANIFEST_WORK_AREAS = requested_manifest_work_areas()
+
+def should_collect_manifest_work_area(value):
+    return (
+        not REQUESTED_MANIFEST_WORK_AREAS
+        or normalize_manifest_work_area(value)
+        in REQUESTED_MANIFEST_WORK_AREAS
+    )
+
+def requested_sections():
+    return [
+        section.strip()
+        for section in os.environ.get(
+            "FCMS_TARGET_SECTIONS",
+            "",
+        ).split(",")
+        if section.strip()
+    ]
+
+REQUESTED_SECTIONS = requested_sections()
+
+def should_run_section(section_name):
+    return not REQUESTED_SECTIONS or section_name in REQUESTED_SECTIONS
+
 def scrollTo(el, driver):
     desired_y = (el.size['height'] / 2) + el.location['y']
     current_y = (driver.execute_script('return window.innerHeight') / 2) + driver.execute_script(
@@ -576,7 +676,7 @@ def main(section_='', option_=0, retry=1):
             WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.XPATH, "//li[@id='mainTabSettab_1']")))
             time.sleep(5)
 
-        if secion_index <= 0:
+        if secion_index <= 0 and should_run_section('P&D'):
             # P&D Mainifests
             ACTIVE_SECTION = 'P&D'
             logging.info("Accessing P&D")
@@ -599,6 +699,7 @@ def main(section_='', option_=0, retry=1):
             select_element = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//select[@id='manifestForm:workAreas']")))
 
             total_select_options = len(select_element.find_elements(By.XPATH, 'option'))
+            collected_work_areas = set()
 
             for i in range(option_, total_select_options):
                 # if i == 0: continue
@@ -609,7 +710,22 @@ def main(section_='', option_=0, retry=1):
                 select = Select(select_element)
                 # logging.info([op.text for op in select.options])
                 if i == 0 and select.options[0].text == 'ALL': continue
+                work_area_hint = (
+                    select.options[i].text
+                    or select.options[i].get_attribute("value")
+                    or f"option-{i}"
+                ).strip()
+                if not should_collect_manifest_work_area(work_area_hint):
+                    continue
                 select.select_by_index(i)
+                selected_work_area = (
+                    select.first_selected_option.text
+                    or select.first_selected_option.get_attribute("value")
+                    or work_area_hint
+                ).strip()
+                collected_work_areas.add(
+                    normalize_manifest_work_area(selected_work_area)
+                )
                 time.sleep(1)
 
                 logging.info("Waiting for the search button to be visible...")
@@ -637,9 +753,16 @@ def main(section_='', option_=0, retry=1):
                     time.sleep(1)
                     logging.info("Waiting for loading...")
                     if driver.find_elements(By.XPATH, "//input[@id='manifestForm:buttonCombinedGenerateExcel']"):
+                        requested_at = time.time()
                         driver.find_element(By.XPATH, "//input[@id='manifestForm:buttonCombinedGenerateExcel']").click()
                         checkDownloads(3)
                         time.sleep(3)
+                        recordObservedDownload(
+                            "COMBINED_MANIFEST",
+                            "FCC_COMBINED_MANIFESTS",
+                            requested_at,
+                            selected_work_area,
+                        )
                 else:
                     logging.info("Skipping Combined Manifest by request payload")
 
@@ -658,9 +781,16 @@ def main(section_='', option_=0, retry=1):
                     logging.info("Waiting for loading...")
 
                     if driver.find_elements(By.XPATH, "//input[@id='manifestForm:buttonDeliveryGenerateExcel']"):
+                        requested_at = time.time()
                         driver.find_element(By.XPATH, "//input[@id='manifestForm:buttonDeliveryGenerateExcel']").click()
                         checkDownloads(2)
                         time.sleep(3)
+                        recordObservedDownload(
+                            "DELIVERY_MANIFEST",
+                            "FCC_DELIVERY_MANIFESTS",
+                            requested_at,
+                            selected_work_area,
+                        )
                 else:
                     logging.info("Skipping Delivery Manifest by request payload")
 
@@ -679,13 +809,33 @@ def main(section_='', option_=0, retry=1):
                     logging.info("Waiting for loading...")
 
                     if driver.find_elements(By.XPATH, "//input[@id='manifestForm:buttonGenerateExcel']"):
+                        requested_at = time.time()
                         driver.find_element(By.XPATH, "//input[@id='manifestForm:buttonGenerateExcel']").click()
                         checkDownloads(1)
                         time.sleep(3)
+                        recordObservedDownload(
+                            "PICKUP_MANIFEST",
+                            "FCC_PICKUP_MANIFESTS",
+                            requested_at,
+                            selected_work_area,
+                        )
                 else:
                     logging.info("Skipping Pickup Manifest by request payload")
+            if (
+                REQUESTED_MANIFEST_WORK_AREAS
+                and not REQUESTED_MANIFEST_WORK_AREAS.issubset(
+                    collected_work_areas
+                )
+            ):
+                missing = sorted(
+                    REQUESTED_MANIFEST_WORK_AREAS - collected_work_areas
+                )
+                raise RuntimeError(
+                    "Requested manifest work areas were not available: "
+                    + ", ".join(missing)
+                )
             ACTIVE_SECTION_OPTION = 0
-        if secion_index <= 1:
+        if secion_index <= 1 and should_run_section('Service'):
             ACTIVE_SECTION = 'Service'
             logging.info("Accessing Service")
             service = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//li[@id='mainTabSettab_2']")))
@@ -751,7 +901,7 @@ def main(section_='', option_=0, retry=1):
                 time.sleep(3)
 
             ACTIVE_SECTION_OPTION = 0
-        if secion_index <= 4:
+        if secion_index <= 4 and should_run_section('Daily Service'):
             ACTIVE_SECTION = 'Daily Service'
             logging.info("Pickup Daily Service")
             if PERSIST_DSW_WINDOW_HANDLE:
@@ -958,7 +1108,14 @@ def scrapeAll(CONNECTION, CURSOR, S_INFO):
     main(S_INFO['continue_on_selection'], S_INFO['continue_on_selection_option'])
 
 if __name__ == "__main__":
-    outcome = main("Daily Service" if INSIGHT_HISTORICAL_MODE else "")
+    historical_start_section = (
+        REQUESTED_SECTIONS[0]
+        if REQUESTED_SECTIONS
+        else "Daily Service"
+    )
+    outcome = main(
+        historical_start_section if INSIGHT_HISTORICAL_MODE else ""
+    )
     if outcome is False:
         sys.exit(1)
     # main('SCH')

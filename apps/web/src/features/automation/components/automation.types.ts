@@ -97,6 +97,18 @@ export type RunnerSchedule = {
       manual_state?: "ACTIVE" | "INACTIVE";
     };
     operations_pulse?: string[];
+    route_closeout?: {
+      enabled?: boolean;
+      start_time?: string;
+      end_time?: string;
+      final_sweep_start_time?: string;
+      fcc_interval_minutes?: number;
+      dsw_interval_minutes?: number;
+      route_batch_size?: number;
+      previous_day_recovery_enabled?: boolean;
+      previous_day_recovery_max_batches?: number;
+      reports?: string[];
+    };
     operating_weekdays?: number[];
     operating_date_overrides?: Record<string, "OPERATING" | "CLOSED">;
   };

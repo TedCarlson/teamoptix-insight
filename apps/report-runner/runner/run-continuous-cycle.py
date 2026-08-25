@@ -152,10 +152,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--request-type",
         required=True,
-        choices=["DRO_AM", "PREVIOUS_DAY_CLOSE", "OPERATIONS_PULSE"],
+        choices=[
+            "DRO_AM",
+            "PREVIOUS_DAY_CLOSE",
+            "OPERATIONS_PULSE",
+            "ROUTE_CLOSEOUT",
+        ],
     )
     parser.add_argument("--service-date")
     parser.add_argument("--reports-json", required=True)
+    parser.add_argument("--manifest-routes-json", default="[]")
     parser.add_argument("--company-id", required=True)
     parser.add_argument("--company-slug", required=True)
     parser.add_argument("--runner-key", required=True)
@@ -165,32 +171,54 @@ def parse_args() -> argparse.Namespace:
 
 
 def request_payload(args: argparse.Namespace, reports: list[str]) -> dict[str, Any]:
+    manifest_routes_value = json.loads(args.manifest_routes_json)
+    manifest_routes = (
+        [str(value).strip() for value in manifest_routes_value if str(value).strip()]
+        if isinstance(manifest_routes_value, list)
+        else []
+    )
     targets: list[dict[str, Any]] = []
     for report in reports:
         if report not in REPORT_TARGETS:
             continue
         targets.append(REPORT_TARGETS[report])
-        if report == "DSW":
+        if report == "DSW" and args.request_type != "ROUTE_CLOSEOUT":
             # All Codes is an independent DSW export and the sole source of
             # package code evidence. The runner only looks for its Contract
             # Total footer link; it does not interpret the displayed count.
             targets.append(DSW_ALL_CODES_TARGET)
     previous_day = args.request_type == "PREVIOUS_DAY_CLOSE"
+    route_closeout = args.request_type == "ROUTE_CLOSEOUT"
     return {
         "payload_contract_version": "operations_collection_v1",
         "source": "continuous_runner",
         "request_origin": "runner_schedule",
         "request_type": args.request_type,
-        "date_mode": "YESTERDAY" if previous_day else "TODAY",
+        "date_mode": (
+            "YESTERDAY"
+            if previous_day
+            else "EXPLICIT"
+            if route_closeout
+            else "TODAY"
+        ),
         "runner_goal": (
             "collect_previous_day_dsw"
             if previous_day
+            else "close_unresolved_routes"
+            if route_closeout
             else "keep_operations_current"
         ),
         "collect_scope": "+".join(report.lower() for report in reports),
-        "execution_mode": "CONTINUOUS_SUCCESS_CHAIN",
+        "execution_mode": (
+            "ROUTE_TARGETED_SUCCESS_CHAIN"
+            if route_closeout
+            else "CONTINUOUS_SUCCESS_CHAIN"
+        ),
         "config_version": args.config_version,
         "targets": targets,
+        "manifest_route_keys": manifest_routes,
+        "manifest_types": ["delivery", "pickup"],
+        "skip_combined": True,
     }
 
 
@@ -233,6 +261,9 @@ def child_environment(
     manifest_options = RUNNER.manifest_runtime_options(request)
     environment["FCMS_MANIFEST_TYPES"] = ",".join(
         manifest_options["manifest_types"]
+    )
+    environment["FCMS_MANIFEST_WORK_AREAS"] = ",".join(
+        RUNNER.target_manifest_routes(request)
     )
     environment["FCMS_SKIP_COMBINED"] = (
         "1" if manifest_options["skip_combined"] else "0"

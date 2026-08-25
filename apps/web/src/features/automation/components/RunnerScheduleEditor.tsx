@@ -58,6 +58,22 @@ export function defaultRunnerSchedule(params: {
         "DELIVERY_MANIFEST",
         "PICKUP_MANIFEST",
       ],
+      route_closeout: {
+        enabled: true,
+        start_time: "19:30",
+        end_time: "23:50",
+        final_sweep_start_time: "23:30",
+        fcc_interval_minutes: 10,
+        dsw_interval_minutes: 30,
+        route_batch_size: 6,
+        previous_day_recovery_enabled: true,
+        previous_day_recovery_max_batches: 4,
+        reports: [
+          "FCC",
+          "DELIVERY_MANIFEST",
+          "PICKUP_MANIFEST",
+        ],
+      },
       operating_weekdays: [1, 2, 3, 4, 5, 6],
       operating_date_overrides: {},
     },
@@ -96,6 +112,18 @@ export default function RunnerScheduleEditor(props: {
       ? ("ACTIVE" as const)
       : ("INACTIVE" as const),
   };
+  const routeCloseout = props.row.report_config_json.route_closeout ?? {
+    enabled: true,
+    start_time: "19:30",
+    end_time: "23:50",
+    final_sweep_start_time: "23:30",
+    fcc_interval_minutes: 10,
+    dsw_interval_minutes: 30,
+    route_batch_size: 6,
+    previous_day_recovery_enabled: true,
+    previous_day_recovery_max_batches: 4,
+    reports: ["FCC", "DELIVERY_MANIFEST", "PICKUP_MANIFEST"],
+  };
 
   function setDroAm(
     patch: Partial<NonNullable<RunnerSchedule["report_config_json"]["dro_am"]>>
@@ -105,6 +133,22 @@ export default function RunnerScheduleEditor(props: {
       report_config_json: {
         ...props.row.report_config_json,
         dro_am: { ...droAm, ...patch },
+      },
+    });
+  }
+
+  function setRouteCloseout(
+    patch: Partial<
+      NonNullable<
+        RunnerSchedule["report_config_json"]["route_closeout"]
+      >
+    >
+  ) {
+    props.onChange({
+      ...props.row,
+      report_config_json: {
+        ...props.row.report_config_json,
+        route_closeout: { ...routeCloseout, ...patch },
       },
     });
   }
@@ -134,7 +178,7 @@ export default function RunnerScheduleEditor(props: {
       title="Collection master switch"
     >
       <p style={{ color: "#526681", marginTop: 0, lineHeight: 1.6 }}>
-        Team Optix owns this signed master gate for the three daily runner
+        Team Optix owns this signed master gate for the four daily runner
         jobs. Historical sweeps and targeted recovery remain ticket-queue work.
       </p>
 
@@ -357,6 +401,115 @@ export default function RunnerScheduleEditor(props: {
               </label>
             ))}
           </div>
+        </div>
+
+        <div style={{ border: "1px solid #dbe7f3", borderRadius: 14, padding: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+            <strong>Route Closeout</strong>
+            <button
+              type="button"
+              className={routeCloseout.enabled !== false ? "button button-primary" : "button"}
+              disabled={props.disabled}
+              onClick={() => setRouteCloseout({ enabled: routeCloseout.enabled === false })}
+            >
+              {routeCloseout.enabled !== false ? "Active" : "Inactive"}
+            </button>
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+              gap: 8,
+              marginTop: 12,
+            }}
+          >
+            <label style={{ display: "grid", gap: 5 }}>
+              <span style={{ color: "#64748b", fontSize: 11, fontWeight: 900 }}>
+                Start
+              </span>
+              <input
+                type="time"
+                value={timeValue(routeCloseout.start_time, "19:30")}
+                disabled={props.disabled}
+                onChange={(event) => setRouteCloseout({ start_time: event.target.value })}
+              />
+            </label>
+            <label style={{ display: "grid", gap: 5 }}>
+              <span style={{ color: "#64748b", fontSize: 11, fontWeight: 900 }}>
+                Final sweep
+              </span>
+              <input
+                type="time"
+                value={timeValue(routeCloseout.final_sweep_start_time, "23:30")}
+                disabled={props.disabled}
+                onChange={(event) => setRouteCloseout({ final_sweep_start_time: event.target.value })}
+              />
+            </label>
+            <label style={{ display: "grid", gap: 5 }}>
+              <span style={{ color: "#64748b", fontSize: 11, fontWeight: 900 }}>
+                Cutoff
+              </span>
+              <input
+                type="time"
+                value={timeValue(routeCloseout.end_time, "23:50")}
+                disabled={props.disabled}
+                onChange={(event) => setRouteCloseout({ end_time: event.target.value })}
+              />
+            </label>
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+              gap: 8,
+              marginTop: 10,
+            }}
+          >
+            <label style={{ display: "grid", gap: 5 }}>
+              <span style={{ color: "#64748b", fontSize: 11, fontWeight: 900 }}>
+                FCC minutes
+              </span>
+              <input
+                type="number"
+                min={5}
+                max={60}
+                value={routeCloseout.fcc_interval_minutes ?? 10}
+                disabled={props.disabled}
+                onChange={(event) => setRouteCloseout({ fcc_interval_minutes: Number(event.target.value) })}
+              />
+            </label>
+            <label style={{ display: "grid", gap: 5 }}>
+              <span style={{ color: "#64748b", fontSize: 11, fontWeight: 900 }}>
+                DSW minutes
+              </span>
+              <input
+                type="number"
+                min={10}
+                max={120}
+                value={routeCloseout.dsw_interval_minutes ?? 30}
+                disabled={props.disabled}
+                onChange={(event) => setRouteCloseout({ dsw_interval_minutes: Number(event.target.value) })}
+              />
+            </label>
+            <label style={{ display: "grid", gap: 5 }}>
+              <span style={{ color: "#64748b", fontSize: 11, fontWeight: 900 }}>
+                Routes / pass
+              </span>
+              <input
+                type="number"
+                min={1}
+                max={25}
+                value={routeCloseout.route_batch_size ?? 6}
+                disabled={props.disabled}
+                onChange={(event) => setRouteCloseout({ route_batch_size: Number(event.target.value) })}
+              />
+            </label>
+          </div>
+          <p style={{ color: "#166534", fontSize: 12, fontWeight: 800, lineHeight: 1.5, marginBottom: 0 }}>
+            Closed routes self-drain after both authoritative manifests are newer
+            than the DSW/FCC close signal. At 3:00 AM, FINAL DSW drives a bounded
+            recovery pass for any route still missing its last capture.
+          </p>
         </div>
       </div>
 

@@ -342,16 +342,60 @@ class ContinuousController:
 
     def within_pulse_window(self, now: datetime) -> bool:
         pulse = self.schedule.get("operations_pulse") or {}
-        start_hour, start_minute = self.parse_clock(
-            str(pulse.get("start_time") or "07:30")
+        return self.within_clock_window(
+            now,
+            str(pulse.get("start_time") or "07:30"),
+            str(pulse.get("end_time") or "19:30"),
         )
-        end_hour, end_minute = self.parse_clock(
-            str(pulse.get("end_time") or "19:30")
-        )
+
+    def within_clock_window(
+        self,
+        now: datetime,
+        start_time: str,
+        end_time: str,
+    ) -> bool:
+        start_hour, start_minute = self.parse_clock(start_time)
+        end_hour, end_minute = self.parse_clock(end_time)
         current = now.hour * 60 + now.minute
         return (
             current >= start_hour * 60 + start_minute
             and current < end_hour * 60 + end_minute
+        )
+
+    def route_closeout_config(self) -> dict[str, Any]:
+        value = self.schedule.get("route_closeout") or {}
+        return value if isinstance(value, dict) else {}
+
+    def within_route_closeout_window(self, now: datetime) -> bool:
+        closeout = self.route_closeout_config()
+        return self.within_clock_window(
+            now,
+            str(closeout.get("start_time") or "19:30"),
+            str(closeout.get("end_time") or "23:50"),
+        )
+
+    def within_route_closeout_final_sweep(self, now: datetime) -> bool:
+        closeout = self.route_closeout_config()
+        start_hour, start_minute = self.parse_clock(
+            str(closeout.get("final_sweep_start_time") or "23:30")
+        )
+        current = now.hour * 60 + now.minute
+        return current >= start_hour * 60 + start_minute
+
+    def route_closeout_cutoff_due(self, now: datetime) -> bool:
+        closeout = self.route_closeout_config()
+        if not closeout.get("enabled"):
+            return False
+        end_hour, end_minute = self.parse_clock(
+            str(closeout.get("end_time") or "23:50")
+        )
+        current = now.hour * 60 + now.minute
+        completed_date = str(
+            self.journal.get("route_closeout_cutoff_date") or ""
+        )
+        return (
+            current >= end_hour * 60 + end_minute
+            and completed_date != now.date().isoformat()
         )
 
     def pulse_operates_today(self, now: datetime) -> bool:
@@ -446,11 +490,101 @@ class ContinuousController:
             else []
         )
 
+    def journal_interval_due(
+        self,
+        key: str,
+        now: datetime,
+        interval_minutes: int,
+    ) -> bool:
+        value = str(self.journal.get(key) or "").strip()
+        if not value:
+            return True
+        try:
+            previous = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if previous.tzinfo is None:
+                previous = previous.replace(tzinfo=now.tzinfo)
+            return now >= previous.astimezone(now.tzinfo) + timedelta(
+                minutes=max(1, interval_minutes)
+            )
+        except (TypeError, ValueError):
+            return True
+
+    def route_closeout_targets(
+        self,
+        service_date: str,
+        final_sweep: bool,
+    ) -> list[str]:
+        closeout = self.route_closeout_config()
+        value = rpc(
+            "get_operations_route_closeout_targets",
+            {
+                "p_company_id": self.schedule["company_id"],
+                "p_service_date": service_date,
+                "p_limit": int(closeout.get("route_batch_size") or 6),
+                "p_final_sweep": final_sweep,
+            },
+        )
+        rows = value if isinstance(value, list) else []
+        routes: list[str] = []
+        for row in rows:
+            route = str(
+                row.get("route_key") if isinstance(row, dict) else ""
+            ).strip()
+            if route and route not in routes:
+                routes.append(route)
+        return routes
+
+    def route_closeout_reports(
+        self,
+        now: datetime,
+        manifest_routes: list[str],
+    ) -> list[str]:
+        closeout = self.route_closeout_config()
+        reports = self.reports_for("route_closeout") or [
+            "FCC",
+            "DELIVERY_MANIFEST",
+            "PICKUP_MANIFEST",
+        ]
+        if manifest_routes:
+            for required in (
+                "FCC",
+                "DELIVERY_MANIFEST",
+                "PICKUP_MANIFEST",
+            ):
+                if required not in reports:
+                    reports.append(required)
+        else:
+            reports = [report for report in reports if "MANIFEST" not in report]
+            if "FCC" not in reports:
+                reports.append("FCC")
+
+        dsw_due = self.journal_interval_due(
+            "route_closeout_last_dsw_at",
+            now,
+            int(closeout.get("dsw_interval_minutes") or 30),
+        )
+        if dsw_due and "DSW" not in reports:
+            reports.insert(0, "DSW")
+        return reports
+
+    def route_closeout_source_due(self, now: datetime) -> bool:
+        closeout = self.route_closeout_config()
+        return self.journal_interval_due(
+            "route_closeout_last_fcc_at",
+            now,
+            int(closeout.get("fcc_interval_minutes") or 10),
+        ) or self.journal_interval_due(
+            "route_closeout_last_dsw_at",
+            now,
+            int(closeout.get("dsw_interval_minutes") or 30),
+        )
+
     def run_cycle(
         self,
         request_type: str,
         service_date: str,
         reports: list[str],
+        manifest_route_keys: list[str] | None = None,
     ) -> int:
         credential = self.ensure_credential()
         cycle_id = str(uuid.uuid4())
@@ -461,6 +595,7 @@ class ContinuousController:
             "service_date": service_date,
             "started_at": utc_iso(),
             "replaces_interrupted_cycle": interrupted,
+            "manifest_route_keys": manifest_route_keys or [],
         }
         self.save_journal()
 
@@ -483,6 +618,8 @@ class ContinuousController:
             service_date,
             "--reports-json",
             json.dumps(reports, separators=(",", ":")),
+            "--manifest-routes-json",
+            json.dumps(manifest_route_keys or [], separators=(",", ":")),
             "--company-id",
             str(self.schedule["company_id"]),
             "--company-slug",
@@ -513,6 +650,38 @@ class ContinuousController:
             self.journal["active_cycle"] = None
             self.save_journal()
         return status
+
+    def run_previous_day_manifest_recovery(
+        self,
+        service_date: str,
+    ) -> int:
+        closeout = self.route_closeout_config()
+        if closeout.get("previous_day_recovery_enabled") is False:
+            return 0
+        maximum = max(
+            1,
+            min(
+                int(closeout.get("previous_day_recovery_max_batches") or 4),
+                10,
+            ),
+        )
+        reports = ["DELIVERY_MANIFEST", "PICKUP_MANIFEST"]
+        for _ in range(maximum):
+            routes = self.route_closeout_targets(
+                service_date,
+                final_sweep=True,
+            )
+            if not routes:
+                return 0
+            status = self.run_cycle(
+                "ROUTE_CLOSEOUT",
+                service_date,
+                reports,
+                manifest_route_keys=routes,
+            )
+            if status != 0:
+                return status
+        return 0
 
     def mark_auth_failure(self) -> None:
         version = int((self.credential or {}).get("version") or 0)
@@ -653,10 +822,121 @@ class ContinuousController:
                                 self.failure_count = 0
                                 self.next_retry_at = 0
                                 self.save_journal()
+                                recovery_status = (
+                                    self.run_previous_day_manifest_recovery(
+                                        service_date
+                                    )
+                                )
+                                if recovery_status == 40:
+                                    self.mark_auth_failure()
+                                elif recovery_status != 0:
+                                    self.mark_transient_failure()
                             elif status == 40:
                                 self.mark_auth_failure()
                             else:
                                 self.mark_transient_failure()
+                        self.stop_event.wait(1)
+                        continue
+
+                    closeout = self.route_closeout_config()
+                    if (
+                        closeout.get("enabled")
+                        and self.pulse_operates_today(now)
+                        and self.route_closeout_cutoff_due(now)
+                    ):
+                        if SHADOW_MODE:
+                            self.shadow_observation(
+                                "ROUTE_CLOSEOUT_CUTOFF",
+                                now.date().isoformat(),
+                                [],
+                            )
+                            self.journal[
+                                "route_closeout_cutoff_date"
+                            ] = now.date().isoformat()
+                            self.save_journal()
+                        else:
+                            result = rpc(
+                                "finalize_operations_route_closeout_cutoff",
+                                {
+                                    "p_company_id": self.schedule[
+                                        "company_id"
+                                    ],
+                                    "p_service_date": now.date().isoformat(),
+                                },
+                            )
+                            print(
+                                "[controller] route closeout cutoff "
+                                f"result={json.dumps(result, separators=(',', ':'))}",
+                                flush=True,
+                            )
+                            self.journal[
+                                "route_closeout_cutoff_date"
+                            ] = now.date().isoformat()
+                            self.save_journal()
+                        self.stop_event.wait(1)
+                        continue
+
+                    if (
+                        closeout.get("enabled")
+                        and self.pulse_operates_today(now)
+                        and self.within_route_closeout_window(now)
+                        and self.credential_attempt_allowed()
+                        and time.monotonic() >= self.next_retry_at
+                    ):
+                        service_date = now.date().isoformat()
+                        if SHADOW_MODE:
+                            self.shadow_observation(
+                                "ROUTE_CLOSEOUT",
+                                service_date,
+                                self.reports_for("route_closeout") or [
+                                    "FCC",
+                                    "DELIVERY_MANIFEST",
+                                    "PICKUP_MANIFEST",
+                                ],
+                            )
+                            self.stop_event.wait(5)
+                            continue
+
+                        manifest_routes = self.route_closeout_targets(
+                            service_date,
+                            final_sweep=(
+                                self.within_route_closeout_final_sweep(now)
+                            ),
+                        )
+                        if (
+                            not manifest_routes
+                            and not self.route_closeout_source_due(now)
+                        ):
+                            self.stop_event.wait(5)
+                            continue
+
+                        reports = self.route_closeout_reports(
+                            now,
+                            manifest_routes,
+                        )
+                        status = self.run_cycle(
+                            "ROUTE_CLOSEOUT",
+                            service_date,
+                            reports,
+                            manifest_route_keys=manifest_routes,
+                        )
+                        if status == 0:
+                            captured_at = utc_iso()
+                            if "FCC" in reports:
+                                self.journal[
+                                    "route_closeout_last_fcc_at"
+                                ] = captured_at
+                            if "DSW" in reports:
+                                self.journal[
+                                    "route_closeout_last_dsw_at"
+                                ] = captured_at
+                            self.failure_count = 0
+                            self.next_retry_at = 0
+                            self.save_journal()
+                        elif status == 40:
+                            self.mark_auth_failure()
+                        else:
+                            self.mark_transient_failure()
                         self.stop_event.wait(1)
                         continue
 

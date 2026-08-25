@@ -4,6 +4,7 @@ import {
   isManifestCollectionArtifact,
   isRetryableIngestionTimeout,
   manifestPreparationPayload,
+  selectedWorkAreaRouteKey,
 } from "./collectionArtifactAuthority";
 
 describe("collection artifact authority", () => {
@@ -76,6 +77,33 @@ describe("collection artifact authority", () => {
       identity_authority: "INGESTION_PIPELINE",
       manifest_identity: { route_key: "486" },
     });
+  });
+
+  it("rejects a stale workbook returned for a different selected route", () => {
+    expect(selectedWorkAreaRouteKey("0486 BPV 17 - Available")).toBe("486");
+    expect(() =>
+      manifestPreparationPayload({
+        artifact: {
+          service_date: "2026-08-13",
+          original_filename: "DeliveryManifest.xls",
+          runner_artifact_json: {
+            artifact_key: "DELIVERY_MANIFEST",
+            collection_context: { selected_work_area: "0486 BPV 17" },
+          },
+        },
+        identity: {
+          manifest_type: "delivery",
+          service_date: "2026-08-13",
+          service_area: "309747",
+          route_key: "426",
+          route_label: "BPV 03",
+          raw_work_area: "0426 BPV 03",
+          source_page: "Delivery Manifest",
+          canonical_filename: "20260813_426 Driver.xls",
+        },
+        preparedAt: "2026-08-13T14:30:00.000Z",
+      })
+    ).toThrow("collector selected route 486, Header identifies route 426");
   });
 
   it("recognizes database statement timeouts as retryable ingestion errors", () => {
