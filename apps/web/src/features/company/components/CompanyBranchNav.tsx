@@ -267,6 +267,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     { label: "Service", href: `${operationsBase}/service`, match: (path) => path.startsWith(`${operationsBase}/service`) || path.startsWith(`${operationsBase}/delivery-window`) },
     { label: "Planning", href: `${operationsBase}/planning`, match: (path) => path.startsWith(`${operationsBase}/planning`) || path.startsWith(`${operationsBase}/intelligence`) },
     { label: "Ops Reports", href: `${base}/prior-day`, match: (path) => path === `${base}/prior-day` },
+    { label: "Manifest History", href: `${operationsBase}/manifests`, match: (path) => path.startsWith(`${operationsBase}/manifests`) },
     { label: "Walk Ons", href: `${operationsBase}/walk-ons`, match: (path) => path.startsWith(`${operationsBase}/walk-ons`) },
   ];
 
