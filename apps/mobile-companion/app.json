@@ -9,8 +9,17 @@
     "userInterfaceStyle": "light",
     "scheme": "insight-mobile-companion",
     "ios": {
-      "supportsTablet": false,
-      "bundleIdentifier": "com.teamoptix.insight.companion"
+      "supportsTablet": true,
+      "bundleIdentifier": "com.teamoptix.insight.companion",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": true,
+        "UISupportedInterfaceOrientations~ipad": [
+          "UIInterfaceOrientationPortrait",
+          "UIInterfaceOrientationPortraitUpsideDown",
+          "UIInterfaceOrientationLandscapeLeft",
+          "UIInterfaceOrientationLandscapeRight"
+        ]
+      }
     },
     "android": {
       "package": "com.teamoptix.insight.companion",
@@ -27,6 +36,12 @@
       ]
     },
     "plugins": [
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Use Face ID to protect access to your authenticated Insight workspace."
+        }
+      ],
       "expo-secure-store",
       [
         "expo-sqlite",
@@ -37,10 +52,13 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Allow Insight Mobile Companion to capture duty-scoped location evidence while you use the app.",
-          "isIosBackgroundLocationEnabled": false,
-          "isAndroidBackgroundLocationEnabled": false,
-          "isAndroidForegroundServiceEnabled": false
+          "locationWhenInUsePermission": "Allow Insight Mobile Companion to verify your work location when you intentionally start or stop duty.",
+          "locationAlwaysPermission": false,
+          "locationAlwaysAndWhenInUsePermission": "Allow Insight Mobile Companion to record company-scoped work and asset location while you are clocked in, including when the app is in the background. Insight does not collect location while you are off duty.",
+          "motionUsagePermission": false,
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       [

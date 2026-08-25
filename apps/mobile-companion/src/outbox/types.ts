@@ -1,4 +1,4 @@
-export type CaptureMethod = "FOREGROUND_GPS" | "SYNTHETIC_TEST";
+export type CaptureMethod = "FOREGROUND_GPS" | "BACKGROUND_GPS" | "SYNTHETIC_TEST";
 
 export type LocalSession = {
   sessionId: string;

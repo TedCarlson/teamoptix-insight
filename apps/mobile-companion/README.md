@@ -22,10 +22,10 @@ From the repository root:
    `.env` or any secret/service-role key.
 4. Run `pnpm dev:mobile`.
 
-Expo Go cannot run this app's encrypted database because SQLCipher requires a
-custom native development client. This is intentional: MC-1 must not silently
-fall back to a plaintext queue. Do not create an EAS build until the Expo
-project is linked and a dedicated device-test checkpoint is approved.
+Expo Go cannot run this app's encrypted database, Face ID, or background
+location task because those capabilities require a custom native development
+client. This is intentional: production behavior must not silently fall back
+to a weaker authentication or plaintext queue.
 
 ## Useful commands
 
@@ -36,9 +36,14 @@ project is linked and a dedicated device-test checkpoint is approved.
 ## MC-1 behavior
 
 - Sign-in uses the existing Insight account and access context.
-- Duty tracking starts and stops only through explicit user action.
-- Location capture is foreground-only; synthetic points appear only in a
-  development build.
+- Face ID or supported device authentication protects every authenticated app
+  session and re-locks when the app leaves the foreground.
+- Duty tracking starts and stops only through the existing intent-confirmed
+  Start Duty and Stop Duty actions.
+- Always Location is required to start duty. Merely signing in, reading a
+  schedule, or viewing messages does not start Location Services.
+- Foreground and background GPS points are accepted only while an encrypted
+  duty session is open; synthetic points appear only in a development build.
 - Sessions, points, and batches receive device-generated UUIDs.
 - Unacknowledged data remains in a user-specific SQLCipher database across
   app restarts.
@@ -46,3 +51,4 @@ project is linked and a dedicated device-test checkpoint is approved.
   handles duplicate and partial submissions.
 - Location remains observation-only evidence, never automatic payroll,
   vehicle, carrier, or delivery truth.
+- Motion access is not requested or used.

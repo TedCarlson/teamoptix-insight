@@ -491,8 +491,8 @@ export const sharedStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, paddingHorizontal: 24, paddingTop: 20, backgroundColor: colors.white },
-  scrollContent: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 28, gap: 14 },
+  screen: { flex: 1, width: "100%", maxWidth: 880, alignSelf: "center", paddingHorizontal: 24, paddingTop: 20, backgroundColor: colors.white },
+  scrollContent: { width: "100%", maxWidth: 880, alignSelf: "center", paddingHorizontal: 24, paddingTop: 20, paddingBottom: 28, gap: 14 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 },
   headerCopy: { flex: 1, paddingRight: 12 },
   brand: { color: colors.primary, fontSize: 12, fontWeight: "800", letterSpacing: 1.4 },
@@ -515,7 +515,7 @@ const styles = StyleSheet.create({
   cardOutlined: { backgroundColor: colors.white, borderColor: colors.border, borderWidth: 1 },
   cardDanger: { backgroundColor: colors.paleDanger },
   cardPrimary: { backgroundColor: colors.palePrimary },
-  footer: { backgroundColor: colors.white },
+  footer: { width: "100%", maxWidth: 880, alignSelf: "center", backgroundColor: colors.white },
   syncPill: { marginHorizontal: 24, minHeight: 42, borderRadius: 20, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.panel },
   syncPillOffline: { backgroundColor: colors.paleWarning },
   dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.success },
@@ -530,8 +530,8 @@ const styles = StyleSheet.create({
   navLabel: { color: colors.muted, fontSize: 12 },
   navLabelActive: { color: colors.primary, fontWeight: "700" },
   modalPage: { flex: 1, backgroundColor: colors.white },
-  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 24, paddingTop: 48, paddingBottom: 16 },
-  modalScrollContent: { paddingHorizontal: 24, paddingBottom: 24, gap: 14 },
+  modalHeader: { width: "100%", maxWidth: 760, alignSelf: "center", flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 24, paddingTop: 48, paddingBottom: 16 },
+  modalScrollContent: { width: "100%", maxWidth: 760, alignSelf: "center", paddingHorizontal: 24, paddingBottom: 24, gap: 14 },
   modalTitle: { color: colors.ink, fontSize: 30, fontWeight: "800" },
   close: { color: colors.primary, fontSize: 16, fontWeight: "800", padding: 8 },
   modalSection: { gap: 8 },
@@ -545,7 +545,7 @@ const styles = StyleSheet.create({
   bodyStrong: { color: colors.ink, fontSize: 15, fontWeight: "700" },
   bodyMuted: { color: colors.muted, fontSize: 14, lineHeight: 20 },
   resolverScrim: { flex: 1, backgroundColor: colors.ink, paddingTop: 80 },
-  resolverSheet: { flex: 1, backgroundColor: colors.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: "hidden" },
+  resolverSheet: { flex: 1, width: "100%", maxWidth: 880, alignSelf: "center", backgroundColor: colors.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: "hidden" },
   resolverContent: { padding: 16, paddingTop: 32, paddingBottom: 24, gap: 16 },
   resolverTitle: { color: colors.ink, fontSize: 24, fontWeight: "800", lineHeight: 30, marginTop: 8 },
   identityCard: { minHeight: 78, flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.palePrimary },
@@ -565,5 +565,5 @@ const styles = StyleSheet.create({
   collapseAction: { color: colors.primary, fontSize: 13, fontWeight: "700", paddingVertical: 4 },
   guidanceCard: { gap: 4, padding: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.panel },
   scopeCard: { minHeight: 64, flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.white },
-  pinnedActions: { paddingHorizontal: 24, paddingVertical: 16, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.white },
+  pinnedActions: { width: "100%", maxWidth: 760, alignSelf: "center", paddingHorizontal: 24, paddingVertical: 16, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.white },
 });

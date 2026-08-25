@@ -25,7 +25,7 @@ import type {
   TimeOffSubmissionPayload,
 } from "./types";
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 const MAX_BATCH_SIZE = 100;
 const keyPattern = /^[0-9a-f]{64}$/;
 const uuidPattern = /^[0-9a-f-]{36}$/i;
@@ -129,7 +129,7 @@ export class EdgeOutbox {
         longitude REAL NOT NULL,
         accuracy_meters REAL,
         capture_method TEXT NOT NULL
-          CHECK (capture_method IN ('FOREGROUND_GPS', 'SYNTHETIC_TEST')),
+          CHECK (capture_method IN ('FOREGROUND_GPS', 'BACKGROUND_GPS', 'SYNTHETIC_TEST')),
         state TEXT NOT NULL DEFAULT 'QUEUED'
           CHECK (state IN ('QUEUED', 'SEALED', 'ACKNOWLEDGED', 'REJECTED')),
         batch_id TEXT,
@@ -212,6 +212,51 @@ export class EdgeOutbox {
         PRIMARY KEY (tenant_key, cache_key)
       );
     `);
+    const schemaMetadata = await db.getFirstAsync<{ value: string }>(
+      "SELECT value FROM outbox_meta WHERE key = 'schema_version'",
+    );
+    const existingSchemaVersion = Number(schemaMetadata?.value ?? SCHEMA_VERSION);
+    if (existingSchemaVersion < 4) {
+      // SQLite cannot alter CHECK constraints in place. Rebuild only the point
+      // queue so an installed MC-1 database can accept duty-scoped background
+      // fixes without touching sessions, batches, or other offline evidence.
+      await db.execAsync(`
+        PRAGMA foreign_keys = OFF;
+        BEGIN IMMEDIATE;
+        ALTER TABLE breadcrumb_point_outbox RENAME TO breadcrumb_point_outbox_v3;
+        CREATE TABLE breadcrumb_point_outbox (
+          point_id TEXT PRIMARY KEY NOT NULL,
+          session_id TEXT NOT NULL REFERENCES tracking_session_local(session_id),
+          tenant_key TEXT NOT NULL,
+          device_captured_at TEXT NOT NULL,
+          latitude REAL NOT NULL,
+          longitude REAL NOT NULL,
+          accuracy_meters REAL,
+          capture_method TEXT NOT NULL
+            CHECK (capture_method IN ('FOREGROUND_GPS', 'BACKGROUND_GPS', 'SYNTHETIC_TEST')),
+          state TEXT NOT NULL DEFAULT 'QUEUED'
+            CHECK (state IN ('QUEUED', 'SEALED', 'ACKNOWLEDGED', 'REJECTED')),
+          batch_id TEXT,
+          rejection_code TEXT,
+          created_at TEXT NOT NULL
+        );
+        INSERT INTO breadcrumb_point_outbox (
+          point_id, session_id, tenant_key, device_captured_at, latitude,
+          longitude, accuracy_meters, capture_method, state, batch_id,
+          rejection_code, created_at
+        )
+        SELECT
+          point_id, session_id, tenant_key, device_captured_at, latitude,
+          longitude, accuracy_meters, capture_method, state, batch_id,
+          rejection_code, created_at
+        FROM breadcrumb_point_outbox_v3;
+        DROP TABLE breadcrumb_point_outbox_v3;
+        CREATE INDEX breadcrumb_point_queue_idx
+          ON breadcrumb_point_outbox(tenant_key, session_id, state, device_captured_at);
+        COMMIT;
+        PRAGMA foreign_keys = ON;
+      `);
+    }
     await db.runAsync(
       "INSERT OR REPLACE INTO outbox_meta(key, value) VALUES ('schema_version', ?)",
       String(SCHEMA_VERSION),
