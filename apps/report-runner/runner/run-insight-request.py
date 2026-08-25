@@ -36,6 +36,7 @@ RUNNER_GOALS = {
     "PREVIOUS_DAY_CLOSE": "collect_previous_day_dsw",
     "HISTORICAL_BACKFILL": "collect_historical_dsw_range",
     "TARGETED_RECOVERY": "collect_targeted_artifacts",
+    "ROUTE_CLOSEOUT": "close_unresolved_routes",
 }
 
 def utc_now() -> str:
@@ -228,6 +229,36 @@ def target_artifact_keys(request: dict) -> set[str]:
         if isinstance(target, dict) and str(target.get("artifact_key") or "").strip()
     }
 
+def normalized_manifest_route(value: object) -> str:
+    text = str(value or "").strip().upper()
+    match = re.search(r"(?<!\d)(\d{1,4})(?!\d)", text)
+    if match:
+        return str(int(match.group(1)))
+    return re.sub(r"[^A-Z0-9]+", "", text)
+
+def target_manifest_routes(request: dict) -> list[str]:
+    payload = request.get("request_payload") or {}
+    raw_routes = payload.get("manifest_route_keys")
+    values = raw_routes if isinstance(raw_routes, list) else []
+
+    for target in request_targets(request):
+        if not isinstance(target, dict):
+            continue
+        route_value = (
+            target.get("route_key")
+            or target.get("route_identity")
+            or target.get("work_area")
+        )
+        if route_value:
+            values.append(route_value)
+
+    normalized = []
+    for value in values:
+        route = normalized_manifest_route(value)
+        if route and route not in normalized:
+            normalized.append(route)
+    return normalized
+
 def manifest_runtime_options(request: dict) -> dict:
     payload = request.get("request_payload") or {}
     raw_types = payload.get("manifest_types")
@@ -304,6 +335,11 @@ def artifact_matches_targets(request: dict, artifact: dict) -> bool:
     haystack = f"{filename} {display}"
     compact_haystack = re.sub(r"[^a-z0-9]+", "", haystack)
 
+    artifact_route = normalized_manifest_route(
+        (artifact.get("collection_context") or {}).get("selected_work_area")
+        or artifact.get("route_identity")
+    )
+
     for target in targets:
         if not isinstance(target, dict):
             continue
@@ -314,7 +350,14 @@ def artifact_matches_targets(request: dict, artifact: dict) -> bool:
         artifact_key = str(
             artifact.get("artifact_key") or ""
         ).strip().upper()
-        if target_artifact_key and target_artifact_key == artifact_key:
+        target_route = normalized_manifest_route(
+            target.get("route_key")
+            or target.get("route_identity")
+            or target.get("work_area")
+        )
+        route_matches = not target_route or target_route == artifact_route
+
+        if target_artifact_key and target_artifact_key == artifact_key and route_matches:
             return True
 
         patterns = target.get("expected_filename_match")
@@ -324,7 +367,7 @@ def artifact_matches_targets(request: dict, artifact: dict) -> bool:
         for pattern in patterns:
             needle = str(pattern or "").strip().lower()
             compact_needle = re.sub(r"[^a-z0-9]+", "", needle)
-            if needle and (needle in haystack or compact_needle in compact_haystack):
+            if route_matches and needle and (needle in haystack or compact_needle in compact_haystack):
                 return True
 
     return False
@@ -349,8 +392,8 @@ def load_runner_artifact_metadata(file: Path) -> dict:
     if not isinstance(metadata, dict):
         return {}
 
-    # Runner sidecars describe the source lane and collection attempt only.
-    # Workbook identity and every payload-derived fact belong to ingestion.
+    # The Runner uses Header identity only to make each route/day/type artifact
+    # unique. The ingestion pipeline still validates and owns payload facts.
     result = {
         "source_download_filename": metadata.get(
             "source_download_filename"
@@ -361,6 +404,24 @@ def load_runner_artifact_metadata(file: Path) -> dict:
         "collection_context": metadata.get("collection_context") or {},
         "payload_authority": "INGESTION_PIPELINE",
     }
+
+    for key in (
+        "canonical_filename",
+        "header_authoritative",
+        "identity_authority",
+        "manifest_type",
+        "route_key",
+        "work_area",
+        "service_area",
+        "service_date_compact",
+        "source_hash",
+    ):
+        value = metadata.get(key)
+        if value not in (None, ""):
+            result[key] = value
+
+    if result.get("work_area"):
+        result["route_identity"] = result["work_area"]
 
     for key in ("artifact_id", "transport_filename"):
         value = metadata.get(key)
@@ -999,6 +1060,9 @@ def main() -> int:
             or ""
         ).strip()
         child_env["FCMS_MANIFEST_TYPES"] = ",".join(manifest_options["manifest_types"])
+        child_env["FCMS_MANIFEST_WORK_AREAS"] = ",".join(
+            target_manifest_routes(request)
+        )
         child_env["FCMS_SKIP_COMBINED"] = "1" if manifest_options["skip_combined"] else "0"
         child_env["FCMS_SINGLE_SESSION"] = "1"
         child_env["FCMS_PERSIST_BROWSER"] = "1"

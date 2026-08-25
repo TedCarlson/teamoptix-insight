@@ -36,6 +36,23 @@ class DailyPackageControlContractTests(unittest.TestCase):
         )
         self.assertIn('self.stop_event.wait(1)', self.source)
 
+    def test_route_closeout_is_a_targeted_self_draining_lane(self):
+        cycle_source = Path(__file__).with_name(
+            "run-continuous-cycle.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"ROUTE_CLOSEOUT"', self.source)
+        self.assertIn(
+            '"get_operations_route_closeout_targets"',
+            self.source,
+        )
+        self.assertIn(
+            '"finalize_operations_route_closeout_cutoff"',
+            self.source,
+        )
+        self.assertIn('"--manifest-routes-json"', self.source)
+        self.assertIn('"ROUTE_TARGETED_SUCCESS_CHAIN"', cycle_source)
+        self.assertIn('"manifest_route_keys": manifest_routes', cycle_source)
+
     def test_runner_reports_its_git_revision(self):
         self.assertIn('["git", "rev-parse", "--verify", "HEAD"]', self.source)
         self.assertIn("RUNNER_VERSION = detect_runner_version()", self.source)
@@ -61,12 +78,13 @@ class DailyPackageControlContractTests(unittest.TestCase):
             self.service_unit,
         )
 
-    def test_canonical_collection_path_never_validates_workbook_payloads(self):
+    def test_canonical_collection_path_identifies_manifest_before_handoff(self):
         app_dir = Path(__file__).resolve().parents[1]
         sources = [
             Path(__file__).with_name("run-insight-request.py"),
             app_dir / "storage/app/public/scraper/dynamic_script.py",
             app_dir / "storage/app/public/scraper/scrape_particular_date.py",
+            app_dir / "storage/app/public/scraper/manifest_identity.py",
             app_dir / "storage/app/public/scraper/dsw_package_status.py",
         ]
         combined = "\n".join(
@@ -74,16 +92,52 @@ class DailyPackageControlContractTests(unittest.TestCase):
         )
 
         for forbidden in (
-            "read_excel(",
-            "renameDownloadedManifest",
             "renameFolder(",
             "extractDataFromFolder",
-            "header_authoritative",
             "returned_route_wa_numbers",
         ):
             self.assertNotIn(forbidden, combined)
 
+        self.assertIn("renameDownloadedManifest", combined)
+        self.assertIn("selected_route_identity=route_identity", combined)
+        self.assertIn('"identity_authority": "MANIFEST_HEADER"', combined)
         self.assertIn('"payload_authority": "INGESTION_PIPELINE"', combined)
+
+    def test_targeted_manifest_recovery_honors_route_and_report_scope(self):
+        app_dir = Path(__file__).resolve().parents[1]
+        request_runner = Path(__file__).with_name(
+            "run-insight-request.py"
+        ).read_text(encoding="utf-8")
+        cycle_runner = Path(__file__).with_name(
+            "run-continuous-cycle.py"
+        ).read_text(encoding="utf-8")
+        historical_scraper = (
+            app_dir
+            / "storage/app/public/scraper/scrape_particular_date.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("def target_manifest_routes", request_runner)
+        self.assertIn(
+            'child_env["FCMS_MANIFEST_WORK_AREAS"]',
+            request_runner,
+        )
+        self.assertIn(
+            'environment["FCMS_MANIFEST_WORK_AREAS"]',
+            cycle_runner,
+        )
+        self.assertIn(
+            'REQUESTED_MANIFEST_WORK_AREAS = '
+            'requested_manifest_work_areas()',
+            historical_scraper,
+        )
+        self.assertIn(
+            "if secion_index <= 0 and should_run_section('P&D'):",
+            historical_scraper,
+        )
+        self.assertIn(
+            "REQUESTED_SECTIONS[0]",
+            historical_scraper,
+        )
 
 
 if __name__ == "__main__":

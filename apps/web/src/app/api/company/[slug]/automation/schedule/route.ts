@@ -165,6 +165,11 @@ export async function PATCH(
       typeof incomingReportConfig.run_gate === "object"
         ? incomingReportConfig.run_gate
         : {};
+    const incomingRouteCloseout =
+      incomingReportConfig.route_closeout &&
+      typeof incomingReportConfig.route_closeout === "object"
+        ? incomingReportConfig.route_closeout
+        : {};
     const gateAuthority = String(
       incomingRunGate.authority ?? "MANUAL"
     ).toUpperCase();
@@ -200,6 +205,23 @@ export async function PATCH(
       operating_weekdays: [1, 2, 3, 4, 5, 6],
       operating_date_overrides: {},
       ...incomingReportConfig,
+      route_closeout: {
+        enabled: true,
+        start_time: "19:30",
+        end_time: "23:50",
+        final_sweep_start_time: "23:30",
+        fcc_interval_minutes: 10,
+        dsw_interval_minutes: 30,
+        route_batch_size: 6,
+        previous_day_recovery_enabled: true,
+        previous_day_recovery_max_batches: 4,
+        reports: [
+          "FCC",
+          "DELIVERY_MANIFEST",
+          "PICKUP_MANIFEST",
+        ],
+        ...incomingRouteCloseout,
+      },
       run_gate: {
         authority: "MANUAL",
         manual_state: manualState,

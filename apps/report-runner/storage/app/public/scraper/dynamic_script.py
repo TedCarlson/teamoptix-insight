@@ -26,6 +26,10 @@ from datetime import datetime, timezone
 # from webdriver_manager.chrome import ChromeDriverManager
 
 from runtime_events import emit_runtime_event
+from manifest_identity import (
+    quarantineRejectedManifest,
+    renameDownloadedManifest,
+)
 from dsw_package_status import (
     collect_dsw_daily_service,
     collect_dsw_package_status,
@@ -222,6 +226,24 @@ def finalizeManifestDownload(
     route_identity,
 ):
     downloaded_path, source_ready_at = waitForCompletedDownload(before)
+    identification_started_at = time.time()
+    try:
+        renamed_path, manifest_identity = renameDownloadedManifest(
+            downloaded_path,
+            expected_type=expected_type,
+            selected_route_identity=route_identity,
+            selected_service_date=current_date.strftime("%Y-%m-%d"),
+        )
+    except Exception as identity_error:
+        rejected_path = quarantineRejectedManifest(
+            downloaded_path,
+            identity_error,
+        )
+        raise RuntimeError(
+            f"Manifest Header identification failed; preserved "
+            f"{os.path.basename(rejected_path or downloaded_path)}: "
+            f"{identity_error}"
+        ) from identity_error
     artifact_key = {
         "combined": "COMBINED_MANIFEST",
         "delivery": "DELIVERY_MANIFEST",
@@ -232,14 +254,17 @@ def finalizeManifestDownload(
         "delivery": "FCC_DELIVERY_MANIFESTS",
         "pickup": "FCC_PICKUP_MANIFESTS",
     }[expected_type]
-    filename = os.path.basename(downloaded_path)
+    filename = os.path.basename(renamed_path)
     writeRunnerMetadata(
-        downloaded_path,
+        renamed_path,
         {
+            **manifest_identity,
             "artifact_key": artifact_key,
             "report_family_key": "FCC",
             "declared_artifact_type": expected_type,
-            "source_download_filename": filename,
+            "source_download_filename": manifest_identity.get(
+                "source_download_filename"
+            ),
             "collection_context": {
                 "selected_work_area": route_identity,
                 "selected_service_date": current_date.strftime(
@@ -251,12 +276,16 @@ def finalizeManifestDownload(
         },
     )
     logging.info(
-        "Manifest bytes collected "
+        "Manifest identified and canonicalized "
         + json.dumps(
             {
                 "declared_artifact_type": expected_type,
-                "source_download_filename": filename,
+                "source_download_filename": manifest_identity.get(
+                    "source_download_filename"
+                ),
+                "canonical_filename": filename,
                 "selected_work_area": route_identity,
+                "header_work_area": manifest_identity.get("work_area"),
             },
             sort_keys=True,
         )
@@ -265,9 +294,21 @@ def finalizeManifestDownload(
     event_common = {
         "artifact_key": artifact_key,
         "lane_key": lane_key,
-        "route_identity": route_identity,
+        "route_identity": manifest_identity.get("work_area"),
         "filename": filename,
     }
+    emit_runtime_event(
+        "ARTIFACT_IDENTIFICATION_COMPLETED",
+        "ARTIFACT_IDENTIFICATION",
+        duration_ms=int((time.time() - identification_started_at) * 1000),
+        metadata={
+            "selected_work_area": route_identity,
+            "header_work_area": manifest_identity.get("work_area"),
+            "canonical_filename": filename,
+            "header_authoritative": True,
+        },
+        **event_common,
+    )
     emit_runtime_event(
         "SOURCE_REQUESTED",
         "SOURCE",
@@ -294,7 +335,7 @@ def finalizeManifestDownload(
     )
     emit_runtime_event("DOWNLOAD_COMPLETED", "DOWNLOAD", **event_common)
 
-    return downloaded_path
+    return renamed_path
 
 
 def collectOptionalManifest(
@@ -653,6 +694,32 @@ REQUESTED_MANIFEST_TYPES = requested_manifest_types()
 def should_download_manifest(manifest_type):
     return manifest_type in REQUESTED_MANIFEST_TYPES
 
+def normalize_manifest_work_area(value):
+    text = str(value or "").strip().upper()
+    match = re.search(r"(?<!\d)(\d{1,4})(?!\d)", text)
+    if match:
+        return str(int(match.group(1)))
+    return re.sub(r"[^A-Z0-9]+", "", text)
+
+def requested_manifest_work_areas():
+    return {
+        normalize_manifest_work_area(value)
+        for value in os.environ.get(
+            "FCMS_MANIFEST_WORK_AREAS",
+            "",
+        ).split(",")
+        if normalize_manifest_work_area(value)
+    }
+
+REQUESTED_MANIFEST_WORK_AREAS = requested_manifest_work_areas()
+
+def should_collect_manifest_work_area(value):
+    return (
+        not REQUESTED_MANIFEST_WORK_AREAS
+        or normalize_manifest_work_area(value)
+        in REQUESTED_MANIFEST_WORK_AREAS
+    )
+
 
 def should_run_section(section_name):
     # SCH PU Mgmt is intentionally excluded from Insight Last Look / normal sweeps.
@@ -956,6 +1023,54 @@ def clickManifestSearch(driver, option_index, max_attempts=3):
                 )
             )
             search_button.click()
+            overlay = (
+                By.XPATH,
+                "//div[@id='manifestForm:submitTransferNotification_bg']",
+            )
+            try:
+                WebDriverWait(driver, 8, poll_frequency=0.1).until(
+                    EC.visibility_of_element_located(overlay)
+                )
+            except TimeoutException:
+                logging.info(
+                    "Manifest refresh overlay was not observed for option %s; "
+                    "waiting for the application request queue instead",
+                    option_index,
+                )
+
+            WebDriverWait(driver, 45, poll_frequency=0.1).until(
+                lambda current_driver: current_driver.execute_script(
+                    """
+                    const overlay = document.getElementById(
+                      'manifestForm:submitTransferNotification_bg'
+                    );
+                    const overlayHidden = !overlay ||
+                      window.getComputedStyle(overlay).display === 'none' ||
+                      window.getComputedStyle(overlay).visibility === 'hidden' ||
+                      Number(window.getComputedStyle(overlay).opacity || 1) === 0;
+                    const ajaxIdle = !window.PrimeFaces ||
+                      !PrimeFaces.ajax ||
+                      !PrimeFaces.ajax.Queue ||
+                      typeof PrimeFaces.ajax.Queue.isEmpty !== 'function' ||
+                      PrimeFaces.ajax.Queue.isEmpty();
+                    return document.readyState === 'complete' &&
+                      overlayHidden && ajaxIdle;
+                    """
+                )
+            )
+            refreshed_select = Select(
+                WebDriverWait(driver, 30).until(
+                    EC.presence_of_element_located(
+                        (By.XPATH, "//select[@id='manifestForm:workAreas']")
+                    )
+                )
+            )
+            if refreshed_select.options[option_index].get_attribute(
+                "selected"
+            ) is None:
+                raise RuntimeError(
+                    f"Manifest route selection changed during refresh for option {option_index}"
+                )
             return
         except (
             ElementClickInterceptedException,
@@ -1200,6 +1315,8 @@ def main(section_='', option_=0, retry=1):
             select_element = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//select[@id='manifestForm:workAreas']")))
 
             total_select_options = len(select_element.find_elements(By.XPATH, 'option'))
+            collected_work_areas = set()
+            manifest_failures = []
             for i in range(option_, total_select_options):
                 if i == 0: continue
                 select_element = WebDriverWait(driver, 30).until(
@@ -1213,10 +1330,15 @@ def main(section_='', option_=0, retry=1):
                     or option.get_attribute("value")
                     or f"option-{i}"
                 ).strip()
+                if not should_collect_manifest_work_area(work_area_hint):
+                    continue
                 logging.info(f'Selecting option {i}')
                 ACTIVE_SECTION_OPTION = i
                 time.sleep(1)
                 selected_work_area = selectWorkArea(driver, i)
+                collected_work_areas.add(
+                    normalize_manifest_work_area(selected_work_area)
+                )
                 time.sleep(1)
 
                 logging.info("Waiting for the search button to be visible...")
@@ -1284,6 +1406,8 @@ def main(section_='', option_=0, retry=1):
                         expected_type="delivery",
                         route_identity=selected_work_area,
                     )
+                    if not delivery_path:
+                        manifest_failures.append(selected_work_area)
                 else:
                     logging.info("Skipping Delivery Manifest")
 
@@ -1309,6 +1433,24 @@ def main(section_='', option_=0, retry=1):
                     )
                 else:
                     logging.info("Skipping Pickup Manifest")
+            if (
+                REQUESTED_MANIFEST_WORK_AREAS
+                and not REQUESTED_MANIFEST_WORK_AREAS.issubset(
+                    collected_work_areas
+                )
+            ):
+                missing = sorted(
+                    REQUESTED_MANIFEST_WORK_AREAS - collected_work_areas
+                )
+                raise RuntimeError(
+                    "Requested manifest work areas were not available: "
+                    + ", ".join(missing)
+                )
+            if manifest_failures:
+                raise RuntimeError(
+                    "Delivery manifest collection incomplete for work areas: "
+                    + ", ".join(manifest_failures)
+                )
             ACTIVE_SECTION_OPTION = 0
         if secion_index <= 1 and should_run_section('Service'):
             ACTIVE_SECTION = 'Service'
