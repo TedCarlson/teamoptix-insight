@@ -12,8 +12,7 @@ export type CompanyWorkspaceGrantKey =
   | "payroll"
   | "admin_config"
   | "grant_management"
-  | "opportunity_analysis"
-  | "insight_telecom_fulfillment";
+  | "opportunity_analysis";
 
 export type CompanyWorkspaceGrant = {
   key: CompanyWorkspaceGrantKey;
@@ -37,5 +36,4 @@ export const COMPANY_WORKSPACE_GRANTS: CompanyWorkspaceGrant[] = [
   { key: "admin_config", label: "Company Config", group: "Business", description: "Access company configuration." },
   { key: "grant_management", label: "Grant Management", group: "Business", description: "Manage workspace access for other users." },
   { key: "opportunity_analysis", label: "Opportunity Analysis", group: "Business", description: "Evaluate prospective contracted service opportunities." },
-  { key: "insight_telecom_fulfillment", label: "Insight - Telecom Fulfillment", group: "Operations", description: "Enter the governed telecom fulfillment workspace for this company." },
 ];

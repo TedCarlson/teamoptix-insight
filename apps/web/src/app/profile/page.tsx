@@ -100,7 +100,7 @@ export default function ProfilePage() {
     (membership) => membership.membership_status === "pending"
   ) ?? null;
   const primaryCompanyHref = primaryMembership?.company_slug
-    ? `/company/${primaryMembership.company_slug}/home`
+    ? "/workspace"
     : "/companies";
   const workEntranceTitle = access.is_platform_owner
     ? "TeamOptix"

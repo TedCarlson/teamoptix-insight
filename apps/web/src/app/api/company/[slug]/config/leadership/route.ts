@@ -29,6 +29,24 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ slug:
   try {
     const { slug } = await context.params;
     const body = await req.json().catch(() => ({}));
+    const action = body.action === "remove" ? "remove" : "add";
+
+    if (action === "remove") {
+      const assignmentId = typeof body.assignment_id === "string" ? body.assignment_id : "";
+      if (!assignmentId) {
+        return NextResponse.json({ error: "assignment_id is required." }, { status: 400 });
+      }
+
+      const supabase = await getSupabaseServerClient();
+      const { data, error } = await supabase.rpc("remove_company_leadership_assignment", {
+        p_company_slug: slug,
+        p_assignment_id: assignmentId,
+      });
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (data?.error) return NextResponse.json({ error: data.error }, { status: errorStatus(data.error) });
+      return NextResponse.json(data, { status: 200 });
+    }
+
     const roleKey = typeof body.role_key === "string" ? body.role_key : "";
     const rosterMemberId = body.roster_member_id === null || body.roster_member_id === ""
       ? null

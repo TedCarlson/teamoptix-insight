@@ -276,10 +276,8 @@ export default function CompanyPage() {
   useEffect(() => {
     if (access.loading || !slug || pathname !== `/company/${slug}`) return;
 
-    const compactViewport = window.matchMedia("(max-width: 899px)").matches;
-
-    if (compactViewport && hasScopedMobileWorkspaces) {
-      router.replace(`/company/${slug}/mobile`);
+    if (hasScopedMobileWorkspaces) {
+      router.replace(`/company/${slug}/workspace`);
       return;
     }
 

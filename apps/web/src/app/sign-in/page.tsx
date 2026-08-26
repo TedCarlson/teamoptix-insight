@@ -77,7 +77,7 @@ function SignInInner() {
   }, [turnstileSiteKey]);
 
   const nextHref = useMemo(() => {
-    return returnTo || "/profile";
+    return returnTo || "/workspace";
   }, [returnTo]);
 
   async function handlePasswordSignIn(e: React.FormEvent) {

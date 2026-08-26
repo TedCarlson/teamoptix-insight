@@ -72,6 +72,15 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     canAccessCompanyWorkspace(access, slug, "opportunity_analysis");
   const canAccessFleet = canAccessCompanyWorkspace(access, slug, "fleet");
   const canAccessSchedule = canAccessCompanyWorkspace(access, slug, "schedule");
+  const canAccessDispatch = canAccessCompanyWorkspace(access, slug, "dispatch");
+  const canAccessRoutes = canAccessCompanyWorkspace(access, slug, "routes");
+  const canAccessPlanning = canAccessCompanyWorkspace(access, slug, "planning");
+  const canAccessDeliveryWindow = canAccessCompanyWorkspace(access, slug, "delivery_window");
+  const canAccessOperationsUploads = canAccessCompanyWorkspace(access, slug, "operations_uploads");
+  const canAccessReports = canAccessCompanyWorkspace(access, slug, "reports");
+  const canAccessRoster = canAccessCompanyWorkspace(access, slug, "roster");
+  const canAccessHiring = canAccessCompanyWorkspace(access, slug, "hiring");
+  const canAccessPayroll = canAccessCompanyWorkspace(access, slug, "payroll");
 
   const base = `/company/${slug}`;
   const announcementsBase = `${base}/announcements`;
@@ -88,6 +97,16 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const opportunitiesBase = `${base}/opportunity-analysis`;
   const fleetBase = `${base}/fleet`;
   const legalRequiredBase = `${base}/admin/legal/required`;
+  const tailoredOperationsHref = canAccessDispatch
+    ? `${operationsBase}/dispatch`
+    : canAccessPlanning
+      ? `${operationsBase}/planning`
+      : canAccessDeliveryWindow
+        ? `${operationsBase}/delivery-window`
+        : canAccessOperationsUploads
+          ? operationsBase
+          : `${base}/prior-day`;
+  const hasTailoredOperations = canAccessDispatch || canAccessPlanning || canAccessDeliveryWindow || canAccessOperationsUploads || canAccessReports;
 
   const mainItems: NavItem[] = isAdminUser
     ? [
@@ -118,17 +137,29 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
         { label: "Routes", href: `${base}/routes`, match: (path) => path.startsWith(`${base}/routes`) },
       ]
     : [
-        { label: "Home", href: homeBase, match: (path) => path === homeBase || path.startsWith(announcementsBase) },
+        { label: "Home", href: `${base}/workspace`, match: (path) => path === `${base}/workspace` || path === homeBase || path.startsWith(announcementsBase) },
+        ...(hasTailoredOperations
+          ? [{ label: "Operations", href: tailoredOperationsHref, match: (path: string) => path.startsWith(operationsBase) || path === `${base}/prior-day` }]
+          : []),
         {
           label: "Schedule",
           href: canAccessSchedule ? scheduleBase : `${base}/driver/schedule`,
           match: (path) => path.startsWith(scheduleBase) || path.startsWith(`${base}/driver/schedule`),
         },
+        ...(canAccessRoutes
+          ? [{ label: "Routes", href: `${base}/routes`, match: (path: string) => path.startsWith(`${base}/routes`) }]
+          : []),
+        ...(canAccessRoster || canAccessHiring
+          ? [{ label: "People", href: canAccessRoster ? `${peopleBase}/roster` : `${base}/hiring`, match: (path: string) => path.startsWith(peopleBase) || path.startsWith(`${base}/hiring`) }]
+          : []),
         ...(canAccessOpportunities
           ? [{ label: "Opportunities", href: opportunitiesBase, match: (path: string) => path.startsWith(opportunitiesBase) }]
           : []),
         ...(canAccessFleet
           ? [{ label: "Fleet", href: fleetBase, match: (path: string) => path.startsWith(fleetBase) }]
+          : []),
+        ...(canAccessPayroll
+          ? [{ label: "Payroll", href: `${payrollBase}/summary`, match: (path: string) => path.startsWith(payrollBase) }]
           : []),
       ];
 
