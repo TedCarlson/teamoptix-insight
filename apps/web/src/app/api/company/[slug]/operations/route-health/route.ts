@@ -8,6 +8,14 @@ import {
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { loadExpressEvidence } from "@/features/operations/express/loadExpressEvidence";
+import {
+  getAutomationCredential,
+  getOrCreateFedExAutomationProfile,
+} from "@/features/automation/server/automation.repository";
+import {
+  applyManifestIdentityAccess,
+  resolveManifestIdentityAccess,
+} from "@/features/operations/manifests/manifestIdentityAccess";
 
 export const runtime = "nodejs";
 
@@ -417,6 +425,20 @@ export async function GET(
     const routeKey = String(req.nextUrl.searchParams.get("routeKey") ?? "").trim();
 
     if (routeKey) {
+      const profileResult = await getOrCreateFedExAutomationProfile(
+        supabase,
+        company.id
+      );
+      const credentialResult = profileResult.profile
+        ? await getAutomationCredential(supabase, profileResult.profile.id)
+        : { row: null, error: profileResult.error };
+      const identityAccess = resolveManifestIdentityAccess({
+        profileStatus: profileResult.profile?.status ?? null,
+        hasSecret: credentialResult.row?.has_secret ?? false,
+        lastVerifiedAt: credentialResult.row?.last_verified_at ?? null,
+        lastVerificationResult:
+          credentialResult.row?.last_verification_result ?? null,
+      });
       const [
         deliveryStopsResult,
         packagesResult,
@@ -510,9 +532,16 @@ export async function GET(
         company_slug: slug,
         service_date: serviceDate,
         route_key: routeKey,
-        delivery_stops: deliveryStopsResult.data ?? [],
-        packages,
-        pickups: pickupsResult.data ?? [],
+        identity_access: identityAccess,
+        delivery_stops: (deliveryStopsResult.data ?? []).map((row) =>
+          applyManifestIdentityAccess(row, identityAccess)
+        ),
+        packages: packages.map((row) =>
+          applyManifestIdentityAccess(row, identityAccess)
+        ),
+        pickups: (pickupsResult.data ?? []).map((row) =>
+          applyManifestIdentityAccess(row, identityAccess)
+        ),
         stop_clusters: clustersResult.data ?? [],
       });
     }
