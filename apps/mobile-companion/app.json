@@ -37,6 +37,13 @@
     },
     "plugins": [
       [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Insight Mobile Companion to scan vehicle VINs and company asset barcodes during inspection setup.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
         "expo-local-authentication",
         {
           "faceIDPermission": "Use Face ID to protect access to your authenticated Insight workspace."

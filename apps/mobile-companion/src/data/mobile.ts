@@ -23,6 +23,13 @@ type AccessContext = {
   profile_id?: string | null;
 };
 
+type InspectionAuthority = {
+  company_slug: string;
+  context_key: string;
+  access_mode?: string;
+  roster_member_id?: string;
+};
+
 export type MobileSyncSummary = {
   online: boolean;
   error: string | null;
@@ -254,13 +261,13 @@ export async function loadDriverTimeOffRequests(
 }
 
 export async function loadFleetVehicles(
-  membership: AccessMembership,
+  membership: Pick<InspectionAuthority, "company_slug" | "context_key">,
   outbox: EdgeOutbox,
 ) {
   const result = await getSupabaseClient()
     .from("company_fleet_vehicle_v")
     .select(
-      "vehicle_id, unit_number, vehicle_class_key, vehicle_type, status, year, make, model, vin, plate_number, odometer_miles, open_defect_count",
+      "vehicle_id, unit_number, fedex_vehicle_id, vehicle_class_key, vehicle_type, status, year, make, model, vin, plate_number, primary_route, odometer_miles, open_defect_count",
     )
     .eq("company_slug", membership.company_slug)
     .neq("status", "RETIRED")
@@ -278,15 +285,6 @@ export async function loadFleetVehicles(
   return vehicles;
 }
 
-function base64ToArrayBuffer(base64: string) {
-  const binary = globalThis.atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes.buffer;
-}
-
 async function uploadInspectionEvidence(
   submissionId: string,
   companySlug: string,
@@ -294,39 +292,94 @@ async function uploadInspectionEvidence(
   evidence: Awaited<ReturnType<EdgeOutbox["pendingInspectionSubmissions"]>>[number]["evidence"],
 ) {
   const supabase = getSupabaseClient();
+  const session = await supabase.auth.getSession();
+  const accessToken = session.data.session?.access_token;
+  if (!accessToken) throw new Error("Your Insight session is unavailable for inspection evidence.");
   const mediaByItem = new Map<string, string[]>();
   const itemIndexes = new Map<string, number>();
+  const webAppUrl = (process.env.EXPO_PUBLIC_WEB_APP_URL ?? "https://teamoptix.io").replace(/\/$/, "");
 
   for (const item of evidence) {
     const index = itemIndexes.get(item.itemKey) ?? 0;
     itemIndexes.set(item.itemKey, index + 1);
-    const path = `${companySlug}/${vehicleId}/pending/${submissionId}-${item.itemKey}-${index}.jpg`;
-    const upload = await supabase.storage
-      .from("fleet-inspection-evidence")
-      .upload(path, base64ToArrayBuffer(item.base64), {
-        contentType: item.contentType,
-        upsert: false,
-      });
-    if (upload.error && !upload.error.message.toLowerCase().includes("exist")) {
-      throw upload.error;
-    }
-
-    const registered = await supabase.rpc(
-      "register_mobile_companion_inspection_evidence",
-      {
-        p_company_slug: companySlug,
-        p_vehicle_id: vehicleId,
-        p_item_key: item.itemKey,
-        p_storage_path: path,
-        p_content_type: item.contentType,
-        p_size_bytes: item.sizeBytes,
-        p_sha256: item.sha256,
+    const response = await fetch(`${webAppUrl}/api/company/${encodeURIComponent(companySlug)}/fleet/inspection-evidence`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
       },
-    );
-    if (registered.error) throw registered.error;
-    mediaByItem.set(item.itemKey, [...(mediaByItem.get(item.itemKey) ?? []), path]);
+      body: JSON.stringify({
+        base64: item.base64,
+        content_type: item.contentType,
+        device_submission_id: submissionId,
+        item_key: item.itemKey,
+        sequence: index,
+        sha256: item.sha256,
+        size_bytes: item.sizeBytes,
+        vehicle_id: vehicleId,
+      }),
+    });
+    const result = await response.json().catch(() => null) as { error?: string; storage_path?: string } | null;
+    if (!response.ok || !result?.storage_path) throw new Error(result?.error || "Inspection evidence could not be stored.");
+    mediaByItem.set(item.itemKey, [...(mediaByItem.get(item.itemKey) ?? []), result.storage_path]);
   }
   return mediaByItem;
+}
+
+async function synchronizeInspectionSubmissions(outbox: EdgeOutbox, authority: InspectionAuthority) {
+  const supabase = getSupabaseClient();
+  let acknowledged = 0;
+  for (const submission of await outbox.pendingInspectionSubmissions(authority.context_key)) {
+    try {
+      if (authority.access_mode === "ADMIN_DEMO" && authority.roster_member_id) {
+        const demoResult = await supabase.rpc("sync_mobile_companion_demo_event", {
+          p_company_slug: authority.company_slug,
+          p_roster_member_id: authority.roster_member_id,
+          p_event_id: submission.submissionId,
+          p_event_type: "INSPECTION_SUBMISSION",
+          p_payload: {
+            inspection: submission.payload,
+            evidence: submission.evidence.map((item) => ({ item_key: item.itemKey, content_type: item.contentType, size_bytes: item.sizeBytes, sha256: item.sha256 })),
+          },
+        });
+        if (demoResult.error) throw demoResult.error;
+        await outbox.markInspectionAcknowledged(authority.context_key, submission.submissionId, `demo:${submission.submissionId}`);
+        acknowledged += 1;
+        continue;
+      }
+      const mediaByItem = await uploadInspectionEvidence(submission.submissionId, submission.companySlug, submission.payload.vehicle_id, submission.evidence);
+      const payload: InspectionSubmissionPayload = {
+        ...submission.payload,
+        items: submission.payload.items.map((item) => ({ ...item, media_paths: mediaByItem.get(item.item_key) ?? [] })),
+      };
+      const result = await supabase.rpc("submit_mobile_companion_fleet_inspection", {
+        p_company_slug: submission.companySlug,
+        p_device_submission_id: submission.submissionId,
+        p_vehicle_id: payload.vehicle_id,
+        p_inspection_type: payload.inspection_type,
+        p_odometer_miles: payload.odometer_miles,
+        p_safe_to_operate: payload.safe_to_operate,
+        p_driver_notes: payload.driver_notes,
+        p_route_name: payload.route_name,
+        p_items: payload.items,
+      });
+      if (result.error) throw result.error;
+      await outbox.markInspectionAcknowledged(authority.context_key, submission.submissionId, String(result.data));
+      acknowledged += 1;
+    } catch (error) {
+      const nextError = errorMessage(error);
+      await outbox.markInspectionFailed(submission, nextError);
+      return { acknowledged, error: nextError };
+    }
+  }
+  return { acknowledged, error: null };
+}
+
+export async function synchronizeInspectionOutbox(outbox: EdgeOutbox, authority: InspectionAuthority): Promise<MobileSyncSummary> {
+  const network = await Network.getNetworkStateAsync();
+  if (!network.isConnected || network.isInternetReachable === false) return { online: false, error: null, inspectionsAcknowledged: 0, messagesAcknowledged: 0, timeOffActionsAcknowledged: 0 };
+  const result = await synchronizeInspectionSubmissions(outbox, authority);
+  return { online: true, error: result.error, inspectionsAcknowledged: result.acknowledged, messagesAcknowledged: 0, timeOffActionsAcknowledged: 0 };
 }
 
 export async function synchronizeMobileOutbox(
@@ -356,86 +409,11 @@ export async function synchronizeMobileOutbox(
   }
 
   const supabase = getSupabaseClient();
-  let inspectionsAcknowledged = 0;
+  const inspectionResult = await synchronizeInspectionSubmissions(outbox, membership);
+  let inspectionsAcknowledged = inspectionResult.acknowledged;
   let messagesAcknowledged = 0;
   let timeOffActionsAcknowledged = 0;
-
-  for (const submission of await outbox.pendingInspectionSubmissions(
-    membership.context_key,
-  )) {
-    try {
-      if (membership.access_mode === "ADMIN_DEMO") {
-        const demoResult = await supabase.rpc("sync_mobile_companion_demo_event", {
-          p_company_slug: membership.company_slug,
-          p_roster_member_id: membership.roster_member_id,
-          p_event_id: submission.submissionId,
-          p_event_type: "INSPECTION_SUBMISSION",
-          p_payload: {
-            inspection: submission.payload,
-            evidence: submission.evidence.map((item) => ({
-              item_key: item.itemKey,
-              content_type: item.contentType,
-              size_bytes: item.sizeBytes,
-              sha256: item.sha256,
-            })),
-          },
-        });
-        if (demoResult.error) throw demoResult.error;
-        await outbox.markInspectionAcknowledged(
-          membership.context_key,
-          submission.submissionId,
-          `demo:${submission.submissionId}`,
-        );
-        inspectionsAcknowledged += 1;
-        continue;
-      }
-
-      const mediaByItem = await uploadInspectionEvidence(
-        submission.submissionId,
-        submission.companySlug,
-        submission.payload.vehicle_id,
-        submission.evidence,
-      );
-      const payload: InspectionSubmissionPayload = {
-        ...submission.payload,
-        items: submission.payload.items.map((item) => ({
-          ...item,
-          media_paths: mediaByItem.get(item.item_key) ?? [],
-        })),
-      };
-      const result = await supabase.rpc(
-        "submit_mobile_companion_fleet_inspection",
-        {
-          p_company_slug: submission.companySlug,
-          p_device_submission_id: submission.submissionId,
-          p_vehicle_id: payload.vehicle_id,
-          p_inspection_type: payload.inspection_type,
-          p_odometer_miles: payload.odometer_miles,
-          p_safe_to_operate: payload.safe_to_operate,
-          p_driver_notes: payload.driver_notes,
-          p_route_name: payload.route_name,
-          p_items: payload.items,
-        },
-      );
-      if (result.error) throw result.error;
-      await outbox.markInspectionAcknowledged(
-        membership.context_key,
-        submission.submissionId,
-        String(result.data),
-      );
-      inspectionsAcknowledged += 1;
-    } catch (error) {
-      const nextError = errorMessage(error);
-      await outbox.markInspectionFailed(submission, nextError);
-      return {
-        online: true,
-        error: nextError,
-        inspectionsAcknowledged,
-        messagesAcknowledged,
-        timeOffActionsAcknowledged,
-      };
-    }
-  }
+  if (inspectionResult.error) return { online: true, error: inspectionResult.error, inspectionsAcknowledged, messagesAcknowledged, timeOffActionsAcknowledged };
 
   for (const acknowledgment of await outbox.pendingMessageAcknowledgments(
     membership.context_key,

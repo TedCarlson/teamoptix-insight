@@ -24,7 +24,6 @@ export type ManagerWorkspaceSuite = {
   label: string;
   detail: string;
   grants: CompanyWorkspaceGrantKey[];
-  fallbackPath: string;
   children: ManagerWorkspaceChild[];
 };
 
@@ -107,13 +106,13 @@ export const MANAGER_WORKSPACE_SUITES: ManagerWorkspaceSuite[] = [
     label: "Operations",
     detail: "Operating posture, planning, reports, and walk-ons",
     grants: ["dispatch", "planning", "delivery_window", "reports"],
-    fallbackPath: "/operations",
     children: [
-      { key: "dispatch", code: "DP", label: "Dispatch", detail: "Assignments, attendance, route changes, and handoff", path: "/operations/dispatch", mobileVisible: false, requiredGrant: "dispatch" },
+      { key: "dispatch", code: "DP", label: "Dispatch", detail: "Assignments, attendance, route changes, and handoff", path: "/operations/dispatch", requiredGrant: "dispatch" },
       { key: "service", code: "SV", label: "Service", detail: "On-route progress, exceptions, and delivery evidence", path: "/operations/service", requiredGrant: "delivery_window" },
       { key: "planning", code: "PL", label: "Planning", detail: "Forecast, demand, and readiness intelligence", path: "/operations/planning", requiredGrant: "planning" },
       { key: "reports", code: "RP", label: "Ops Reports", detail: "Select a service date and review prior-day facts", path: "/prior-day", requiredGrant: "reports" },
       { key: "walk_ons", code: "WO", label: "Walk Ons", detail: "Support identities, dated assignments, and pay treatment", path: "/operations/walk-ons", requiredGrant: "dispatch" },
+      { code: "PU", label: "PU Reconciliation", detail: "Pickup totals, exceptions, and route-level reconciliation", path: "/operations/pu-reconciliation", requiredGrant: "reports" },
     ],
   },
   {
@@ -122,12 +121,16 @@ export const MANAGER_WORKSPACE_SUITES: ManagerWorkspaceSuite[] = [
     label: "People",
     detail: "Roster, workforce readiness, hiring, and interviews",
     grants: ["roster", "hiring"],
-    fallbackPath: "/people",
     children: [
       { code: "RO", label: "Roster", detail: "Active and former team members", path: "/people/roster", requiredGrant: "roster" },
       { code: "WR", label: "Workforce Readiness", detail: "Employment and compliance posture", path: "/people/reports/workforce-readiness", requiredGrant: "roster" },
       { code: "HR", label: "Hiring", detail: "Candidate pipeline and onboarding", path: "/hiring", requiredGrant: "hiring" },
       { code: "IV", label: "Interviews", detail: "Upcoming candidate conversations", path: "/people/interviews", requiredGrant: "hiring" },
+      { code: "IN", label: "Invitations", detail: "Activation and invitation delivery status", path: "/people/invitations", requiredGrant: "hiring" },
+      { code: "RP", label: "Reports", detail: "Workforce, tenure, readiness, and hiring posture", path: "/people/reports", requiredGrant: "roster" },
+      { code: "CA", label: "Corrective Actions", detail: "Open actions, owners, due dates, and resolution", path: "/people/corrective-actions", requiredGrant: "roster" },
+      { code: "PO", label: "Policies", detail: "Published policies and acknowledgment posture", path: "/people/policies", requiredGrant: "roster" },
+      { code: "CO", label: "Compliance", detail: "Requirements, expirations, and workforce exceptions", path: "/people/compliance", requiredGrant: "roster" },
     ],
   },
   {
@@ -136,12 +139,13 @@ export const MANAGER_WORKSPACE_SUITES: ManagerWorkspaceSuite[] = [
     label: "Fleet",
     detail: "Vehicles, open defects, inspections, and maintenance",
     grants: ["fleet"],
-    fallbackPath: "/fleet",
     children: [
-      { code: "VH", label: "Vehicles", detail: "Unit status and assignment", path: "/fleet", requiredGrant: "fleet" },
+      { code: "HM", label: "Fleet Home", detail: "Availability, defects, inspections, and maintenance posture", path: "/fleet", requiredGrant: "fleet" },
+      { code: "VH", label: "Vehicles", detail: "Unit status, assignment, and service history", path: "/fleet/vehicles", requiredGrant: "fleet" },
       { code: "DF", label: "Defects", detail: "Open vehicle issues", path: "/fleet/defects", requiredGrant: "fleet" },
       { code: "IN", label: "Inspections", detail: "Recent inspection outcomes", path: "/fleet/inspections", requiredGrant: "fleet" },
       { code: "WO", label: "Work Orders", detail: "Maintenance in progress", path: "/fleet/work-orders", requiredGrant: "fleet" },
+      { code: "AU", label: "Asset Audit", detail: "Assigned assets, custody, and audit exceptions", path: "/fleet/assets", requiredGrant: "fleet" },
     ],
   },
   {
@@ -150,7 +154,6 @@ export const MANAGER_WORKSPACE_SUITES: ManagerWorkspaceSuite[] = [
     label: "Routes",
     detail: "Route directory, run pattern, thresholds, and history",
     grants: ["routes"],
-    fallbackPath: "/routes",
     children: [
       { code: "DR", label: "Directory", detail: "Active route records", path: "/routes", requiredGrant: "routes" },
       { code: "RN", label: "Run Pattern", detail: "Operating days by route", path: "/routes", requiredGrant: "routes" },
@@ -164,12 +167,21 @@ export const MANAGER_WORKSPACE_SUITES: ManagerWorkspaceSuite[] = [
     label: "Admin",
     detail: "Company settings, access, payroll, and opportunity scope",
     grants: ["admin_config", "grant_management", "payroll", "opportunity_analysis"],
-    fallbackPath: "/config",
     children: [
-      { code: "CO", label: "Company", detail: "Company and operating configuration", path: "/config", requiredGrant: "admin_config" },
-      { code: "AC", label: "Access", detail: "People and workspace grants", path: "/config/access", requiredGrant: "grant_management" },
-      { code: "PY", label: "Payroll", detail: "Activity, timekeeping, and exceptions", path: "/payroll/summary", requiredGrant: "payroll" },
-      { code: "OA", label: "Opportunities", detail: "Prospective service analysis", path: "/opportunity-analysis", requiredGrant: "opportunity_analysis" },
+      { code: "PF", label: "Profile", detail: "Account identity, company context, and security posture", path: "/account" },
+      { code: "CO", label: "Company", detail: "Company identity and operating configuration", path: "/config", requiredGrant: "admin_config" },
+      { code: "LD", label: "Leadership", detail: "Leadership roster and responsibility mapping", path: "/config/leadership", requiredGrant: "admin_config" },
+      { code: "AC", label: "Access", detail: "People, roles, and workspace grants", path: "/config/access", requiredGrant: "grant_management" },
+      { code: "OP", label: "Operations Config", detail: "Route order, timekeeping, and terminal preferences", path: "/config/operations", requiredGrant: "admin_config" },
+      { code: "AT", label: "Automation", detail: "Operational rules, triggers, and delivery state", path: "/config/automation", requiredGrant: "admin_config" },
+      { code: "PS", label: "Payroll Summary", detail: "Pay period activity, timekeeping, and exceptions", path: "/payroll/summary", requiredGrant: "payroll" },
+      { code: "PC", label: "Payroll Compliance", detail: "Missing punches, approvals, and compliance posture", path: "/payroll/compliance", requiredGrant: "payroll" },
+      { code: "PA", label: "Adjustments", detail: "Pay adjustments, review status, and audit context", path: "/payroll/adjustments", requiredGrant: "payroll" },
+      { code: "PR", label: "Productivity", detail: "Labor productivity and route performance", path: "/payroll/productivity", requiredGrant: "payroll" },
+      { code: "TT", label: "Time Tracking", detail: "Clock activity, exceptions, and approvals", path: "/payroll/time-tracking", requiredGrant: "payroll" },
+      { code: "AN", label: "Analytics", detail: "Operational and workforce trend summaries", path: "/analytics", requiredGrant: "reports" },
+      { code: "AS", label: "Assets", detail: "Scanners, fuel cards, custody, and audit posture", path: "/assets", requiredGrant: "admin_config" },
+      { code: "OA", label: "Opportunities", detail: "Analyses, comparisons, assumptions, and reference data", path: "/opportunity-analysis", requiredGrant: "opportunity_analysis" },
     ],
   },
   {
@@ -178,7 +190,6 @@ export const MANAGER_WORKSPACE_SUITES: ManagerWorkspaceSuite[] = [
     label: "Messages",
     detail: "Published company updates and acknowledgments",
     grants: [],
-    fallbackPath: "/announcements",
     children: [
       { code: "PB", label: "Published", detail: "Live company updates", path: "/announcements" },
       { code: "DR", label: "Drafts", detail: "Messages being prepared", path: "/announcements" },

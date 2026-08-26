@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -54,12 +55,21 @@ import {
   type ManagerRoutesSnapshot,
 } from "../domain/managerRoutes";
 import type {
+  ManagerScheduleOverride,
+  ManagerSchedulePreset,
   ManagerCapacitySignal,
   ManagerScheduleDay,
+  ManagerScheduleRow,
   ManagerScheduleSnapshot,
+  ManagerScheduleWorkbenchRow,
   ManagerTimeOffRequest,
 } from "../domain/managerSchedule";
 import { capacitySignalLabel } from "../domain/managerSchedule";
+import type {
+  ManagerScheduleBaselineDraft,
+  ManagerScheduleOverrideDraft,
+  ManagerSchedulePresetDraft,
+} from "../data/managerSchedule";
 import {
   validateManagerWalkOnAssignment,
   validateManagerWalkOnIdentity,
@@ -74,6 +84,7 @@ import {
   type ManagerOperationsPhase,
   type ManagerOperationsRoute,
   type ManagerWorkspaceChildKey,
+  type ManagerWorkspaceChild,
   type ManagerWorkspaceKey,
   type ManagerWorkspaceSnapshot,
   type ManagerWorkspaceSuite,
@@ -83,7 +94,7 @@ import { AppHeader, Card, PrimaryButton, Screen, sharedStyles } from "../compone
 import { IntentVerificationModal } from "../components/IntentVerificationModal";
 import { colors } from "../theme";
 
-export type ManagerTabKey = "today" | "schedule" | "workspaces" | "messages";
+export type ManagerTabKey = "today" | "schedule" | "workspaces" | "inspect" | "messages";
 
 function formatEventTime(value: string | null, timeZone: string) {
   if (!value) return "";
@@ -153,6 +164,8 @@ export function ManagerHomeScreen(props: {
   onOpenOperations: () => void;
   onSettings: () => void;
 }) {
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 900;
   const hasSchedule = props.context.grants.includes("schedule");
   const hasOperations = props.context.grants.some((grant) =>
     ["dispatch", "planning", "delivery_window", "operations_uploads", "reports"].includes(grant),
@@ -166,26 +179,32 @@ export function ManagerHomeScreen(props: {
         title="Today"
       />
       <ManagerPulse context={props.context} />
-      <View style={styles.sectionHeading}>
-        <Text style={styles.sectionLabel}>Priority work</Text>
-        <Text style={styles.sectionMeta}>{props.context.grants.length} TOOLS</Text>
+      <View style={[styles.managerHomeGrid, isTablet && styles.managerHomeGridTablet]}>
+        <View style={styles.managerHomeColumn}>
+          <View style={styles.sectionHeading}>
+            <Text style={styles.sectionLabel}>Priority work</Text>
+            <Text style={styles.sectionMeta}>{props.context.grants.length} TOOLS</Text>
+          </View>
+          {hasSchedule ? (
+            <AccessTile code="SC" detail="Coverage, personal requests, and management tools" label="Schedule" onPress={props.onOpenSchedule} />
+          ) : null}
+          {hasOperations ? (
+            <AccessTile code="OP" detail="Dispatch posture and delivery window" label="Operations" onPress={props.onOpenOperations} />
+          ) : null}
+        </View>
+        <View style={styles.managerHomeColumn}>
+          <View style={styles.sectionHeading}>
+            <Text style={styles.sectionLabel}>Your access</Text>
+            <Text style={styles.sectionMeta}>GRANT-MATCHED</Text>
+          </View>
+          <AccessTile
+            code={String(props.context.grants.length)}
+            detail="People, Fleet, Routes, Admin, and more"
+            label="All workspaces"
+            onPress={props.onOpenWorkspaces}
+          />
+        </View>
       </View>
-      {hasSchedule ? (
-        <AccessTile code="SC" detail="Coverage, personal requests, and management tools" label="Schedule" onPress={props.onOpenSchedule} />
-      ) : null}
-      {hasOperations ? (
-        <AccessTile code="OP" detail="Dispatch posture and delivery window" label="Operations" onPress={props.onOpenOperations} />
-      ) : null}
-      <View style={styles.sectionHeading}>
-        <Text style={styles.sectionLabel}>Your access</Text>
-        <Text style={styles.sectionMeta}>GRANT-MATCHED</Text>
-      </View>
-      <AccessTile
-        code={String(props.context.grants.length)}
-        detail="People, Fleet, Routes, Admin, and more"
-        label="All workspaces"
-        onPress={props.onOpenWorkspaces}
-      />
     </Screen>
   );
 }
@@ -213,21 +232,24 @@ function WeekNavigator(props: {
   snapshot: ManagerScheduleSnapshot | null;
   onNextWeek: () => void;
   onPreviousWeek: () => void;
+  monthly?: boolean;
 }) {
   return (
     <View style={styles.weekNavigator}>
-      <Pressable accessibilityLabel="Previous week" onPress={props.onPreviousWeek} style={styles.weekArrow}>
+      <Pressable accessibilityLabel={props.monthly ? "Previous month" : "Previous week"} onPress={props.onPreviousWeek} style={styles.weekArrow}>
         <Text style={styles.weekArrowText}>‹</Text>
       </Pressable>
       <View style={styles.weekCopy}>
-        <Text style={styles.weekEyebrow}>OPERATING WEEK</Text>
+        <Text style={styles.weekEyebrow}>{props.monthly ? "OPERATING MONTH" : "OPERATING WEEK"}</Text>
         <Text style={styles.weekTitle}>
           {props.snapshot
-            ? `${readableDate(props.snapshot.weekStart)} – ${readableDate(props.snapshot.weekEnd)}`
+            ? props.monthly
+              ? readableDate(props.snapshot.days[15]?.serviceDate ?? props.snapshot.weekStart, { month: "long", year: "numeric" })
+              : `${readableDate(props.snapshot.weekStart)} – ${readableDate(props.snapshot.weekEnd)}`
             : "Loading week…"}
         </Text>
       </View>
-      <Pressable accessibilityLabel="Next week" onPress={props.onNextWeek} style={styles.weekArrow}>
+      <Pressable accessibilityLabel={props.monthly ? "Next month" : "Next week"} onPress={props.onNextWeek} style={styles.weekArrow}>
         <Text style={styles.weekArrowText}>›</Text>
       </Pressable>
     </View>
@@ -266,7 +288,7 @@ function PostureCard(props: { snapshot: ManagerScheduleSnapshot }) {
   return (
     <View style={styles.pulse}>
       <View style={styles.pulseHeader}>
-        <Text style={styles.pulseLabel}>Week posture</Text>
+        <Text style={styles.pulseLabel}>{props.snapshot.days.length > 7 ? "Calendar posture" : "Week posture"}</Text>
         <View style={[styles.postureChip, risks > 0 ? styles.postureChipDanger : styles.postureChipSuccess]}>
           <View style={[styles.successDot, risks > 0 && styles.dangerDot]} />
           <Text style={[styles.successText, risks > 0 && styles.dangerText]}>
@@ -295,6 +317,161 @@ function CoverageRail(props: { days: ManagerScheduleDay[] }) {
         </View>
       ))}
     </ScrollView>
+  );
+}
+
+function localIsoDate(value = new Date()) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function traineeScheduleDetail(row: ManagerScheduleRow) {
+  if (row.planned_on) return row.route_name?.trim() || "Scheduled";
+  return row.override_type
+    ? row.override_type.replaceAll("_", " ").toLowerCase()
+    : "Scheduled off";
+}
+
+function TabletScheduleCalendar(props: { days: ManagerScheduleDay[] }) {
+  const today = localIsoDate();
+  const initialDate = props.days.find((day) => day.serviceDate === today)?.serviceDate
+    ?? props.days[0]?.serviceDate
+    ?? null;
+  const [selectedDate, setSelectedDate] = useState<string | null>(initialDate);
+  const selectedDay = props.days.find((day) => day.serviceDate === selectedDate)
+    ?? props.days[0]
+    ?? null;
+
+  if (!selectedDay) return null;
+
+  return (
+    <>
+      <View style={styles.sectionHeading}>
+        <Text style={styles.sectionLabel}>Operating calendar</Text>
+        <Text style={styles.sectionMeta}>WEB-ALIGNED · 6 WEEKS</Text>
+      </View>
+      <View style={styles.tabletCalendarGrid}>
+        {props.days.map((day) => {
+          const selected = day.serviceDate === selectedDay.serviceDate;
+          const isToday = day.serviceDate === today;
+          const changes = day.overrideOffRows.length;
+          return (
+            <Pressable
+              accessibilityLabel={`${readableDate(day.serviceDate, { weekday: "long", month: "long", day: "numeric" })}, ${capacitySignalLabel(day.signal)}`}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              key={day.serviceDate}
+              onPress={() => setSelectedDate(day.serviceDate)}
+              style={({ pressed }) => [
+                styles.tabletCalendarDay,
+                statusTone(day.signal),
+                selected && styles.tabletCalendarDaySelected,
+                pressed && styles.pressed,
+              ]}
+            >
+              <View style={styles.tabletCalendarDateRow}>
+                <View>
+                  <Text style={styles.tabletCalendarWeekday}>{readableDate(day.serviceDate, { weekday: "short" }).toUpperCase()}</Text>
+                  <Text style={styles.tabletCalendarDate}>{readableDate(day.serviceDate, { day: "numeric" })}</Text>
+                </View>
+                {isToday ? <Text style={styles.tabletToday}>TODAY</Text> : null}
+              </View>
+              <View style={styles.tabletCalendarMetrics}>
+                <Text style={styles.tabletCalendarMetric}><Text style={styles.tabletCalendarMetricValue}>{day.routeDemand}</Text> routes</Text>
+                <Text style={styles.tabletCalendarMetric}><Text style={styles.tabletCalendarMetricValue}>{day.scheduledDrivers}</Text> drivers</Text>
+              </View>
+              <View style={styles.tabletCalendarCounts}>
+                <Text style={styles.tabletCalendarCount}>{day.baselineScheduledOffDrivers.length} Sch Off</Text>
+                <Text style={styles.tabletCalendarCount}>{changes} change{changes === 1 ? "" : "s"}</Text>
+                <Text style={styles.tabletCalendarCount}>{day.traineeRows.length} trainee{day.traineeRows.length === 1 ? "" : "s"}</Text>
+              </View>
+              <View style={styles.tabletCalendarSignalRow}>
+                <Text style={styles.tabletCalendarDelta}>{day.capacityDelta > 0 ? `+${day.capacityDelta}` : day.capacityDelta}</Text>
+                <Text numberOfLines={2} style={styles.tabletCalendarSignal}>{capacitySignalLabel(day.signal)}</Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <View style={styles.tabletCalendarDetail}>
+        <View style={styles.tabletCalendarDetailTop}>
+          <View style={styles.tabletCalendarDetailCopy}>
+            <Text style={sharedStyles.eyebrow}>SELECTED DAY</Text>
+            <Text style={styles.tabletCalendarDetailTitle}>
+              {readableDate(selectedDay.serviceDate, { weekday: "long", month: "long", day: "numeric" })}
+            </Text>
+            <View style={[styles.statusPill, statusTone(selectedDay.signal), styles.tabletCalendarDetailSignal]}>
+              <Text style={styles.statusPillText}>{capacitySignalLabel(selectedDay.signal)}</Text>
+            </View>
+            <Text style={styles.tabletCalendarDetailLabel}>OPEN ROUTES</Text>
+            <View style={styles.tabletRouteChips}>
+              {selectedDay.openRoutes.length > 0 ? selectedDay.openRoutes.map((route) => (
+                <View key={route.id} style={styles.tabletRouteChip}>
+                  <Text style={styles.tabletRouteChipText}>{route.current_wa_num || route.route_name || "Unnamed"}</Text>
+                </View>
+              )) : (
+                <Text style={sharedStyles.muted}>{selectedDay.assignedRoutes} of {selectedDay.routeDemand} demanded routes assigned.</Text>
+              )}
+            </View>
+          </View>
+          <View style={styles.tabletCalendarDetailStats}>
+            <View style={styles.tabletCalendarDetailStat}>
+              <Text style={styles.tabletCalendarDetailStatLabel}>Assigned routes</Text>
+              <Text style={styles.tabletCalendarDetailStatValue}>{selectedDay.assignedRoutes}/{selectedDay.routeDemand}</Text>
+            </View>
+            <View style={styles.tabletCalendarDetailStat}>
+              <Text style={styles.tabletCalendarDetailStatLabel}>Standby</Text>
+              <Text style={styles.tabletCalendarDetailStatValue}>{selectedDay.standbyDrivers.length}</Text>
+            </View>
+            <View style={styles.tabletCalendarDetailStat}>
+              <Text style={styles.tabletCalendarDetailStatLabel}>Scheduled off</Text>
+              <Text style={styles.tabletCalendarDetailStatValue}>{selectedDay.baselineScheduledOffDrivers.length}</Text>
+            </View>
+            <View style={styles.tabletCalendarDetailStat}>
+              <Text style={styles.tabletCalendarDetailStatLabel}>Override off</Text>
+              <Text style={styles.tabletCalendarDetailStatValue}>{selectedDay.overrideOffRows.length}</Text>
+            </View>
+            <View style={styles.tabletCalendarDetailStat}>
+              <Text style={styles.tabletCalendarDetailStatLabel}>Trainees</Text>
+              <Text style={styles.tabletCalendarDetailStatValue}>{selectedDay.traineeRows.length}</Text>
+            </View>
+          </View>
+        </View>
+        <View style={styles.tabletCalendarPeopleGrid}>
+          {[
+            { label: "Trainees", rows: selectedDay.traineeRows },
+            { label: "Standby", rows: selectedDay.standbyDrivers },
+            { label: "Scheduled off", rows: selectedDay.baselineScheduledOffDrivers },
+            { label: "Override off", rows: selectedDay.overrideOffRows },
+          ].map((group) => (
+            <View key={group.label} style={styles.tabletCalendarPeopleGroup}>
+              <Text style={styles.tabletCalendarPeopleLabel}>{group.label.toUpperCase()} · {group.rows.length}</Text>
+              <View style={styles.tabletCalendarPersonChips}>
+                {group.rows.length > 0 ? group.rows.slice(0, 12).map((row, index) => (
+                  <View key={`${row.roster_member_id}-${index}`} style={styles.tabletCalendarPersonChip}>
+                    <Text numberOfLines={1} style={styles.tabletCalendarPersonChipText}>
+                      {row.full_name || "Roster member"}{group.label === "Trainees"
+                        ? ` · ${traineeScheduleDetail(row)}`
+                        : row.override_type
+                          ? ` · ${row.override_type.replaceAll("_", " ").toLowerCase()}`
+                          : ""}
+                    </Text>
+                  </View>
+                )) : (
+                  <Text style={sharedStyles.muted}>None</Text>
+                )}
+                {group.rows.length > 12 ? (
+                  <Text style={styles.tabletCalendarPeopleMore}>+{group.rows.length - 12} more</Text>
+                ) : null}
+              </View>
+            </View>
+          ))}
+        </View>
+      </View>
+    </>
   );
 }
 
@@ -390,12 +567,180 @@ function TimeOffReviewModal(props: {
   );
 }
 
+const SCHEDULE_DAY_FIELDS = [
+  { key: "s", label: "Sat" },
+  { key: "u", label: "Sun" },
+  { key: "m", label: "Mon" },
+  { key: "t", label: "Tue" },
+  { key: "w", label: "Wed" },
+  { key: "h", label: "Thu" },
+  { key: "f", label: "Fri" },
+] as const;
+
+function ScheduleSheetHeader(props: { eyebrow: string; title: string; busy: boolean; onClose: () => void }) {
+  return (
+    <View style={styles.reviewHeader}>
+      <View><Text style={sharedStyles.eyebrow}>{props.eyebrow}</Text><Text style={sharedStyles.h1}>{props.title}</Text></View>
+      <Pressable disabled={props.busy} onPress={props.onClose}><Text style={styles.done}>Cancel</Text></Pressable>
+    </View>
+  );
+}
+
+function ScheduleChoiceRow(props: { choices: Array<{ label: string; value: string }>; value: string; onChange: (value: string) => void }) {
+  return (
+    <View style={styles.scheduleChoiceRow}>
+      {props.choices.map((choice) => (
+        <Pressable
+          accessibilityRole="radio"
+          accessibilityState={{ checked: choice.value === props.value }}
+          key={choice.value}
+          onPress={() => props.onChange(choice.value)}
+          style={[styles.scheduleChoice, choice.value === props.value && styles.scheduleChoiceActive]}
+        ><Text style={[styles.scheduleChoiceText, choice.value === props.value && styles.scheduleChoiceTextActive]}>{choice.label}</Text></Pressable>
+      ))}
+    </View>
+  );
+}
+
+function BaselineEditorModal(props: {
+  row: ManagerScheduleWorkbenchRow | null;
+  presets: ManagerSchedulePreset[];
+  busy: boolean;
+  onClose: () => void;
+  onRemove: (row: ManagerScheduleWorkbenchRow) => Promise<void>;
+  onSave: (draft: ManagerScheduleBaselineDraft) => Promise<void>;
+}) {
+  const baseline = props.row?.baseline;
+  const [presetId, setPresetId] = useState("");
+  const [rotationMode, setRotationMode] = useState("NONE");
+  const [effectiveStart, setEffectiveStart] = useState(localIsoDate());
+  const [anchorDate, setAnchorDate] = useState(localIsoDate());
+  const [rotationWorks, setRotationWorks] = useState<ManagerScheduleBaselineDraft["rotationWorks"]>({ s: false, u: false, m: false, t: false, w: false, h: false, f: false });
+  const [defaultRoutes, setDefaultRoutes] = useState<ManagerScheduleBaselineDraft["defaultRoutes"]>({ s: "", u: "", m: "", t: "", w: "", h: "", f: "" });
+
+  function initialize() {
+    setPresetId(baseline?.preset_id ?? "");
+    setRotationMode(baseline?.rotation_mode ?? "NONE");
+    setEffectiveStart(baseline?.effective_start ?? localIsoDate());
+    setAnchorDate(baseline?.anchor_date ?? baseline?.effective_start ?? localIsoDate());
+    setRotationWorks({
+      s: Boolean(baseline?.rotation_works_s), u: Boolean(baseline?.rotation_works_u), m: Boolean(baseline?.rotation_works_m),
+      t: Boolean(baseline?.rotation_works_t), w: Boolean(baseline?.rotation_works_w), h: Boolean(baseline?.rotation_works_h), f: Boolean(baseline?.rotation_works_f),
+    });
+    setDefaultRoutes({
+      s: baseline?.default_route_s ?? "", u: baseline?.default_route_u ?? "", m: baseline?.default_route_m ?? "",
+      t: baseline?.default_route_t ?? "", w: baseline?.default_route_w ?? "", h: baseline?.default_route_h ?? "", f: baseline?.default_route_f ?? "",
+    });
+  }
+  useEffect(initialize, [props.row]);
+
+  return (
+    <Modal animationType="slide" onRequestClose={props.onClose} presentationStyle="pageSheet" visible={Boolean(props.row)}>
+      <ScrollView contentContainerStyle={styles.reviewSheet} keyboardShouldPersistTaps="handled">
+        <ScheduleSheetHeader busy={props.busy} eyebrow="SCHEDULE · WORKBENCH" onClose={props.onClose} title={props.row?.fullName ?? "Baseline"} />
+        <Text style={sharedStyles.eyebrow}>SCHEDULE PRESET</Text>
+        <ScheduleChoiceRow choices={[{ label: "No preset", value: "" }, ...props.presets.map((preset) => ({ label: preset.preset_code, value: preset.id }))]} onChange={setPresetId} value={presetId} />
+        <Text style={sharedStyles.eyebrow}>ROTATION</Text>
+        <ScheduleChoiceRow choices={[{ label: "None", value: "NONE" }, { label: "Weekly", value: "WEEKLY" }, { label: "Alternating", value: "ALTERNATING_WEEKS" }]} onChange={setRotationMode} value={rotationMode} />
+        <View style={styles.scheduleFieldGrid}>
+          <View style={styles.scheduleField}><Text style={styles.scheduleFieldLabel}>Effective start</Text><TextInput onChangeText={setEffectiveStart} placeholder="YYYY-MM-DD" style={styles.drawerSearch} value={effectiveStart} /></View>
+          <View style={styles.scheduleField}><Text style={styles.scheduleFieldLabel}>Anchor date</Text><TextInput onChangeText={setAnchorDate} placeholder="YYYY-MM-DD" style={styles.drawerSearch} value={anchorDate} /></View>
+        </View>
+        <Text style={sharedStyles.eyebrow}>ROTATION DAYS AND DEFAULT ROUTES</Text>
+        <View style={styles.scheduleDaysGrid}>
+          {SCHEDULE_DAY_FIELDS.map((day) => (
+            <View key={day.key} style={styles.scheduleDayEditor}>
+              <Pressable onPress={() => setRotationWorks((current) => ({ ...current, [day.key]: !current[day.key] }))} style={[styles.scheduleDayToggle, rotationWorks[day.key] && styles.scheduleDayToggleActive]}>
+                <Text style={[styles.scheduleChoiceText, rotationWorks[day.key] && styles.scheduleChoiceTextActive]}>{day.label}</Text>
+              </Pressable>
+              <TextInput autoCapitalize="characters" onChangeText={(value) => setDefaultRoutes((current) => ({ ...current, [day.key]: value }))} placeholder="Route" style={styles.scheduleRouteInput} value={defaultRoutes[day.key]} />
+            </View>
+          ))}
+        </View>
+        <PrimaryButton disabled={props.busy || !props.row || !effectiveStart} label={props.busy ? "Saving baseline…" : "Save baseline and repaint schedule"} onPress={() => props.row && void props.onSave({ rosterMemberId: props.row.rosterMemberId, presetId: presetId || null, rotationMode, effectiveStart, anchorDate, rotationWorks, defaultRoutes })} />
+        {props.row?.baselineId ? <PrimaryButton danger disabled={props.busy} label="Remove active baseline" onPress={() => props.row && void props.onRemove(props.row)} /> : null}
+      </ScrollView>
+    </Modal>
+  );
+}
+
+function OverrideEditorModal(props: {
+  value: ManagerScheduleOverride | "NEW" | null;
+  roster: ManagerScheduleWorkbenchRow[];
+  busy: boolean;
+  onClose: () => void;
+  onDeactivate: (value: ManagerScheduleOverride) => Promise<void>;
+  onSave: (draft: ManagerScheduleOverrideDraft) => Promise<void>;
+}) {
+  const existing = props.value && props.value !== "NEW" ? props.value : null;
+  const [rosterMemberId, setRosterMemberId] = useState("");
+  const [overrideType, setOverrideType] = useState("TIME_OFF");
+  const [startDate, setStartDate] = useState(localIsoDate());
+  const [endDate, setEndDate] = useState(localIsoDate());
+  const [managerNote, setManagerNote] = useState("");
+  function initialize() {
+    setRosterMemberId(existing?.roster_member_id ?? props.roster[0]?.rosterMemberId ?? "");
+    setOverrideType(existing?.override_type ?? "TIME_OFF"); setStartDate(existing?.start_date ?? localIsoDate()); setEndDate(existing?.end_date ?? localIsoDate()); setManagerNote(existing?.manager_note ?? "");
+  }
+  useEffect(initialize, [props.value]);
+  return (
+    <Modal animationType="slide" onRequestClose={props.onClose} presentationStyle="pageSheet" visible={Boolean(props.value)}>
+      <ScrollView contentContainerStyle={styles.reviewSheet} keyboardShouldPersistTaps="handled">
+        <ScheduleSheetHeader busy={props.busy} eyebrow="SCHEDULE · OVERRIDE" onClose={props.onClose} title={existing ? "Edit override" : "New override"} />
+        <Text style={sharedStyles.eyebrow}>ROSTER MEMBER</Text>
+        <ScheduleChoiceRow choices={props.roster.map((row) => ({ label: row.fullName, value: row.rosterMemberId }))} onChange={setRosterMemberId} value={rosterMemberId} />
+        <Text style={sharedStyles.eyebrow}>OVERRIDE TYPE</Text>
+        <ScheduleChoiceRow choices={["TIME_OFF", "CALL_OUT", "ADD_IN", "ADMIN_OFF", "RESIGNATION_NOTICE"].map((value) => ({ value, label: value.replaceAll("_", " ") }))} onChange={setOverrideType} value={overrideType} />
+        <View style={styles.scheduleFieldGrid}>
+          <View style={styles.scheduleField}><Text style={styles.scheduleFieldLabel}>Start date</Text><TextInput onChangeText={setStartDate} placeholder="YYYY-MM-DD" style={styles.drawerSearch} value={startDate} /></View>
+          <View style={styles.scheduleField}><Text style={styles.scheduleFieldLabel}>End date</Text><TextInput onChangeText={setEndDate} placeholder="YYYY-MM-DD" style={styles.drawerSearch} value={endDate} /></View>
+        </View>
+        <Text style={sharedStyles.eyebrow}>MANAGER NOTE</Text><TextInput multiline onChangeText={setManagerNote} placeholder="Reason and operating context" style={styles.noteInput} value={managerNote} />
+        <PrimaryButton disabled={props.busy || !rosterMemberId || !startDate || !endDate} label={props.busy ? "Saving override…" : "Save override and repaint schedule"} onPress={() => void props.onSave({ id: existing?.id, rosterMemberId, overrideType, startDate, endDate, managerNote })} />
+        {existing ? <PrimaryButton danger disabled={props.busy} label="Deactivate override" onPress={() => void props.onDeactivate(existing)} /> : null}
+      </ScrollView>
+    </Modal>
+  );
+}
+
+function PresetEditorModal(props: {
+  value: ManagerSchedulePreset | "NEW" | null;
+  busy: boolean;
+  onClose: () => void;
+  onDeactivate: (value: ManagerSchedulePreset) => Promise<void>;
+  onSave: (draft: ManagerSchedulePresetDraft) => Promise<void>;
+}) {
+  const existing = props.value && props.value !== "NEW" ? props.value : null;
+  const [presetCode, setPresetCode] = useState("");
+  const [usesRotation, setUsesRotation] = useState(false);
+  const [works, setWorks] = useState<ManagerSchedulePresetDraft["works"]>({ s: false, u: false, m: false, t: false, w: false, h: false, f: false });
+  function initialize() {
+    setPresetCode(existing?.preset_code ?? ""); setUsesRotation(Boolean(existing?.uses_rotation));
+    setWorks({ s: Boolean(existing?.works_s), u: Boolean(existing?.works_u), m: Boolean(existing?.works_m), t: Boolean(existing?.works_t), w: Boolean(existing?.works_w), h: Boolean(existing?.works_h), f: Boolean(existing?.works_f) });
+  }
+  useEffect(initialize, [props.value]);
+  return (
+    <Modal animationType="slide" onRequestClose={props.onClose} presentationStyle="pageSheet" visible={Boolean(props.value)}>
+      <ScrollView contentContainerStyle={styles.reviewSheet} keyboardShouldPersistTaps="handled">
+        <ScheduleSheetHeader busy={props.busy} eyebrow="SCHEDULE · PRESET" onClose={props.onClose} title={existing ? "Edit pattern" : "New pattern"} />
+        <Text style={sharedStyles.eyebrow}>PRESET CODE</Text><TextInput autoCapitalize="characters" onChangeText={setPresetCode} placeholder="Example: SAT-WED" style={styles.drawerSearch} value={presetCode} />
+        <Text style={sharedStyles.eyebrow}>WORKING DAYS</Text>
+        <View style={styles.scheduleChoiceRow}>{SCHEDULE_DAY_FIELDS.map((day) => <Pressable key={day.key} onPress={() => setWorks((current) => ({ ...current, [day.key]: !current[day.key] }))} style={[styles.scheduleChoice, works[day.key] && styles.scheduleChoiceActive]}><Text style={[styles.scheduleChoiceText, works[day.key] && styles.scheduleChoiceTextActive]}>{day.label}</Text></Pressable>)}</View>
+        <Pressable onPress={() => setUsesRotation((current) => !current)} style={[styles.scheduleRotationToggle, usesRotation && styles.scheduleChoiceActive]}><Text style={[styles.scheduleChoiceText, usesRotation && styles.scheduleChoiceTextActive]}>{usesRotation ? "Rotation enabled" : "Weekly pattern"}</Text></Pressable>
+        <PrimaryButton disabled={props.busy || !presetCode.trim()} label={props.busy ? "Saving pattern…" : "Save schedule pattern"} onPress={() => void props.onSave({ id: existing?.id, presetCode, works, usesRotation })} />
+        {existing ? <PrimaryButton danger disabled={props.busy} label="Deactivate pattern" onPress={() => void props.onDeactivate(existing)} /> : null}
+      </ScrollView>
+    </Modal>
+  );
+}
+
 export function ManagerScheduleScreen(props: {
   context: ManagerAccessContext;
   driverContext: DriverAccessContext | null;
   error: string | null;
   loading: boolean;
   reviewBusy: boolean;
+  writeBusy: boolean;
   snapshot: ManagerScheduleSnapshot | null;
   surface: ManagerScheduleSurface;
   onBack: () => void;
@@ -405,10 +750,24 @@ export function ManagerScheduleScreen(props: {
   onPreviousWeek: () => void;
   onRefresh: () => void;
   onReviewRequest: (request: ManagerTimeOffRequest, decision: "APPROVED" | "DENIED", note: string) => Promise<void>;
+  onCommit: () => Promise<void>;
+  onDeactivateOverride: (override: ManagerScheduleOverride) => Promise<void>;
+  onDeactivatePreset: (preset: ManagerSchedulePreset) => Promise<void>;
+  onRemoveBaseline: (row: ManagerScheduleWorkbenchRow) => Promise<void>;
+  onSaveBaseline: (draft: ManagerScheduleBaselineDraft) => Promise<void>;
+  onSaveOverride: (draft: ManagerScheduleOverrideDraft) => Promise<void>;
+  onSavePreset: (draft: ManagerSchedulePresetDraft) => Promise<void>;
   onSettings: () => void;
   onSurface: (surface: ManagerScheduleSurface) => void;
 }) {
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 900;
   const [reviewRequest, setReviewRequest] = useState<ManagerTimeOffRequest | null>(null);
+  const [baselineRow, setBaselineRow] = useState<ManagerScheduleWorkbenchRow | null>(null);
+  const [overrideEditor, setOverrideEditor] = useState<ManagerScheduleOverride | "NEW" | null>(null);
+  const [presetEditor, setPresetEditor] = useState<ManagerSchedulePreset | "NEW" | null>(null);
+  const [workbenchSearch, setWorkbenchSearch] = useState("");
+  const [pendingOnly, setPendingOnly] = useState(false);
 
   if (props.surface !== "bridge") {
     const title = props.surface === "overview"
@@ -424,7 +783,7 @@ export function ManagerScheduleScreen(props: {
       <Screen>
         <AppHeader companyName={props.context.company_name} eyebrow="INSIGHT · MANAGER" onSettings={props.onSettings} title={title} />
         <Pressable onPress={props.onBack}><Text style={styles.back}>‹ {props.surface === "overview" ? "Personal or management" : "Schedule"}</Text></Pressable>
-        <WeekNavigator snapshot={props.snapshot} onNextWeek={props.onNextWeek} onPreviousWeek={props.onPreviousWeek} />
+        <WeekNavigator monthly={isTablet || props.surface === "calendar"} snapshot={props.snapshot} onNextWeek={props.onNextWeek} onPreviousWeek={props.onPreviousWeek} />
         <ScheduleLoading error={props.error} loading={props.loading} onRetry={props.onRefresh} />
 
         {props.snapshot && props.surface === "overview" ? (
@@ -444,33 +803,53 @@ export function ManagerScheduleScreen(props: {
         {props.snapshot && props.surface === "calendar" ? (
           <>
             <PostureCard snapshot={props.snapshot} />
-            <CoverageRail days={props.snapshot.days} />
-            <View style={styles.sectionHeading}>
-              <Text style={styles.sectionLabel}>Operating days</Text>
-              <Text style={styles.sectionMeta}>WEB-ALIGNED</Text>
-            </View>
-            {props.snapshot.days.map((day) => (
-              <Card key={day.serviceDate} tone={day.signal === "SERVICE_RISK" || day.signal === "PROFITABILITY_RISK" ? "danger" : undefined}>
-                <View style={styles.cardHeaderRow}>
-                  <View>
-                    <Text style={sharedStyles.bodyStrong}>{readableDate(day.serviceDate, { weekday: "long", month: "short", day: "numeric" })}</Text>
-                    <Text style={sharedStyles.muted}>{day.scheduledDrivers} drivers · {day.routeDemand} routes</Text>
-                  </View>
-                  <View style={[styles.statusPill, statusTone(day.signal)]}><Text style={styles.statusPillText}>{capacitySignalLabel(day.signal)}</Text></View>
+            {isTablet ? (
+              <TabletScheduleCalendar days={props.snapshot.days} />
+            ) : (
+              <>
+                <CoverageRail days={props.snapshot.days.slice(0, 7)} />
+                <View style={styles.sectionHeading}>
+                  <Text style={styles.sectionLabel}>Operating days</Text>
+                  <Text style={styles.sectionMeta}>WEB-ALIGNED</Text>
                 </View>
-                <Text style={sharedStyles.muted}>
-                  {day.openRoutes.length > 0
-                    ? `Open: ${day.openRoutes.map((route) => route.current_wa_num || route.route_name || "Unnamed").join(", ")}`
-                    : `${day.assignedRoutes} of ${day.routeDemand} demanded routes assigned.`}
-                </Text>
-                <Text style={sharedStyles.muted}>{day.standbyDrivers.length} standby · {day.baselineScheduledOffDrivers.length} scheduled off · {day.overrideOffRows.length} override off</Text>
-              </Card>
-            ))}
+                {props.snapshot.days.slice(0, 7).map((day) => (
+                  <Card key={day.serviceDate} tone={day.signal === "SERVICE_RISK" || day.signal === "PROFITABILITY_RISK" ? "danger" : undefined}>
+                    <View style={styles.cardHeaderRow}>
+                      <View>
+                        <Text style={sharedStyles.bodyStrong}>{readableDate(day.serviceDate, { weekday: "long", month: "short", day: "numeric" })}</Text>
+                        <Text style={sharedStyles.muted}>{day.scheduledDrivers} drivers · {day.routeDemand} routes</Text>
+                      </View>
+                      <View style={[styles.statusPill, statusTone(day.signal)]}><Text style={styles.statusPillText}>{capacitySignalLabel(day.signal)}</Text></View>
+                    </View>
+                    <Text style={sharedStyles.muted}>
+                      {day.openRoutes.length > 0
+                        ? `Open: ${day.openRoutes.map((route) => route.current_wa_num || route.route_name || "Unnamed").join(", ")}`
+                        : `${day.assignedRoutes} of ${day.routeDemand} demanded routes assigned.`}
+                    </Text>
+                    <Text style={sharedStyles.muted}>{day.standbyDrivers.length} standby · {day.baselineScheduledOffDrivers.length} scheduled off · {day.overrideOffRows.length} override off · {day.traineeRows.length} trainee{day.traineeRows.length === 1 ? "" : "s"}</Text>
+                    {day.traineeRows.length > 0 ? (
+                      <View style={styles.mobileScheduleTraineeGroup}>
+                        <Text style={styles.mobileScheduleTraineeLabel}>TRAINEES · {day.traineeRows.length}</Text>
+                        {day.traineeRows.map((row, index) => (
+                          <Text key={`${row.roster_member_id}-${index}`} style={styles.mobileScheduleTraineePerson}>
+                            {row.full_name || "Roster member"} · {traineeScheduleDetail(row)}
+                          </Text>
+                        ))}
+                      </View>
+                    ) : null}
+                  </Card>
+                ))}
+              </>
+            )}
           </>
         ) : null}
 
         {props.snapshot && props.surface === "overrides" ? (
           <>
+            <View style={styles.scheduleToolbar}>
+              <PrimaryButton compact label="New override" onPress={() => setOverrideEditor("NEW")} />
+              <PrimaryButton compact disabled={props.writeBusy} label={props.writeBusy ? "Repainting…" : "Repaint 70-day horizon"} onPress={() => void props.onCommit()} secondary />
+            </View>
             <View style={styles.sectionHeading}>
               <Text style={styles.sectionLabel}>Pending time off</Text>
               <Text style={styles.sectionMeta}>{props.snapshot.pendingRequests.length} REVIEW</Text>
@@ -493,7 +872,8 @@ export function ManagerScheduleScreen(props: {
               <Text style={styles.sectionMeta}>{props.snapshot.activeOverrides.length}</Text>
             </View>
             {props.snapshot.activeOverrides.map((override) => (
-              <Card key={override.id}>
+              <Pressable key={override.id} onPress={() => setOverrideEditor(override)} style={({ pressed }) => pressed && styles.pressed}>
+              <Card>
                 <View style={styles.cardHeaderRow}>
                   <View style={styles.accessCopy}>
                     <Text style={sharedStyles.bodyStrong}>{override.full_name}</Text>
@@ -501,19 +881,27 @@ export function ManagerScheduleScreen(props: {
                   </View>
                   <Text style={styles.overrideType}>{override.override_type.replaceAll("_", " ")}</Text>
                 </View>
-              </Card>
+              </Card></Pressable>
             ))}
           </>
         ) : null}
 
         {props.snapshot && props.surface === "workbench" ? (
           <>
+            <View style={styles.scheduleToolbar}>
+              <TextInput onChangeText={setWorkbenchSearch} placeholder="Search roster or route" placeholderTextColor={colors.muted} style={[styles.drawerSearch, styles.scheduleSearch]} value={workbenchSearch} />
+              <Pressable onPress={() => setPendingOnly((current) => !current)} style={[styles.scheduleFilter, pendingOnly && styles.scheduleChoiceActive]}><Text style={[styles.scheduleChoiceText, pendingOnly && styles.scheduleChoiceTextActive]}>{pendingOnly ? "Pending only" : "All people"}</Text></Pressable>
+            </View>
             <View style={styles.sectionHeading}>
               <Text style={styles.sectionLabel}>People and baselines</Text>
               <Text style={styles.sectionMeta}>{props.snapshot.workbenchRows.length}</Text>
             </View>
-            {props.snapshot.workbenchRows.map((row) => (
-              <View key={row.rosterMemberId} style={styles.workbenchRow}>
+            {props.snapshot.workbenchRows.filter((row) => {
+              if (pendingOnly && !row.schedulePending) return false;
+              const query = workbenchSearch.trim().toLowerCase();
+              return !query || row.fullName.toLowerCase().includes(query) || row.defaultRoutes.some((route) => route.toLowerCase().includes(query));
+            }).map((row) => (
+              <Pressable accessibilityRole="button" key={row.rosterMemberId} onPress={() => setBaselineRow(row)} style={({ pressed }) => [styles.workbenchRow, pressed && styles.pressed]}>
                 <View style={[styles.workbenchDate, row.schedulePending ? styles.statusTight : styles.statusCovered]}>
                   <Text style={styles.workbenchInitials}>{row.fullName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2)}</Text>
                 </View>
@@ -523,7 +911,8 @@ export function ManagerScheduleScreen(props: {
                   <Text style={styles.detail}>{row.defaultRoutes.length > 0 ? `Routes ${row.defaultRoutes.join(", ")}` : "No default routes"}</Text>
                 </View>
                 <Text style={row.schedulePending ? styles.pendingText : styles.readyText}>{row.schedulePending ? "PENDING" : "READY"}</Text>
-              </View>
+                <Text style={styles.arrow}>›</Text>
+              </Pressable>
             ))}
             <Card>
               <Text style={sharedStyles.bodyStrong}>Authoritative baseline read model</Text>
@@ -534,6 +923,7 @@ export function ManagerScheduleScreen(props: {
 
         {props.snapshot && props.surface === "presets" ? (
           <>
+            <View style={styles.scheduleToolbar}><PrimaryButton compact label="New pattern" onPress={() => setPresetEditor("NEW")} /></View>
             <View style={styles.sectionHeading}>
               <Text style={styles.sectionLabel}>Active patterns</Text>
               <Text style={styles.sectionMeta}>{props.snapshot.presets.length}</Text>
@@ -549,13 +939,13 @@ export function ManagerScheduleScreen(props: {
                 preset.works_f && "Fri",
               ].filter(Boolean).join(" · ");
               return (
-                <Card key={preset.id}>
+                <Pressable key={preset.id} onPress={() => setPresetEditor(preset)} style={({ pressed }) => pressed && styles.pressed}><Card>
                   <View style={styles.cardHeaderRow}>
                     <Text style={sharedStyles.bodyStrong}>{preset.preset_code}</Text>
                     <Text style={styles.readyText}>{preset.uses_rotation ? "ROTATION" : "WEEKLY"}</Text>
                   </View>
                   <Text style={sharedStyles.muted}>{days || "No active days"}</Text>
-                </Card>
+                </Card></Pressable>
               );
             })}
             {props.snapshot.presets.length === 0 ? (
@@ -574,6 +964,29 @@ export function ManagerScheduleScreen(props: {
             setReviewRequest(null);
           }}
           request={reviewRequest}
+        />
+        <BaselineEditorModal
+          busy={props.writeBusy}
+          onClose={() => setBaselineRow(null)}
+          onRemove={async (row) => { await props.onRemoveBaseline(row); setBaselineRow(null); }}
+          onSave={async (draft) => { await props.onSaveBaseline(draft); setBaselineRow(null); }}
+          presets={props.snapshot?.presets ?? []}
+          row={baselineRow}
+        />
+        <OverrideEditorModal
+          busy={props.writeBusy}
+          onClose={() => setOverrideEditor(null)}
+          onDeactivate={async (value) => { await props.onDeactivateOverride(value); setOverrideEditor(null); }}
+          onSave={async (draft) => { await props.onSaveOverride(draft); setOverrideEditor(null); }}
+          roster={props.snapshot?.workbenchRows ?? []}
+          value={overrideEditor}
+        />
+        <PresetEditorModal
+          busy={props.writeBusy}
+          onClose={() => setPresetEditor(null)}
+          onDeactivate={async (value) => { await props.onDeactivatePreset(value); setPresetEditor(null); }}
+          onSave={async (draft) => { await props.onSavePreset(draft); setPresetEditor(null); }}
+          value={presetEditor}
         />
       </Screen>
     );
@@ -607,34 +1020,40 @@ export function ManagerWorkspacesScreen(props: {
   onOpenSuite: (key: ManagerWorkspaceKey) => void;
   onSettings: () => void;
 }) {
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 900;
   const suites = managerWorkspaceSuites(props.context);
   return (
-    <ScrollView contentContainerStyle={styles.workspacePage} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={[styles.workspacePage, isTablet && styles.workspacePageTablet]} showsVerticalScrollIndicator={false}>
       <AppHeader companyName={props.context.company_name} eyebrow="INSIGHT · MANAGER" onSettings={props.onSettings} title="Workspaces" />
-      <Text style={sharedStyles.muted}>Every destination is grant-matched. Native read layers come first; browser workspaces remain available as fallback.</Text>
-      <View style={styles.nativeBanner}>
-        <Text style={styles.nativeBannerLabel}>MC-8 · PASS 1</Text>
-        <Text style={styles.nativeBannerTitle}>Manager surface suite</Text>
-        <Text style={styles.nativeBannerDetail}>{suites.length + (props.context.grants.includes("schedule") ? 1 : 0)} native workspace{(suites.length + (props.context.grants.includes("schedule") ? 1 : 0)) === 1 ? "" : "s"} in your scope</Text>
-      </View>
-      <View style={styles.workspaceGroup}>
-        <View style={styles.sectionHeading}>
-          <Text style={styles.sectionLabel}>Native workspaces</Text>
-          <Text style={styles.sectionMeta}>READ LAYER</Text>
+      <View style={[styles.workspaceDirectory, isTablet && styles.workspaceDirectoryTablet]}>
+        <View style={[styles.workspaceIntroduction, isTablet && styles.workspaceIntroductionTablet]}>
+          <Text style={sharedStyles.muted}>Every destination is grant-matched and arranged for iPad administration. Open a workspace to review, manage, approve, or configure the work in your scope.</Text>
+          <View style={styles.nativeBanner}>
+            <Text style={styles.nativeBannerLabel}>IPAD MANAGEMENT</Text>
+            <Text style={styles.nativeBannerTitle}>Manager workspace suite</Text>
+            <Text style={styles.nativeBannerDetail}>{suites.length + (props.context.grants.includes("schedule") ? 1 : 0)} management workspace{(suites.length + (props.context.grants.includes("schedule") ? 1 : 0)) === 1 ? "" : "s"} in your scope</Text>
+          </View>
         </View>
-        {props.context.grants.includes("schedule") ? (
-          <AccessTile code="SC" detail="Coverage, overrides, and workbench" label="Schedule" onPress={props.onOpenNativeSchedule} trailing="NATIVE" />
-        ) : null}
-        {suites.map((suite) => (
-          <AccessTile
-            code={suite.code}
-            detail={suite.detail}
-            key={suite.key}
-            label={suite.label}
-            onPress={() => props.onOpenSuite(suite.key)}
-            trailing="NATIVE"
-          />
-        ))}
+        <View style={[styles.workspaceGroup, isTablet && styles.workspaceGroupTablet]}>
+          <View style={styles.sectionHeading}>
+            <Text style={styles.sectionLabel}>Management workspaces</Text>
+            <Text style={styles.sectionMeta}>GRANT-MATCHED</Text>
+          </View>
+          {props.context.grants.includes("schedule") ? (
+            <AccessTile code="SC" detail="Coverage, overrides, and workbench" label="Schedule" onPress={props.onOpenNativeSchedule} trailing="NATIVE" />
+          ) : null}
+          {suites.map((suite) => (
+            <AccessTile
+              code={suite.code}
+              detail={suite.detail}
+              key={suite.key}
+              label={suite.label}
+              onPress={() => props.onOpenSuite(suite.key)}
+              trailing="NATIVE"
+            />
+          ))}
+        </View>
       </View>
     </ScrollView>
   );
@@ -673,14 +1092,14 @@ function WorkspaceSnapshotView(props: {
     return (
       <View style={styles.loadingCard}>
         <ActivityIndicator color={colors.primary} />
-        <Text style={sharedStyles.muted}>Loading the governed read layer…</Text>
+        <Text style={sharedStyles.muted}>Loading governed workspace data…</Text>
       </View>
     );
   }
   if (props.error) {
     return (
       <Card tone="danger">
-        <Text style={sharedStyles.bodyStrong}>This read layer is unavailable</Text>
+        <Text style={sharedStyles.bodyStrong}>This workspace is temporarily unavailable</Text>
         <Text style={sharedStyles.muted}>{props.error}</Text>
         <PrimaryButton compact label="Retry" onPress={props.onRetry} secondary />
       </Card>
@@ -877,19 +1296,21 @@ function OperationsReadSurface(props: {
   snapshot: ManagerWorkspaceSnapshot | null;
   onLoadRouteEvidence: (routeKey: string) => Promise<ManagerRouteEvidenceSnapshot>;
   onLoadWalkOns: () => Promise<ManagerWalkOnSnapshot>;
-  onOpenWeb: () => void;
   onRefresh: () => void;
   onRefreshDispatch: () => void;
   onSubmitDelivery: (draft: ManagerDeliveryActionDraft) => Promise<void>;
   onSubmitDispatch: (draft: ManagerDispatchActionDraft) => Promise<void>;
   onSubmitWalkOn: (draft: ManagerWalkOnAssignmentDraft) => Promise<void>;
 }) {
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 900;
   const [filter, setFilter] = useState<OperationsFilter>("all");
   const [actionOpen, setActionOpen] = useState(false);
   const [routeDrawerId, setRouteDrawerId] = useState<string | null>(null);
   const [initialActionCode, setInitialActionCode] = useState<ManagerDispatchActionCode>("ASSIGN_DRIVER");
   const [initialRouteId, setInitialRouteId] = useState<string | null>(null);
   const [initialRosterMemberId, setInitialRosterMemberId] = useState<string | null>(null);
+  const [summaryView, setSummaryView] = useState<"compliance" | "express" | "attendance" | null>(null);
   if (props.loading || props.error || !props.snapshot?.operations) {
     return <WorkspaceSnapshotView error={props.error} loading={props.loading} onRetry={props.onRefresh} snapshot={props.snapshot} />;
   }
@@ -927,20 +1348,35 @@ function OperationsReadSurface(props: {
     setActionOpen(true);
   }
 
+  const controls = (
+    <>
+      <OperationsControl
+        disabled={!props.dispatchSnapshot}
+        label={props.dispatchLoading ? "Preparing actions…" : "Action"}
+        onPress={() => openAction()}
+        primary
+      />
+      <OperationsControl label="Compliance Report" onPress={() => setSummaryView("compliance")} />
+      <OperationsControl label="Express Report" onPress={() => setSummaryView("express")} />
+      <OperationsControl label="Attendance" onPress={() => setSummaryView("attendance")} />
+      <OperationsControl label="Refresh" onPress={props.onRefresh} />
+    </>
+  );
+
+  const routeFilters = filters.filter((item) => item.key === "all" || counts[item.key] > 0).map((item) => (
+    <Pressable key={item.key} onPress={() => setFilter(item.key)} style={[styles.operationsFilter, filter === item.key && styles.operationsFilterActive]}>
+      <Text style={[styles.operationsFilterText, filter === item.key && styles.operationsFilterTextActive]}>{item.label}</Text>
+      <View style={[styles.operationsFilterCount, filter === item.key && styles.operationsFilterCountActive]}><Text style={[styles.operationsFilterCountText, filter === item.key && styles.operationsFilterCountTextActive]}>{counts[item.key]}</Text></View>
+    </Pressable>
+  ));
+
   return (
     <>
-      <ScrollView contentContainerStyle={styles.operationsControls} horizontal showsHorizontalScrollIndicator={false}>
-        <OperationsControl
-          disabled={!props.dispatchSnapshot}
-          label={props.dispatchLoading ? "Preparing actions…" : "Action"}
-          onPress={() => openAction()}
-          primary
-        />
-        <OperationsControl label="Compliance Report" onPress={props.onOpenWeb} />
-        <OperationsControl label="Express Report" onPress={props.onOpenWeb} />
-        <OperationsControl label="Attendance" onPress={props.onOpenWeb} />
-        <OperationsControl label="Refresh" onPress={props.onRefresh} />
-      </ScrollView>
+      {isTablet ? (
+        <View style={[styles.operationsControls, styles.operationsControlsTablet]}>{controls}</View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.operationsControls} horizontal showsHorizontalScrollIndicator={false}>{controls}</ScrollView>
+      )}
       {props.dispatchError ? (
         <Card tone="danger">
           <Text style={sharedStyles.bodyStrong}>Management actions are temporarily unavailable</Text>
@@ -948,25 +1384,50 @@ function OperationsReadSurface(props: {
           <PrimaryButton compact label="Retry actions" onPress={props.onRefreshDispatch} secondary />
         </Card>
       ) : null}
+      {summaryView ? (
+        <View style={styles.operationsSummaryPanel}>
+          <View style={styles.readCardHeader}>
+            <View>
+              <Text style={styles.nativeBannerLabel}>OPERATIONS · {summaryView.toUpperCase()}</Text>
+              <Text style={styles.nativeBannerTitle}>{summaryView === "compliance" ? "Compliance posture" : summaryView === "express" ? "Express posture" : "Attendance posture"}</Text>
+            </View>
+            <Pressable accessibilityLabel="Close report summary" onPress={() => setSummaryView(null)}><Text style={styles.done}>Close</Text></Pressable>
+          </View>
+          <View style={styles.metricBand}>
+            {summaryView === "compliance" ? <>
+              <View style={[styles.metricCard, styles.metricSuccess]}><Text style={styles.metricLabel}>On route</Text><Text style={styles.metricValue}>{counts.on_job + counts.end_of_day}</Text></View>
+              <View style={[styles.metricCard, counts.attention ? styles.metricWarning : styles.metricSuccess]}><Text style={styles.metricLabel}>Needs attention</Text><Text style={styles.metricValue}>{counts.attention}</Text></View>
+              <View style={[styles.metricCard, styles.metricDefault]}><Text style={styles.metricLabel}>Complete</Text><Text style={styles.metricValue}>{counts.end_of_day}</Text></View>
+            </> : summaryView === "express" ? <>
+              <View style={[styles.metricCard, styles.metricSuccess]}><Text style={styles.metricLabel}>Complete</Text><Text style={styles.metricValue}>{routes.reduce((sum, route) => sum + route.expressComplete, 0)}</Text></View>
+              <View style={[styles.metricCard, styles.metricWarning]}><Text style={styles.metricLabel}>Attempted</Text><Text style={styles.metricValue}>{routes.reduce((sum, route) => sum + route.expressAttempted, 0)}</Text></View>
+              <View style={[styles.metricCard, styles.metricDefault]}><Text style={styles.metricLabel}>Open</Text><Text style={styles.metricValue}>{routes.reduce((sum, route) => sum + route.expressOpen, 0)}</Text></View>
+            </> : <>
+              <View style={[styles.metricCard, styles.metricSuccess]}><Text style={styles.metricLabel}>On job</Text><Text style={styles.metricValue}>{counts.on_job}</Text></View>
+              <View style={[styles.metricCard, styles.metricWarning]}><Text style={styles.metricLabel}>Waiting</Text><Text style={styles.metricValue}>{counts.attention}</Text></View>
+              <View style={[styles.metricCard, styles.metricDefault]}><Text style={styles.metricLabel}>End of day</Text><Text style={styles.metricValue}>{counts.end_of_day}</Text></View>
+            </>}
+          </View>
+          <Text style={sharedStyles.muted}>Tap a route below for its governed route detail and available management actions.</Text>
+        </View>
+      ) : null}
       <View style={styles.operationsStatus}>
         <Text style={styles.operationsStatusTitle}>{routes.length} routes · {props.dispatchSnapshot?.serviceDate ?? operations.serviceDate}</Text>
         <Text style={styles.operationsStatusDetail}>{operations.terminalCode ? `${operations.terminalCode} terminal · ` : ""}{operations.statusText}</Text>
       </View>
-      <ScrollView contentContainerStyle={styles.operationsFilters} horizontal showsHorizontalScrollIndicator={false}>
-        {filters.filter((item) => item.key === "all" || counts[item.key] > 0).map((item) => (
-          <Pressable key={item.key} onPress={() => setFilter(item.key)} style={[styles.operationsFilter, filter === item.key && styles.operationsFilterActive]}>
-            <Text style={[styles.operationsFilterText, filter === item.key && styles.operationsFilterTextActive]}>{item.label}</Text>
-            <View style={[styles.operationsFilterCount, filter === item.key && styles.operationsFilterCountActive]}><Text style={[styles.operationsFilterCountText, filter === item.key && styles.operationsFilterCountTextActive]}>{counts[item.key]}</Text></View>
-          </Pressable>
-        ))}
-      </ScrollView>
-      <View style={styles.operationsRouteStack}>
+      {isTablet ? (
+        <View style={[styles.operationsFilters, styles.operationsFiltersTablet]}>{routeFilters}</View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.operationsFilters} horizontal showsHorizontalScrollIndicator={false}>{routeFilters}</ScrollView>
+      )}
+      <View style={[styles.operationsRouteStack, isTablet && styles.operationsRouteStackTablet]}>
         {visibleRoutes.length ? visibleRoutes.map((route) => (
-          <OperationsRouteCard
-            key={route.id}
-            onManage={() => setRouteDrawerId(route.id)}
-            route={route}
-          />
+          <View key={route.id} style={[styles.operationsRouteCell, isTablet && styles.operationsRouteCellTablet]}>
+            <OperationsRouteCard
+              onManage={() => setRouteDrawerId(route.id)}
+              route={route}
+            />
+          </View>
         )) : (
           <Card><Text style={sharedStyles.bodyStrong}>No matching routes</Text><Text style={sharedStyles.muted}>Choose another operating filter.</Text></Card>
         )}
@@ -1067,7 +1528,6 @@ function PeoplePersonCard(props: { person: ManagerPerson; onPress: () => void })
 function PeoplePersonModal(props: {
   busy: boolean;
   onClose: () => void;
-  onOpenWeb: (path: string) => void;
   onSubmitCandidateStage: (rosterMemberId: string, stageKey: string, note: string) => Promise<void>;
   person: ManagerPerson;
   snapshot: ManagerPeopleSnapshot;
@@ -1163,20 +1623,8 @@ function PeoplePersonModal(props: {
         ) : null}
 
         <Card>
-          <Text style={sharedStyles.bodyStrong}>Full People administration</Text>
-          <Text style={sharedStyles.muted}>Invitations, activation, imports, reports, and dense policy editing remain in the existing web workspace.</Text>
-          <PrimaryButton
-            compact
-            label="Open full person workspace"
-            onPress={() => props.onOpenWeb(
-              props.person.employmentStatus === "Former"
-                ? `/people/former/${props.person.id}`
-                : props.person.employmentStatus === "Candidate"
-                  ? "/hiring"
-                  : `/people/active/${props.person.id}`,
-            )}
-            secondary
-          />
+          <Text style={sharedStyles.bodyStrong}>Governed person workspace</Text>
+          <Text style={sharedStyles.muted}>Identity, employment, compliance, invitation status, and candidate progression are available here. Bulk imports are intentionally excluded from iPad.</Text>
         </Card>
       </ScrollView>
       {intentOpen && selectedStage ? (
@@ -1196,7 +1644,6 @@ function PeopleReadSurface(props: {
   busy: boolean;
   error: string | null;
   loading: boolean;
-  onOpenWeb: (path: string) => void;
   onRefresh: () => void;
   onSubmitCandidateStage: (rosterMemberId: string, stageKey: string, note: string) => Promise<void>;
   snapshot: ManagerWorkspaceSnapshot | null;
@@ -1290,14 +1737,14 @@ function PeopleReadSurface(props: {
         </>
       )}
 
-      {selectedPerson ? <PeoplePersonModal busy={props.busy} onClose={() => setSelectedPersonId(null)} onOpenWeb={props.onOpenWeb} onSubmitCandidateStage={props.onSubmitCandidateStage} person={selectedPerson} snapshot={peopleSnapshot} /> : null}
+      {selectedPerson ? <PeoplePersonModal busy={props.busy} onClose={() => setSelectedPersonId(null)} onSubmitCandidateStage={props.onSubmitCandidateStage} person={selectedPerson} snapshot={peopleSnapshot} /> : null}
     </>
   );
 }
 
-type FleetSurfaceKey = "readiness" | "vehicles" | "defects" | "work" | "inspections";
+type FleetSurfaceKey = "readiness" | "vehicles" | "defects" | "work" | "inspections" | "assets";
 
-function FleetVehicleModal(props: { onClose: () => void; onOpenWeb: (path: string) => void; snapshot: ManagerFleetSnapshot; vehicle: ManagerFleetVehicle }) {
+function FleetVehicleModal(props: { onClose: () => void; onStartInspection: () => void; snapshot: ManagerFleetSnapshot; vehicle: ManagerFleetVehicle }) {
   const defects = props.snapshot.defects.filter((row) => row.vehicleId === props.vehicle.id);
   const orders = props.snapshot.workOrders.filter((row) => row.vehicleId === props.vehicle.id);
   const inspections = props.snapshot.inspections.filter((row) => row.vehicleId === props.vehicle.id).slice(0, 5);
@@ -1313,7 +1760,8 @@ function FleetVehicleModal(props: { onClose: () => void; onOpenWeb: (path: strin
       {orders.filter((row) => !["COMPLETED", "CANCELLED"].includes(row.status)).map((row) => <Card key={row.id}><Text style={sharedStyles.bodyStrong}>WO #{row.number} · {row.title}</Text><Text style={styles.detail}>{peopleStatusLabel(row.priority)} · {peopleStatusLabel(row.status)}</Text></Card>)}
       <View style={styles.sectionHeading}><Text style={styles.sectionLabel}>Recent inspections</Text><Text style={styles.sectionMeta}>{inspections.length}</Text></View>
       {inspections.map((row) => <Card key={row.id}><Text style={sharedStyles.bodyStrong}>{peopleStatusLabel(row.inspectionType)}</Text><Text style={styles.detail}>{readableDate(row.startedAt, { month: "short", day: "numeric" })} · {row.driverName || "Leadership"} · {row.defectCount} defects</Text></Card>)}
-      <PrimaryButton compact label="Open full vehicle workspace" onPress={() => props.onOpenWeb("/fleet/vehicles")} secondary />
+      <PrimaryButton label={`Inspect unit ${props.vehicle.unitNumber}`} onPress={() => { props.onClose(); props.onStartInspection(); }} />
+      <Card><Text style={sharedStyles.bodyStrong}>Shared inspection workflow</Text><Text style={sharedStyles.muted}>VIN identification, the governed checklist, defect capture, and optimized inspection evidence use the same workflow on iPhone and iPad.</Text></Card>
     </ScrollView>
   </Modal>;
 }
@@ -1334,11 +1782,11 @@ function FleetWorkOrderModal(props: { busy: boolean; onClose: () => void; onSubm
   </ScrollView>{intentOpen ? <IntentVerificationModal actionLabel="work order creation" busy={props.busy} onCancel={() => setIntentOpen(false)} onConfirm={() => void submit()} visible /> : null}</Modal>;
 }
 
-function FleetReadSurface(props: { busy: boolean; error: string | null; loading: boolean; onOpenWeb: (path: string) => void; onRefresh: () => void; onSubmitWorkOrder: (draft: ManagerFleetWorkOrderDraft) => Promise<void>; onSubmitWorkOrderStatus: (id: string, status: string) => Promise<void>; snapshot: ManagerWorkspaceSnapshot | null }) {
-  const fleet = props.snapshot?.fleet; const [surface, setSurface] = useState<FleetSurfaceKey>("readiness"); const [vehicleId, setVehicleId] = useState<string | null>(null); const [workOpen, setWorkOpen] = useState(false); const [intent, setIntent] = useState<{ id: string; status: string } | null>(null); const [actionError, setActionError] = useState<string | null>(null);
+function FleetReadSurface(props: { busy: boolean; error: string | null; loading: boolean; onRefresh: () => void; onStartInspection: () => void; onSubmitWorkOrder: (draft: ManagerFleetWorkOrderDraft) => Promise<void>; onSubmitWorkOrderStatus: (id: string, status: string) => Promise<void>; onSurface?: (surface: FleetSurfaceKey) => void; snapshot: ManagerWorkspaceSnapshot | null; surface?: FleetSurfaceKey }) {
+  const fleet = props.snapshot?.fleet; const [localSurface, setLocalSurface] = useState<FleetSurfaceKey>("readiness"); const surface = props.surface ?? localSurface; const [vehicleId, setVehicleId] = useState<string | null>(null); const [workOpen, setWorkOpen] = useState(false); const [intent, setIntent] = useState<{ id: string; status: string } | null>(null); const [actionError, setActionError] = useState<string | null>(null);
   if (props.loading || props.error || !fleet) return <WorkspaceSnapshotView error={props.error} loading={props.loading} onRetry={props.onRefresh} snapshot={props.snapshot} />;
   const selectedVehicle = fleet.vehicles.find((row) => row.id === vehicleId) ?? null;
-  const surfaces: Array<{ key: FleetSurfaceKey; label: string }> = [{ key: "readiness", label: "Ready" }, { key: "vehicles", label: "Units" }, { key: "defects", label: "Defects" }, { key: "work", label: "Work" }, { key: "inspections", label: "Inspections" }];
+  const surfaces: Array<{ key: FleetSurfaceKey; label: string }> = [{ key: "readiness", label: "Ready" }, { key: "vehicles", label: "Units" }, { key: "defects", label: "Defects" }, { key: "work", label: "Work" }, { key: "inspections", label: "Inspections" }, { key: "assets", label: "Asset audit" }];
   const rows = surface === "defects" ? fleet.defects : surface === "work" ? fleet.workOrders : surface === "inspections" ? fleet.inspections : [];
   async function submitStatus() {
     if (!intent) return;
@@ -1353,14 +1801,15 @@ function FleetReadSurface(props: { busy: boolean; error: string | null; loading:
   }
   return <>
     <View style={styles.peopleHero}><View><Text style={styles.nativeBannerLabel}>FLEET AUTHORITY</Text><Text style={styles.peopleHeroDate}>{fleet.dispatchReady} of {fleet.totalVehicles} dispatch ready</Text></View><Text style={styles.peopleHeroMeta}>{fleet.unavailable} unavailable</Text></View>
-    <ScrollView contentContainerStyle={styles.readFilters} horizontal showsHorizontalScrollIndicator={false}>{surfaces.map((item) => <Pressable key={item.key} onPress={() => setSurface(item.key)} style={[styles.readFilter, surface === item.key && styles.readFilterActive]}><Text style={[styles.readFilterText, surface === item.key && styles.readFilterTextActive]}>{item.label}</Text></Pressable>)}</ScrollView>
+    <ScrollView contentContainerStyle={styles.readFilters} horizontal showsHorizontalScrollIndicator={false}>{surfaces.map((item) => <Pressable key={item.key} onPress={() => { setLocalSurface(item.key); props.onSurface?.(item.key); }} style={[styles.readFilter, surface === item.key && styles.readFilterActive]}><Text style={[styles.readFilterText, surface === item.key && styles.readFilterTextActive]}>{item.label}</Text></Pressable>)}</ScrollView>
     {actionError ? <Card tone="danger"><Text style={sharedStyles.bodyStrong}>{actionError}</Text></Card> : null}
     {surface === "readiness" ? <><View style={styles.peopleMetrics}><PeopleMetric label="Ready" value={fleet.dispatchReady} /><PeopleMetric label="Spare" value={fleet.spareVehicles} /><PeopleMetric attention={fleet.openDefects > 0} label="Defects" value={fleet.openDefects} /><PeopleMetric attention={fleet.openWorkOrders > 0} label="Work" value={fleet.openWorkOrders} /></View><Card><Text style={sharedStyles.bodyStrong}>Weight evidence</Text><Text style={sharedStyles.muted}>{fleet.verifiedGvwr} verified · {fleet.missingGvwr} missing GVWR records. Classification evidence remains observational until reviewed in Fleet.</Text></Card></> : null}
     {(surface === "readiness" || surface === "vehicles") ? fleet.vehicles.map((vehicle) => <Pressable key={vehicle.id} onPress={() => setVehicleId(vehicle.id)} style={[styles.peopleCard, vehicle.openDefectCount + vehicle.openWorkOrderCount > 0 && styles.peopleCardAttention]}><View style={styles.peopleAvatar}><Text style={styles.peopleAvatarText}>{vehicle.unitNumber.slice(-3)}</Text></View><View style={styles.accessCopy}><Text style={styles.peopleCardTitle}>Unit {vehicle.unitNumber}</Text><Text style={styles.detail}>{vehicle.description} · {peopleStatusLabel(vehicle.status)}</Text><Text style={styles.detail}>{vehicle.route || "No route"} · {vehicle.openDefectCount} defects · {vehicle.openWorkOrderCount} work orders</Text></View><Text style={styles.peopleCardArrow}>›</Text></Pressable>) : null}
     {surface === "defects" ? fleet.defects.map((row) => <Card key={row.id}><Text style={sharedStyles.bodyStrong}>Unit {row.unitNumber} · {row.summary}</Text><Text style={styles.detail}>{peopleStatusLabel(row.severity)} · {peopleStatusLabel(row.status)} · {readableDate(row.reportedAt, { month: "short", day: "numeric" })}</Text></Card>) : null}
     {surface === "work" ? <><PrimaryButton compact label="Open work order" onPress={() => setWorkOpen(true)} />{fleet.workOrders.map((row) => <Card key={row.id}><Text style={sharedStyles.bodyStrong}>WO #{row.number} · Unit {row.unitNumber}</Text><Text style={styles.detail}>{row.title} · {peopleStatusLabel(row.priority)} · {peopleStatusLabel(row.status)}</Text>{!["COMPLETED", "CANCELLED"].includes(row.status) ? <View style={styles.drawerActionGroup}>{row.status !== "IN_PROGRESS" ? <PrimaryButton compact disabled={props.busy} label="Start work" onPress={() => setIntent({ id: row.id, status: "IN_PROGRESS" })} secondary /> : null}<PrimaryButton compact disabled={props.busy} label="Complete & certify" onPress={() => setIntent({ id: row.id, status: "COMPLETED" })} /></View> : null}</Card>)}</> : null}
-    {surface === "inspections" ? rows.map((item) => { const row = item as ManagerFleetSnapshot["inspections"][number]; return <Card key={row.id}><Text style={sharedStyles.bodyStrong}>Unit {row.unitNumber} · {peopleStatusLabel(row.inspectionType)}</Text><Text style={styles.detail}>{readableDate(row.startedAt, { month: "short", day: "numeric", year: "numeric" })} · {row.driverName || "Leadership"} · {row.defectCount} defects</Text></Card>; }) : null}
-    {selectedVehicle ? <FleetVehicleModal onClose={() => setVehicleId(null)} onOpenWeb={props.onOpenWeb} snapshot={fleet} vehicle={selectedVehicle} /> : null}
+    {surface === "inspections" ? <><PrimaryButton compact label="Start vehicle inspection" onPress={props.onStartInspection} />{rows.map((item) => { const row = item as ManagerFleetSnapshot["inspections"][number]; return <Card key={row.id}><Text style={sharedStyles.bodyStrong}>Unit {row.unitNumber} · {peopleStatusLabel(row.inspectionType)}</Text><Text style={styles.detail}>{readableDate(row.startedAt, { month: "short", day: "numeric", year: "numeric" })} · {row.driverName || "Leadership"} · {row.defectCount} defects</Text></Card>; })}</> : null}
+    {surface === "assets" ? <><Card><Text style={sharedStyles.bodyStrong}>Custody and assignment audit</Text><Text style={sharedStyles.muted}>Review each governed unit against its current route, driver assignment, maintenance posture, and latest inspection.</Text></Card>{fleet.vehicles.map((vehicle) => <Pressable key={vehicle.id} onPress={() => setVehicleId(vehicle.id)} style={[styles.peopleCard, (!vehicle.driverName || !vehicle.route || vehicle.openDefectCount > 0) && styles.peopleCardAttention]}><View style={styles.peopleAvatar}><Text style={styles.peopleAvatarText}>{vehicle.unitNumber.slice(-3)}</Text></View><View style={styles.accessCopy}><Text style={styles.peopleCardTitle}>Unit {vehicle.unitNumber}</Text><Text style={styles.detail}>{vehicle.driverName || "No assigned custodian"} · {vehicle.route || "No assigned route"}</Text><Text style={styles.detail}>{vehicle.openDefectCount + vehicle.openWorkOrderCount > 0 ? `${vehicle.openDefectCount} defects · ${vehicle.openWorkOrderCount} work orders` : "No open maintenance exceptions"}</Text></View><Text style={styles.peopleCardArrow}>›</Text></Pressable>)}</> : null}
+    {selectedVehicle ? <FleetVehicleModal onClose={() => setVehicleId(null)} onStartInspection={props.onStartInspection} snapshot={fleet} vehicle={selectedVehicle} /> : null}
     {workOpen ? <FleetWorkOrderModal busy={props.busy} onClose={() => setWorkOpen(false)} onSubmit={props.onSubmitWorkOrder} snapshot={fleet} /> : null}
     {intent ? <IntentVerificationModal actionLabel={intent.status === "COMPLETED" ? "repair certification" : "work-order status"} busy={props.busy} onCancel={() => setIntent(null)} onConfirm={() => void submitStatus()} visible /> : null}
   </>;
@@ -1416,6 +1865,92 @@ function RoutesReadSurface(props: { busy: boolean; error: string | null; loading
   </>;
 }
 
+type CapabilityDefinition = {
+  actions: string[];
+  note?: string;
+};
+
+const CAPABILITY_DEFINITIONS: Record<string, CapabilityDefinition> = {
+  "operations:PU Reconciliation": { actions: ["Review pickup totals by route", "Identify unmatched and exception pickups", "Compare planned and completed pickup posture", "Refresh the current service-date reconciliation"] },
+  "people:Roster": { actions: ["Search active, trainee, candidate, and former people", "Open governed person records", "Review employment and reporting context", "Inspect compliance alerts"] },
+  "people:Workforce Readiness": { actions: ["Review readiness totals", "Filter missing, expiring, and expired requirements", "Open the affected person", "Track the authoritative compliance posture"] },
+  "people:Hiring": { actions: ["Review the candidate pipeline", "Open candidate readiness", "Advance or close candidate stages", "Record an optional manager note"] },
+  "people:Interviews": { actions: ["Review upcoming candidate conversations", "See candidate and stage context", "Open the governed candidate record", "Advance the workflow after review"] },
+  "people:Invitations": { actions: ["Review invitation and activation status", "Find pending or inactive people", "Open the governed person record", "Track onboarding readiness"] },
+  "people:Reports": { actions: ["Review roster composition", "Inspect workforce readiness", "Compare candidate and active populations", "Filter compliance exceptions"] },
+  "people:Corrective Actions": { actions: ["Review open actions and ownership", "Inspect due-date posture", "Open the associated person record", "Track resolution context"] },
+  "people:Policies": { actions: ["Review published policy posture", "Inspect acknowledgment requirements", "See affected workforce context", "Track outstanding acknowledgments"] },
+  "people:Compliance": { actions: ["Review missing and expired requirements", "Inspect expiration windows", "Open affected workforce records", "Filter urgent and warning signals"] },
+  "fleet:Fleet Home": { actions: ["Review dispatch readiness", "See unavailable and spare units", "Inspect open defects and work orders", "Open vehicle or maintenance detail"] },
+  "fleet:Vehicles": { actions: ["Review unit assignment and status", "Inspect route and driver context", "Open defects, work orders, and inspections", "Review weight classification posture"] },
+  "fleet:Defects": { actions: ["Review open defects", "Compare severity and state", "Open the associated vehicle", "Create governed maintenance work"] },
+  "fleet:Inspections": { actions: ["Review recent inspection outcomes", "See driver and vehicle context", "Inspect defect counts", "Open the governed vehicle history"] },
+  "fleet:Work Orders": { actions: ["Create a work order", "Start scheduled work", "Complete and certify repairs", "Review priority and status"] },
+  "fleet:Asset Audit": { actions: ["Review assigned asset custody", "Identify missing assignments", "Inspect unit and person context", "Track audit exceptions"], note: "File and photo evidence uploads are intentionally excluded from this iPad pass." },
+  "routes:Directory": { actions: ["Search active routes", "Add a route", "Edit the current route baseline", "Clone a prior version"] },
+  "routes:Run Pattern": { actions: ["Review operating days", "Change the weekly run pattern", "Preserve the prior version", "Inspect effective dates"] },
+  "routes:Thresholds": { actions: ["Review stop and pay thresholds", "Edit threshold values", "Compare active route posture", "Preserve version history"] },
+  "routes:History": { actions: ["Review prior route versions", "Inspect effective date ranges", "Clone a historical version", "Reactivate through a governed successor"] },
+  "admin:Profile": { actions: ["Review account identity", "Confirm active company context", "Inspect role and grant posture", "Review device security state"] },
+  "admin:Company": { actions: ["Review company identity", "Inspect terminal and market configuration", "Confirm operating preferences", "Review company-scoped status"] },
+  "admin:Leadership": { actions: ["Review leadership roster", "Inspect titles and reporting responsibility", "Confirm active administrator posture", "Open access context"] },
+  "admin:Access": { actions: ["Review company users", "Inspect roles and workspace grants", "Compare active and administrative access", "Confirm company-scoped authority"] },
+  "admin:Operations Config": { actions: ["Review route ordering", "Inspect timekeeping oversight", "Confirm terminal preferences", "Review operating configuration"] },
+  "admin:Automation": { actions: ["Review operational rules", "Inspect triggers and delivery state", "Confirm company scope", "Review automation posture"] },
+  "admin:Payroll Summary": { actions: ["Review pay-period activity", "Inspect timekeeping posture", "Identify exceptions", "Open payroll compliance context"] },
+  "admin:Payroll Compliance": { actions: ["Review missing punches", "Inspect approval state", "Identify compliance exceptions", "Compare current period posture"] },
+  "admin:Adjustments": { actions: ["Review adjustment requests", "Inspect status and audit context", "Compare affected time entries", "Track approval posture"] },
+  "admin:Productivity": { actions: ["Review labor productivity", "Compare route performance", "Inspect workforce trends", "Filter company-scoped results"] },
+  "admin:Time Tracking": { actions: ["Review clock activity", "Inspect exceptions", "Track approvals", "Compare scheduled and recorded time"] },
+  "admin:Analytics": { actions: ["Review operational trends", "Inspect workforce posture", "Compare company-scoped metrics", "Use current authoritative summaries"] },
+  "admin:Assets": { actions: ["Review scanners and fuel cards", "Inspect custody assignments", "Identify audit exceptions", "Open associated person or vehicle context"], note: "Asset evidence uploads are intentionally excluded from this iPad pass." },
+  "admin:Opportunities": { actions: ["Review opportunity analyses", "Compare scenarios", "Inspect assumptions", "Review reference data"] },
+};
+
+function ManagerCapabilityModal(props: {
+  child: ManagerWorkspaceChild;
+  onClose: () => void;
+  snapshot: ManagerWorkspaceSnapshot | null;
+  suite: ManagerWorkspaceSuite;
+}) {
+  const definition = CAPABILITY_DEFINITIONS[`${props.suite.key}:${props.child.label}`] ?? {
+    actions: ["Review authoritative workspace posture", "Inspect company-scoped details", "Filter the available records", "Return to the workspace directory"],
+  };
+  return (
+    <Modal animationType="slide" onRequestClose={props.onClose} presentationStyle="pageSheet" visible>
+      <ScrollView contentContainerStyle={styles.capabilityModal}>
+        <View style={[styles.reviewHeader, styles.modalHeaderClearance]}>
+          <View style={styles.accessCopy}>
+            <Text style={styles.nativeBannerLabel}>{props.suite.label.toUpperCase()} · IPAD</Text>
+            <Text style={styles.drawerTitle}>{props.child.label}</Text>
+            <Text style={styles.detail}>{props.child.detail}</Text>
+          </View>
+          <Pressable onPress={props.onClose}><Text style={styles.done}>Done</Text></Pressable>
+        </View>
+        {props.snapshot?.metrics.length ? (
+          <View style={styles.metricBand}>{props.snapshot.metrics.slice(0, 4).map((metric) => <View key={metric.label} style={[styles.metricCard, metricStyle(metric.tone)]}><Text style={styles.metricLabel}>{metric.label}</Text><Text style={styles.metricValue}>{metric.value}</Text></View>)}</View>
+        ) : null}
+        <View style={styles.sectionHeading}><Text style={styles.sectionLabel}>Available on iPad</Text><Text style={styles.sectionMeta}>{definition.actions.length} CAPABILITIES</Text></View>
+        {definition.actions.map((action, index) => (
+          <View key={action} style={styles.capabilityRow}>
+            <View style={styles.capabilityNumber}><Text style={styles.capabilityNumberText}>{index + 1}</Text></View>
+            <Text style={styles.capabilityText}>{action}</Text>
+          </View>
+        ))}
+        {props.snapshot?.items.slice(0, 4).map((item) => (
+          <View key={item.id} style={styles.readCard}>
+            <View style={[styles.readAccent, readAccentStyle(item.tone)]} />
+            <Text style={styles.readEyebrow}>{item.eyebrow || props.child.label}</Text>
+            <Text style={styles.readCardTitle}>{item.title}</Text>
+            <Text style={styles.readCardDetail}>{item.detail}</Text>
+          </View>
+        ))}
+        {definition.note ? <Card tone="primary"><Text style={sharedStyles.bodyStrong}>Scope boundary</Text><Text style={sharedStyles.muted}>{definition.note}</Text></Card> : null}
+      </ScrollView>
+    </Modal>
+  );
+}
+
 export function ManagerWorkspaceDetailScreen(props: {
   context: ManagerAccessContext;
   dispatchBusy: boolean;
@@ -1431,10 +1966,10 @@ export function ManagerWorkspaceDetailScreen(props: {
   onOpenChild: (key: ManagerWorkspaceChildKey) => void;
   onLoadRouteEvidence: (routeKey: string) => Promise<ManagerRouteEvidenceSnapshot>;
   onLoadWalkOns: () => Promise<ManagerWalkOnSnapshot>;
-  onOpenWeb: (path: string) => void;
   onRefresh: () => void;
   onRefreshDispatch: () => void;
   onSettings: () => void;
+  onStartInspection: () => void;
   onSubmitDelivery: (draft: ManagerDeliveryActionDraft) => Promise<void>;
   onSubmitDispatch: (draft: ManagerDispatchActionDraft) => Promise<void>;
   onSubmitWalkOn: (draft: ManagerWalkOnAssignmentDraft) => Promise<void>;
@@ -1445,6 +1980,24 @@ export function ManagerWorkspaceDetailScreen(props: {
   snapshot: ManagerWorkspaceSnapshot | null;
   suite: ManagerWorkspaceSuite;
 }) {
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 900;
+  const [selectedCapability, setSelectedCapability] = useState<ManagerWorkspaceChild | null>(null);
+  const [fleetSurface, setFleetSurface] = useState<FleetSurfaceKey>("readiness");
+  function openWorkspaceChild(child: ManagerWorkspaceChild) {
+    if (props.suite.key === "fleet") {
+      const nextSurface: FleetSurfaceKey = child.path === "/fleet/vehicles" ? "vehicles"
+        : child.path === "/fleet/defects" ? "defects"
+          : child.path === "/fleet/inspections" ? "inspections"
+            : child.path === "/fleet/work-orders" ? "work"
+              : child.path === "/fleet/assets" ? "assets"
+                : "readiness";
+      setFleetSurface(nextSurface);
+      return;
+    }
+    if (child.key) props.onOpenChild(child.key);
+    else setSelectedCapability(child);
+  }
   return (
     <Screen>
       <AppHeader companyName={props.context.company_name} eyebrow="INSIGHT · MANAGER" onSettings={props.onSettings} title={props.suite.label} />
@@ -1457,7 +2010,6 @@ export function ManagerWorkspaceDetailScreen(props: {
           dispatchSnapshot={props.dispatchSnapshot}
           error={props.error}
           loading={props.loading}
-          onOpenWeb={() => props.onOpenWeb(props.suite.fallbackPath)}
           onLoadRouteEvidence={props.onLoadRouteEvidence}
           onLoadWalkOns={props.onLoadWalkOns}
           onRefresh={props.onRefresh}
@@ -1472,69 +2024,42 @@ export function ManagerWorkspaceDetailScreen(props: {
           busy={props.peopleBusy}
           error={props.error}
           loading={props.loading}
-          onOpenWeb={props.onOpenWeb}
           onRefresh={props.onRefresh}
           onSubmitCandidateStage={props.onSubmitCandidateStage}
           snapshot={props.snapshot}
         />
       ) : props.suite.key === "fleet" ? (
-        <FleetReadSurface busy={props.fleetBusy} error={props.error} loading={props.loading} onOpenWeb={props.onOpenWeb} onRefresh={props.onRefresh} onSubmitWorkOrder={props.onSubmitFleetWorkOrder} onSubmitWorkOrderStatus={props.onSubmitFleetWorkOrderStatus} snapshot={props.snapshot} />
+        <FleetReadSurface busy={props.fleetBusy} error={props.error} loading={props.loading} onRefresh={props.onRefresh} onStartInspection={props.onStartInspection} onSubmitWorkOrder={props.onSubmitFleetWorkOrder} onSubmitWorkOrderStatus={props.onSubmitFleetWorkOrderStatus} onSurface={setFleetSurface} snapshot={props.snapshot} surface={fleetSurface} />
       ) : props.suite.key === "routes" ? (
         <RoutesReadSurface busy={props.routesBusy} error={props.error} loading={props.loading} onRefresh={props.onRefresh} onSubmit={props.onSubmitRoute} snapshot={props.snapshot} />
       ) : (
         <WorkspaceSnapshotView error={props.error} loading={props.loading} onRetry={props.onRefresh} snapshot={props.snapshot} />
       )}
-      {props.suite.key === "operations" ? (
-        <>
-          <View style={styles.sectionHeading}>
-            <Text style={styles.sectionLabel}>Operational surfaces</Text>
-            <Text style={styles.sectionMeta}>PASS 2</Text>
-          </View>
-          {props.suite.children.map((child) => {
-            return (
-              <AccessTile
-                code={child.code}
-                detail={child.detail}
-                key={child.label}
-                label={child.label}
-                onPress={() => child.key ? props.onOpenChild(child.key) : props.onOpenWeb(child.path)}
-                trailing="NATIVE"
-              />
-            );
-          })}
-        </>
-      ) : null}
-      {props.suite.key !== "operations" && props.suite.key !== "people" && props.suite.key !== "fleet" ? (
-        <>
-          <View style={styles.sectionHeading}>
-            <Text style={styles.sectionLabel}>Surfaces</Text>
-            <Text style={styles.sectionMeta}>READ ONLY</Text>
-          </View>
-          {props.suite.children.map((child) => (
+      <View style={styles.sectionHeading}>
+        <Text style={styles.sectionLabel}>{props.suite.label} surfaces</Text>
+        <Text style={styles.sectionMeta}>NATIVE READY</Text>
+      </View>
+      <View style={[styles.workspaceTileGrid, isTablet && styles.workspaceTileGridTablet]}>
+        {props.suite.children.map((child) => (
+          <View key={child.label} style={[styles.workspaceTileCell, isTablet && styles.workspaceTileCellTablet]}>
             <AccessTile
               code={child.code}
               detail={child.detail}
-              key={child.label}
               label={child.label}
-              onPress={() => props.onOpenWeb(child.path)}
-              trailing="WEB FALLBACK"
+              onPress={() => openWorkspaceChild(child)}
+              trailing="NATIVE"
             />
-          ))}
-          <Card>
-            <Text style={sharedStyles.bodyStrong}>Pass 1 boundary</Text>
-            <Text style={sharedStyles.muted}>This native surface is optimized for mobile review. The browser fallback preserves full desktop controls until its management client moves into Pass 2.</Text>
-            <PrimaryButton compact label="Open full web workspace" onPress={() => props.onOpenWeb(props.suite.fallbackPath)} secondary />
-          </Card>
-        </>
+          </View>
+        ))}
+      </View>
+      {selectedCapability ? (
+        <ManagerCapabilityModal
+          child={selectedCapability}
+          onClose={() => setSelectedCapability(null)}
+          snapshot={props.snapshot}
+          suite={props.suite}
+        />
       ) : null}
-      {props.suite.key === "people" ? (
-        <Card>
-          <Text style={sharedStyles.bodyStrong}>Full People administration</Text>
-          <Text style={sharedStyles.muted}>Bulk import, reporting, invitation delivery, activation, and policy configuration remain in the shared web workspace.</Text>
-          <PrimaryButton compact label="Open full People workspace" onPress={() => props.onOpenWeb(props.suite.fallbackPath)} secondary />
-        </Card>
-      ) : null}
-      {props.suite.key === "fleet" ? <Card><Text style={sharedStyles.bodyStrong}>Fleet administration boundary</Text><Text style={sharedStyles.muted}>Every driver can submit inspections without Fleet authority. Vehicle intake, VIN evidence, cost entry, and dense compliance controls remain in the full web workspace.</Text><PrimaryButton compact label="Open full Fleet workspace" onPress={() => props.onOpenWeb(props.suite.fallbackPath)} secondary /></Card> : null}
     </Screen>
   );
 }
@@ -1953,7 +2478,6 @@ export function ManagerOperationsChildScreen(props: {
   error: string | null;
   loading: boolean;
   onBack: () => void;
-  onOpenWeb: (path: string) => void;
   onRefresh: () => void;
   onManageWalkOn: (draft: ManagerWalkOnIdentityDraft) => Promise<void>;
   onSaveWalkOn: (draft: ManagerWalkOnAssignmentDraft) => Promise<void>;
@@ -1986,10 +2510,9 @@ export function ManagerOperationsChildScreen(props: {
           snapshot={props.snapshot?.walkOns ?? null}
         />
       ) : <WorkspaceSnapshotView error={props.error} loading={props.loading} onRetry={props.onRefresh} snapshot={props.snapshot} />}
-      <Card>
-        <Text style={sharedStyles.bodyStrong}>{props.childKey === "walk_ons" ? "Native management · web fallback preserved" : "Native read · full controls preserved"}</Text>
-        <Text style={sharedStyles.muted}>{props.childKey === "walk_ons" ? "Create, reuse, and govern walk-on identities here. Payroll overrides remain available in the browser workspace." : "This screen is optimized for mobile review. The browser workspace remains available as a fallback for deeper controls."}</Text>
-        <PrimaryButton compact label="Open full web workspace" onPress={() => props.onOpenWeb(child.path)} secondary />
+      <Card tone="primary">
+        <Text style={sharedStyles.bodyStrong}>iPad operations workspace</Text>
+        <Text style={sharedStyles.muted}>{props.childKey === "walk_ons" ? "Create, reuse, govern, assign, and review pay treatment for support identities without leaving the app." : "This surface uses company-authoritative operational data and preserves the current service-date context."}</Text>
       </Card>
     </Screen>
   );
@@ -3265,9 +3788,22 @@ export function ManagerMessagesScreen(props: {
   snapshot: ManagerMessagesSnapshot | null;
 }) {
   const [composerOpen, setComposerOpen] = useState(false);
+  const [surface, setSurface] = useState<"all" | "published" | "drafts" | "acknowledgments">("all");
   const published = props.snapshot?.messages.filter((message) => message.status === "published").length ?? 0;
   const drafts = props.snapshot?.messages.filter((message) => message.status === "draft").length ?? 0;
   const acknowledgments = props.snapshot?.messages.filter((message) => message.requiresAck).length ?? 0;
+  const visibleMessages = props.snapshot?.messages.filter((message) => {
+    if (surface === "published") return message.status === "published";
+    if (surface === "drafts") return message.status === "draft";
+    if (surface === "acknowledgments") return message.requiresAck;
+    return true;
+  }) ?? [];
+  const messageSurfaces: Array<{ key: typeof surface; label: string; count: number }> = [
+    { key: "all", label: "All", count: props.snapshot?.messages.length ?? 0 },
+    { key: "published", label: "Published", count: published },
+    { key: "drafts", label: "Drafts", count: drafts },
+    { key: "acknowledgments", label: "Acknowledgments", count: acknowledgments },
+  ];
   return (
     <Screen>
       <AppHeader companyName={props.context.company_name} eyebrow="INSIGHT · MANAGER" onSettings={props.onSettings} title="Messages" />
@@ -3284,8 +3820,19 @@ export function ManagerMessagesScreen(props: {
           {props.snapshot.canAuthor ? <PrimaryButton label="Create message" onPress={() => setComposerOpen(true)} /> : (
             <Card><Text style={sharedStyles.bodyStrong}>Read access</Text><Text style={sharedStyles.muted}>Company administrator access is required to draft or publish messages.</Text></Card>
           )}
-          <View style={styles.sectionHeading}><Text style={styles.sectionLabel}>Message board</Text><Text style={styles.sectionMeta}>{props.snapshot.messages.length}</Text></View>
-          {props.snapshot.messages.length === 0 ? <Card><Text style={sharedStyles.bodyStrong}>No announcements yet</Text><Text style={sharedStyles.muted}>Published messages and administrator drafts will appear here.</Text></Card> : props.snapshot.messages.map((message) => (
+          <ScrollView contentContainerStyle={styles.readFilters} horizontal showsHorizontalScrollIndicator={false}>
+            {messageSurfaces.map((item) => {
+              const selected = surface === item.key;
+              return (
+                <Pressable key={item.key} onPress={() => setSurface(item.key)} style={[styles.readFilter, selected && styles.readFilterActive]}>
+                  <Text style={[styles.readFilterText, selected && styles.readFilterTextActive]}>{item.label}</Text>
+                  <View style={[styles.readFilterCount, selected && styles.readFilterCountActive]}><Text style={[styles.readFilterCountText, selected && styles.readFilterCountTextActive]}>{item.count}</Text></View>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+          <View style={styles.sectionHeading}><Text style={styles.sectionLabel}>{messageSurfaces.find((item) => item.key === surface)?.label} messages</Text><Text style={styles.sectionMeta}>{visibleMessages.length}</Text></View>
+          {visibleMessages.length === 0 ? <Card><Text style={sharedStyles.bodyStrong}>No messages in this view</Text><Text style={sharedStyles.muted}>Change the filter or create the next company update.</Text></Card> : visibleMessages.map((message) => (
             <View key={message.id} style={styles.readCard}>
               <View style={[styles.readAccent, message.status === "published" ? styles.readAccentSuccess : styles.readAccentWarning]} />
               <View style={styles.readCardHeader}><Text style={styles.readEyebrow}>{message.status}</Text><Text style={styles.readMeta}>{message.visibility}</Text></View>
@@ -3305,26 +3852,33 @@ export function ManagerFooter(props: {
   activeTab: ManagerTabKey;
   onAccount: () => void;
   onTab: (tab: ManagerTabKey) => void;
+  tablet?: boolean;
 }) {
   const tabs: Array<[ManagerTabKey | "account", string]> = [
     ["today", "Today"],
     ["schedule", "Schedule"],
     ["workspaces", "Workspaces"],
+    ["inspect", "Inspect"],
     ["messages", "Messages"],
     ["account", "Account"],
   ];
   return (
-    <View style={styles.footer}>
+    <View style={[styles.footer, props.tablet && styles.footerTablet]}>
       {tabs.map(([key, label]) => (
         <Pressable
           accessibilityRole="tab"
           accessibilityState={{ selected: key !== "account" && props.activeTab === key }}
           key={key}
           onPress={() => key === "account" ? props.onAccount() : props.onTab(key)}
-          style={styles.footerItem}
+          style={[
+            styles.footerItem,
+            props.tablet && styles.footerItemTablet,
+            props.tablet && key === "account" && styles.footerAccountTablet,
+            props.tablet && key !== "account" && props.activeTab === key && styles.footerItemActiveTablet,
+          ]}
         >
           <Text style={[styles.footerCode, key !== "account" && props.activeTab === key && styles.footerActive]}>
-            {key === "today" ? "T" : key === "schedule" ? "31" : key === "workspaces" ? "W" : key === "messages" ? "M" : "TC"}
+            {key === "today" ? "T" : key === "schedule" ? "31" : key === "workspaces" ? "W" : key === "inspect" ? "IN" : key === "messages" ? "M" : "TC"}
           </Text>
           <Text style={[styles.footerLabel, key !== "account" && props.activeTab === key && styles.footerActive]}>{label}</Text>
         </Pressable>
@@ -3335,6 +3889,9 @@ export function ManagerFooter(props: {
 
 const styles = StyleSheet.create({
   pressed: { opacity: 0.58 },
+  managerHomeGrid: { gap: 14 },
+  managerHomeGridTablet: { flexDirection: "row", alignItems: "flex-start", gap: 20 },
+  managerHomeColumn: { flex: 1, minWidth: 0, gap: 14 },
   sectionHeading: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 8 },
   sectionLabel: { color: colors.ink, fontSize: 14, fontWeight: "700" },
   sectionMeta: { color: colors.muted, fontSize: 12 },
@@ -3379,6 +3936,44 @@ const styles = StyleSheet.create({
   coverageDayDate: { color: colors.ink, fontSize: 18, fontWeight: "800" },
   coverageDelta: { color: colors.ink, fontSize: 15, fontWeight: "800" },
   coverageStatus: { color: colors.muted, fontSize: 8, fontWeight: "800" },
+  tabletCalendarGrid: { flexDirection: "row", flexWrap: "wrap", alignItems: "stretch", gap: 8 },
+  tabletCalendarDay: { width: "13.4%", minWidth: 112, flexGrow: 1, minHeight: 174, justifyContent: "space-between", gap: 10, padding: 12, borderWidth: 1, borderRadius: 14 },
+  tabletCalendarDaySelected: { borderWidth: 2, borderColor: colors.primary, shadowColor: colors.primary, shadowOpacity: 0.14, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
+  tabletCalendarDateRow: { minHeight: 42, flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 4 },
+  tabletCalendarWeekday: { color: colors.muted, fontSize: 9, fontWeight: "900", letterSpacing: 0.7 },
+  tabletCalendarDate: { color: colors.ink, fontSize: 24, lineHeight: 27, fontWeight: "900" },
+  tabletToday: { color: colors.white, fontSize: 8, fontWeight: "900", letterSpacing: 0.5, paddingHorizontal: 6, paddingVertical: 4, borderRadius: 999, backgroundColor: colors.primary },
+  tabletCalendarMetrics: { gap: 3 },
+  tabletCalendarMetric: { color: colors.muted, fontSize: 10, lineHeight: 14 },
+  tabletCalendarMetricValue: { color: colors.ink, fontSize: 13, fontWeight: "900" },
+  tabletCalendarCounts: { gap: 2, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border },
+  tabletCalendarCount: { color: colors.muted, fontSize: 9, lineHeight: 13 },
+  tabletCalendarSignalRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6 },
+  tabletCalendarDelta: { color: colors.ink, fontSize: 18, fontWeight: "900" },
+  tabletCalendarSignal: { flex: 1, color: colors.ink, fontSize: 8, lineHeight: 10, fontWeight: "800", textAlign: "right" },
+  tabletCalendarDetail: { gap: 16, padding: 18, borderWidth: 1, borderColor: colors.border, borderRadius: 18, backgroundColor: colors.white },
+  tabletCalendarDetailTop: { flexDirection: "row", alignItems: "stretch", gap: 18 },
+  tabletCalendarDetailCopy: { width: 330, minWidth: 0, gap: 8 },
+  tabletCalendarDetailTitle: { color: colors.ink, fontSize: 20, lineHeight: 25, fontWeight: "900" },
+  tabletCalendarDetailSignal: { alignSelf: "flex-start" },
+  tabletCalendarDetailLabel: { color: colors.muted, fontSize: 9, fontWeight: "900", letterSpacing: 0.7, marginTop: 4 },
+  tabletRouteChips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  tabletRouteChip: { paddingHorizontal: 9, paddingVertical: 6, borderRadius: 999, backgroundColor: colors.palePrimary },
+  tabletRouteChipText: { color: colors.primary, fontSize: 10, fontWeight: "800" },
+  tabletCalendarDetailStats: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "stretch", gap: 8 },
+  tabletCalendarDetailStat: { flex: 1, minWidth: 0, justifyContent: "center", gap: 8, padding: 12, borderRadius: 13, backgroundColor: colors.panel },
+  tabletCalendarDetailStatLabel: { color: colors.muted, fontSize: 9, lineHeight: 12, fontWeight: "800" },
+  tabletCalendarDetailStatValue: { color: colors.ink, fontSize: 20, fontWeight: "900" },
+  tabletCalendarPeopleGrid: { flexDirection: "row", alignItems: "stretch", gap: 8, paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.border },
+  tabletCalendarPeopleGroup: { flex: 1, minWidth: 0, gap: 8, padding: 12, borderRadius: 13, backgroundColor: colors.panel },
+  tabletCalendarPeopleLabel: { color: colors.muted, fontSize: 9, fontWeight: "900", letterSpacing: 0.6 },
+  tabletCalendarPersonChips: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 },
+  tabletCalendarPersonChip: { maxWidth: "100%", paddingHorizontal: 8, paddingVertical: 6, borderRadius: 999, backgroundColor: colors.white },
+  tabletCalendarPersonChipText: { color: colors.ink, fontSize: 9, fontWeight: "700" },
+  tabletCalendarPeopleMore: { color: colors.primary, fontSize: 9, fontWeight: "800" },
+  mobileScheduleTraineeGroup: { gap: 4, padding: 10, borderRadius: 12, backgroundColor: colors.panel },
+  mobileScheduleTraineeLabel: { color: colors.primary, fontSize: 9, fontWeight: "900", letterSpacing: 0.6 },
+  mobileScheduleTraineePerson: { color: colors.ink, fontSize: 11, lineHeight: 16, fontWeight: "700" },
   statusCovered: { borderColor: colors.success, backgroundColor: "#EAF6F1" },
   statusTight: { borderColor: colors.warning, backgroundColor: colors.paleWarning },
   statusGap: { borderColor: colors.danger, backgroundColor: colors.paleDanger },
@@ -3397,6 +3992,23 @@ const styles = StyleSheet.create({
   workbenchInitials: { color: colors.ink, fontSize: 14, fontWeight: "800" },
   pendingText: { color: colors.warning, fontSize: 9, fontWeight: "900", letterSpacing: 0.5 },
   readyText: { color: colors.success, fontSize: 9, fontWeight: "900", letterSpacing: 0.5 },
+  scheduleToolbar: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10 },
+  scheduleSearch: { flex: 1, minWidth: 230 },
+  scheduleFilter: { minHeight: 46, alignItems: "center", justifyContent: "center", paddingHorizontal: 16, borderWidth: 1, borderColor: colors.border, borderRadius: 13, backgroundColor: colors.white },
+  scheduleChoiceRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  scheduleChoice: { minHeight: 42, alignItems: "center", justifyContent: "center", paddingHorizontal: 13, borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.white },
+  scheduleChoiceActive: { borderColor: colors.primary, backgroundColor: colors.palePrimary },
+  scheduleChoiceText: { color: colors.muted, fontSize: 11, fontWeight: "800" },
+  scheduleChoiceTextActive: { color: colors.primary },
+  scheduleFieldGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  scheduleField: { flex: 1, minWidth: 220, gap: 7 },
+  scheduleFieldLabel: { color: colors.muted, fontSize: 10, fontWeight: "900", letterSpacing: 0.6 },
+  scheduleDaysGrid: { gap: 10 },
+  scheduleDayEditor: { flexDirection: "row", alignItems: "center", gap: 10 },
+  scheduleDayToggle: { width: 54, minHeight: 44, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.white },
+  scheduleDayToggleActive: { borderColor: colors.primary, backgroundColor: colors.palePrimary },
+  scheduleRouteInput: { flex: 1, minHeight: 44, paddingHorizontal: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 12, color: colors.ink, backgroundColor: colors.white },
+  scheduleRotationToggle: { alignSelf: "flex-start" },
   delta: { minWidth: 32, color: colors.ink, fontSize: 18, fontWeight: "900", textAlign: "right" },
   reviewSheet: { paddingHorizontal: 24, paddingTop: 28, paddingBottom: 48, gap: 18, backgroundColor: colors.white },
   reviewHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
@@ -3411,7 +4023,22 @@ const styles = StyleSheet.create({
   decisionTextActive: { color: colors.ink },
   noteInput: { minHeight: 112, padding: 14, borderWidth: 1, borderColor: colors.border, borderRadius: 15, color: colors.ink, fontSize: 15, lineHeight: 22, textAlignVertical: "top" },
   workspacePage: { width: "100%", maxWidth: 880, alignSelf: "center", paddingHorizontal: 24, paddingTop: 20, paddingBottom: 28, gap: 14, backgroundColor: colors.white },
+  workspacePageTablet: { maxWidth: 1160, paddingHorizontal: 32, paddingTop: 28, paddingBottom: 36, gap: 18 },
+  workspaceDirectory: { gap: 14 },
+  workspaceDirectoryTablet: { flexDirection: "row", alignItems: "flex-start", gap: 24 },
+  workspaceIntroduction: { gap: 14 },
+  workspaceIntroductionTablet: { width: 330 },
   workspaceGroup: { gap: 10 },
+  workspaceGroupTablet: { flex: 1, minWidth: 0 },
+  workspaceTileGrid: { gap: 10 },
+  workspaceTileGridTablet: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", gap: 12 },
+  workspaceTileCell: { width: "100%" },
+  workspaceTileCellTablet: { width: "49%" },
+  capabilityModal: { paddingHorizontal: 24, paddingTop: 28, paddingBottom: 48, gap: 18, backgroundColor: colors.white },
+  capabilityRow: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: 13, padding: 14, borderWidth: 1, borderColor: colors.border, borderRadius: 15, backgroundColor: colors.white },
+  capabilityNumber: { width: 36, height: 36, alignItems: "center", justifyContent: "center", borderRadius: 11, backgroundColor: colors.palePrimary },
+  capabilityNumberText: { color: colors.primary, fontSize: 13, fontWeight: "900" },
+  capabilityText: { flex: 1, color: colors.ink, fontSize: 14, lineHeight: 20, fontWeight: "800" },
   nativeBanner: { gap: 6, padding: 18, borderRadius: 18, backgroundColor: colors.ink },
   nativeBannerLabel: { color: "#8DD3EF", fontSize: 10, fontWeight: "900", letterSpacing: 1.3 },
   nativeBannerTitle: { color: colors.white, fontSize: 20, fontWeight: "800" },
@@ -3501,15 +4128,18 @@ const styles = StyleSheet.create({
   reportDateValue: { color: colors.ink, fontSize: 16, fontWeight: "900" },
   reportDateMeta: { color: colors.muted, fontSize: 9, fontWeight: "700" },
   operationsControls: { gap: 8, paddingRight: 20 },
+  operationsControlsTablet: { flexDirection: "row", flexWrap: "wrap", paddingRight: 0 },
   operationsControl: { minHeight: 40, justifyContent: "center", paddingHorizontal: 14, borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.white },
   operationsControlPrimary: { borderColor: colors.success, backgroundColor: colors.success },
   controlDisabled: { opacity: 0.5 },
   operationsControlText: { color: colors.ink, fontSize: 12, fontWeight: "800" },
   operationsControlTextPrimary: { color: colors.white },
+  operationsSummaryPanel: { gap: 10, padding: 16, borderWidth: 1, borderColor: colors.border, borderRadius: 16, backgroundColor: colors.panel },
   operationsStatus: { gap: 3, padding: 13, borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.white },
   operationsStatusTitle: { color: colors.ink, fontSize: 13, fontWeight: "900" },
   operationsStatusDetail: { color: colors.primary, fontSize: 11, fontWeight: "700" },
   operationsFilters: { gap: 8, paddingRight: 20 },
+  operationsFiltersTablet: { flexDirection: "row", flexWrap: "wrap", paddingRight: 0 },
   operationsFilter: { minHeight: 36, flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 11, borderWidth: 1, borderColor: colors.border, borderRadius: 999, backgroundColor: colors.white },
   operationsFilterActive: { borderColor: colors.primary, backgroundColor: colors.palePrimary },
   operationsFilterText: { color: colors.muted, fontSize: 11, fontWeight: "800" },
@@ -3519,6 +4149,9 @@ const styles = StyleSheet.create({
   operationsFilterCountText: { color: colors.muted, fontSize: 9, fontWeight: "900" },
   operationsFilterCountTextActive: { color: colors.white },
   operationsRouteStack: { gap: 11 },
+  operationsRouteStackTablet: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", gap: 12 },
+  operationsRouteCell: { width: "100%" },
+  operationsRouteCellTablet: { width: "49%" },
   operationsRouteCard: { gap: 11, padding: 14, paddingBottom: 10, overflow: "hidden", borderWidth: 1, borderColor: colors.border, borderRadius: 18, backgroundColor: colors.white },
   operationsRouteCardActive: { borderColor: "#D9C9F6", backgroundColor: "#FAF7FF" },
   operationsRouteCardComplete: { borderColor: "#CBE5DA", backgroundColor: "#F2FAF6" },
@@ -3615,7 +4248,11 @@ const styles = StyleSheet.create({
   selectionOptionStack: { gap: 8, paddingBottom: 48 },
   selectionOption: { minHeight: 62, flexDirection: "row", alignItems: "center", gap: 10, padding: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.white },
   footer: { width: "100%", maxWidth: 880, alignSelf: "center", height: 74, flexDirection: "row", borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.white },
+  footerTablet: { width: 116, maxWidth: 116, height: "100%", alignSelf: "stretch", flexDirection: "column", borderTopWidth: 0, borderRightWidth: 1, borderRightColor: colors.border, paddingVertical: 16 },
   footerItem: { flex: 1, alignItems: "center", justifyContent: "center", gap: 3 },
+  footerItemTablet: { flex: 0, width: "100%", minHeight: 78, borderLeftWidth: 3, borderLeftColor: "transparent" },
+  footerItemActiveTablet: { borderLeftColor: colors.primary, backgroundColor: colors.palePrimary },
+  footerAccountTablet: { marginTop: "auto" },
   footerCode: { color: colors.muted, fontSize: 12, fontWeight: "700" },
   footerLabel: { color: colors.muted, fontSize: 10 },
   footerActive: { color: colors.primary },
