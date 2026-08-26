@@ -19,6 +19,7 @@ const OPERATIONS_LEADERSHIP_GRANTS: CompanyWorkspaceGrantKey[] = [
   "delivery_window",
   "operations_uploads",
   "reports",
+  "assets",
 ];
 
 const ROLE_ACCESS_TEMPLATES: Record<string, RoleAccessTemplate> = {

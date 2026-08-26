@@ -28,3 +28,18 @@ describe("product boundary", () => {
     expect(grantKeys).not.toContain("insight_telecom_fulfillment");
   });
 });
+
+describe("Assets workspace access", () => {
+  it("publishes Assets independently from Fleet for scanners and fuel cards", () => {
+    const assets = COMPANY_WORKSPACE_GRANTS.find((grant) => grant.key === "assets");
+    expect(assets?.description).toContain("scanner");
+    expect(assets?.description).toContain("fuel card");
+    expect(assets?.key).not.toBe("fleet");
+  });
+
+  it("allows an active Assets grantee without granting Fleet", () => {
+    const access = { memberships: [{ company_slug: "acme", membership_status: "active", relationship_type: "member", grants: ["assets"] }] };
+    expect(canAccessCompanyWorkspace(access, "acme", "assets")).toBe(true);
+    expect(canAccessCompanyWorkspace(access, "acme", "fleet")).toBe(false);
+  });
+});

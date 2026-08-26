@@ -78,6 +78,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
   const canAccessDeliveryWindow = canAccessCompanyWorkspace(access, slug, "delivery_window");
   const canAccessOperationsUploads = canAccessCompanyWorkspace(access, slug, "operations_uploads");
   const canAccessReports = canAccessCompanyWorkspace(access, slug, "reports");
+  const canAccessAssets = canAccessCompanyWorkspace(access, slug, "assets");
   const canAccessRoster = canAccessCompanyWorkspace(access, slug, "roster");
   const canAccessHiring = canAccessCompanyWorkspace(access, slug, "hiring");
   const canAccessPayroll = canAccessCompanyWorkspace(access, slug, "payroll");
@@ -157,6 +158,9 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
           : []),
         ...(canAccessFleet
           ? [{ label: "Fleet", href: fleetBase, match: (path: string) => path.startsWith(fleetBase) }]
+          : []),
+        ...(canAccessAssets
+          ? [{ label: "Assets", href: `${assetsBase}/scanners`, match: (path: string) => path.startsWith(assetsBase) }]
           : []),
         ...(canAccessPayroll
           ? [{ label: "Payroll", href: `${payrollBase}/summary`, match: (path: string) => path.startsWith(payrollBase) }]
