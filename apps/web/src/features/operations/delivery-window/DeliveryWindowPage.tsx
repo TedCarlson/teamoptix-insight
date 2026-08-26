@@ -55,6 +55,7 @@ export default function DeliveryWindowPage({ slug, serviceDate }: Props) {
   const { routes, loading, error } = useDeliveryWindowData(
     slug,
     selectedServiceDate,
+    serviceDate,
     refreshKey
   );
 
@@ -130,6 +131,8 @@ export default function DeliveryWindowPage({ slug, serviceDate }: Props) {
             key={`${selectedServiceDate}-${refreshKey}`}
             slug={slug}
             serviceDate={selectedServiceDate}
+            dataMode={selectedServiceDate === serviceDate ? "live" : "historical"}
+            requestVersion={refreshKey}
             routes={sortedRoutes}
             routeLabelForDisplay={(route) => routeLabelForDisplay(route, routeSortKey)}
             onRefresh={refreshWorkspace}

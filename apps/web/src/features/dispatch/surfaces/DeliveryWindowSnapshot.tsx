@@ -17,6 +17,7 @@ import {
   type FccRouteSignalRow,
 } from "@/features/operations/delivery-window/lib/fccRouteHealth";
 import { preferredManifestRouteKey } from "@/features/operations/manifests/routeEvidence";
+import { fetchServiceJsonOnce } from "@/features/operations/delivery-window/serviceDataClient";
 
 type DswCurrentRow = {
   batch_id: string;
@@ -67,6 +68,8 @@ type FccPayload = {
 type DeliveryWindowSnapshotProps = {
   slug: string;
   serviceDate: string;
+  dataMode: "live" | "historical";
+  requestVersion: number;
   routes: DispatchRoute[];
   routeLabelForDisplay: (route: DispatchRoute) => string;
   onRefresh: () => void;
@@ -313,6 +316,8 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
   const {
     slug,
     serviceDate,
+    dataMode,
+    requestVersion,
     routes,
     routeLabelForDisplay,
     onRefresh,
@@ -335,16 +340,15 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
         setLoading(true);
         setError(null);
 
-        const res = await fetch(
+        const result = await fetchServiceJsonOnce(
           `/api/company/${slug}/operations/reports/dsw-current?date=${serviceDate}`,
-          { credentials: "include", cache: "no-store" }
+          requestVersion
         );
-
-        const data = await res.json();
+        const data = result.data;
 
         if (!active) return;
 
-        if (!res.ok) {
+        if (!result.ok) {
           setPayload(null);
           setError(data?.error ?? "Failed to load DSW snapshot.");
           return;
@@ -365,22 +369,21 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
     return () => {
       active = false;
     };
-  }, [serviceDate, slug]);
+  }, [requestVersion, serviceDate, slug]);
 
   useEffect(() => {
     let active = true;
 
     async function loadFccSnapshot() {
       try {
-        const res = await fetch(
+        const result = await fetchServiceJsonOnce(
           `/api/company/${slug}/operations/reports/fcc-current?date=${serviceDate}`,
-          { credentials: "include", cache: "no-store" }
+          requestVersion
         );
-
-        const data = await res.json().catch(() => null);
+        const data = result.data;
         if (!active) return;
 
-        setFccPayload(res.ok ? data : null);
+        setFccPayload(result.ok ? data : null);
       } catch {
         if (active) setFccPayload(null);
       }
@@ -391,22 +394,21 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
     return () => {
       active = false;
     };
-  }, [serviceDate, slug]);
+  }, [requestVersion, serviceDate, slug]);
 
   useEffect(() => {
     let active = true;
 
     async function loadServiceSnapshot() {
       try {
-        const res = await fetch(
+        const result = await fetchServiceJsonOnce(
           `/api/company/${slug}/operations/reports/dsw-service-snapshot?date=${serviceDate}`,
-          { credentials: "include", cache: "no-store" }
+          requestVersion
         );
-
-        const data = await res.json().catch(() => null);
+        const data = result.data;
         if (!active) return;
 
-        setServiceSnapshotPayload(res.ok ? data : null);
+        setServiceSnapshotPayload(result.ok ? data : null);
       } catch {
         if (active) setServiceSnapshotPayload(null);
       }
@@ -417,21 +419,20 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
     return () => {
       active = false;
     };
-  }, [serviceDate, slug]);
+  }, [requestVersion, serviceDate, slug]);
   useEffect(() => {
     let active = true;
 
     async function loadRouteHealth() {
       try {
-        const res = await fetch(
+        const result = await fetchServiceJsonOnce(
           `/api/company/${slug}/operations/route-health?serviceDate=${encodeURIComponent(serviceDate)}`,
-          { credentials: "include", cache: "no-store" }
+          requestVersion
         );
-
-        const data = (await res.json().catch(() => null)) as RouteHealthPayload | null;
+        const data = result.data as RouteHealthPayload | null;
         if (!active) return;
 
-        setRouteHealthPayload(res.ok ? data : null);
+        setRouteHealthPayload(result.ok ? data : null);
       } catch {
         if (active) setRouteHealthPayload(null);
       }
@@ -442,7 +443,7 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
     return () => {
       active = false;
     };
-  }, [serviceDate, slug]);
+  }, [requestVersion, serviceDate, slug]);
 
 
   const dswIndex = useMemo(() => {
@@ -828,6 +829,11 @@ console.log(
           <div>
             <p style={eyebrow}>Service</p>
             <h2 style={{ margin: 0, fontSize: 18 }}>Service Line Up</h2>
+            <small style={{ color: "#64748b", fontWeight: 800 }}>
+              {dataMode === "live"
+                ? "Today · shared Dispatch signal"
+                : `${serviceDate} · selected-day DSW, FCC, manifest, and dispatch evidence`}
+            </small>
           </div>
         </div>
 

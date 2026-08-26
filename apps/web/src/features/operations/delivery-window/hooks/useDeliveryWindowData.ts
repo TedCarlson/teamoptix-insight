@@ -12,6 +12,13 @@ import {
   personFromRow,
   runFlagForDate,
 } from "@/features/dispatch/lib/dispatchSupport";
+import { fetchServiceJsonOnce } from "../serviceDataClient";
+import {
+  buildHistoricalServiceRoutes,
+  type HistoricalDswRoute,
+  type HistoricalFccRoute,
+  type HistoricalManifestRoute,
+} from "../lib/historicalServiceRoutes";
 
 function removeDriver(route: DispatchRoute, rosterMemberId: string): DispatchRoute {
   return {
@@ -94,7 +101,12 @@ function applyDispatchDriverEvents(
   return next;
 }
 
-export function useDeliveryWindowData(slug: string, serviceDate: string, refreshKey = 0) {
+export function useDeliveryWindowData(
+  slug: string,
+  serviceDate: string,
+  liveServiceDate: string,
+  refreshKey = 0
+) {
   const [routes, setRoutes] = useState<DispatchRoute[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -107,75 +119,113 @@ export function useDeliveryWindowData(slug: string, serviceDate: string, refresh
         setLoading(true);
         setError(null);
 
-        const [routesRes, scheduleRes, dispatchDayRes] = await Promise.all([
-          fetch(`/api/company/${slug}/routes`, {
-            credentials: "include",
-            cache: "no-store",
-          }),
-          fetch(`/api/company/${slug}/schedule/generated?date=${serviceDate}`, {
-            credentials: "include",
-            cache: "no-store",
-          }),
-          fetch(`/api/company/${slug}/dispatch/day?date=${serviceDate}`, {
-            credentials: "include",
-            cache: "no-store",
-          }),
-        ]);
+        const historical = serviceDate !== liveServiceDate;
+        const routesUrl = `/api/company/${slug}/routes`;
+        const scheduleUrl = `/api/company/${slug}/schedule/generated?date=${serviceDate}`;
+        const dispatchDayUrl = `/api/company/${slug}/dispatch/day?date=${serviceDate}`;
+        const [routesRes, scheduleRes, dispatchDayRes, dswRes, fccRes, manifestRes] =
+          await Promise.all([
+            fetchServiceJsonOnce(routesUrl, refreshKey),
+            fetchServiceJsonOnce(scheduleUrl, refreshKey),
+            fetchServiceJsonOnce(dispatchDayUrl, refreshKey),
+            historical
+              ? fetchServiceJsonOnce(
+                  `/api/company/${slug}/operations/reports/dsw-current?date=${serviceDate}`,
+                  refreshKey
+                )
+              : Promise.resolve({ ok: true, status: 200, data: { rows: [] } }),
+            historical
+              ? fetchServiceJsonOnce(
+                  `/api/company/${slug}/operations/reports/fcc-current?date=${serviceDate}`,
+                  refreshKey
+                )
+              : Promise.resolve({ ok: true, status: 200, data: { rows: [] } }),
+            historical
+              ? fetchServiceJsonOnce(
+                  `/api/company/${slug}/operations/route-health?serviceDate=${encodeURIComponent(serviceDate)}`,
+                  refreshKey
+                )
+              : Promise.resolve({ ok: true, status: 200, data: { routes: [] } }),
+          ]);
 
-        const [routesData, scheduleData, dispatchDayData] = await Promise.all([
-          routesRes.json(),
-          scheduleRes.json(),
-          dispatchDayRes.json(),
-        ]);
+        const routesData = routesRes.data;
+        const scheduleData = scheduleRes.data;
+        const dispatchDayData = dispatchDayRes.data;
 
         if (!active) return;
 
-        if (!routesRes.ok) {
+        if (!routesRes.ok && !historical) {
           setRoutes([]);
           setError(routesData?.error ?? "Failed to load routes.");
           return;
         }
 
-        if (!scheduleRes.ok) {
+        if (!scheduleRes.ok && !historical) {
           setRoutes([]);
           setError(scheduleData?.error ?? "Failed to load generated schedule.");
           return;
         }
 
-        if (!dispatchDayRes.ok) {
+        if (!dispatchDayRes.ok && !historical) {
           setRoutes([]);
           setError(dispatchDayData?.error ?? "Failed to load dispatch day.");
           return;
         }
 
-        const runFlag = runFlagForDate(serviceDate);
+        const configuredRoutes = (
+          routesRes.ok ? routesData?.routes ?? [] : []
+        ) as RouteRow[];
         const routeMap = new Map<string, DispatchRoute>();
+        const routeAliases = new Map<string, string>();
 
-        for (const route of (routesData?.routes ?? []) as RouteRow[]) {
-          if (!route[runFlag as keyof RouteRow]) continue;
-
-          const key = cleanRouteKey(route.current_wa_num || route.route_name);
-
-          routeMap.set(key, {
-            route_key: key,
-            route_name: route.route_name?.trim() || key,
-            current_wa_num: route.current_wa_num,
-            route_location: route.route_location,
-            route_type: route.route_type,
-            driver: null,
-            helpers: [],
-            trainees: [],
-            extras: [],
+        if (historical) {
+          const selectedDay = buildHistoricalServiceRoutes({
+            configuredRoutes,
+            dswRows: (dswRes.data?.rows ?? []) as HistoricalDswRoute[],
+            fccRows: (fccRes.data?.rows ?? []) as HistoricalFccRoute[],
+            manifestRoutes: (manifestRes.data?.routes ?? []) as HistoricalManifestRoute[],
           });
+          selectedDay.routes.forEach((route, key) => routeMap.set(key, route));
+          selectedDay.aliases.forEach((key, alias) => routeAliases.set(alias, key));
+        } else {
+          const runFlag = runFlagForDate(serviceDate);
+          for (const route of configuredRoutes) {
+            if (!route[runFlag as keyof RouteRow]) continue;
+
+            const key = cleanRouteKey(route.current_wa_num || route.route_name);
+            routeMap.set(key, {
+              route_key: key,
+              route_name: route.route_name?.trim() || key,
+              current_wa_num: route.current_wa_num,
+              route_location: route.route_location,
+              route_type: route.route_type,
+              driver: null,
+              helpers: [],
+              trainees: [],
+              extras: [],
+            });
+            for (const alias of [key, route.route_name, route.current_wa_num]) {
+              const normalized = String(alias ?? "")
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, "");
+              if (normalized) routeAliases.set(normalized, key);
+            }
+          }
         }
 
-        for (const row of (scheduleData?.rows ?? []) as GeneratedScheduleRow[]) {
+        for (const row of (
+          scheduleRes.ok ? scheduleData?.rows ?? [] : []
+        ) as GeneratedScheduleRow[]) {
           if (row.service_date !== serviceDate || !row.planned_on) continue;
 
           const rawRouteName = row.route_name?.trim();
           if (!rawRouteName) continue;
 
-          const key = cleanRouteKey(rawRouteName);
+          const normalizedRouteName = rawRouteName
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, "");
+          const key =
+            routeAliases.get(normalizedRouteName) ?? cleanRouteKey(rawRouteName);
           const route = routeMap.get(key);
           if (!route) continue;
 
@@ -195,7 +245,7 @@ export function useDeliveryWindowData(slug: string, serviceDate: string, refresh
 
         const withDispatchEvents = applyDispatchDriverEvents(
           Object.fromEntries(routeMap.entries()),
-          (dispatchDayData?.events ?? []) as DispatchEventRow[]
+          (dispatchDayRes.ok ? dispatchDayData?.events ?? [] : []) as DispatchEventRow[]
         );
 
         setRoutes(
@@ -221,7 +271,7 @@ export function useDeliveryWindowData(slug: string, serviceDate: string, refresh
     return () => {
       active = false;
     };
-  }, [slug, serviceDate, refreshKey]);
+  }, [slug, serviceDate, liveServiceDate, refreshKey]);
 
   return { routes, loading, error };
 }
