@@ -809,9 +809,9 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
   const historicalSummary = useMemo(
     () => historicalServiceSummary(
       serviceSnapshotPayload,
-      (fccPayload?.rows ?? []).filter(hasHistoricalFccEvidence).length
+      [...fccIndex.values()].filter(hasHistoricalFccEvidence).length
     ),
-    [fccPayload?.rows, serviceSnapshotPayload]
+    [fccIndex, serviceSnapshotPayload]
   );
   const companyIlsPercent = findContractIlsPercent(serviceSnapshotPayload) ?? "—";
 
