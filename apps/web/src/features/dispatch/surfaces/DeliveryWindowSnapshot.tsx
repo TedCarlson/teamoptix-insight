@@ -18,6 +18,11 @@ import {
 } from "@/features/operations/delivery-window/lib/fccRouteHealth";
 import { preferredManifestRouteKey } from "@/features/operations/manifests/routeEvidence";
 import { fetchServiceJsonOnce } from "@/features/operations/delivery-window/serviceDataClient";
+import {
+  historicalRouteEvidenceLabel,
+  historicalRouteSignal,
+  historicalServiceSummary,
+} from "@/features/operations/delivery-window/lib/historicalServicePresentation";
 
 type DswCurrentRow = {
   batch_id: string;
@@ -577,19 +582,38 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
         roadHours !== null &&
         dutyHours !== null;
 
-      const signal = returned
-        ? {
-            label: "Returned",
-            tone: "#166534",
-            icon: "🏁",
-            key: "returned",
-          }
-        : driverSignal(
-            row?.driver_name,
-            route.driver?.full_name,
-            row?.matched_roster_full_name,
-            completion
-          );
+      const hasManifest = [
+        route.route_key,
+        route.current_wa_num,
+        route.route_name,
+      ].some((candidate) => {
+        const normalized = normalizeKey(candidate);
+        const normalizedName = normalizedRouteName(candidate);
+        return Boolean(
+          (normalized && manifestRouteHealthIndex.has(normalized)) ||
+          (normalizedName && manifestRouteHealthIndex.has(normalizedName))
+        );
+      });
+      const signal = dataMode === "historical"
+        ? historicalRouteSignal({
+            hasDsw: Boolean(row),
+            hasFcc: Boolean(fccRow),
+            hasManifest,
+            hasDispatchAssignment: Boolean(route.driver),
+          })
+        : returned
+          ? {
+              label: "Returned",
+              tone: "#166534",
+              icon: "🏁",
+              key: "returned",
+            }
+          : driverSignal(
+              row?.driver_name,
+              route.driver?.full_name,
+              row?.matched_roster_full_name,
+              completion
+            );
 
       return {
         key: route.route_key || route.current_wa_num || route.route_name || `route-${index}`,
@@ -634,12 +658,19 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
           roadHours,
           dutyHours,
           miles,
-          signal: driverSignal(
-            row.driver_name,
-            null,
-            row.matched_roster_full_name,
-            completion
-          ),
+        signal: dataMode === "historical"
+          ? historicalRouteSignal({
+              hasDsw: true,
+              hasFcc: Boolean(fccRow),
+              hasManifest: false,
+              hasDispatchAssignment: false,
+            })
+          : driverSignal(
+              row.driver_name,
+              null,
+              row.matched_roster_full_name,
+              completion
+            ),
           sortOrder: routes.length + routeSortToken(row.route_name ?? row.wa_number),
           configOrder: routes.length + index,
           isConfigRoute: false,
@@ -650,7 +681,7 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
       if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
       return a.configOrder - b.configOrder;
     });
-  }, [dswIndex, fccIndex, payload?.rows, routes]);
+  }, [dataMode, dswIndex, fccIndex, manifestRouteHealthIndex, payload?.rows, routes]);
 
   const matchedDswIds = useMemo(() => {
     const ids = new Set<DswCurrentRow>();
@@ -664,29 +695,6 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
 
   const dswRows = payload?.rows ?? [];
 
-  
-console.log(
-  "DSW return-state inspect",
-  dswRows
-    .filter((row) => row.route_name)
-    .slice(0, 25)
-    .map((row) => ({
-      route: row.route_name,
-      driver: row.driver_name,
-      ils_percent: row.ils_percent,
-      miles: row.normalized_row_json?.miles,
-      on_road_hours: row.normalized_row_json?.on_road_hours,
-      on_duty_hours: row.normalized_row_json?.on_duty_hours,
-    }))
-);
-
-  console.log("DSW row ILS inspect", dswRows.slice(0, 5).map((row) => ({
-    route_name: row.route_name,
-    wa_number: row.wa_number,
-    driver_name: row.driver_name,
-    ils_percent: row.ils_percent,
-    keys: Object.keys(row),
-  })));
   const activeDswRows = dswRows.filter(isActiveDswRow);
   const hiddenEmptyDswRows = dswRows.filter((row) => !isActiveDswRow(row));
   const unplannedActiveRows = activeDswRows.filter((row) => !matchedDswIds.has(row));
@@ -797,7 +805,30 @@ console.log(
     );
   }, [routeRows]);
 
+  const historicalSummary = useMemo(
+    () => historicalServiceSummary(serviceSnapshotPayload, fccIndex.size),
+    [fccIndex.size, serviceSnapshotPayload]
+  );
   const companyIlsPercent = findContractIlsPercent(serviceSnapshotPayload) ?? "—";
+
+  const summaryItems = dataMode === "historical"
+    ? [
+        ["Routes reported", historicalSummary.reportedRoutes.toLocaleString()],
+        ["📍 Del Stops", `${historicalSummary.actualStops.toLocaleString()} / ${historicalSummary.plannedStops.toLocaleString()}`],
+        ["📦 Del Packages", `${historicalSummary.actualPackages.toLocaleString()} / ${historicalSummary.plannedPackages.toLocaleString()}`],
+        ["🛻 Pickups", `${historicalSummary.actualPickupStops.toLocaleString()} / ${historicalSummary.plannedPickupStops.toLocaleString()}`],
+        ["ILS %", companyIlsPercent],
+        ["Completion", `${historicalSummary.completion}%`],
+      ]
+    : [
+        ["Routes / Logged In", `${executionTotals.activeRoutes} / ${executionTotals.loggedIn}`],
+        ["📍 Del Stops", `${executionTotals.actualStops.toLocaleString()} / ${executionTotals.plannedStops.toLocaleString()}`],
+        ["📦 Del Packages", `${executionTotals.actualPackages.toLocaleString()} / ${executionTotals.plannedPackages.toLocaleString()}`],
+        ["🛻 Pickups", `${executionTotals.actualPickupStops.toLocaleString()} / ${executionTotals.plannedPickupStops.toLocaleString()}`],
+        ["ILS %", companyIlsPercent],
+        ["Completion", `${fleetCompletion}%`],
+      ];
+
   const expressPackageTotal = Number(
     routeHealthPayload?.totals?.express_package_count ?? 0
   );
@@ -847,14 +878,7 @@ console.log(
             paddingTop: 10,
           }}
         >
-          {[
-            ["Routes / Logged In", `${executionTotals.activeRoutes} / ${executionTotals.loggedIn}`],
-            ["📍 Del Stops", `${executionTotals.actualStops.toLocaleString()} / ${executionTotals.plannedStops.toLocaleString()}`],
-            ["📦 Del Packages", `${executionTotals.actualPackages.toLocaleString()} / ${executionTotals.plannedPackages.toLocaleString()}`],
-            ["🛻 Pickups", `${executionTotals.actualPickupStops.toLocaleString()} / ${executionTotals.plannedPickupStops.toLocaleString()}`],
-            ["ILS %", companyIlsPercent],
-            ["Completion", `${fleetCompletion}%`],
-          ].map(([label, value]) => (
+          {summaryItems.map(([label, value]) => (
             <div
               key={label}
               style={{
@@ -934,7 +958,7 @@ console.log(
 
         <div className="delivery-window__route-list" style={{ display: "grid", gap: 8 }}>
           {visibleRouteRows.map((item) => {
-            const { route, row, signal, completion, fccHealth } = item;
+            const { route, row, signal, completion, fccRow, fccHealth } = item;
             const routeManifestHealth = manifestHealthForItem(item);
 
             return (
@@ -1035,6 +1059,16 @@ console.log(
                       />
                     ) : null}
                   </div>
+                ) : dataMode === "historical" ? (
+                  <div className="delivery-window__route-progress" style={{ color: "#475569", fontSize: 12, fontWeight: 900 }}>
+                    {fccRow?.last_delivery_time
+                      ? `FCC last delivery ${fccRow.last_delivery_time}`
+                      : routeManifestHealth
+                        ? "Manifest evidence retained"
+                        : route?.driver
+                          ? "Dispatch assignment retained"
+                          : "Selected-day route evidence"}
+                  </div>
                 ) : (
                   <div className="delivery-window__route-progress" style={{ color: "#94a3b8", fontSize: 12, fontWeight: 900 }}>
                     No active DSW row matched
@@ -1084,7 +1118,14 @@ console.log(
                       fontWeight: 950,
                     }}
                   >
-                    {completion}%
+                    {dataMode === "historical" && !row
+                      ? historicalRouteEvidenceLabel({
+                          hasDsw: false,
+                          hasFcc: Boolean(fccRow),
+                          hasManifest: Boolean(routeManifestHealth),
+                          hasDispatchAssignment: Boolean(route?.driver),
+                        })
+                      : `${completion}%`}
                   </div>
                 </div>
               </div>
