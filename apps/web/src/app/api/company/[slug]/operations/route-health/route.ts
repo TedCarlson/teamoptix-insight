@@ -421,6 +421,7 @@ export async function GET(
         deliveryStopsResult,
         packagesResult,
         pickupsResult,
+        clustersResult,
         packageStatusResult,
         expressReferenceResult,
       ] = await Promise.all([
@@ -446,6 +447,11 @@ export async function GET(
             .eq("service_date", serviceDate)
             .eq("route_key", routeKey)
             .order("ready_at", { ascending: true }),
+          supabase.rpc("get_operations_manifest_stop_clusters", {
+            p_company_id: company.id,
+            p_service_date: serviceDate,
+            p_route_key: routeKey,
+          }),
           serviceRole
             .from("operations_dsw_package_status_current_v")
             .select(
@@ -465,6 +471,7 @@ export async function GET(
         deliveryStopsResult.error ??
         packagesResult.error ??
         pickupsResult.error ??
+        clustersResult.error ??
         packageStatusResult.error ??
         expressReferenceResult.error;
 
@@ -506,6 +513,7 @@ export async function GET(
         delivery_stops: deliveryStopsResult.data ?? [],
         packages,
         pickups: pickupsResult.data ?? [],
+        stop_clusters: clustersResult.data ?? [],
       });
     }
 

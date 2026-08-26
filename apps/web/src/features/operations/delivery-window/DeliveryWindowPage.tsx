@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import OperationsReportUploadOverlay from "@/features/operations/components/OperationsReportUploadOverlay";
 import { DeliveryWindowSnapshot } from "@/features/dispatch/surfaces/DeliveryWindowSnapshot";
 import type { DispatchRoute } from "@/features/dispatch/lib/dispatchSupport";
+import ServiceDateSlicer from "./components/ServiceDateSlicer";
 import { useDeliveryWindowData } from "./hooks/useDeliveryWindowData";
 
 type Props = {
@@ -46,11 +47,20 @@ function sortRoutes(routes: DispatchRoute[], routeSortKey: RouteSortKey) {
 
 export default function DeliveryWindowPage({ slug, serviceDate }: Props) {
   const router = useRouter();
+  const [selectedServiceDate, setSelectedServiceDate] = useState(serviceDate);
   const [uploadOverlayOpen, setUploadOverlayOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [routeSortKey, setRouteSortKey] = useState<RouteSortKey>("route_name");
 
-  const { routes, loading, error } = useDeliveryWindowData(slug, serviceDate, refreshKey);
+  const { routes, loading, error } = useDeliveryWindowData(
+    slug,
+    selectedServiceDate,
+    refreshKey
+  );
+
+  useEffect(() => {
+    setSelectedServiceDate(serviceDate);
+  }, [serviceDate]);
 
   useEffect(() => {
     let active = true;
@@ -98,6 +108,13 @@ export default function DeliveryWindowPage({ slug, serviceDate }: Props) {
   return (
     <main className="workspace-shell">
       <section className="workspace-main" style={{ paddingTop: 12 }}>
+        <ServiceDateSlicer
+          slug={slug}
+          value={selectedServiceDate}
+          maximum={serviceDate}
+          onChange={setSelectedServiceDate}
+        />
+
         {error ? (
           <section className="panel" style={{ marginTop: 12, padding: 12, color: "#991b1b", fontWeight: 800 }}>
             {error}
@@ -110,9 +127,9 @@ export default function DeliveryWindowPage({ slug, serviceDate }: Props) {
           </section>
         ) : (
           <DeliveryWindowSnapshot
-            key={refreshKey}
+            key={`${selectedServiceDate}-${refreshKey}`}
             slug={slug}
-            serviceDate={serviceDate}
+            serviceDate={selectedServiceDate}
             routes={sortedRoutes}
             routeLabelForDisplay={(route) => routeLabelForDisplay(route, routeSortKey)}
             onRefresh={refreshWorkspace}
