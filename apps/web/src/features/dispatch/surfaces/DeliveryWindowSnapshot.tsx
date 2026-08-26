@@ -16,6 +16,7 @@ import {
   computeFccRouteHealth,
   type FccRouteSignalRow,
 } from "@/features/operations/delivery-window/lib/fccRouteHealth";
+import { preferredManifestRouteKey } from "@/features/operations/manifests/routeEvidence";
 
 type DswCurrentRow = {
   batch_id: string;
@@ -82,6 +83,7 @@ type RouteHealthPayload = {
 
 type SelectedManifestRouteHealth = {
   routeLabel: string;
+  routeKey: string;
   health: ManifestRouteHealthCard | null;
   dsw: DswCurrentRow | null;
 };
@@ -1050,6 +1052,15 @@ console.log(
                         routeLabel: item.route
                           ? routeLabelForDisplay(item.route)
                           : dswDisplayKey(row!, item.sortOrder),
+                        routeKey: preferredManifestRouteKey(
+                          routeManifestHealth?.route_key,
+                          item.route?.current_wa_num,
+                          item.row?.wa_number,
+                          item.route?.route_key,
+                          item.row?.route_baseline_id,
+                          item.row?.route_name,
+                          item.key
+                        ),
                         health: routeManifestHealth,
                         dsw: row ?? null,
                       })
@@ -1091,6 +1102,7 @@ console.log(
         slug={slug}
         serviceDate={serviceDate}
         routeLabel={selectedRouteHealth?.routeLabel ?? "Route"}
+        routeKey={selectedRouteHealth?.routeKey ?? ""}
         health={selectedRouteHealth?.health ?? null}
         dsw={selectedRouteHealth?.dsw ?? null}
         onClose={() => setSelectedRouteHealth(null)}

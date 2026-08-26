@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { manifestDetailRequestUrl } from "@/features/operations/manifests/routeEvidence";
 
 export type ManifestRouteHealthCard = {
   route_key: string;
@@ -56,6 +57,7 @@ type Props = {
   slug: string;
   serviceDate: string;
   routeLabel: string;
+  routeKey: string;
   health: ManifestRouteHealthCard | null;
   dsw: {
     planned_delivery_stops: number;
@@ -76,7 +78,28 @@ type RouteDetailPayload = {
   delivery_stops: Array<Record<string, unknown>>;
   packages: Array<Record<string, unknown>>;
   pickups: Array<Record<string, unknown>>;
+  stop_clusters: RouteStopCluster[];
   error?: string;
+};
+
+type RouteStopCluster = {
+  cluster_key: string;
+  postal_code_5: string | null;
+  centroid_latitude: number | null;
+  centroid_longitude: number | null;
+  stop_count: number;
+  delivery_stop_count: number;
+  pickup_stop_count: number;
+  completed_stop_count: number;
+  package_count: number;
+  express_stop_count: number;
+  signature_stop_count: number;
+  hazmat_stop_count: number;
+  collection_stop_count: number;
+  first_stop_sequence: number | null;
+  last_stop_sequence: number | null;
+  suppressed_location_count: number;
+  is_location_suppressed: boolean;
 };
 
 export default function RouteHealthOverlay({
@@ -84,6 +107,7 @@ export default function RouteHealthOverlay({
   slug,
   serviceDate,
   routeLabel,
+  routeKey,
   health,
   dsw,
   onClose,
@@ -91,13 +115,13 @@ export default function RouteHealthOverlay({
   const [detail, setDetail] = useState<RouteDetailPayload | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const routeKey = health?.route_key ?? null;
+  const warehouseRouteKey = health?.route_key ?? routeKey;
   const asOf = dsw?.generated_at_text ?? health?.artifacts.latest_processed_at ?? null;
 
   useEffect(() => {
-    if (!open || !routeKey) return;
+    if (!open || !warehouseRouteKey) return;
     let active = true;
-    const selectedRouteKey = routeKey;
+    const selectedRouteKey = warehouseRouteKey;
 
     async function loadDetail() {
       setDetailLoading(true);
@@ -105,7 +129,11 @@ export default function RouteHealthOverlay({
       setDetail(null);
       try {
         const response = await fetch(
-          `/api/company/${slug}/operations/route-health?serviceDate=${encodeURIComponent(serviceDate)}&routeKey=${encodeURIComponent(selectedRouteKey)}`,
+          manifestDetailRequestUrl({
+            slug,
+            serviceDate,
+            routeKey: selectedRouteKey,
+          }),
           { credentials: "include", cache: "no-store" }
         );
         const payload = (await response.json()) as RouteDetailPayload;
@@ -126,7 +154,7 @@ export default function RouteHealthOverlay({
     return () => {
       active = false;
     };
-  }, [open, routeKey, serviceDate, slug]);
+  }, [open, serviceDate, slug, warehouseRouteKey]);
 
   if (!open) return null;
 
@@ -179,7 +207,7 @@ export default function RouteHealthOverlay({
                 letterSpacing: "0.08em",
               }}
             >
-              Service · Combined Manifest
+              Service · Warehouse Manifest
             </p>
             <h2 style={{ margin: 0, fontSize: 22 }}>{routeLabel}</h2>
             <p style={{ margin: "6px 0 0", color: "#64748b", fontSize: 13, fontWeight: 800 }}>
@@ -200,34 +228,23 @@ export default function RouteHealthOverlay({
           </button>
         </header>
 
-        {!health ? (
-          <div
-            style={{
-              border: "1px solid #e5ecf6",
-              borderRadius: 16,
-              background: "#fff",
-              padding: 14,
-              color: "#64748b",
-              fontSize: 13,
-              fontWeight: 850,
-              lineHeight: 1.5,
-            }}
-          >
-            No manifest route-health record is linked to this Service row yet. The route can still show
-            FCC signal health, DSW progress, and completion. Manifest health appears after Delivery and
-            Pickup manifests are captured, normalized, and matched to this route key.
-          </div>
-        ) : (
-          <>
-            <DswContract dsw={dsw} />
-            <RouteManifestDetail
-              detail={detail}
-              dsw={dsw}
-              loading={detailLoading}
-              error={detailError}
-            />
-          </>
-        )}
+        <DswContract dsw={dsw} />
+        <WarehouseManifestContract
+          health={health}
+          detail={detail}
+          loading={detailLoading}
+          routeKey={warehouseRouteKey}
+        />
+        <RouteClusterEvidence
+          clusters={detail?.stop_clusters ?? []}
+          loading={detailLoading}
+        />
+        <RouteManifestDetail
+          detail={detail}
+          dsw={dsw}
+          loading={detailLoading}
+          error={detailError}
+        />
       </section>
     </div>
   );
@@ -243,6 +260,249 @@ function formatAsOf(input: string | null) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function WarehouseManifestContract({
+  health,
+  detail,
+  loading,
+  routeKey,
+}: {
+  health: ManifestRouteHealthCard | null;
+  detail: RouteDetailPayload | null;
+  loading: boolean;
+  routeKey: string;
+}) {
+  const deliveryRows = detail?.delivery_stops.length ?? 0;
+  const packageRows = detail?.packages.length ?? 0;
+  const pickupRows = detail?.pickups.length ?? 0;
+  const hasWarehouseRows = deliveryRows + packageRows + pickupRows > 0;
+
+  return (
+    <div
+      style={{
+        border: `1px solid ${hasWarehouseRows ? "#86efac" : "#dbe4ef"}`,
+        borderRadius: 14,
+        background: hasWarehouseRows ? "#f0fdf4" : "#fff",
+        padding: 12,
+        display: "grid",
+        gap: 8,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+        <span style={{ display: "grid", gap: 2 }}>
+          <strong style={{ fontSize: 14 }}>Authoritative warehouse read</strong>
+          <small style={{ color: "#64748b", fontWeight: 850 }}>
+            Exact route {routeKey || "unresolved"}; route-health linkage is not required.
+          </small>
+        </span>
+        <strong
+          style={{
+            alignSelf: "start",
+            borderRadius: 999,
+            background: hasWarehouseRows ? "#dcfce7" : "#f1f5f9",
+            color: hasWarehouseRows ? "#166534" : "#475569",
+            padding: "5px 8px",
+            fontSize: 10,
+          }}
+        >
+          {loading ? "READING" : hasWarehouseRows ? "ROWS PRESENT" : "NO ROWS"}
+        </strong>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+          gap: 6,
+        }}
+      >
+        {[
+          ["Delivery stops", deliveryRows, health?.artifacts.delivery_status],
+          ["Packages", packageRows, health?.artifacts.delivery_status],
+          ["Pickup stops", pickupRows, health?.artifacts.pickup_status],
+        ].map(([label, count, status]) => (
+          <span
+            key={String(label)}
+            style={{
+              border: "1px solid #dbe4ef",
+              borderRadius: 10,
+              background: "#fff",
+              padding: 8,
+              display: "grid",
+              gap: 2,
+            }}
+          >
+            <small style={{ color: "#64748b", fontSize: 9, fontWeight: 950 }}>
+              {label}
+            </small>
+            <strong style={{ fontSize: 13 }}>{String(count)}</strong>
+            <small style={{ color: "#475569", fontSize: 9, fontWeight: 850 }}>
+              {String(status ?? (Number(count) > 0 ? "NORMALIZED" : "NOT PRESENT"))}
+            </small>
+          </span>
+        ))}
+      </div>
+
+      {!health && hasWarehouseRows ? (
+        <small style={{ color: "#166534", fontWeight: 850 }}>
+          Warehouse rows were found even though the route-health summary has not linked yet.
+        </small>
+      ) : null}
+    </div>
+  );
+}
+
+function mapCoordinate(value: number, min: number, max: number) {
+  if (min === max) return 50;
+  return ((value - min) / (max - min)) * 78 + 11;
+}
+
+function RouteClusterEvidence({
+  clusters,
+  loading,
+}: {
+  clusters: RouteStopCluster[];
+  loading: boolean;
+}) {
+  const mappable = useMemo(
+    () =>
+      clusters.filter(
+        (cluster) =>
+          typeof cluster.centroid_latitude === "number" &&
+          typeof cluster.centroid_longitude === "number" &&
+          !cluster.is_location_suppressed
+      ),
+    [clusters]
+  );
+  const bounds = useMemo(() => {
+    const latitudes = mappable.map((cluster) => cluster.centroid_latitude as number);
+    const longitudes = mappable.map((cluster) => cluster.centroid_longitude as number);
+    return {
+      minLatitude: Math.min(...latitudes),
+      maxLatitude: Math.max(...latitudes),
+      minLongitude: Math.min(...longitudes),
+      maxLongitude: Math.max(...longitudes),
+    };
+  }, [mappable]);
+
+  if (loading) return null;
+
+  return (
+    <details
+      style={{
+        border: "1px solid #bfdbfe",
+        borderRadius: 14,
+        background: "#fff",
+        overflow: "hidden",
+      }}
+    >
+      <summary
+        style={{
+          cursor: "pointer",
+          padding: 12,
+          display: "grid",
+          gap: 3,
+          listStyle: "none",
+        }}
+      >
+        <strong>Route geography · {clusters.length} stop clusters</strong>
+        <small style={{ color: "#64748b", fontWeight: 800 }}>
+          Privacy-safe ZIP-centroid route shape. GPX breadcrumbs will replace centroid-only pins when their warehouse parser is connected.
+        </small>
+      </summary>
+
+      <div style={{ borderTop: "1px solid #dbeafe", padding: 12, display: "grid", gap: 10 }}>
+        <div
+          aria-label="Route stop cluster map preview"
+          style={{
+            position: "relative",
+            minHeight: 220,
+            border: "1px solid #cbd5e1",
+            borderRadius: 14,
+            background:
+              "radial-gradient(circle at 22% 24%, rgba(59, 130, 246, 0.14), transparent 26%), linear-gradient(135deg, #e0f2fe, #f8fafc 58%, #ecfdf5)",
+            overflow: "hidden",
+          }}
+        >
+          {mappable.length === 0 ? (
+            <span
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "grid",
+                placeItems: "center",
+                padding: 18,
+                textAlign: "center",
+                color: "#64748b",
+                fontSize: 12,
+                fontWeight: 900,
+              }}
+            >
+              {clusters.length
+                ? "Cluster counts are retained, but mappable coordinates are suppressed or unavailable."
+                : "No route cluster evidence is available for this route and date."}
+            </span>
+          ) : null}
+
+          {mappable.map((cluster) => {
+            const x = mapCoordinate(
+              cluster.centroid_longitude as number,
+              bounds.minLongitude,
+              bounds.maxLongitude
+            );
+            const y =
+              100 -
+              mapCoordinate(
+                cluster.centroid_latitude as number,
+                bounds.minLatitude,
+                bounds.maxLatitude
+              );
+            const size = Math.min(28, 10 + Math.sqrt(cluster.stop_count) * 2.5);
+            return (
+              <span
+                key={cluster.cluster_key}
+                title={`ZIP ${cluster.postal_code_5 ?? "suppressed"} · ${cluster.stop_count} stops · ${cluster.package_count} packages`}
+                style={{
+                  position: "absolute",
+                  left: `${x}%`,
+                  top: `${y}%`,
+                  transform: "translate(-50%, -50%)",
+                  width: size,
+                  height: size,
+                  border: "2px solid #fff",
+                  borderRadius: 999,
+                  background: cluster.express_stop_count > 0 ? "#f97316" : "#0f766e",
+                  boxShadow: "0 7px 18px rgba(15, 23, 42, 0.24)",
+                }}
+              />
+            );
+          })}
+        </div>
+
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {clusters.map((cluster) => (
+            <span
+              key={`label-${cluster.cluster_key}`}
+              style={{
+                border: "1px solid #dbe4ef",
+                borderRadius: 999,
+                background: "#f8fafc",
+                color: "#334155",
+                padding: "5px 8px",
+                fontSize: 10,
+                fontWeight: 900,
+              }}
+            >
+              {cluster.is_location_suppressed
+                ? `${cluster.suppressed_location_count} suppressed locations`
+                : `ZIP ${cluster.postal_code_5 ?? "—"}`} · {cluster.stop_count} stops · {cluster.package_count} pkg
+            </span>
+          ))}
+        </div>
+      </div>
+    </details>
+  );
 }
 
 function DswContract({ dsw }: { dsw: Props["dsw"] }) {

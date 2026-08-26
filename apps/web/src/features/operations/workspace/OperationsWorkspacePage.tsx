@@ -1019,7 +1019,8 @@ export default function OperationsWorkspacePage({
   const selectedHasDeliveryEvidence = Boolean(
     selectedDelivery?.driverName ||
       Number(selectedDelivery?.actualDeliveryStops ?? 0) > 0 ||
-      Number(selectedDelivery?.actualDeliveryPackages ?? 0) > 0
+      Number(selectedDelivery?.actualDeliveryPackages ?? 0) > 0 ||
+      Number(selectedManifestHealth?.artifacts.total ?? 0) > 0
   );
 
   const arrivedPersonIds = useMemo(() => {
@@ -1904,6 +1905,12 @@ export default function OperationsWorkspacePage({
         serviceDate={serviceDate}
         routeLabel={
           selectedRoute ? routeLabelForDisplay(selectedRoute) : "Route"
+        }
+        routeKey={
+          selectedManifestHealth?.route_key ??
+          selectedRoute?.current_wa_num ??
+          selectedRoute?.route_key ??
+          ""
         }
         health={selectedManifestHealth}
         dsw={
