@@ -616,6 +616,8 @@ class ContinuousController:
             request_type,
             "--service-date",
             service_date,
+            "--terminal-timezone",
+            str(self.schedule.get("timezone") or "America/New_York"),
             "--reports-json",
             json.dumps(reports, separators=(",", ":")),
             "--manifest-routes-json",
