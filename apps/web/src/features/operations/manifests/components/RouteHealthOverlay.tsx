@@ -6,6 +6,7 @@ import {
   manifestDeliveryStopTitle,
   manifestPickupStopTitle,
 } from "@/features/operations/manifests/manifestDrawerIdentity";
+import type { ManifestIdentityAccess } from "@/features/operations/manifests/manifestIdentityAccess";
 
 export type ManifestRouteHealthCard = {
   route_key: string;
@@ -83,6 +84,7 @@ type RouteDetailPayload = {
   packages: Array<Record<string, unknown>>;
   pickups: Array<Record<string, unknown>>;
   stop_clusters: RouteStopCluster[];
+  identity_access: ManifestIdentityAccess;
   error?: string;
 };
 
@@ -616,6 +618,7 @@ function sequenceValue(valueToParse: unknown, fallback: number) {
 }
 
 function buildCombinedManifest(detail: RouteDetailPayload) {
+  const identityVerified = detail.identity_access?.verified === true;
   const packagesByStop = new Map<string, Array<Record<string, unknown>>>();
   detail.packages.forEach((packageRow) => {
     const key = identity(packageRow);
@@ -662,7 +665,7 @@ function buildCombinedManifest(detail: RouteDetailPayload) {
       key: `delivery-${identity(stop)}-${index}`,
       kind: "delivery",
       sequence: sequenceValue(stop.st_number, index + 1),
-      title: manifestDeliveryStopTitle(stop),
+      title: manifestDeliveryStopTitle(stop, identityVerified),
       subtitle: `SID ${value(stop, "sid")}`,
       address: address(stop),
       window: `${value(stop, "delivery_time_begin")}–${value(stop, "delivery_time_end")}`,
@@ -694,7 +697,7 @@ function buildCombinedManifest(detail: RouteDetailPayload) {
       key: `pickup-${value(pickup, "puid")}-${index}`,
       kind: "pickup",
       sequence: sequenceValue(pickup.pickup_list, 10000 + index),
-      title: manifestPickupStopTitle(pickup),
+      title: manifestPickupStopTitle(pickup, identityVerified),
       subtitle: `PUID ${value(pickup, "puid")} · ${value(pickup, "pickup_type")}`,
       address: address(pickup),
       window: `${value(pickup, "ready_at")}–${value(pickup, "close_at")}`,
@@ -809,6 +812,7 @@ function RouteManifestDetail(props: {
   if (props.error) return <div style={{ padding: 12, color: "#991b1b" }}>{props.error}</div>;
   if (!props.detail) return null;
 
+  const identityVerified = props.detail.identity_access?.verified === true;
   const evidenceItems = items;
   const visibleItems = evidenceItems.filter((item) => {
     const completionMatches =
@@ -879,6 +883,22 @@ function RouteManifestDetail(props: {
         <div style={{ color: "#64748b", fontSize: 12, marginTop: 3 }}>
           {allCount} stops · {packageCount} packages · {codedCount} attempted/coded · {openCount} open · {attentionCount} need attention
         </div>
+      </div>
+
+      <div
+        style={{
+          border: `1px solid ${identityVerified ? "#86efac" : "#fcd34d"}`,
+          borderRadius: 12,
+          background: identityVerified ? "#f0fdf4" : "#fffbeb",
+          color: identityVerified ? "#166534" : "#92400e",
+          padding: "9px 11px",
+          fontSize: 11,
+          fontWeight: 900,
+        }}
+      >
+        {identityVerified
+          ? "Verified FedEx credentials · original manifest identity detail is available."
+          : "Recipient and shipper names are hidden because verified FedEx credentials are not currently available."}
       </div>
 
       {props.dsw ? (
@@ -982,7 +1002,11 @@ function RouteManifestDetail(props: {
             </summary>
             <div style={{ borderTop: "1px solid #eef2f7", padding: 12, display: "grid", gap: 8, fontSize: 12 }}>
               <div><strong>Window:</strong> {item.window}</div>
-              <div><strong>Instructions:</strong> {item.instructions}</div>
+              {identityVerified ? (
+                <div><strong>Contact:</strong> {item.contact} · <strong>Instructions:</strong> {item.instructions}</div>
+              ) : (
+                <div><strong>Instructions:</strong> {item.instructions}</div>
+              )}
               {item.unmanifested ? (
                 <div style={{ border: "1px solid #fecaca", borderRadius: 10, background: "#fef2f2", color: "#991b1b", padding: 8, fontWeight: 900 }}>
                   Terminal scan/tender missing. No SID was assigned before the parcel was loaded to the route.
