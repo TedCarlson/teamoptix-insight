@@ -19,6 +19,7 @@ import {
 import { preferredManifestRouteKey } from "@/features/operations/manifests/routeEvidence";
 import { fetchServiceJsonOnce } from "@/features/operations/delivery-window/serviceDataClient";
 import {
+  hasHistoricalFccEvidence,
   historicalRouteEvidenceLabel,
   historicalRouteSignal,
   historicalServiceSummary,
@@ -597,7 +598,7 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
       const signal = dataMode === "historical"
         ? historicalRouteSignal({
             hasDsw: Boolean(row),
-            hasFcc: Boolean(fccRow),
+            hasFcc: hasHistoricalFccEvidence(fccRow),
             hasManifest,
             hasDispatchAssignment: Boolean(route.driver),
           })
@@ -661,7 +662,7 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
         signal: dataMode === "historical"
           ? historicalRouteSignal({
               hasDsw: true,
-              hasFcc: Boolean(fccRow),
+              hasFcc: hasHistoricalFccEvidence(fccRow),
               hasManifest: false,
               hasDispatchAssignment: false,
             })
@@ -806,8 +807,11 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
   }, [routeRows]);
 
   const historicalSummary = useMemo(
-    () => historicalServiceSummary(serviceSnapshotPayload, fccIndex.size),
-    [fccIndex.size, serviceSnapshotPayload]
+    () => historicalServiceSummary(
+      serviceSnapshotPayload,
+      (fccPayload?.rows ?? []).filter(hasHistoricalFccEvidence).length
+    ),
+    [fccPayload?.rows, serviceSnapshotPayload]
   );
   const companyIlsPercent = findContractIlsPercent(serviceSnapshotPayload) ?? "—";
 
@@ -1121,7 +1125,7 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
                     {dataMode === "historical" && !row
                       ? historicalRouteEvidenceLabel({
                           hasDsw: false,
-                          hasFcc: Boolean(fccRow),
+                          hasFcc: hasHistoricalFccEvidence(fccRow),
                           hasManifest: Boolean(routeManifestHealth),
                           hasDispatchAssignment: Boolean(route?.driver),
                         })

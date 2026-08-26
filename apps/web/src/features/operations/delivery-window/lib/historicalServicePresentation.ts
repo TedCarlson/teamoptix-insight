@@ -8,6 +8,15 @@ type SnapshotPayload = {
   rows?: SnapshotRow[] | null;
 } | null;
 
+type HistoricalFccEvidence = {
+  last_delivery_time?: string | null;
+  last_pickup_time?: string | null;
+  last_transmission_time?: string | null;
+  deliveries_complete?: boolean | null;
+  pickup_complete?: boolean | null;
+  final_stop_time?: string | null;
+};
+
 function finiteNumber(value: unknown) {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -21,6 +30,20 @@ function contractMetrics(payload: SnapshotPayload) {
     null;
 
   return contract?.normalized_row_json ?? {};
+}
+
+export function hasHistoricalFccEvidence(
+  row: HistoricalFccEvidence | null | undefined
+) {
+  if (!row) return false;
+  return Boolean(
+    String(row.last_delivery_time ?? "").trim() ||
+    String(row.last_pickup_time ?? "").trim() ||
+    String(row.last_transmission_time ?? "").trim() ||
+    row.deliveries_complete ||
+    row.pickup_complete ||
+    String(row.final_stop_time ?? "").trim()
+  );
 }
 
 export function historicalServiceSummary(

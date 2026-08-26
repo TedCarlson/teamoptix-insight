@@ -16,6 +16,12 @@ export type HistoricalFccRoute = {
   wa_number?: string | null;
   wa_number_normalized?: string | null;
   source_wa_number?: string | null;
+  last_delivery_time?: string | null;
+  last_pickup_time?: string | null;
+  last_transmission_time?: string | null;
+  deliveries_complete?: boolean | null;
+  pickup_complete?: boolean | null;
+  final_stop_time?: string | null;
 };
 
 export type HistoricalManifestRoute = {

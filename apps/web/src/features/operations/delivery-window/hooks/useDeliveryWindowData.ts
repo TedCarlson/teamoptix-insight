@@ -19,6 +19,7 @@ import {
   type HistoricalFccRoute,
   type HistoricalManifestRoute,
 } from "../lib/historicalServiceRoutes";
+import { hasHistoricalFccEvidence } from "../lib/historicalServicePresentation";
 
 function removeDriver(route: DispatchRoute, rosterMemberId: string): DispatchRoute {
   return {
@@ -182,7 +183,9 @@ export function useDeliveryWindowData(
           const selectedDay = buildHistoricalServiceRoutes({
             configuredRoutes,
             dswRows: (dswRes.data?.rows ?? []) as HistoricalDswRoute[],
-            fccRows: (fccRes.data?.rows ?? []) as HistoricalFccRoute[],
+            fccRows: ((fccRes.data?.rows ?? []) as HistoricalFccRoute[]).filter(
+              hasHistoricalFccEvidence
+            ),
             manifestRoutes: (manifestRes.data?.routes ?? []) as HistoricalManifestRoute[],
           });
           selectedDay.routes.forEach((route, key) => routeMap.set(key, route));

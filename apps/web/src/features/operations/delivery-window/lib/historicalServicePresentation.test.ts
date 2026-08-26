@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  hasHistoricalFccEvidence,
   historicalRouteEvidenceLabel,
   historicalRouteSignal,
   historicalServiceSummary,
@@ -49,5 +50,15 @@ describe("historical Service presentation authority", () => {
     expect(historicalRouteSignal(input).label).toBe("FCC route record");
     expect(historicalRouteSignal(input).label).not.toMatch(/login/i);
     expect(historicalRouteEvidenceLabel(input)).toBe("FCC");
+  });
+
+  it("does not count an empty FCC route shell as reported production", () => {
+    expect(hasHistoricalFccEvidence({})).toBe(false);
+    expect(
+      hasHistoricalFccEvidence({
+        last_transmission_time: "19:33:02",
+        last_delivery_time: "18:58:56",
+      })
+    ).toBe(true);
   });
 });
