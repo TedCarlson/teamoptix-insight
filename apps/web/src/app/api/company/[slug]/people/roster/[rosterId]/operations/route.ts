@@ -1,8 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { loadRosterAuthoritativeDto } from "@/features/people/server/loadRosterAuthoritativeDto";
+import { findPersistenceMismatches } from "@/features/people/server/rosterPersistenceVerification";
 
 export const runtime = "nodejs";
+
+const OPERATIONS_PERSISTENCE_FIELDS = {
+  fx_id: "text",
+  dswid: "text",
+  scanner_serial: "text",
+  dot_expiration_date: "date",
+  qual_cert_expiration_date: "date",
+  daily_pay_effective_date: "date",
+  daily_pay_rate: "number",
+  fuel_card: "text",
+  pin_id_no: "text",
+} as const;
 
 type RouteContext = {
   params: Promise<{ slug: string; rosterId: string }>;
@@ -141,6 +154,27 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
             "Operations saved, but roster record could not be reloaded.",
         },
         { status: 500 },
+      );
+    }
+
+    const mismatches = findPersistenceMismatches({
+      submitted: body,
+      persisted: roster,
+      fields: OPERATIONS_PERSISTENCE_FIELDS,
+    });
+
+    if (mismatches.length > 0) {
+      console.error("[roster-operations:patch] verification failed", {
+        rosterId,
+        fields: mismatches,
+      });
+      return NextResponse.json(
+        {
+          error: "Operations could not be verified after saving.",
+          detail: "The record did not match the submitted update. Please try again.",
+          fields: mismatches,
+        },
+        { status: 409 },
       );
     }
 

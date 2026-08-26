@@ -46,27 +46,58 @@ export async function GET(
 
     let stageByRosterId = new Map<string, any>();
     let opsByRosterId = new Map<string, any>();
+    let personalByRosterId = new Map<string, any>();
     let licenseByRosterId = new Map<string, any>();
     let traineePayByRosterId = new Map<string, any>();
     let assetValuesByRosterId = new Map<string, { scanner_serial: string | null; fuel_card: string | null }>();
 
     if (rosterIds.length > 0) {
-      const { data: opsRows } = await supabase
-        .from("company_roster_operations_fact_v")
-        .select("*")
-        .in("roster_id", rosterIds);
+      const [opsResult, personalResult, licenseResult] = await Promise.all([
+        supabase
+          .from("company_roster_operations_fact_v")
+          .select("*")
+          .in("roster_id", rosterIds),
+        supabase
+          .from("company_roster_personal_fact_v")
+          .select(
+            "roster_id, date_of_birth, address_line_1, address_line_2, city, state_region, postal_code",
+          )
+          .eq("company_id", company.id)
+          .in("roster_id", rosterIds),
+        supabase
+          .from("company_roster_license_fact_v")
+          .select(
+            "roster_id, license_number, issuing_state, issue_date, expiration_date",
+          )
+          .eq("company_id", company.id)
+          .in("roster_id", rosterIds),
+      ]);
+
+      const factError =
+        opsResult.error ?? personalResult.error ?? licenseResult.error;
+      if (factError) {
+        return NextResponse.json(
+          { error: factError.message, roster: [] },
+          { status: 500 },
+        );
+      }
 
       opsByRosterId = new Map(
-        (opsRows ?? []).map((ops: any) => [ops.roster_id, ops])
+        (opsResult.data ?? []).map((ops: any) => [ops.roster_id, ops])
       );
 
-      const { data: licenseRows } = await supabase
-        .from("company_roster_license_fact_v")
-        .select("roster_id, license_number, issuing_state, issue_date, expiration_date")
-        .eq("company_id", company.id)
-        .in("roster_id", rosterIds);
+      personalByRosterId = new Map(
+        (personalResult.data ?? []).map((personal: any) => [
+          personal.roster_id,
+          personal,
+        ]),
+      );
+
       licenseByRosterId = new Map(
-        (licenseRows ?? []).map((license: any) => [license.roster_id, license])
+        (licenseResult.data ?? []).map((license: any) => [
+          license.roster_id,
+          license,
+        ])
       );
 
       assetValuesByRosterId = await loadRosterAssetValues(supabase, slug, rosterIds);
@@ -108,6 +139,7 @@ export async function GET(
       .map((row: any) => {
         const stage = stageByRosterId.get(row.roster_member_id);
         const ops = opsByRosterId.get(row.roster_member_id);
+        const personal = personalByRosterId.get(row.roster_member_id);
         const license = licenseByRosterId.get(row.roster_member_id);
         const traineePay = traineePayByRosterId.get(row.roster_member_id);
         const assetValues = assetValuesByRosterId.get(row.roster_member_id) ?? {
@@ -122,6 +154,12 @@ export async function GET(
           scanner_serial: assetValues.scanner_serial ?? ops?.scanner_serial ?? null,
           dot_expiration_date: ops?.dot_exp ?? null,
           qual_cert_expiration_date: ops?.qual_cert_exp ?? null,
+          date_of_birth: personal?.date_of_birth ?? null,
+          address_line_1: personal?.address_line_1 ?? null,
+          address_line_2: personal?.address_line_2 ?? null,
+          city: personal?.city ?? null,
+          state_region: personal?.state_region ?? null,
+          postal_code: personal?.postal_code ?? null,
           license_number: license?.license_number ?? null,
           issuing_state: license?.issuing_state ?? null,
           license_issue_date: license?.issue_date ?? null,

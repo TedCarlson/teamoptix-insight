@@ -1,8 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { loadRosterAuthoritativeDto } from "@/features/people/server/loadRosterAuthoritativeDto";
+import { findPersistenceMismatches } from "@/features/people/server/rosterPersistenceVerification";
 
 export const runtime = "nodejs";
+
+const DETAILS_PERSISTENCE_FIELDS = {
+  full_name: "text",
+  email: "email",
+  phone: "text",
+  worker_type: "text",
+  market_code: "text",
+  notes: "text",
+  date_of_birth: "date",
+  hire_date: "date",
+  address_line_1: "text",
+  address_line_2: "text",
+  city: "text",
+  state_region: "text",
+  postal_code: "text",
+  license_number: "text",
+  issuing_state: "text",
+  license_issue_date: "date",
+  license_expiration_date: "date",
+} as const;
 
 function textOrNull(value: unknown) {
   if (typeof value !== "string") return null;
@@ -66,7 +87,7 @@ export async function PATCH(
         ? dateOrNull(body[key])
         : (current[key as keyof typeof current] ?? null);
 
-    const { data, error } = await supabase.rpc(
+    const { error } = await supabase.rpc(
       "update_company_roster_details",
       {
         p_company_slug: slug,
@@ -125,13 +146,31 @@ export async function PATCH(
       );
     }
 
+    const mismatches = findPersistenceMismatches({
+      submitted: body,
+      persisted: roster,
+      fields: DETAILS_PERSISTENCE_FIELDS,
+    });
+
+    if (mismatches.length > 0) {
+      console.error("[roster-details:patch] verification failed", {
+        rosterId,
+        fields: mismatches,
+      });
+      return NextResponse.json(
+        {
+          error: "Details could not be verified after saving.",
+          detail: "The record did not match the submitted update. Please try again.",
+          fields: mismatches,
+        },
+        { status: 409 },
+      );
+    }
+
     return NextResponse.json(
       {
         ok: true,
-        roster: {
-          ...roster,
-          ...(data ?? {}),
-        },
+        roster,
       },
       { status: 200 },
     );

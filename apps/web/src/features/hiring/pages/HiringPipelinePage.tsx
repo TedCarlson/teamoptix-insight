@@ -620,7 +620,6 @@ export default function HiringPipelinePage() {
           onClose={() => setSelectedCandidate(null)}
           onSaved={(updated) => {
             setSelectedCandidate(updated);
-            void loadCandidates();
           }}
           onRefresh={async () => {
             const nextRows = await loadCandidates();

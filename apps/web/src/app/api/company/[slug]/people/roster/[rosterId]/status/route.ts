@@ -21,7 +21,7 @@ export async function PATCH(
       cleanText(body.effective_date) ?? new Date().toISOString().slice(0, 10);
     const note = cleanText(body.note);
 
-    const { data, error } = await supabase.rpc("roster_set_employment_status", {
+    const { error } = await supabase.rpc("roster_set_employment_status", {
       p_company_slug: slug,
       p_roster_id: rosterId,
       p_status: status,
@@ -51,12 +51,37 @@ export async function PATCH(
       }
     }
 
+    const { data: persisted, error: persistedError } = await supabase
+      .from("company_roster_view")
+      .select("roster_member_id, employment_status, separation_date")
+      .eq("roster_member_id", rosterId)
+      .maybeSingle();
+
+    if (
+      persistedError ||
+      !persisted ||
+      persisted.employment_status !== status
+    ) {
+      console.error("[roster-status:patch] verification failed", {
+        rosterId,
+        field: "employment_status",
+        detail: persistedError?.message ?? null,
+      });
+      return NextResponse.json(
+        {
+          error: "Status could not be verified after saving.",
+          detail: "The roster status did not match the submitted update. Please try again.",
+        },
+        { status: 409 },
+      );
+    }
+
     return NextResponse.json({
       ok: true,
       roster: {
-        roster_member_id: data?.roster_id ?? rosterId,
-        employment_status: data?.employment_status ?? status,
-        separation_date: data?.separation_date ?? null,
+        roster_member_id: persisted.roster_member_id,
+        employment_status: persisted.employment_status,
+        separation_date: persisted.separation_date,
       },
     });
   } catch (error) {
