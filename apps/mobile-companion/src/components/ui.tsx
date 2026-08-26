@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -20,12 +21,15 @@ import { colors } from "../theme";
 export type TabKey = "home" | "messages" | "schedule" | "inspect" | "scorecard";
 
 export function Screen(props: { children: ReactNode; scroll?: boolean }) {
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 768;
+
   if (props.scroll === false) {
-    return <View style={styles.screen}>{props.children}</View>;
+    return <View style={[styles.screen, isTablet && styles.screenTablet]}>{props.children}</View>;
   }
   return (
     <ScrollView
-      contentContainerStyle={styles.scrollContent}
+      contentContainerStyle={[styles.scrollContent, isTablet && styles.scrollContentTablet]}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
@@ -302,65 +306,106 @@ export function ContextResolverScreen(props: {
   onSelectContext: (contextKey: string) => void;
   onSignOut: () => void;
 }) {
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 768;
   const managers = props.contexts.filter(isManagerAccessContext);
   const drivers = props.contexts.filter((context) => context.role === "DRIVER");
   const companies = new Set(props.contexts.map((context) => context.company_id));
 
+  const heading = (
+    <View>
+      <Text style={styles.brand}>INSIGHT</Text>
+      <Text style={[styles.resolverTitle, isTablet && styles.resolverTitleTablet]}>Choose context</Text>
+      {isTablet ? (
+        <Text style={styles.resolverIntroduction}>
+          Select the workspace you want to use. Your role and available data will follow that context.
+        </Text>
+      ) : null}
+    </View>
+  );
+
+  const identity = (
+    <View style={[styles.identityCard, isTablet && styles.identityCardTablet]}>
+      <View style={styles.avatar}>
+        <Text style={styles.avatarText}>{identityInitials(props.displayName ?? props.email)}</Text>
+      </View>
+      <View style={styles.choiceCopy}>
+        <Text style={styles.bodyStrong}>{props.email}</Text>
+        {props.displayName ? <Text style={styles.choiceDetail}>{props.displayName}</Text> : null}
+      </View>
+    </View>
+  );
+
+  const managerAccess = managers.length > 0 ? (
+    <View style={styles.modalSection}>
+      <View style={styles.sectionHeadingRow}>
+        <Text style={styles.sectionTitle}>Manager access</Text>
+        <Text style={styles.sectionMeta}>{managers.length} SCOPE{managers.length === 1 ? "" : "S"}</Text>
+      </View>
+      {managers.map((context) => (
+        <ContextChoice
+          context={context}
+          key={context.context_key}
+          onPress={() => props.onSelectContext(context.context_key)}
+        />
+      ))}
+    </View>
+  ) : null;
+
+  const driverAccess = drivers.length > 0 ? (
+    <View style={styles.modalSection}>
+      <Text style={styles.sectionTitle}>Driver access</Text>
+      <DriverContextList contexts={drivers} onSelect={props.onSelectContext} />
+    </View>
+  ) : null;
+
+  const contextGuidance = (
+    <>
+      <View style={styles.guidanceCard}>
+        <Text style={styles.bodyStrong}>Context controls the workspace</Text>
+        <Text style={styles.choiceDetail}>Navigation and data change. Your access grants do not.</Text>
+      </View>
+      <View style={styles.scopeCard}>
+        <View>
+          <Text style={styles.sectionMeta}>COMPANY SCOPE</Text>
+          <Text style={styles.bodyStrong}>{companies.size} active</Text>
+        </View>
+        <Text style={styles.brand}>{props.contexts.length} CONTEXT{props.contexts.length === 1 ? "" : "S"}</Text>
+      </View>
+    </>
+  );
+
   return (
-    <View style={styles.resolverScrim}>
-      <View style={styles.resolverSheet}>
+    <View style={[styles.resolverScrim, isTablet && styles.resolverScrimTablet]}>
+      <View style={[styles.resolverSheet, isTablet && styles.resolverSheetTablet]}>
         <ScrollView
-          contentContainerStyle={styles.resolverContent}
+          contentContainerStyle={[styles.resolverContent, isTablet && styles.resolverContentTablet]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View>
-            <Text style={styles.brand}>INSIGHT</Text>
-            <Text style={styles.resolverTitle}>Choose context</Text>
-          </View>
-          <View style={styles.identityCard}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{identityInitials(props.displayName ?? props.email)}</Text>
-            </View>
-            <View style={styles.choiceCopy}>
-              <Text style={styles.bodyStrong}>{props.email}</Text>
-              {props.displayName ? <Text style={styles.choiceDetail}>{props.displayName}</Text> : null}
-            </View>
-          </View>
-          {managers.length > 0 ? (
-            <View style={styles.modalSection}>
-              <View style={styles.sectionHeadingRow}>
-                <Text style={styles.sectionTitle}>Manager access</Text>
-                <Text style={styles.sectionMeta}>{managers.length} SCOPE{managers.length === 1 ? "" : "S"}</Text>
+          {isTablet ? (
+            <>
+              <View style={styles.resolverIntroColumn}>
+                {heading}
+                {identity}
+                <View style={styles.resolverGuidanceGroup}>{contextGuidance}</View>
               </View>
-              {managers.map((context) => (
-                <ContextChoice
-                  context={context}
-                  key={context.context_key}
-                  onPress={() => props.onSelectContext(context.context_key)}
-                />
-              ))}
-            </View>
-          ) : null}
-          {drivers.length > 0 ? (
-            <View style={styles.modalSection}>
-              <Text style={styles.sectionTitle}>Driver access</Text>
-              <DriverContextList contexts={drivers} onSelect={props.onSelectContext} />
-            </View>
-          ) : null}
-          <View style={styles.guidanceCard}>
-            <Text style={styles.bodyStrong}>Context controls the workspace</Text>
-            <Text style={styles.choiceDetail}>Navigation and data change. Your access grants do not.</Text>
-          </View>
-          <View style={styles.scopeCard}>
-            <View>
-              <Text style={styles.sectionMeta}>COMPANY SCOPE</Text>
-              <Text style={styles.bodyStrong}>{companies.size} active</Text>
-            </View>
-            <Text style={styles.brand}>{props.contexts.length} CONTEXT{props.contexts.length === 1 ? "" : "S"}</Text>
-          </View>
+              <View style={styles.resolverAccessColumn}>
+                {managerAccess}
+                {driverAccess}
+              </View>
+            </>
+          ) : (
+            <>
+              {heading}
+              {identity}
+              {managerAccess}
+              {driverAccess}
+              {contextGuidance}
+            </>
+          )}
         </ScrollView>
-        <View style={styles.pinnedActions}>
+        <View style={[styles.pinnedActions, isTablet && styles.pinnedActionsTablet]}>
           <PrimaryButton danger label="Sign out" onPress={props.onSignOut} secondary />
         </View>
       </View>
@@ -492,7 +537,9 @@ export const sharedStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, width: "100%", maxWidth: 880, alignSelf: "center", paddingHorizontal: 24, paddingTop: 20, backgroundColor: colors.white },
+  screenTablet: { maxWidth: 1160, paddingHorizontal: 32, paddingTop: 28 },
   scrollContent: { width: "100%", maxWidth: 880, alignSelf: "center", paddingHorizontal: 24, paddingTop: 20, paddingBottom: 28, gap: 14 },
+  scrollContentTablet: { maxWidth: 1160, paddingHorizontal: 32, paddingTop: 28, paddingBottom: 36, gap: 18 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 },
   headerCopy: { flex: 1, paddingRight: 12 },
   brand: { color: colors.primary, fontSize: 12, fontWeight: "800", letterSpacing: 1.4 },
@@ -545,10 +592,19 @@ const styles = StyleSheet.create({
   bodyStrong: { color: colors.ink, fontSize: 15, fontWeight: "700" },
   bodyMuted: { color: colors.muted, fontSize: 14, lineHeight: 20 },
   resolverScrim: { flex: 1, backgroundColor: colors.ink, paddingTop: 80 },
+  resolverScrimTablet: { paddingHorizontal: 32, paddingVertical: 32 },
   resolverSheet: { flex: 1, width: "100%", maxWidth: 880, alignSelf: "center", backgroundColor: colors.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: "hidden" },
-  resolverContent: { padding: 16, paddingTop: 32, paddingBottom: 24, gap: 16 },
+  resolverSheetTablet: { maxWidth: 1160, borderRadius: 24 },
+  resolverContent: { flexGrow: 1, padding: 16, paddingTop: 32, paddingBottom: 24, gap: 16 },
+  resolverContentTablet: { flexDirection: "row", alignItems: "flex-start", padding: 32, gap: 32 },
+  resolverIntroColumn: { width: 340, gap: 20 },
+  resolverAccessColumn: { flex: 1, minWidth: 0, gap: 24 },
+  resolverGuidanceGroup: { gap: 12, marginTop: 8 },
   resolverTitle: { color: colors.ink, fontSize: 24, fontWeight: "800", lineHeight: 30, marginTop: 8 },
+  resolverTitleTablet: { fontSize: 34, lineHeight: 40, marginTop: 12 },
+  resolverIntroduction: { color: colors.muted, fontSize: 16, lineHeight: 23, marginTop: 12 },
   identityCard: { minHeight: 78, flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.palePrimary },
+  identityCardTablet: { minHeight: 88, padding: 16 },
   avatar: { width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.primary, backgroundColor: colors.white },
   avatarText: { color: colors.primary, fontSize: 14, fontWeight: "700" },
   contextList: { gap: 10 },
@@ -566,4 +622,5 @@ const styles = StyleSheet.create({
   guidanceCard: { gap: 4, padding: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.panel },
   scopeCard: { minHeight: 64, flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.white },
   pinnedActions: { width: "100%", maxWidth: 760, alignSelf: "center", paddingHorizontal: 24, paddingVertical: 16, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.white },
+  pinnedActionsTablet: { maxWidth: "100%", paddingHorizontal: 32 },
 });

@@ -107,6 +107,7 @@ export type DriverTimeOffRequest = {
 export type FleetVehicle = {
   vehicle_id: string;
   unit_number: string;
+  fedex_vehicle_id: string | null;
   vehicle_class_key: string | null;
   vehicle_type: string;
   status: string;
@@ -115,6 +116,7 @@ export type FleetVehicle = {
   model: string | null;
   vin: string | null;
   plate_number: string | null;
+  primary_route: string | null;
   odometer_miles: number | null;
   open_defect_count: number;
 };

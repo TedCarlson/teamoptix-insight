@@ -3,6 +3,7 @@ import {
   capacitySignal,
   capacitySignalLabel,
   isDriverSeatWorker,
+  isTraineeWorker,
   managerWeekStart,
   resolveManagerScheduleDay,
   type ManagerScheduleRoute,
@@ -31,6 +32,8 @@ describe("manager schedule domain", () => {
     expect(isDriverSeatWorker("Driver")).toBe(true);
     expect(isDriverSeatWorker("Driver Helper")).toBe(false);
     expect(isDriverSeatWorker("Trainee")).toBe(false);
+    expect(isDriverSeatWorker("Driver", "Trainee")).toBe(false);
+    expect(isTraineeWorker("Driver", "Trainee")).toBe(true);
   });
 
   it("resolves open routes, standby drivers, and a gap", () => {
@@ -38,8 +41,8 @@ describe("manager schedule domain", () => {
       serviceDate: "2026-08-08",
       routes: [route("1", "410"), route("2", "411")],
       rows: [
-        { service_date: "2026-08-08", roster_member_id: "a", full_name: "A", worker_type: "Driver", planned_on: true, route_name: "410", override_type: null },
-        { service_date: "2026-08-08", roster_member_id: "b", full_name: "B", worker_type: "Helper", planned_on: true, route_name: "411", override_type: null },
+        { service_date: "2026-08-08", roster_member_id: "a", full_name: "A", worker_type: "Driver", employment_status: "Active", planned_on: true, route_name: "410", override_type: null },
+        { service_date: "2026-08-08", roster_member_id: "b", full_name: "B", worker_type: "Helper", employment_status: "Active", planned_on: true, route_name: "411", override_type: null },
       ],
     });
     expect(day.scheduledDrivers).toBe(1);
@@ -54,14 +57,32 @@ describe("manager schedule domain", () => {
       serviceDate: "2026-08-08",
       routes: [],
       rows: [
-        { service_date: "2026-08-08", roster_member_id: "a", full_name: "A", worker_type: "Driver", planned_on: false, route_name: null, override_type: null },
-        { service_date: "2026-08-08", roster_member_id: "b", full_name: "B", worker_type: "Driver", planned_on: false, route_name: null, override_type: "TIME_OFF" },
-        { service_date: "2026-08-08", roster_member_id: "c", full_name: "C", worker_type: "Helper", planned_on: false, route_name: null, override_type: null },
+        { service_date: "2026-08-08", roster_member_id: "a", full_name: "A", worker_type: "Driver", employment_status: "Active", planned_on: false, route_name: null, override_type: null },
+        { service_date: "2026-08-08", roster_member_id: "b", full_name: "B", worker_type: "Driver", employment_status: "Active", planned_on: false, route_name: null, override_type: "TIME_OFF" },
+        { service_date: "2026-08-08", roster_member_id: "c", full_name: "C", worker_type: "Helper", employment_status: "Active", planned_on: false, route_name: null, override_type: null },
       ],
     });
     expect(day.baselineScheduledOffDrivers.map((row) => row.roster_member_id)).toEqual(["a"]);
     expect(day.overrideOffRows.map((row) => row.roster_member_id)).toEqual(["b"]);
     expect(day.signal).toBe("NO_OPERATION");
+  });
+
+  it("groups trainees without counting them toward readiness", () => {
+    const day = resolveManagerScheduleDay({
+      serviceDate: "2026-08-08",
+      routes: [route("1", "410")],
+      rows: [
+        { service_date: "2026-08-08", roster_member_id: "active", full_name: "Active Driver", worker_type: "Driver", employment_status: "Active", planned_on: true, route_name: "410", override_type: null },
+        { service_date: "2026-08-08", roster_member_id: "trainee-on", full_name: "On-duty Trainee", worker_type: "Driver", employment_status: "Trainee", planned_on: true, route_name: null, override_type: null },
+        { service_date: "2026-08-08", roster_member_id: "trainee-off", full_name: "Off-duty Trainee", worker_type: "Driver", employment_status: "Trainee", planned_on: false, route_name: null, override_type: "TIME_OFF" },
+      ],
+    });
+
+    expect(day.scheduledDrivers).toBe(1);
+    expect(day.capacityDelta).toBe(0);
+    expect(day.signal).toBe("NO_CONTINGENCY");
+    expect(day.traineeRows.map((row) => row.roster_member_id)).toEqual(["trainee-on", "trainee-off"]);
+    expect(day.overrideOffRows).toEqual([]);
   });
 
   it("builds seven days and keeps pending requests only", () => {

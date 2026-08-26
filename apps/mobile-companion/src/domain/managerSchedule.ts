@@ -16,6 +16,7 @@ export type ManagerScheduleRow = {
   roster_member_id: string;
   full_name: string | null;
   worker_type: string | null;
+  employment_status: string | null;
   planned_on: boolean;
   route_name: string | null;
   override_type: string | null;
@@ -103,6 +104,7 @@ export type ManagerScheduleWorkbenchRow = {
   anchorDate: string | null;
   effectiveStart: string | null;
   defaultRoutes: string[];
+  baseline: ManagerScheduleBaseline | null;
   schedulePending: boolean;
 };
 
@@ -124,6 +126,7 @@ export type ManagerScheduleDay = {
   standbyDrivers: ManagerScheduleRow[];
   baselineScheduledOffDrivers: ManagerScheduleRow[];
   overrideOffRows: ManagerScheduleRow[];
+  traineeRows: ManagerScheduleRow[];
   capacityDelta: number;
   signal: ManagerCapacitySignal;
 };
@@ -173,6 +176,18 @@ export function managerWeekStart(value = new Date()) {
   return isoDate(next);
 }
 
+export function managerCalendarStart(value = new Date()) {
+  const first = new Date(value.getFullYear(), value.getMonth(), 1, 12);
+  return managerWeekStart(first);
+}
+
+export function addScheduleMonths(value: string, amount: number) {
+  const current = dateFromIso(value);
+  current.setDate(15);
+  current.setMonth(current.getMonth() + amount);
+  return managerCalendarStart(current);
+}
+
 export function scheduleRunFlagForDate(serviceDate: string): RouteRunFlag {
   const weekday = dateFromIso(serviceDate).getDay();
   if (weekday === 6) return "runs_s";
@@ -184,11 +199,24 @@ export function scheduleRunFlagForDate(serviceDate: string): RouteRunFlag {
   return "runs_f";
 }
 
-export function isDriverSeatWorker(workerType: string | null) {
+export function isTraineeWorker(
+  workerType: string | null,
+  employmentStatus: string | null = null,
+) {
+  const normalizedWorkerType = String(workerType ?? "").trim().toLowerCase();
+  const normalizedEmploymentStatus = String(employmentStatus ?? "").trim().toLowerCase();
+  return normalizedEmploymentStatus === "trainee"
+    || normalizedWorkerType.includes("trainee");
+}
+
+export function isDriverSeatWorker(
+  workerType: string | null,
+  employmentStatus: string | null = null,
+) {
   const normalized = String(workerType ?? "").trim().toLowerCase();
   return !normalized.includes("helper")
     && !normalized.includes("jumper")
-    && !normalized.includes("trainee");
+    && !isTraineeWorker(workerType, employmentStatus);
 }
 
 function normalizeRoute(value: string | null | undefined) {
@@ -223,7 +251,9 @@ export function capacitySignalLabel(signal: ManagerCapacitySignal) {
 
 export function resolveBaselineScheduledOffDrivers(rows: ManagerScheduleRow[]) {
   return rows.filter(
-    (row) => !row.planned_on && !row.override_type && isDriverSeatWorker(row.worker_type),
+    (row) => !row.planned_on
+      && !row.override_type
+      && isDriverSeatWorker(row.worker_type, row.employment_status),
   );
 }
 
@@ -277,6 +307,7 @@ export function buildManagerScheduleWorkbenchRows(params: {
       anchorDate: baseline?.anchor_date ?? null,
       effectiveStart: baseline?.effective_start ?? null,
       defaultRoutes,
+      baseline,
       schedulePending: !baseline?.preset_id,
     };
   });
@@ -291,7 +322,7 @@ export function resolveManagerScheduleDay(params: {
     (route) => route[scheduleRunFlagForDate(params.serviceDate)] === true,
   );
   const scheduledDrivers = params.rows.filter(
-    (row) => row.planned_on && isDriverSeatWorker(row.worker_type),
+    (row) => row.planned_on && isDriverSeatWorker(row.worker_type, row.employment_status),
   );
   const assignedDrivers = scheduledDrivers.filter((row) => Boolean(normalizeRoute(row.route_name)));
   const assignedRouteNames = new Set(assignedDrivers.map((row) => normalizeRoute(row.route_name)));
@@ -303,7 +334,12 @@ export function resolveManagerScheduleDay(params: {
   );
   const standbyDrivers = scheduledDrivers.filter((row) => !normalizeRoute(row.route_name));
   const baselineScheduledOffDrivers = resolveBaselineScheduledOffDrivers(params.rows);
-  const overrideOffRows = resolveOverrideOffRows(params.rows);
+  const traineeRows = params.rows.filter(
+    (row) => isTraineeWorker(row.worker_type, row.employment_status),
+  );
+  const overrideOffRows = resolveOverrideOffRows(params.rows).filter(
+    (row) => !isTraineeWorker(row.worker_type, row.employment_status),
+  );
   const capacityDelta = scheduledDrivers.length - demandedRoutes.length;
 
   return {
@@ -316,6 +352,7 @@ export function resolveManagerScheduleDay(params: {
     standbyDrivers,
     baselineScheduledOffDrivers,
     overrideOffRows,
+    traineeRows,
     capacityDelta,
     signal: capacitySignal(capacityDelta, scheduledDrivers.length, demandedRoutes.length),
   };
@@ -323,6 +360,7 @@ export function resolveManagerScheduleDay(params: {
 
 export function buildManagerScheduleSnapshot(params: {
   weekStart: string;
+  horizonDays?: number;
   routes: ManagerScheduleRoute[];
   rows: ManagerScheduleRow[];
   requests: ManagerTimeOffRequest[];
@@ -331,7 +369,8 @@ export function buildManagerScheduleSnapshot(params: {
   baselines?: ManagerScheduleBaseline[];
   presets?: ManagerSchedulePreset[];
 }): ManagerScheduleSnapshot {
-  const days = Array.from({ length: 7 }, (_, index) => {
+  const horizonDays = Math.max(7, params.horizonDays ?? 7);
+  const days = Array.from({ length: horizonDays }, (_, index) => {
     const serviceDate = addScheduleDays(params.weekStart, index);
     return resolveManagerScheduleDay({
       serviceDate,
@@ -341,7 +380,7 @@ export function buildManagerScheduleSnapshot(params: {
   });
   return {
     weekStart: params.weekStart,
-    weekEnd: addScheduleDays(params.weekStart, 6),
+    weekEnd: addScheduleDays(params.weekStart, horizonDays - 1),
     days,
     pendingRequests: params.requests.filter((request) => request.status === "PENDING"),
     activeOverrides: params.overrides,

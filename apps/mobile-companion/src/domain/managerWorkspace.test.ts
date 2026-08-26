@@ -23,21 +23,30 @@ describe("manager workspace suites", () => {
 
   it("filters children using the same access grants", () => {
     const people = managerWorkspaceSuites(context).find((suite) => suite.key === "people");
-    expect(people?.children.map((child) => child.label)).toEqual(["Roster", "Workforce Readiness"]);
+    expect(people?.children.map((child) => child.label)).toEqual([
+      "Roster",
+      "Workforce Readiness",
+      "Reports",
+      "Corrective Actions",
+      "Policies",
+      "Compliance",
+    ]);
     expect(managerWorkspaceSuite("messages")?.children).toHaveLength(3);
   });
 
-  it("keeps excluded Operations code out of the rendered mobile suite", () => {
+  it("keeps the complete grant-backed Operations suite available on iPad", () => {
     const operations = managerWorkspaceSuite("operations", {
       ...context,
       grants: ["dispatch", "planning", "delivery_window", "reports"],
     });
 
     expect(operations?.children.map((child) => child.label)).toEqual([
+      "Dispatch",
       "Service",
       "Planning",
       "Ops Reports",
       "Walk Ons",
+      "PU Reconciliation",
     ]);
   });
 });

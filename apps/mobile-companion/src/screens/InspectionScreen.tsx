@@ -1,8 +1,10 @@
 import * as Crypto from "expo-crypto";
+import { requireOptionalNativeModule } from "expo";
+import type { BarcodeScanningResult } from "expo-camera";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { IntentVerificationModal } from "../components/IntentVerificationModal";
 import { AppHeader, Card, PrimaryButton, Screen, sharedStyles } from "../components/ui";
@@ -54,14 +56,43 @@ function resultLabel(result: InspectionResult) {
   return result === "NOT_APPLICABLE" ? "N/A" : result === "DEFECT" ? "Defect" : "Pass";
 }
 
+function vehicleCode(value: string | null | undefined) {
+  return (value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+const cameraModuleAvailable = requireOptionalNativeModule("ExpoCamera") !== null;
+
+function VehicleBarcodeCamera(props: {
+  locked: boolean;
+  onBarcode: (result: BarcodeScanningResult) => void;
+}) {
+  // Load the camera package only after confirming that the installed native
+  // client contains ExpoCamera. This keeps older clients usable long enough to
+  // select a vehicle manually instead of crashing the entire application.
+  const { CameraView } = require("expo-camera") as typeof import("expo-camera");
+  return (
+    <CameraView
+      barcodeScannerSettings={{ barcodeTypes: ["code128", "code39", "code93", "codabar", "datamatrix", "qr", "pdf417"] }}
+      facing="back"
+      onBarcodeScanned={props.locked ? undefined : props.onBarcode}
+      style={styles.camera}
+    >
+      <View pointerEvents="none" style={styles.scanFrame} />
+    </CameraView>
+  );
+}
+
 export function InspectionScreen(props: InspectionScreenProps) {
   const [stage, setStage] = useState<InspectionStage>("start");
   const [draft, setDraft] = useState<InspectionDraft>(emptyInspectionDraft);
   const [defectKey, setDefectKey] = useState<string | null>(null);
   const [vehicleMenuOpen, setVehicleMenuOpen] = useState(false);
+  const [vehicleSearch, setVehicleSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [intentOpen, setIntentOpen] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannerLocked, setScannerLocked] = useState(false);
 
   const selectedVehicle = props.vehicles.find((vehicle) => vehicle.vehicle_id === draft.vehicleId) ?? null;
   const completed = inspectionCompletedCount(draft);
@@ -71,6 +102,19 @@ export function InspectionScreen(props: InspectionScreenProps) {
     () => Array.from(new Set(fleetInspectionItems.map(([section]) => section))),
     [],
   );
+  const filteredVehicles = useMemo(() => {
+    const query = vehicleSearch.trim().toLowerCase();
+    if (!query) return props.vehicles;
+    return props.vehicles.filter((vehicle) => [
+      vehicle.unit_number,
+      vehicle.fedex_vehicle_id,
+      vehicle.vin,
+      vehicle.plate_number,
+      vehicle.primary_route,
+      vehicle.make,
+      vehicle.model,
+    ].some((value) => value?.toLowerCase().includes(query)));
+  }, [props.vehicles, vehicleSearch]);
 
   useEffect(() => {
     let active = true;
@@ -96,6 +140,50 @@ export function InspectionScreen(props: InspectionScreenProps) {
       setDefectKey(itemKey);
       setStage("defect");
     }
+  }
+
+  function selectVehicle(vehicle: FleetVehicle) {
+    update({
+      vehicleId: vehicle.vehicle_id,
+      odometer: draft.odometer || String(vehicle.odometer_miles ?? ""),
+    });
+    setVehicleMenuOpen(false);
+    setVehicleSearch("");
+    setScannerOpen(false);
+    setScannerLocked(false);
+  }
+
+  async function openScanner() {
+    setError(null);
+    if (!cameraModuleAvailable) {
+      setVehicleMenuOpen(true);
+      setError("VIN scanning requires the updated Insight development app. Select the vehicle manually until that app is installed.");
+      return;
+    }
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      setError("Camera access is required to scan a VIN or vehicle barcode.");
+      return;
+    }
+    setScannerLocked(false);
+    setScannerOpen(true);
+  }
+
+  function handleBarcode(result: BarcodeScanningResult) {
+    if (scannerLocked) return;
+    setScannerLocked(true);
+    const scanned = vehicleCode(result.data);
+    const matched = props.vehicles.find((vehicle) => [
+      vehicleCode(vehicle.vin),
+      vehicleCode(vehicle.unit_number),
+      vehicleCode(vehicle.fedex_vehicle_id),
+      vehicleCode(vehicle.plate_number),
+    ].some((candidate) => candidate.length > 0 && candidate === scanned));
+    if (matched) {
+      selectVehicle(matched);
+      return;
+    }
+    setError(`No available vehicle matches barcode ${result.data}.`);
   }
 
   async function captureEvidence(itemKey: string, source: "camera" | "library") {
@@ -234,29 +322,44 @@ export function InspectionScreen(props: InspectionScreenProps) {
         <Text style={sharedStyles.muted}>Route {props.routeName}</Text>
         <Card>
           <Text style={sharedStyles.label}>Vehicle — required</Text>
+          <Pressable accessibilityRole="button" onPress={() => void openScanner()} style={styles.scanButton}>
+            <Text style={styles.scanButtonText}>Scan VIN or vehicle barcode</Text>
+            <Text style={styles.scanIcon}>▣</Text>
+          </Pressable>
           <Pressable onPress={() => setVehicleMenuOpen((current) => !current)} style={styles.selectField}>
             <Text style={selectedVehicle ? sharedStyles.body : sharedStyles.muted}>
-              {selectedVehicle ? `Unit ${selectedVehicle.unit_number}` : "Scan or select vehicle"}
+              {selectedVehicle ? `Unit ${selectedVehicle.unit_number}` : "Select vehicle manually"}
             </Text>
             <Text style={styles.chevron}>⌄</Text>
           </Pressable>
           {vehicleMenuOpen ? (
             <View style={styles.vehicleMenu}>
+              <TextInput
+                autoCapitalize="characters"
+                autoCorrect={false}
+                onChangeText={setVehicleSearch}
+                placeholder="Search unit, carrier ID, VIN, plate, or route"
+                style={styles.vehicleSearch}
+                value={vehicleSearch}
+              />
               {props.vehicles.length === 0 ? <Text style={sharedStyles.muted}>No available vehicles.</Text> : null}
-              {props.vehicles.map((vehicle) => (
+              {props.vehicles.length > 0 && filteredVehicles.length === 0 ? <Text style={styles.vehicleEmpty}>No matching vehicles.</Text> : null}
+              {filteredVehicles.map((vehicle) => (
                 <Pressable
                   key={vehicle.vehicle_id}
-                  onPress={() => {
-                    update({
-                      vehicleId: vehicle.vehicle_id,
-                      odometer: draft.odometer || String(vehicle.odometer_miles ?? ""),
-                    });
-                    setVehicleMenuOpen(false);
-                  }}
+                  onPress={() => selectVehicle(vehicle)}
                   style={styles.vehicleOption}
                 >
                   <Text style={sharedStyles.bodyStrong}>Unit {vehicle.unit_number}</Text>
-                  <Text style={sharedStyles.muted}>{vehicle.status.replaceAll("_", " ")}</Text>
+                  <Text style={sharedStyles.muted}>
+                    {[
+                      vehicle.fedex_vehicle_id && vehicle.fedex_vehicle_id !== vehicle.unit_number
+                        ? `Carrier ${vehicle.fedex_vehicle_id}`
+                        : null,
+                      vehicle.primary_route,
+                      vehicle.status.replaceAll("_", " "),
+                    ].filter(Boolean).join(" · ")}
+                  </Text>
                 </Pressable>
               ))}
             </View>
@@ -288,6 +391,30 @@ export function InspectionScreen(props: InspectionScreenProps) {
         </Card>
         {error ? <Text style={sharedStyles.danger}>{error}</Text> : null}
         <PrimaryButton label="Continue inspection" onPress={continueFromStart} />
+        <Modal animationType="fade" onRequestClose={() => setScannerOpen(false)} transparent visible={scannerOpen}>
+          <View style={styles.scannerBackdrop}>
+            <View style={styles.scannerSheet}>
+              <View style={styles.scannerHeader}>
+                <View style={styles.scannerHeading}>
+                  <Text style={sharedStyles.h2}>Identify vehicle</Text>
+                  <Text style={sharedStyles.muted}>Center the VIN or company vehicle barcode in the frame.</Text>
+                </View>
+                <Pressable accessibilityLabel="Close scanner" onPress={() => setScannerOpen(false)} style={styles.scannerClose}>
+                  <Text style={styles.scannerCloseText}>×</Text>
+                </Pressable>
+              </View>
+              {scannerOpen && cameraModuleAvailable ? (
+                <VehicleBarcodeCamera locked={scannerLocked} onBarcode={handleBarcode} />
+              ) : null}
+              {scannerLocked ? (
+                <View style={styles.scanRetryRow}>
+                  <Text style={sharedStyles.danger}>{error}</Text>
+                  <PrimaryButton label="Scan again" onPress={() => { setError(null); setScannerLocked(false); }} />
+                </View>
+              ) : <Text style={styles.scannerHint}>VIN barcodes commonly use Code 39 or Code 128.</Text>}
+            </View>
+          </View>
+        </Modal>
       </Screen>
     );
   }
@@ -520,9 +647,14 @@ function ChoiceButton(props: { active: boolean; danger?: boolean; label: string;
 
 const styles = StyleSheet.create({
   back: { color: colors.primary, fontSize: 15, fontWeight: "700", paddingVertical: 5 },
+  scanButton: { minHeight: 50, borderRadius: 9, backgroundColor: colors.primary, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  scanButtonText: { color: colors.white, fontSize: 14, fontWeight: "800" },
+  scanIcon: { color: colors.white, fontSize: 24 },
   selectField: { minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: 8, backgroundColor: colors.white, paddingHorizontal: 12, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   chevron: { color: colors.primary, fontSize: 18 },
   vehicleMenu: { backgroundColor: colors.white, borderColor: colors.border, borderWidth: 1, borderRadius: 8 },
+  vehicleSearch: { minHeight: 44, margin: 8, paddingHorizontal: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 7, backgroundColor: colors.panel, color: colors.ink, fontSize: 14 },
+  vehicleEmpty: { paddingHorizontal: 12, paddingBottom: 12, color: colors.muted, fontSize: 13 },
   vehicleOption: { padding: 12, borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth },
   segmented: { flexDirection: "row", gap: 6 },
   segment: { flex: 1, minHeight: 42, alignItems: "center", justifyContent: "center", backgroundColor: colors.white, borderColor: colors.border, borderWidth: 1, borderRadius: 7 },
@@ -556,4 +688,14 @@ const styles = StyleSheet.create({
   checkCircle: { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary },
   check: { color: colors.white, fontSize: 25, fontWeight: "800" },
   confirmationCopy: { flex: 1, gap: 5 },
+  scannerBackdrop: { flex: 1, justifyContent: "center", padding: 20, backgroundColor: "rgba(10, 26, 47, 0.82)" },
+  scannerSheet: { width: "100%", maxWidth: 760, alignSelf: "center", gap: 14, padding: 18, borderRadius: 20, backgroundColor: colors.white },
+  scannerHeader: { flexDirection: "row", alignItems: "flex-start", gap: 14 },
+  scannerHeading: { flex: 1, gap: 4 },
+  scannerClose: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.panel },
+  scannerCloseText: { color: colors.ink, fontSize: 28, lineHeight: 30 },
+  camera: { width: "100%", aspectRatio: 4 / 3, alignItems: "center", justifyContent: "center", overflow: "hidden", borderRadius: 14 },
+  scanFrame: { width: "84%", height: "32%", borderWidth: 3, borderColor: colors.white, borderRadius: 10, backgroundColor: "transparent" },
+  scannerHint: { color: colors.muted, fontSize: 12, textAlign: "center" },
+  scanRetryRow: { gap: 10 },
 });

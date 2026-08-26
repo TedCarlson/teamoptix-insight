@@ -13,6 +13,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
@@ -30,11 +31,22 @@ import {
   loadDriverSchedule,
   loadDriverTimeOffRequests,
   loadFleetVehicles,
+  synchronizeInspectionOutbox,
   synchronizeMobileOutbox,
 } from "./src/data/mobile";
 import {
+  commitManagerSchedule,
+  deactivateManagerScheduleOverride,
+  deactivateManagerSchedulePreset,
   loadManagerScheduleSnapshot,
+  removeManagerScheduleBaseline,
   reviewManagerTimeOffRequest,
+  saveManagerScheduleBaseline,
+  saveManagerScheduleOverride,
+  saveManagerSchedulePreset,
+  type ManagerScheduleBaselineDraft,
+  type ManagerScheduleOverrideDraft,
+  type ManagerSchedulePresetDraft,
 } from "./src/data/managerSchedule";
 import {
   loadManagerMessagesSnapshot,
@@ -70,9 +82,13 @@ import {
   type MobileAccessContext,
 } from "./src/domain/access";
 import {
-  addScheduleDays,
-  managerWeekStart,
+  addScheduleMonths,
+  isoDate,
+  managerCalendarStart,
+  type ManagerScheduleOverride,
+  type ManagerSchedulePreset,
   type ManagerScheduleSnapshot,
+  type ManagerScheduleWorkbenchRow,
   type ManagerTimeOffRequest,
 } from "./src/domain/managerSchedule";
 import type {
@@ -254,6 +270,8 @@ function SignInScreen() {
 }
 
 function AuthenticatedApp(props: { session: Session }) {
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 768;
   const [outbox, setOutbox] = useState<EdgeOutbox | null>(null);
   const [contexts, setContexts] = useState<MobileAccessContext[]>([]);
   const [selectedContextKey, setSelectedContextKey] = useState<string>("");
@@ -269,11 +287,12 @@ function AuthenticatedApp(props: { session: Session }) {
   const [tab, setTab] = useState<TabKey>("home");
   const [managerTab, setManagerTab] = useState<ManagerTabKey>("today");
   const [managerScheduleSurface, setManagerScheduleSurface] = useState<ManagerScheduleSurface>("bridge");
-  const [managerScheduleWeek, setManagerScheduleWeek] = useState(() => managerWeekStart());
+  const [managerScheduleWeek, setManagerScheduleWeek] = useState(() => managerCalendarStart());
   const [managerScheduleSnapshot, setManagerScheduleSnapshot] = useState<ManagerScheduleSnapshot | null>(null);
   const [managerScheduleLoading, setManagerScheduleLoading] = useState(false);
   const [managerScheduleError, setManagerScheduleError] = useState<string | null>(null);
   const [managerScheduleReviewBusy, setManagerScheduleReviewBusy] = useState(false);
+  const [managerScheduleWriteBusy, setManagerScheduleWriteBusy] = useState(false);
   const [managerMessagesSnapshot, setManagerMessagesSnapshot] = useState<ManagerMessagesSnapshot | null>(null);
   const [managerMessagesLoading, setManagerMessagesLoading] = useState(false);
   const [managerMessagesError, setManagerMessagesError] = useState<string | null>(null);
@@ -484,6 +503,16 @@ function AuthenticatedApp(props: { session: Session }) {
   }, [membership, outbox, profileId, refreshLocal, refreshRemote]);
 
   useEffect(() => {
+    if (!outbox || !managerContext) return;
+    const inspectionOpen = managerTab === "inspect";
+    const fleetOpen = managerTab === "workspaces" && managerWorkspaceKey === "fleet";
+    if (!inspectionOpen && !fleetOpen) return;
+    void loadFleetVehicles(managerContext, outbox)
+      .then(setVehicles)
+      .catch((caught) => setStatus(`Fleet vehicles are temporarily unavailable: ${errorMessage(caught)}`));
+  }, [managerContext, managerTab, managerWorkspaceKey, outbox]);
+
+  useEffect(() => {
     if (!managerContext || managerTab !== "schedule") return;
     void refreshManagerSchedule();
   }, [managerContext, managerTab, refreshManagerSchedule]);
@@ -679,15 +708,18 @@ function AuthenticatedApp(props: { session: Session }) {
     payload: InspectionSubmissionPayload,
     evidence: LocalInspectionEvidence[],
   ) {
-    if (!outbox || !membership) throw new Error("The encrypted outbox is unavailable.");
+    const authority = membership ?? managerContext;
+    if (!outbox || !authority) throw new Error("The encrypted outbox is unavailable.");
     await outbox.enqueueInspectionSubmission(
-      membership.context_key,
-      membership.company_slug,
+      authority.context_key,
+      authority.company_slug,
       payload,
       evidence,
     );
-    await refreshLocal(outbox, membership.context_key);
-    const summary = await synchronize();
+    await refreshLocal(outbox, authority.context_key);
+    const summary = membership
+      ? await synchronize()
+      : await synchronizeInspectionOutbox(outbox, authority);
     return summary?.online && !summary.error && summary.inspectionsAcknowledged > 0
       ? "submitted" as const
       : "offline" as const;
@@ -783,7 +815,7 @@ function AuthenticatedApp(props: { session: Session }) {
     } else {
       setManagerTab("today");
       setManagerScheduleSurface("bridge");
-      setManagerScheduleWeek(managerWeekStart());
+      setManagerScheduleWeek(managerCalendarStart());
       setManagerScheduleSnapshot(null);
       setManagerScheduleError(null);
       setManagerMessagesSnapshot(null);
@@ -821,6 +853,56 @@ function AuthenticatedApp(props: { session: Session }) {
     } finally {
       setManagerScheduleReviewBusy(false);
     }
+  }
+
+  async function runManagerScheduleWrite(write: () => Promise<unknown>) {
+    try {
+      setManagerScheduleWriteBusy(true);
+      setManagerScheduleError(null);
+      await write();
+      await refreshManagerSchedule();
+    } catch (caught) {
+      const message = errorMessage(caught);
+      setManagerScheduleError(message);
+      throw new Error(message);
+    } finally {
+      setManagerScheduleWriteBusy(false);
+    }
+  }
+
+  async function commitManagerScheduleHorizon() {
+    if (!managerContext) return;
+    await runManagerScheduleWrite(() => commitManagerSchedule(managerContext, managerScheduleWeek, 70));
+  }
+
+  async function submitManagerScheduleBaseline(draft: ManagerScheduleBaselineDraft) {
+    if (!managerContext) return;
+    await runManagerScheduleWrite(() => saveManagerScheduleBaseline(managerContext, draft));
+  }
+
+  async function submitManagerScheduleOverride(draft: ManagerScheduleOverrideDraft) {
+    if (!managerContext) return;
+    await runManagerScheduleWrite(() => saveManagerScheduleOverride(managerContext, draft));
+  }
+
+  async function submitManagerSchedulePreset(draft: ManagerSchedulePresetDraft) {
+    if (!managerContext) return;
+    await runManagerScheduleWrite(() => saveManagerSchedulePreset(managerContext, draft));
+  }
+
+  async function removeManagerBaseline(row: ManagerScheduleWorkbenchRow) {
+    if (!managerContext) return;
+    await runManagerScheduleWrite(() => removeManagerScheduleBaseline(managerContext, row.rosterMemberId, isoDate(new Date())));
+  }
+
+  async function removeManagerOverride(value: ManagerScheduleOverride) {
+    if (!managerContext) return;
+    await runManagerScheduleWrite(() => deactivateManagerScheduleOverride(managerContext, value.id, value.start_date));
+  }
+
+  async function removeManagerPreset(value: ManagerSchedulePreset) {
+    if (!managerContext) return;
+    await runManagerScheduleWrite(() => deactivateManagerSchedulePreset(managerContext, value.id));
   }
 
   async function submitManagerDispatchAction(draft: ManagerDispatchActionDraft) {
@@ -1077,7 +1159,7 @@ function AuthenticatedApp(props: { session: Session }) {
     const companyDriverContext = driverContextForCompany(contexts, managerContext.company_id);
     const activeManagerSuite = managerWorkspaceKey ? managerWorkspaceSuite(managerWorkspaceKey, managerContext) : null;
     return (
-      <View style={styles.flex}>
+      <View style={[styles.flex, isTablet && styles.managerShellTablet]}>
         <View style={styles.content}>
           {managerTab === "today" ? (
             <ManagerHomeScreen
@@ -1095,6 +1177,7 @@ function AuthenticatedApp(props: { session: Session }) {
               error={managerScheduleError}
               loading={managerScheduleLoading}
               reviewBusy={managerScheduleReviewBusy}
+              writeBusy={managerScheduleWriteBusy}
               snapshot={managerScheduleSnapshot}
               surface={managerScheduleSurface}
               onBack={() => setManagerScheduleSurface((current) => current === "overview" ? "bridge" : "overview")}
@@ -1102,10 +1185,17 @@ function AuthenticatedApp(props: { session: Session }) {
               onMySchedule={() => {
                 if (companyDriverContext) selectContext(companyDriverContext.context_key, "schedule");
               }}
-              onNextWeek={() => setManagerScheduleWeek((current) => addScheduleDays(current, 7))}
-              onPreviousWeek={() => setManagerScheduleWeek((current) => addScheduleDays(current, -7))}
+              onNextWeek={() => setManagerScheduleWeek((current) => addScheduleMonths(current, 1))}
+              onPreviousWeek={() => setManagerScheduleWeek((current) => addScheduleMonths(current, -1))}
               onRefresh={() => void refreshManagerSchedule()}
               onReviewRequest={reviewManagerRequest}
+              onCommit={commitManagerScheduleHorizon}
+              onDeactivateOverride={removeManagerOverride}
+              onDeactivatePreset={removeManagerPreset}
+              onRemoveBaseline={removeManagerBaseline}
+              onSaveBaseline={submitManagerScheduleBaseline}
+              onSaveOverride={submitManagerScheduleOverride}
+              onSavePreset={submitManagerSchedulePreset}
               onSettings={() => setSettingsOpen(true)}
               onSurface={setManagerScheduleSurface}
             />
@@ -1139,7 +1229,6 @@ function AuthenticatedApp(props: { session: Session }) {
                   setManagerWorkspaceChildError(null);
                 }}
                 onManageWalkOn={submitManagerWalkOnIdentity}
-                onOpenWeb={(path) => void openCompanyWeb(path)}
                 onRefresh={() => void refreshManagerOperationsChild(managerWorkspaceChildSnapshot?.serviceDate)}
                 onSaveWalkOn={submitManagerWalkOnAssignment}
                 onServiceDate={(value) => void refreshManagerOperationsChild(value)}
@@ -1166,10 +1255,10 @@ function AuthenticatedApp(props: { session: Session }) {
                 }}
                 onLoadRouteEvidence={(routeKey) => loadManagerRouteEvidence(managerContext, routeKey)}
                 onLoadWalkOns={() => loadManagerWalkOnSnapshot(managerContext)}
-                onOpenWeb={(path) => void openCompanyWeb(path)}
                 onRefresh={() => void refreshManagerWorkspace(activeManagerSuite.key)}
                 onRefreshDispatch={() => void refreshManagerDispatch()}
                 onSettings={() => setSettingsOpen(true)}
+                onStartInspection={() => setManagerTab("inspect")}
                 onSubmitDelivery={submitManagerDeliveryAction}
                 onSubmitDispatch={submitManagerDispatchAction}
                 onSubmitCandidateStage={submitManagerCandidateStage}
@@ -1201,9 +1290,22 @@ function AuthenticatedApp(props: { session: Session }) {
               snapshot={managerMessagesSnapshot}
             />
           ) : null}
+          {managerTab === "inspect" ? (
+            <InspectionScreen
+              companyName={managerContext.company_name}
+              contextKey={managerContext.context_key}
+              demoMode={false}
+              onSettings={() => setSettingsOpen(true)}
+              onSubmit={submitInspection}
+              outbox={outbox}
+              routeName=""
+              vehicles={vehicles}
+            />
+          ) : null}
         </View>
         <ManagerFooter
           activeTab={managerTab}
+          tablet={isTablet}
           onAccount={() => setSettingsOpen(true)}
           onTab={(nextTab) => {
             setManagerTab(nextTab);
@@ -1401,6 +1503,7 @@ function DeviceAccessGate(props: { session: Session }) {
   const [authenticating, setAuthenticating] = useState(false);
   const [message, setMessage] = useState("Use Face ID or device authentication to unlock Insight.");
   const authenticatingRef = useRef(false);
+  const unlockedRef = useRef(false);
 
   const unlock = useCallback(async () => {
     if (authenticatingRef.current || AppState.currentState !== "active") return;
@@ -1411,6 +1514,7 @@ function DeviceAccessGate(props: { session: Session }) {
       message: errorMessage(caught),
     }));
     if (result.authenticated) {
+      unlockedRef.current = true;
       setUnlocked(true);
       setMessage("Use Face ID or device authentication to unlock Insight.");
     } else {
@@ -1423,8 +1527,12 @@ function DeviceAccessGate(props: { session: Session }) {
   useEffect(() => {
     void unlock();
     const listener = AppState.addEventListener("change", (state: AppStateStatus) => {
-      if (state === "active") void unlock();
-      else setUnlocked(false);
+      if (state === "background") {
+        unlockedRef.current = false;
+        setUnlocked(false);
+      } else if (state === "active" && !unlockedRef.current) {
+        void unlock();
+      }
     });
     return () => listener.remove();
   }, [unlock]);
@@ -1447,6 +1555,7 @@ function DeviceAccessGate(props: { session: Session }) {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.white },
   flex: { flex: 1 },
+  managerShellTablet: { flexDirection: "row-reverse" },
   content: { flex: 1, backgroundColor: colors.white },
   demoBanner: { minHeight: 34, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.paleWarning, borderBottomColor: colors.warning, borderBottomWidth: 1 },
   demoBannerTitle: { color: colors.warning, fontSize: 11, fontWeight: "900", letterSpacing: 1 },
