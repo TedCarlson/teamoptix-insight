@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import type { RosterRow } from "@/features/people/types/roster.types";
-import { getFedExRoleOptions } from "@/features/platform/roles/fedexRoleOptions";
 import { DrawerSection, FactRow, compactInput } from "./PersonDrawerRows";
 
 export type CoreDraft = {
@@ -79,31 +78,6 @@ function TextInput(props: {
         placeholder={props.placeholder ?? props.label}
         style={compactInput}
       />
-    </label>
-  );
-}
-
-function RoleSelect(props: {
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  const options = getFedExRoleOptions(props.value);
-
-  return (
-    <label style={{ display: "grid", gap: 5 }}>
-      <span className="hero-stat__label">Role</span>
-      <select
-        value={props.value}
-        onChange={(event) => props.onChange(event.target.value)}
-        style={compactInput}
-      >
-        {!props.value ? <option value="">Select a role</option> : null}
-        {options.map((option) => (
-          <option key={option.key} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
     </label>
   );
 }
@@ -203,10 +177,6 @@ export default function PersonCoreSection({ person, saving, onSave }: Props) {
               label="Phone"
               value={draft.phone}
               onChange={(value) => setDraft((d) => ({ ...d, phone: value }))}
-            />
-            <RoleSelect
-              value={draft.worker_type}
-              onChange={(value) => setDraft((d) => ({ ...d, worker_type: value }))}
             />
             <TextInput
               label="Market"

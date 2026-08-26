@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { RosterEmploymentStatus, RosterRow } from "@/features/people/types/roster.types";
 import PersonCoreSection from "@/features/people/components/person-drawer/PersonCoreSection";
+import PersonRoleAccessSection from "@/features/people/components/person-drawer/PersonRoleAccessSection";
 import PersonCompensationSection from "@/features/people/components/person-drawer/PersonCompensationSection";
 import PersonOperationsSection from "@/features/people/components/person-drawer/PersonOperationsSection";
 import PersonLifecycleSection from "@/features/people/components/person-drawer/PersonLifecycleSection";
@@ -177,6 +178,11 @@ export default function ManagePersonDrawer({
                 <p>Maintain the authoritative roster record without leaving the workspace.</p>
               </div>
               <PersonCoreSection person={person} saving={savingDetails} onSave={onSaveDetails} />
+              <PersonRoleAccessSection
+                companySlug={companySlug}
+                person={person}
+                onSaved={onRefreshPerson}
+              />
             </section>
 
             <section

@@ -2,33 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-type Role = { role_key: string; role_label: string; description: string; roster_member_id: string | null; profile_id: string | null };
-type RosterPerson = { roster_member_id: string; full_name: string; email: string | null };
+type Assignment = { assignment_id: string; roster_member_id: string | null; profile_id: string | null; is_primary: boolean; full_name: string | null; email: string | null };
+type Role = { role_key: string; role_label: string; description: string; target_source: "profile" | "roster"; max_assignments: number | null; assignments: Assignment[] };
+type RosterPerson = { roster_member_id: string; full_name: string; email: string | null; worker_type: string | null };
 type OperatorProfile = { profile_id: string; display_name: string; email: string };
 type Payload = { can_manage: boolean; roles: Role[]; roster: RosterPerson[]; operator_profiles: OperatorProfile[] };
-
-function visibleRole(role: Role): Role | null {
-  if (role.role_key === "operations_support") return null;
-  if (role.role_key === "hr") {
-    return {
-      ...role,
-      description: "Owner of workforce administration and the default responsible party for candidate interview availability and follow-up.",
-    };
-  }
-  if (role.role_key === "dispatch_coordinator") {
-    return {
-      ...role,
-      role_label: "HR",
-      description: "Owner of workforce administration, employee support, and people operations.",
-    };
-  }
-  return role;
-}
 
 export default function CompanyLeadershipManager({ slug }: { slug: string }) {
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingRole, setSavingRole] = useState<string | null>(null);
+  const [selections, setSelections] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -49,17 +33,14 @@ export default function CompanyLeadershipManager({ slug }: { slug: string }) {
 
   useEffect(() => { void load(); }, [load]);
 
-  const roles = useMemo(
-    () => data?.roles.map(visibleRole).filter((role): role is Role => role !== null) ?? [],
-    [data]
-  );
-  const assignedCount = useMemo(
-    () => roles.filter((role) => Boolean(role.profile_id || role.roster_member_id)).length,
-    [roles]
-  );
+  const roles = useMemo(() => data?.roles ?? [], [data?.roles]);
+  const assignmentCount = useMemo(() => roles.reduce((count, role) => count + role.assignments.length, 0), [roles]);
+  const openRoleCount = useMemo(() => roles.filter((role) => role.assignments.length === 0).length, [roles]);
 
-  async function assign(role: Role, selectedId: string) {
-    const isOperator = role.role_key === "authorized_operator";
+  async function addAssignment(role: Role) {
+    const selectedId = selections[role.role_key] ?? "";
+    if (!selectedId) return;
+    const isOperator = role.target_source === "profile";
     setSavingRole(role.role_key);
     setError(null);
     setMessage(null);
@@ -68,16 +49,13 @@ export default function CompanyLeadershipManager({ slug }: { slug: string }) {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          role_key: role.role_key,
-          roster_member_id: isOperator ? null : selectedId || null,
-          profile_id: isOperator ? selectedId || null : null,
-        }),
+        body: JSON.stringify({ action: "add", role_key: role.role_key, roster_member_id: isOperator ? null : selectedId, profile_id: isOperator ? selectedId : null }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.error ?? "Failed to update leadership.");
       setData(payload);
-      setMessage(`${role.role_label} updated.`);
+      setSelections((current) => ({ ...current, [role.role_key]: "" }));
+      setMessage(`${role.role_label} assignment added.`);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Failed to update leadership.");
     } finally {
@@ -85,57 +63,80 @@ export default function CompanyLeadershipManager({ slug }: { slug: string }) {
     }
   }
 
+  async function removeAssignment(role: Role, assignmentId: string) {
+    setSavingRole(role.role_key);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/company/${slug}/config/leadership`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ action: "remove", assignment_id: assignmentId }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.error ?? "Failed to remove leadership assignment.");
+      setData(payload);
+      setMessage(`${role.role_label} assignment removed.`);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Failed to remove leadership assignment.");
+    } finally {
+      setSavingRole(null);
+    }
+  }
+
   if (loading) return <p className="app-card__body">Loading leadership assignments…</p>;
-  if (!data) return (
-    <div style={{ display: "grid", gap: 10 }}>
-      <p style={{ color: "#b91c1c", margin: 0 }}>{error ?? "Leadership is unavailable."}</p>
-      <button type="button" className="button" onClick={() => void load()}>Try again</button>
-    </div>
-  );
+  if (!data) return <div style={{ display: "grid", gap: 10 }}><p style={{ color: "#b91c1c", margin: 0 }}>{error ?? "Leadership is unavailable."}</p><button type="button" className="button" onClick={() => void load()}>Try again</button></div>;
 
   return (
     <section style={{ display: "grid", gap: 14 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
-        <div className="context-stat"><span className="context-stat__label">Assigned</span><strong>{assignedCount}</strong></div>
-        <div className="context-stat"><span className="context-stat__label">Open</span><strong>{roles.length - assignedCount}</strong></div>
+        <div className="context-stat"><span className="context-stat__label">Assignments</span><strong>{assignmentCount}</strong></div>
+        <div className="context-stat"><span className="context-stat__label">Open roles</span><strong>{openRoleCount}</strong></div>
         <div className="context-stat"><span className="context-stat__label">Leadership roles</span><strong>{roles.length}</strong></div>
       </div>
 
       <div style={{ border: "1px solid #bfdbfe", background: "#eff6ff", borderRadius: 12, padding: 12, color: "#1e3a8a", fontSize: 13 }}>
-        The Authorized Operator is linked to the owner&apos;s company app profile. Workforce leaders are linked to roster members. HR is the default interview owner; Business Contact is used when HR is open or not linked to an app profile. Workspace permissions remain separate under Access.
+        Leadership responsibility and workspace authorization are coordinated when a person&apos;s company role changes. This page remains available for direct coverage changes. Business Contact and Assistant BC support multiple people.
       </div>
 
-      <div style={{ display: "grid", gap: 8 }}>
+      <div style={{ display: "grid", gap: 10 }}>
         {roles.map((role) => {
-          const isOperator = role.role_key === "authorized_operator";
-          const assignedId = isOperator ? role.profile_id : role.roster_member_id;
+          const isOperator = role.target_source === "profile";
+          const assignedIds = new Set(role.assignments.map((assignment) => isOperator ? assignment.profile_id : assignment.roster_member_id));
+          const candidates = isOperator ? data.operator_profiles.filter((person) => !assignedIds.has(person.profile_id)) : data.roster.filter((person) => !assignedIds.has(person.roster_member_id));
+          const atLimit = role.max_assignments !== null && role.assignments.length >= role.max_assignments;
           return (
-            <article key={role.role_key} style={{ display: "grid", gridTemplateColumns: "minmax(220px, .9fr) minmax(260px, 1.1fr)", gap: 16, alignItems: "center", border: "1px solid #e2e8f0", borderRadius: 14, padding: 12, background: "#fff" }}>
-              <div style={{ display: "grid", gap: 4 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <strong>{role.role_label}</strong>
-                  <span style={{ borderRadius: 999, padding: "2px 8px", fontSize: 11, fontWeight: 800, color: assignedId ? "#166534" : "#92400e", background: assignedId ? "#dcfce7" : "#fef3c7" }}>
-                    {assignedId ? "Assigned" : "Open"}
-                  </span>
+            <article key={role.role_key} style={{ display: "grid", gap: 12, border: "1px solid #e2e8f0", borderRadius: 14, padding: 14, background: "#fff" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                <div style={{ display: "grid", gap: 4 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <strong>{role.role_label}</strong>
+                    <span style={{ borderRadius: 999, padding: "2px 8px", fontSize: 11, fontWeight: 800, color: role.assignments.length ? "#166534" : "#92400e", background: role.assignments.length ? "#dcfce7" : "#fef3c7" }}>{role.assignments.length ? `${role.assignments.length} assigned` : "Open"}</span>
+                  </div>
+                  <span style={{ color: "#64748b", fontSize: 12 }}>{role.description}</span>
                 </div>
-                <span style={{ color: "#64748b", fontSize: 12 }}>{role.description}</span>
-                <span style={{ color: "#475569", fontSize: 11, fontWeight: 700 }}>{isOperator ? "Company app profile" : "Workforce roster"}</span>
+                <span style={{ color: "#475569", fontSize: 11, fontWeight: 700 }}>{role.max_assignments === null ? "Multiple allowed" : `Up to ${role.max_assignments}`}</span>
               </div>
-              <label style={{ display: "grid", gap: 5 }}>
-                <span style={{ color: "#475569", fontSize: 12, fontWeight: 800 }}>{isOperator ? "Operator / owner profile" : "Roster member"}</span>
-                <select
-                  value={assignedId ?? ""}
-                  onChange={(event) => void assign(role, event.target.value)}
-                  disabled={!data.can_manage || savingRole === role.role_key}
-                  aria-label={`Assign ${role.role_label}`}
-                  style={{ minHeight: 42, border: "1px solid #cbd5e1", borderRadius: 10, padding: "0 10px", background: data.can_manage ? "#fff" : "#f8fafc" }}
-                >
-                  <option value="">Open — no assignment</option>
+
+              {role.assignments.length ? <div style={{ display: "grid", gap: 7 }}>
+                {role.assignments.map((assignment) => (
+                  <div key={assignment.assignment_id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: 10, border: "1px solid #e2e8f0", borderRadius: 10 }}>
+                    <span style={{ display: "grid", gap: 2 }}><strong style={{ fontSize: 13 }}>{assignment.full_name || assignment.email || "Assigned leader"}{assignment.is_primary ? " · Primary" : ""}</strong>{assignment.email ? <small style={{ color: "#64748b" }}>{assignment.email}</small> : null}</span>
+                    {data.can_manage ? <button className="button" type="button" disabled={savingRole === role.role_key} onClick={() => void removeAssignment(role, assignment.assignment_id)}>Remove</button> : null}
+                  </div>
+                ))}
+              </div> : null}
+
+              {data.can_manage && !atLimit ? <div style={{ display: "grid", gridTemplateColumns: "minmax(240px, 1fr) auto", gap: 8 }}>
+                <select value={selections[role.role_key] ?? ""} onChange={(event) => setSelections((current) => ({ ...current, [role.role_key]: event.target.value }))} aria-label={`Add ${role.role_label}`} style={{ minHeight: 42, border: "1px solid #cbd5e1", borderRadius: 10, padding: "0 10px", background: "#fff" }}>
+                  <option value="">Select another person…</option>
                   {isOperator
-                    ? data.operator_profiles.map((person) => <option key={person.profile_id} value={person.profile_id}>{person.display_name} — {person.email}</option>)
-                    : data.roster.map((person) => <option key={person.roster_member_id} value={person.roster_member_id}>{person.full_name}{person.email ? ` — ${person.email}` : ""}</option>)}
+                    ? (candidates as OperatorProfile[]).map((person) => <option key={person.profile_id} value={person.profile_id}>{person.display_name} — {person.email}</option>)
+                    : (candidates as RosterPerson[]).map((person) => <option key={person.roster_member_id} value={person.roster_member_id}>{person.full_name}{person.worker_type ? ` · ${person.worker_type}` : ""}{person.email ? ` — ${person.email}` : ""}</option>)}
                 </select>
-              </label>
+                <button className="button button-primary" type="button" disabled={!selections[role.role_key] || savingRole === role.role_key} onClick={() => void addAssignment(role)}>{savingRole === role.role_key ? "Saving…" : "Add leader"}</button>
+              </div> : null}
             </article>
           );
         })}

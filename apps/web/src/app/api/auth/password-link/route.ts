@@ -19,7 +19,7 @@ export async function POST(req: Request) {
     const returnTo =
       typeof body?.returnTo === "string" && body.returnTo.startsWith("/")
         ? body.returnTo
-        : "/profile";
+        : "/workspace";
     const captchaToken =
       typeof body?.captchaToken === "string" ? body.captchaToken.trim() : "";
 

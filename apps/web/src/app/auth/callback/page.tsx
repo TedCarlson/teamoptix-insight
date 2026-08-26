@@ -5,9 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 function safePath(value: string | null) {
-  if (!value) return "/profile";
-  if (!value.startsWith("/")) return "/profile";
-  if (value.startsWith("//")) return "/profile";
+  if (!value) return "/workspace";
+  if (!value.startsWith("/")) return "/workspace";
+  if (value.startsWith("//")) return "/workspace";
   return value;
 }
 

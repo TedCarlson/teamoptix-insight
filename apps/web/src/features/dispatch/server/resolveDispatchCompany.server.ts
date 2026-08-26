@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { canAccessCompanyWorkspace } from "@/features/company/config/companyWorkspaceAccess";
 
 export async function getDispatchRequestContext(slug: string) {
   const supabase = await getSupabaseServerClient();
@@ -14,7 +15,19 @@ export async function getDispatchRequestContext(slug: string) {
     };
   }
 
-  const { data: access } = await supabase.rpc("access_context");
+  const { data: access, error: accessError } = await supabase.rpc("access_context");
+
+  if (accessError) {
+    return {
+      error: NextResponse.json({ error: "Unable to verify workspace access." }, { status: 503 }),
+    };
+  }
+
+  if (!canAccessCompanyWorkspace(access, slug, "dispatch")) {
+    return {
+      error: NextResponse.json({ error: "Dispatch access is required." }, { status: 403 }),
+    };
+  }
 
   const { data: company, error: companyError } = await supabase
     .from("companies")
