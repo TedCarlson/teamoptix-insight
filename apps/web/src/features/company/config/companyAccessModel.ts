@@ -6,6 +6,7 @@ export type CompanyWorkspaceGrantKey =
   | "delivery_window"
   | "operations_uploads"
   | "reports"
+  | "assets"
   | "fleet"
   | "roster"
   | "hiring"
@@ -29,6 +30,7 @@ export const COMPANY_WORKSPACE_GRANTS: CompanyWorkspaceGrant[] = [
   { key: "delivery_window", label: "Delivery Window", group: "Operations", description: "Access delivery window workspace." },
   { key: "operations_uploads", label: "Operations Uploads", group: "Operations", description: "Upload DSW, DRO, and FCC reports." },
   { key: "reports", label: "Reports", group: "Operations", description: "Access operational reports." },
+  { key: "assets", label: "Assets", group: "Operations", description: "Manage scanner and fuel card inventory and assignments." },
   { key: "fleet", label: "Fleet", group: "Operations", description: "Access Fleet vehicles, maintenance, and management records." },
   { key: "roster", label: "Roster", group: "Workforce", description: "Access workforce roster records." },
   { key: "hiring", label: "Hiring", group: "Workforce", description: "Access hiring workspace." },

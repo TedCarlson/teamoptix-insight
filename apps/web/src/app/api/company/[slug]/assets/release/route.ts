@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { hasCompanyWorkspaceAccess } from "@/features/company/config/companyWorkspaceAccess.server";
 
 export const runtime = "nodejs";
 
@@ -11,6 +12,10 @@ export async function POST(
     const { slug } = await params;
     const body = await req.json().catch(() => ({}));
     const supabase = await getSupabaseServerClient();
+
+    if (!(await hasCompanyWorkspaceAccess(supabase, slug, "assets"))) {
+      return NextResponse.json({ error: "Assets access is required." }, { status: 403 });
+    }
 
     const assetId = typeof body.asset_id === "string" ? body.asset_id.trim() : "";
     const reason =

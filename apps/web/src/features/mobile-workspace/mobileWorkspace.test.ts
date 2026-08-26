@@ -41,9 +41,9 @@ describe("mobile workspace access", () => {
       }],
     };
 
-    expect(mobileWorkspaceGrantKeys(admin, "acme")).toHaveLength(14);
+    expect(mobileWorkspaceGrantKeys(admin, "acme")).toHaveLength(15);
     expect(mobileWorkspaceGrantKeys({ is_platform_owner: true, memberships: [] }, "acme"))
-      .toHaveLength(14);
+      .toHaveLength(15);
   });
 
   it("ignores unknown grant keys", () => {

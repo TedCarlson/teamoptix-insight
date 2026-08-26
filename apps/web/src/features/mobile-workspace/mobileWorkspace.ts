@@ -96,6 +96,15 @@ const DESTINATIONS: Array<Omit<MobileWorkspaceDestination, "href"> & {
     requiredGrant: "reports",
   },
   {
+    key: "assets",
+    label: "Assets",
+    description: "Manage scanner and fuel card inventory and assignments.",
+    path: (base) => `${base}/assets/scanners`,
+    icon: "clipboard",
+    readiness: "web_workspace",
+    requiredGrant: "assets",
+  },
+  {
     key: "fleet",
     label: "Fleet",
     description: "Reach vehicles, maintenance, and inspection history.",
@@ -230,7 +239,7 @@ export function buildMobileWorkspaceGroups(
       key: "operations",
       label: "Operations",
       destinations: destinations.filter((destination) =>
-        ["schedule", "dispatch", "routes", "planning", "delivery_window", "operations_uploads", "reports", "fleet"]
+        ["schedule", "dispatch", "routes", "planning", "delivery_window", "operations_uploads", "reports", "assets", "fleet"]
           .includes(destination.requiredGrant)
       ),
     },

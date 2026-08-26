@@ -13,6 +13,7 @@ describe("company role access templates", () => {
         "delivery_window",
         "operations_uploads",
         "reports",
+        "assets",
       ],
     });
   });
