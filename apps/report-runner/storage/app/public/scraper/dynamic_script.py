@@ -36,6 +36,7 @@ from dsw_package_status import (
     purge_expired_local_package_artifacts,
 )
 from dro_collection import collect_dro_package_detail
+from service_date_authority import resolve_service_datetime
 
 from connections import getConnection, closeConnection, getScrapingConfig, getMainFolder, writeError, isPlatformLinux, getDailyServiceOptions
 # if platform == "linux" or platform == "linux2":
@@ -57,7 +58,10 @@ MAIN_FOLDER = os.path.join(getMainFolder(), 'Excels')
 if not os.path.exists(MAIN_FOLDER):
     os.mkdir(MAIN_FOLDER)
 
-current_date = datetime.now()
+current_date = resolve_service_datetime(
+    os.environ.get("FCMS_SERVICE_DATE", ""),
+    os.environ.get("FCMS_TERMINAL_TIMEZONE", ""),
+)
 formatted_date = current_date.strftime("%m-%d-%Y")
 
 DOWNLOAD_FOLDER = os.path.join(MAIN_FOLDER, formatted_date)

@@ -160,6 +160,7 @@ def parse_args() -> argparse.Namespace:
         ],
     )
     parser.add_argument("--service-date")
+    parser.add_argument("--terminal-timezone")
     parser.add_argument("--reports-json", required=True)
     parser.add_argument("--manifest-routes-json", default="[]")
     parser.add_argument("--company-id", required=True)
@@ -231,6 +232,7 @@ def child_environment(
     environment["FCMS_COMPANY_ID"] = args.company_id
     environment["FCMS_COMPANY_SLUG"] = args.company_slug
     environment["FCMS_SERVICE_DATE"] = args.service_date or ""
+    environment["FCMS_TERMINAL_TIMEZONE"] = args.terminal_timezone or ""
     environment["FCMS_SERVICE_DATE_START"] = ""
     environment["FCMS_SERVICE_DATE_END"] = ""
     environment["FCMS_REQUEST_TYPE"] = args.request_type
