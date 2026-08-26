@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { manifestDetailRequestUrl } from "@/features/operations/manifests/routeEvidence";
+import {
+  manifestDeliveryStopTitle,
+  manifestPickupStopTitle,
+} from "@/features/operations/manifests/manifestDrawerIdentity";
 
 export type ManifestRouteHealthCard = {
   route_key: string;
@@ -658,7 +662,7 @@ function buildCombinedManifest(detail: RouteDetailPayload) {
       key: `delivery-${identity(stop)}-${index}`,
       kind: "delivery",
       sequence: sequenceValue(stop.st_number, index + 1),
-      title: `Stop ${value(stop, "st_number")} · ${value(stop, "recipient")}`,
+      title: manifestDeliveryStopTitle(stop),
       subtitle: `SID ${value(stop, "sid")}`,
       address: address(stop),
       window: `${value(stop, "delivery_time_begin")}–${value(stop, "delivery_time_end")}`,
@@ -690,7 +694,7 @@ function buildCombinedManifest(detail: RouteDetailPayload) {
       key: `pickup-${value(pickup, "puid")}-${index}`,
       kind: "pickup",
       sequence: sequenceValue(pickup.pickup_list, 10000 + index),
-      title: `${value(pickup, "shipper_name")} · Pickup`,
+      title: manifestPickupStopTitle(pickup),
       subtitle: `PUID ${value(pickup, "puid")} · ${value(pickup, "pickup_type")}`,
       address: address(pickup),
       window: `${value(pickup, "ready_at")}–${value(pickup, "close_at")}`,
@@ -978,7 +982,7 @@ function RouteManifestDetail(props: {
             </summary>
             <div style={{ borderTop: "1px solid #eef2f7", padding: 12, display: "grid", gap: 8, fontSize: 12 }}>
               <div><strong>Window:</strong> {item.window}</div>
-              <div><strong>Contact:</strong> {item.contact} · <strong>Instructions:</strong> {item.instructions}</div>
+              <div><strong>Instructions:</strong> {item.instructions}</div>
               {item.unmanifested ? (
                 <div style={{ border: "1px solid #fecaca", borderRadius: 10, background: "#fef2f2", color: "#991b1b", padding: 8, fontWeight: 900 }}>
                   Terminal scan/tender missing. No SID was assigned before the parcel was loaded to the route.
