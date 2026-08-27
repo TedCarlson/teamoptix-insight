@@ -136,12 +136,12 @@ describe("MC-1 Edge Outbox protocol", () => {
         isAndroidForegroundServiceEnabled: true,
         locationAlwaysPermission: false,
         locationAlwaysAndWhenInUsePermission: expect.stringContaining("while you are clocked in"),
-        motionUsagePermission: false,
+        motionUsagePermission: expect.stringContaining("active duty session"),
       }),
     ]);
   });
 
-  it("declares Face ID without declaring motion access", () => {
+  it("declares Face ID and the linked location module's motion purpose", () => {
     const faceIdPlugin = appConfig.expo.plugins.find(
       (plugin) => Array.isArray(plugin) && plugin[0] === "expo-local-authentication",
     );
@@ -151,7 +151,15 @@ describe("MC-1 Edge Outbox protocol", () => {
         faceIDPermission: expect.stringContaining("protect access"),
       }),
     ]);
-    expect(JSON.stringify(appConfig)).not.toContain("NSMotionUsageDescription");
+    const locationPlugin = appConfig.expo.plugins.find(
+      (plugin) => Array.isArray(plugin) && plugin[0] === "expo-location",
+    );
+    expect(locationPlugin).toEqual([
+      "expo-location",
+      expect.objectContaining({
+        motionUsagePermission: expect.stringContaining("not used while you are off duty"),
+      }),
+    ]);
   });
 
   it("enables a bounded iPad layout with all iPad orientations", () => {

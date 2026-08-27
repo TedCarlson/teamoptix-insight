@@ -63,7 +63,7 @@
           "locationWhenInUsePermission": "Allow Insight Mobile Companion to verify your work location when you intentionally start or stop duty.",
           "locationAlwaysPermission": false,
           "locationAlwaysAndWhenInUsePermission": "Allow Insight Mobile Companion to record company-scoped work and asset location while you are clocked in, including when the app is in the background. Insight does not collect location while you are off duty.",
-          "motionUsagePermission": false,
+          "motionUsagePermission": "Allow Insight Mobile Companion to use motion activity during an active duty session to support reliable company-scoped location tracking. Motion activity is not used while you are off duty.",
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true

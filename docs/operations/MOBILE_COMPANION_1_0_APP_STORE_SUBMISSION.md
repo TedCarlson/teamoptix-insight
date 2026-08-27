@@ -116,7 +116,7 @@ Do not declare biometric information: Face ID and Touch ID remain inside iOS. Do
 - [ ] Capture, review, and upload the ten screenshots (five iPhone, five iPad)
 - [ ] Complete App Privacy answers from the audited matrix
 - [ ] Complete age-rating questionnaire
-- [ ] Select the replacement build after processing. Its Info.plist declares that the app uses only encryption exempt from App Store Connect documentation requirements; no separate export-compliance attachment or code is expected for the current United States-only distribution.
+- [ ] Select the replacement build after processing. Its Info.plist declares that the app uses only encryption exempt from App Store Connect documentation requirements and includes the required motion purpose string for the Core Motion APIs linked by `expo-location`; no separate export-compliance attachment or code is expected for the current United States-only distribution.
 - [ ] Select the replacement build after Apple finishes processing it
 - [ ] Save all fields and address any App Store Connect validation messages
 - [ ] Add for Review, verify the submission summary, and submit
