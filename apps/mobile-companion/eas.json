@@ -15,10 +15,12 @@
     },
     "preview": {
       "extends": "base",
+      "environment": "production",
       "distribution": "internal"
     },
     "production": {
       "extends": "base",
+      "environment": "production",
       "autoIncrement": true
     }
   },
