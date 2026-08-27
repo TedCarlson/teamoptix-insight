@@ -12,7 +12,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.teamoptix.insight.companion",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": true,
+        "ITSAppUsesNonExemptEncryption": false,
         "UISupportedInterfaceOrientations": [
           "UIInterfaceOrientationPortrait"
         ],

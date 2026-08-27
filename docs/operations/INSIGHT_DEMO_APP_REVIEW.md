@@ -98,26 +98,32 @@ Use this sequence in App Review notes and for the internal release check:
 > only when the reviewer chooses to attach vehicle evidence. Report uploads,
 > payroll, hiring, and company administration are not part of the review role.
 
-## Submission fields still requiring Team Optix confirmation
+## App Review release decisions
 
-- Review contact first/last name, direct phone in international format, and a
-  monitored email. This contact is for Apple, not the public product page.
-- The final reviewer email/password entered only in App Store Connect. Mark
+- The review contact is saved in App Store Connect with the monitored
+  `app-review@teamoptix.io` role inbox. Keep the direct review phone in App
+  Store Connect rather than source control. This contact is for Apple, not the
+  public product support page.
+- The final reviewer email/password is entered only in App Store Connect. Mark
   sign-in as required; the credential must remain active and must not expire.
-- Content Rights: the recommended answer is **Yes, the app accesses third-party
-  content and Team Optix has the necessary rights or permission to use it**.
-  Insight displays organization-provided operational records and inspection
-  evidence, even though the App Review tenant itself is fully synthetic. Team
-  Optix must confirm that its customer terms and permissions support this
-  attestation before submission.
-- EU Digital Services Act status: Team Optix LLC is developing and distributing
-  Insight in a business capacity, so the working recommendation is **Trader**.
-  This remains an Account Holder legal self-assessment. If the app is available
-  in the EU, Apple will display the verified business address, phone, and email
-  on the product page. Select a public business phone and monitored role inbox,
-  not a private personal contact.
-- Public Support URL and Privacy Policy URL
-- Final privacy questionnaire and build export-compliance answers
+- Content Rights is **Yes, the app accesses third-party content and Team Optix
+  has the necessary rights or permission to use it**. Insight displays
+  organization-provided operational records and inspection evidence under the
+  accepted customer terms, even though the App Review tenant itself is fully
+  synthetic.
+- Version 1.0 is available only in the United States. EU Digital Services Act
+  trader display requirements therefore do not block this release.
+- Public Support and Privacy Policy routes are implemented at `/support` and
+  `/privacy`; they must be deployed and verified before submission.
+- Final App Privacy answers and build export-compliance answers remain required.
+  Build 6 uses industry-standard SQLCipher in addition to Apple operating-system
+  encryption and contains no proprietary or non-standard cryptography. The
+  United States-only build declares its encryption as exempt from App Store
+  Connect documentation requirements; reassess before adding France or
+  changing cryptographic functionality.
+
+The complete listing copy, screenshot plan, and submission gate are maintained
+in `docs/operations/MOBILE_COMPANION_1_0_APP_STORE_SUBMISSION.md`.
 
 These legal/account fields are not inferred or embedded in the application.
 They are completed in App Store Connect after the demo account passes the clean
