@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   AppState,
   type AppStateStatus,
+  BackHandler,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -340,6 +341,66 @@ function AuthenticatedApp(props: { session: Session }) {
     [contexts, dutySession?.tenantKey],
   );
   const syncMembership = membership ?? dutyMembership;
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (settingsOpen) {
+        setSettingsOpen(false);
+        return true;
+      }
+
+      if (managerContext) {
+        if (managerWorkspaceChildKey) {
+          setManagerWorkspaceChildKey(null);
+          setManagerWorkspaceChildSnapshot(null);
+          setManagerWorkspaceChildError(null);
+          setManagerDispatchSnapshot(null);
+          setManagerDispatchError(null);
+          return true;
+        }
+        if (managerWorkspaceKey) {
+          setManagerWorkspaceKey(null);
+          setManagerWorkspaceSnapshot(null);
+          setManagerWorkspaceError(null);
+          setManagerDispatchSnapshot(null);
+          setManagerDispatchError(null);
+          return true;
+        }
+        if (managerTab === "schedule" && managerScheduleSurface !== "bridge") {
+          setManagerScheduleSurface("bridge");
+          return true;
+        }
+        if (managerTab !== "today") {
+          setManagerTab("today");
+          return true;
+        }
+        return false;
+      }
+
+      if (selectedMessage) {
+        setSelectedMessage(null);
+        return true;
+      }
+      if (tab !== "home") {
+        setTab("home");
+        return true;
+      }
+      return false;
+    });
+
+    return () => subscription.remove();
+  }, [
+    managerContext,
+    managerScheduleSurface,
+    managerTab,
+    managerWorkspaceChildKey,
+    managerWorkspaceKey,
+    selectedMessage,
+    settingsOpen,
+    tab,
+  ]);
 
   const refreshManagerSchedule = useCallback(async () => {
     if (!managerContext || !managerContext.grants.includes("schedule")) return;
