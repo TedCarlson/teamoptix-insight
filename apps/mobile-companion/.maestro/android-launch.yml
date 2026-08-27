@@ -1,0 +1,13 @@
+appId: com.teamoptix.insight.companion
+---
+- launchApp:
+    clearState: true
+- assertVisible: "Mobile Companion"
+- assertVisible: "Use your existing Insight account."
+- assertVisible: "Email"
+- assertVisible: "Password"
+- assertVisible: "Sign in"
+- setOrientation: LANDSCAPE
+- assertVisible: "Mobile Companion"
+- setOrientation: PORTRAIT
+- assertVisible: "Sign in"

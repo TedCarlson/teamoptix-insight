@@ -12,6 +12,8 @@ import { loadManagerFleetSnapshot } from "./managerFleet";
 import { loadManagerRoutesSnapshot } from "./managerRoutes";
 import {
   hasManagerHistoricalFccEvidence,
+  managerHistoricalFccPhase,
+  managerServiceRouteIdentity,
   resolveManagerServiceDate,
 } from "../domain/managerServiceHistory";
 
@@ -174,10 +176,13 @@ export async function loadManagerOperationsSnapshot(
   type FccRow = {
     source_route_key?: string | null;
     source_wa_number?: string | null;
+    source_driver_name?: string | null;
     normalized_row_json?: {
+      route_baseline_id?: string | null;
       wa_number?: string | null;
       wa_number_normalized?: string | null;
       source_wa_number?: string | null;
+      driver_name?: string | null;
       last_delivery_time?: string | null;
       last_pickup_time?: string | null;
       last_transmission_time?: string | null;
@@ -220,7 +225,7 @@ export async function loadManagerOperationsSnapshot(
   const events = rawEvents.filter((event) =>
     !reversedEventIds.has(event.id) && !String(event.event_code ?? "").startsWith("UNDO_"),
   );
-  const normalizedKey = (value: string | null | undefined) => String(value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const normalizedKey = managerServiceRouteIdentity;
   const numberValue = (value: number | string | null | undefined) => {
     const parsed = Number(value ?? 0);
     return Number.isFinite(parsed) ? parsed : 0;
@@ -247,6 +252,39 @@ export async function loadManagerOperationsSnapshot(
     [row.route_baseline_id, row.route_name, row.wa_number].forEach((value) => {
       const key = normalizedKey(value);
       if (key) dswByKey.set(key, row);
+    });
+  });
+  const fccByKey = new Map<string, FccRow>();
+  fccRows.forEach((row) => {
+    const evidence = row.normalized_row_json ?? {};
+    const score = [
+      evidence.last_delivery_time,
+      evidence.last_pickup_time,
+      evidence.last_transmission_time,
+      evidence.final_stop_time,
+      evidence.deliveries_complete,
+      evidence.pickup_complete,
+    ].filter(Boolean).length;
+    [
+      row.source_route_key,
+      row.source_wa_number,
+      evidence.route_baseline_id,
+      evidence.wa_number,
+      evidence.wa_number_normalized,
+      evidence.source_wa_number,
+    ].forEach((value) => {
+      const key = normalizedKey(value);
+      if (!key) return;
+      const current = fccByKey.get(key)?.normalized_row_json ?? {};
+      const currentScore = [
+        current.last_delivery_time,
+        current.last_pickup_time,
+        current.last_transmission_time,
+        current.final_stop_time,
+        current.deliveries_complete,
+        current.pickup_complete,
+      ].filter(Boolean).length;
+      if (score >= currentScore) fccByKey.set(key, row);
     });
   });
   const healthByKey = new Map<string, HealthRow>();
@@ -322,12 +360,14 @@ export async function loadManagerOperationsSnapshot(
   };
   const routes = selectedRouteRows.map((route): ManagerOperationsRoute => {
     const dsw = [route.id, route.route_name, route.current_wa_num].map(normalizedKey).map((key) => dswByKey.get(key)).find(Boolean);
+    const fcc = [route.id, route.route_name, route.current_wa_num].map(normalizedKey).map((key) => fccByKey.get(key)).find(Boolean);
+    const fccEvidence = fcc?.normalized_row_json ?? null;
     const health = [route.id, route.route_name, route.current_wa_num].map(normalizedKey).map((key) => healthByKey.get(key)).find(Boolean);
     const relatedEvents = routeEvents(route);
     const eventCodes = relatedEvents.map((event) => `${event.event_code ?? ""} ${event.event_label ?? ""}`.toUpperCase());
     const plannedDriver = [route.route_name, route.current_wa_num].map(normalizedKey).map((key) => plannedDriverByRoute.get(key)).find(Boolean) ?? null;
     const latestDriverEvent = relatedEvents.filter((event) => event.person_name && (!event.seat || event.seat === "driver")).at(-1);
-    const driverName = String(dsw?.matched_roster_full_name || dsw?.driver_name || latestDriverEvent?.person_name || plannedDriver || "").trim() || null;
+    const driverName = String(dsw?.matched_roster_full_name || dsw?.driver_name || latestDriverEvent?.person_name || plannedDriver || fcc?.source_driver_name || fccEvidence?.driver_name || "").trim() || null;
     const plannedStops = numberValue(dsw?.planned_delivery_stops || health?.delivery_stop_count);
     const completedStops = numberValue(dsw?.actual_delivery_stops || health?.completed_delivery_stop_count);
     const plannedPackages = numberValue(dsw?.vscan_packages || health?.delivery_package_count);
@@ -336,9 +376,11 @@ export async function loadManagerOperationsSnapshot(
     const completedPickups = numberValue(dsw?.actual_pickup_stops || health?.pickup_actual_package_count);
     const normalized = dsw?.normalized_row_json ?? null;
     const returned = (dsw?.miles ?? normalized?.miles) != null && normalized?.on_road_hours != null && normalized?.on_duty_hours != null;
+    const historicalFccPhase = historical ? managerHistoricalFccPhase(fccEvidence) : null;
     let phase: ManagerOperationsPhase = driverName ? "waiting" : "unassigned";
     if (returned || (plannedPackages > 0 && completedPackages >= plannedPackages && (plannedPickups === 0 || completedPickups >= plannedPickups))) phase = "end_of_day";
     else if (driverName && (completedStops > 0 || completedPackages > 0 || completedPickups > 0 || dsw?.driver_name)) phase = "on_job";
+    else if (historicalFccPhase) phase = historicalFccPhase;
     else if (eventCodes.some((value) => /DISPATCH|DEPART|ON.?ROAD/.test(value)) || (!historical && payload.dispatch_day?.status === "LOCKED")) phase = "on_job";
     else if (eventCodes.some((value) => /ARRIV/.test(value))) phase = "arrived";
     const rawIls = dsw?.ils_percent == null || dsw.ils_percent === "" ? null : Number(String(dsw.ils_percent).replace("%", ""));
@@ -362,6 +404,10 @@ export async function loadManagerOperationsSnapshot(
       expressTotal: numberValue(health?.express_package_count),
       ilsPercent,
       progressPercent,
+      evidenceSource: dsw ? "DSW" : fccEvidence && hasManagerHistoricalFccEvidence(fccEvidence) ? "FCC" : health ? "Manifest" : relatedEvents.length ? "Dispatch" : undefined,
+      lastDeliveryTime: fccEvidence?.last_delivery_time ?? null,
+      lastPickupTime: fccEvidence?.last_pickup_time ?? null,
+      lastTransmissionTime: fccEvidence?.last_transmission_time ?? null,
     };
   });
   const onJob = routes.filter((route) => route.phase === "on_job").length;
