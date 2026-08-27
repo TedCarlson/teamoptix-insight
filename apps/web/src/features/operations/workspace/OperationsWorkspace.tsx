@@ -2,9 +2,11 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
+  canAccessPersistentOperationsSurface,
   persistentOperationsSurface,
+  type PersistentOperationsAccess,
   type PersistentOperationsSurface,
 } from "./operationsWorkspaceRoute";
 
@@ -25,21 +27,34 @@ const PlanningPage = dynamic(
 );
 
 type Props = {
+  access: PersistentOperationsAccess;
   children: ReactNode;
   serviceDate: string;
   slug: string;
 };
 
 export default function OperationsWorkspace({
+  access,
   children,
   serviceDate,
   slug,
 }: Props) {
   const pathname = usePathname() ?? "";
+  const router = useRouter();
   const activeSurface = persistentOperationsSurface(pathname, slug);
+  const activeSurfaceAllowed = canAccessPersistentOperationsSurface(
+    activeSurface,
+    access
+  );
   const [visitedSurfaces, setVisitedSurfaces] = useState<
     Set<PersistentOperationsSurface>
   >(() => new Set(activeSurface ? [activeSurface] : []));
+
+  useEffect(() => {
+    if (activeSurface && !activeSurfaceAllowed) {
+      router.replace(`/company/${slug}/workspace`);
+    }
+  }, [activeSurface, activeSurfaceAllowed, router, slug]);
 
   useEffect(() => {
     if (!activeSurface || visitedSurfaces.has(activeSurface)) return;
@@ -60,8 +75,10 @@ export default function OperationsWorkspace({
     };
   }, [activeSurface, visitedSurfaces]);
 
+  if (!activeSurfaceAllowed) return null;
+
   const shouldMount = (surface: PersistentOperationsSurface) =>
-    activeSurface === surface || visitedSurfaces.has(surface);
+    access[surface] && (activeSurface === surface || visitedSurfaces.has(surface));
 
   return (
     <div className="operations-theme-scope">
