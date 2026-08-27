@@ -116,11 +116,11 @@ Do not declare biometric information: Face ID and Touch ID remain inside iOS. Do
 - [ ] Capture, review, and upload the ten screenshots (five iPhone, five iPad)
 - [ ] Complete App Privacy answers from the audited matrix
 - [ ] Complete age-rating questionnaire
-- [ ] Open **Manage** beside build 6 and complete export compliance: encryption is used; SQLCipher is an industry-standard algorithm in addition to Apple OS encryption; no proprietary or non-standard cryptography; distribution is not in France
-- [ ] Select build 6 after Apple finishes processing it
+- [ ] Select the replacement build after processing. Its Info.plist declares that the app uses only encryption exempt from App Store Connect documentation requirements; no separate export-compliance attachment or code is expected for the current United States-only distribution.
+- [ ] Select the replacement build after Apple finishes processing it
 - [ ] Save all fields and address any App Store Connect validation messages
 - [ ] Add for Review, verify the submission summary, and submit
 
 Do not submit until the public URLs are live, the review credential has been re-tested on a clean install, and the screenshot gallery contains only synthetic data.
 
-The shipping build declares `ITSAppUsesNonExemptEncryption: true` because the encrypted device outbox uses SQLCipher in addition to Apple-provided HTTPS and secure-storage facilities. Do not answer that the app uses only Apple operating-system cryptography. With United States-only availability, Apple's current documentation indicates that the French encryption declaration is not required; App Store Connect still needs the build questionnaire/declaration completed and associated with build 6.
+The encrypted device outbox uses SQLCipher, an industry-standard algorithm, in addition to Apple-provided HTTPS and secure-storage facilities. The app is currently distributed only in the United States. Apple's current export-compliance matrix requires a French encryption declaration for this standard non-Apple encryption category only when the app is distributed in France. The replacement build therefore declares `ITSAppUsesNonExemptEncryption: false`, meaning the encryption is exempt from App Store Connect documentation requirements. Revisit this determination before adding France or changing cryptographic functionality.

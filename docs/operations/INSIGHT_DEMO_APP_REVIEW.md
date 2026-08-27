@@ -117,7 +117,10 @@ Use this sequence in App Review notes and for the internal release check:
   `/privacy`; they must be deployed and verified before submission.
 - Final App Privacy answers and build export-compliance answers remain required.
   Build 6 uses industry-standard SQLCipher in addition to Apple operating-system
-  encryption and contains no proprietary or non-standard cryptography.
+  encryption and contains no proprietary or non-standard cryptography. The
+  United States-only build declares its encryption as exempt from App Store
+  Connect documentation requirements; reassess before adding France or
+  changing cryptographic functionality.
 
 The complete listing copy, screenshot plan, and submission gate are maintained
 in `docs/operations/MOBILE_COMPANION_1_0_APP_STORE_SUBMISSION.md`.
