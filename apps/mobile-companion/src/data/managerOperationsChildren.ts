@@ -51,6 +51,19 @@ async function loadService(
   const parent = await loadManagerWorkspaceSnapshot(context, "operations", requestedDate);
   const operations = parent.operations;
   const routes = operations?.routes ?? [];
+  const summaryResult = operations?.historical && operations.serviceDate
+    ? await getSupabaseClient().rpc("get_daily_operations_summary", {
+        p_company_id: context.company_id,
+        p_service_date: operations.serviceDate,
+      })
+    : { data: [], error: null };
+  const summary = ((summaryResult.error ? [] : summaryResult.data ?? []) as SummaryRow[])[0] ?? null;
+  const summaryData = summary?.normalized_row_json ?? {};
+  const plannedStops = numberValue(summaryData.planned_delivery_stops);
+  const actualStops = numberValue(summaryData.actual_delivery_stops);
+  const completionBase = plannedStops || numberValue(summaryData.vscan_packages);
+  const completionActual = plannedStops ? actualStops : numberValue(summaryData.actual_delivery_packages);
+  const completion = completionBase ? Math.min(100, Math.round((completionActual / completionBase) * 100)) : 0;
   const maximumServiceDate = operations?.liveServiceDate ?? operations?.serviceDate;
   let availableDates: string[] = [];
   if (maximumServiceDate) {
@@ -67,11 +80,17 @@ async function loadService(
     }
   }
   return {
-    metrics: parent.metrics,
+    metrics: summary ? [
+      { label: "Routes reported", value: String(numberValue(summary.route_count) || routes.length) },
+      { label: "Delivery stops", value: `${compactNumber(actualStops)}/${compactNumber(plannedStops)}` },
+      { label: "Completion", value: `${completion}%`, tone: completion >= 99 ? "success" : undefined },
+    ] : parent.metrics,
     description: operations?.historical
       ? "Selected-day DSW, FCC, schedule, dispatch, manifest, and route evidence. Empty current route shells are excluded."
       : "Live route execution, service completion, pickups, and time-critical evidence in a mobile review layer.",
-    statusText: operations?.statusText,
+    statusText: summary
+      ? `${operations?.statusText ?? "Historical route evidence"} · finalized DSW summary`
+      : operations?.statusText,
     serviceDate: operations?.serviceDate,
     maximumServiceDate,
     availableDates,
@@ -102,7 +121,10 @@ async function loadService(
         `${route.progressPercent}% complete`,
         route.ilsPercent == null ? "ILS pending" : `${compactNumber(route.ilsPercent)}% ILS`,
         `${route.expressOpen} Express open`,
-      ],
+        route.evidenceSource ? `${route.evidenceSource} route record` : "",
+        route.lastDeliveryTime ? `Last delivery ${route.lastDeliveryTime}` : "",
+        route.lastPickupTime ? `Last pickup ${route.lastPickupTime}` : "",
+      ].filter(Boolean),
       tone: phaseTone(route),
     })),
     emptyMessage: operations

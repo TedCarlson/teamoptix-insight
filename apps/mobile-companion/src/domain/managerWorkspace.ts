@@ -72,6 +72,10 @@ export type ManagerOperationsRoute = {
   expressTotal: number;
   ilsPercent: number | null;
   progressPercent: number;
+  evidenceSource?: "DSW" | "FCC" | "Manifest" | "Dispatch";
+  lastDeliveryTime?: string | null;
+  lastPickupTime?: string | null;
+  lastTransmissionTime?: string | null;
 };
 
 export type ManagerOperationsSnapshot = {
