@@ -76,6 +76,8 @@ export type ManagerOperationsRoute = {
 
 export type ManagerOperationsSnapshot = {
   serviceDate: string;
+  liveServiceDate: string;
+  historical: boolean;
   statusText: string;
   terminalCode: string | null;
   timeZone: string;
@@ -91,6 +93,7 @@ export type ManagerWorkspaceSnapshot = {
   filters?: ManagerWorkspaceFilter[];
   statusText?: string;
   serviceDate?: string;
+  maximumServiceDate?: string;
   availableDates?: string[];
   operations?: ManagerOperationsSnapshot;
   people?: ManagerPeopleSnapshot;

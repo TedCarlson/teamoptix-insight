@@ -44,15 +44,37 @@ function phaseTone(route: ManagerOperationsRoute): ManagerWorkspaceTone {
   return "default";
 }
 
-async function loadService(context: ManagerAccessContext): Promise<ManagerWorkspaceSnapshot> {
-  const parent = await loadManagerWorkspaceSnapshot(context, "operations");
+async function loadService(
+  context: ManagerAccessContext,
+  requestedDate?: string,
+): Promise<ManagerWorkspaceSnapshot> {
+  const parent = await loadManagerWorkspaceSnapshot(context, "operations", requestedDate);
   const operations = parent.operations;
   const routes = operations?.routes ?? [];
+  const maximumServiceDate = operations?.liveServiceDate ?? operations?.serviceDate;
+  let availableDates: string[] = [];
+  if (maximumServiceDate) {
+    const calendarResult = await getSupabaseClient().rpc("get_daily_operations_calendar", {
+      p_company_id: context.company_id,
+      p_start_date: dateBy(maximumServiceDate, -730),
+      p_end_date: maximumServiceDate,
+    });
+    if (!calendarResult.error) {
+      availableDates = ((calendarResult.data ?? []) as CalendarRow[])
+        .filter((row) => row.has_final || row.status === "in_day")
+        .map((row) => row.service_date)
+        .sort();
+    }
+  }
   return {
     metrics: parent.metrics,
-    description: "Live route execution, service completion, pickups, and time-critical evidence in a mobile review layer.",
+    description: operations?.historical
+      ? "Selected-day DSW, FCC, schedule, dispatch, manifest, and route evidence. Empty current route shells are excluded."
+      : "Live route execution, service completion, pickups, and time-critical evidence in a mobile review layer.",
     statusText: operations?.statusText,
     serviceDate: operations?.serviceDate,
+    maximumServiceDate,
+    availableDates,
     filters: [
       { key: "all", label: "All" },
       { key: "on_job", label: "On job" },
@@ -303,7 +325,7 @@ export async function loadManagerOperationsChildSnapshot(
   key: Exclude<ManagerWorkspaceChildKey, "dispatch">,
   serviceDate?: string,
 ): Promise<ManagerWorkspaceSnapshot> {
-  if (key === "service") return loadService(context);
+  if (key === "service") return loadService(context, serviceDate);
   if (key === "planning") return loadPlanning(context);
   if (key === "reports") return loadReports(context, serviceDate);
   return loadWalkOns(context);

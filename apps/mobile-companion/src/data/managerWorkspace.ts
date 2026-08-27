@@ -10,6 +10,10 @@ import { getSupabaseClient } from "../lib/supabase";
 import { loadManagerPeopleSnapshot } from "./managerPeople";
 import { loadManagerFleetSnapshot } from "./managerFleet";
 import { loadManagerRoutesSnapshot } from "./managerRoutes";
+import {
+  hasManagerHistoricalFccEvidence,
+  resolveManagerServiceDate,
+} from "../domain/managerServiceHistory";
 
 function titleCase(value: string | null | undefined) {
   return String(value ?? "Unknown")
@@ -38,6 +42,7 @@ function completeSnapshot(
     filters: value.filters,
     statusText: value.statusText,
     serviceDate: value.serviceDate,
+    maximumServiceDate: value.maximumServiceDate,
     availableDates: value.availableDates,
     operations: value.operations,
     people: value.people,
@@ -68,17 +73,26 @@ export async function authoritativeOperationsDate(context: ManagerAccessContext)
   };
 }
 
-async function loadOperations(context: ManagerAccessContext) {
+export async function loadManagerOperationsSnapshot(
+  context: ManagerAccessContext,
+  requestedDate?: string,
+) {
   const authority = await authoritativeOperationsDate(context);
-  const serviceDate = authority.serviceDate;
+  const serviceDate = resolveManagerServiceDate(requestedDate, authority.serviceDate);
+  const historical = serviceDate !== authority.serviceDate;
   const supabase = getSupabaseClient();
   const hasDispatch = context.grants.includes("dispatch");
   const dispatchPromise = hasDispatch
-    ? supabase.rpc("mobile_companion_dispatch_workspace", {
-        p_company_slug: context.company_slug,
-      })
+    ? historical
+      ? supabase.rpc("get_daily_operations_dispatch_actions", {
+          p_company_id: context.company_id,
+          p_service_date: serviceDate,
+        })
+      : supabase.rpc("mobile_companion_dispatch_workspace", {
+          p_company_slug: context.company_slug,
+        })
     : Promise.resolve({ data: null, error: null });
-  const [factsResult, routesResult, dispatchResult, dswResult, healthResult] = await Promise.all([
+  const [factsResult, routesResult, dispatchResult, dswResult, fccResult, healthResult] = await Promise.all([
     supabase
       .from("schedule_day_fact_view")
       .select("service_date, roster_member_id, full_name, worker_type, planned_on, route_name, override_type")
@@ -96,6 +110,12 @@ async function loadOperations(context: ManagerAccessContext) {
       p_company_id: context.company_id,
       p_service_date: serviceDate,
     }),
+    historical
+      ? supabase.rpc("get_operations_fcc_current_rows", {
+          p_company_id: context.company_id,
+          p_service_date: serviceDate,
+        })
+      : Promise.resolve({ data: [], error: null }),
     supabase
       .from("operations_manifest_route_health_v")
       .select("route_key, route_label, delivery_stop_count, completed_delivery_stop_count, delivery_package_count, express_package_count, completed_express_package_count, attempted_express_package_count, open_express_package_count, pickup_stop_count, pickup_actual_package_count")
@@ -151,13 +171,28 @@ async function loadOperations(context: ManagerAccessContext) {
     pickup_stop_count: number | null;
     pickup_actual_package_count: number | null;
   };
+  type FccRow = {
+    source_route_key?: string | null;
+    source_wa_number?: string | null;
+    normalized_row_json?: {
+      wa_number?: string | null;
+      wa_number_normalized?: string | null;
+      source_wa_number?: string | null;
+      last_delivery_time?: string | null;
+      last_pickup_time?: string | null;
+      last_transmission_time?: string | null;
+      deliveries_complete?: boolean | null;
+      pickup_complete?: boolean | null;
+      final_stop_time?: string | null;
+    } | null;
+  };
   type FactRow = {
     full_name: string | null;
     worker_type: string | null;
     planned_on: boolean;
     route_name: string | null;
   };
-  const payload = (dispatchResult.error ? {} : dispatchResult.data ?? {}) as {
+  const payload = (!historical && !dispatchResult.error ? dispatchResult.data ?? {} : {}) as {
     dispatch_day?: { status?: string | null } | null;
     events?: Array<{
       id: string;
@@ -172,9 +207,19 @@ async function loadOperations(context: ManagerAccessContext) {
       seat?: string | null;
       note: string | null;
       created_at: string;
+      event_payload?: { reverses_event_id?: string | null } | null;
     }>;
   };
-  const events = Array.isArray(payload.events) ? payload.events : [];
+  type DispatchEvent = NonNullable<typeof payload.events>[number];
+  const rawEvents = (historical
+    ? (Array.isArray(dispatchResult.data) ? dispatchResult.data : [])
+    : Array.isArray(payload.events) ? payload.events : []) as DispatchEvent[];
+  const reversedEventIds = new Set(rawEvents
+    .map((event) => event.event_payload?.reverses_event_id)
+    .filter((value): value is string => Boolean(value)));
+  const events = rawEvents.filter((event) =>
+    !reversedEventIds.has(event.id) && !String(event.event_code ?? "").startsWith("UNDO_"),
+  );
   const normalizedKey = (value: string | null | undefined) => String(value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const numberValue = (value: number | string | null | undefined) => {
     const parsed = Number(value ?? 0);
@@ -189,6 +234,7 @@ async function loadOperations(context: ManagerAccessContext) {
   };
   const facts = (factsResult.data ?? []) as FactRow[];
   const dswRows = (dswResult.error ? [] : dswResult.data ?? []) as DswRow[];
+  const fccRows = (fccResult.error ? [] : fccResult.data ?? []) as FccRow[];
   const healthRows = (healthResult.error ? [] : healthResult.data ?? []) as HealthRow[];
   const plannedDriverByRoute = new Map<string, string>();
   facts.filter((row) => row.planned_on && row.route_name && row.full_name).forEach((row) => {
@@ -222,13 +268,59 @@ async function loadOperations(context: ManagerAccessContext) {
       if (activity >= currentActivity) healthByKey.set(key, row);
     });
   });
+  const configuredRoutes = (routesResult.data ?? []) as RouteRow[];
+  const configuredByAlias = new Map<string, RouteRow>();
+  configuredRoutes.forEach((route) => {
+    [route.id, route.route_name, route.current_wa_num].forEach((value) => {
+      const key = normalizedKey(value);
+      if (key) configuredByAlias.set(key, route);
+    });
+  });
+  const selectedRouteRows = historical
+    ? (() => {
+        const selected = new Map<string, RouteRow>();
+        const addRoute = (...aliases: Array<string | null | undefined>) => {
+          const keys = aliases.map(normalizedKey).filter(Boolean);
+          const configured = keys.map((key) => configuredByAlias.get(key)).find(Boolean);
+          const routeName = String(aliases.find((value) => String(value ?? "").trim()) ?? "").trim();
+          const key = normalizedKey(configured?.id || configured?.current_wa_num || configured?.route_name || routeName);
+          if (!key || selected.has(key)) return;
+          selected.set(key, configured ?? {
+            id: `historical-${key}`,
+            route_name: routeName || null,
+            current_wa_num: routeName || null,
+            runs_s: false,
+            runs_u: false,
+            runs_m: false,
+            runs_t: false,
+            runs_w: false,
+            runs_h: false,
+            runs_f: false,
+          });
+        };
+        dswRows.forEach((row) => addRoute(row.wa_number, row.route_name, row.route_baseline_id));
+        fccRows.filter((row) => hasManagerHistoricalFccEvidence(row.normalized_row_json)).forEach((row) => {
+          const evidence = row.normalized_row_json ?? {};
+          addRoute(row.source_route_key, evidence.wa_number_normalized, evidence.wa_number, row.source_wa_number, evidence.source_wa_number);
+        });
+        healthRows.forEach((row) => {
+          const hasEvidence = numberValue(row.delivery_package_count)
+            + numberValue(row.delivery_stop_count)
+            + numberValue(row.pickup_stop_count)
+            + numberValue(row.express_package_count) > 0;
+          if (hasEvidence) addRoute(row.route_key, row.route_label);
+        });
+        events.forEach((event) => addRoute(event.route_key, event.route_label, event.from_route_key, event.to_route_key));
+        return [...selected.values()];
+      })()
+    : configuredRoutes.filter(routeRunsToday);
   const routeEvents = (route: RouteRow) => {
     const keys = new Set([route.id, route.route_name, route.current_wa_num].map(normalizedKey).filter(Boolean));
     return events.filter((event) => [event.route_key, event.route_label, event.from_route_key, event.to_route_key]
       .map(normalizedKey)
       .some((key) => key && keys.has(key)));
   };
-  const routes = ((routesResult.data ?? []) as RouteRow[]).filter(routeRunsToday).map((route): ManagerOperationsRoute => {
+  const routes = selectedRouteRows.map((route): ManagerOperationsRoute => {
     const dsw = [route.id, route.route_name, route.current_wa_num].map(normalizedKey).map((key) => dswByKey.get(key)).find(Boolean);
     const health = [route.id, route.route_name, route.current_wa_num].map(normalizedKey).map((key) => healthByKey.get(key)).find(Boolean);
     const relatedEvents = routeEvents(route);
@@ -247,7 +339,7 @@ async function loadOperations(context: ManagerAccessContext) {
     let phase: ManagerOperationsPhase = driverName ? "waiting" : "unassigned";
     if (returned || (plannedPackages > 0 && completedPackages >= plannedPackages && (plannedPickups === 0 || completedPickups >= plannedPickups))) phase = "end_of_day";
     else if (driverName && (completedStops > 0 || completedPackages > 0 || completedPickups > 0 || dsw?.driver_name)) phase = "on_job";
-    else if (eventCodes.some((value) => /DISPATCH|DEPART|ON.?ROAD/.test(value)) || payload.dispatch_day?.status === "LOCKED") phase = "on_job";
+    else if (eventCodes.some((value) => /DISPATCH|DEPART|ON.?ROAD/.test(value)) || (!historical && payload.dispatch_day?.status === "LOCKED")) phase = "on_job";
     else if (eventCodes.some((value) => /ARRIV/.test(value))) phase = "arrived";
     const rawIls = dsw?.ils_percent == null || dsw.ils_percent === "" ? null : Number(String(dsw.ils_percent).replace("%", ""));
     const ilsPercent = rawIls == null || !Number.isFinite(rawIls) ? null : rawIls <= 1 ? rawIls * 100 : rawIls;
@@ -275,7 +367,9 @@ async function loadOperations(context: ManagerAccessContext) {
   const onJob = routes.filter((route) => route.phase === "on_job").length;
   const endOfDay = routes.filter((route) => route.phase === "end_of_day").length;
   const generatedAt = dswRows.map((row) => row.generated_at_text).filter(Boolean).at(0);
-  const evidenceState = dswResult.error && healthResult.error
+  const evidenceState = historical
+    ? `Historical route evidence · ${compactDate(serviceDate)}`
+    : dswResult.error && healthResult.error
     ? "Schedule plan · live volume temporarily unavailable"
     : dswResult.error
       ? "Route plan · current DSW volume temporarily unavailable"
@@ -295,6 +389,8 @@ async function loadOperations(context: ManagerAccessContext) {
     emptyMessage: `No operating routes are scheduled for ${compactDate(serviceDate)}.`,
     operations: {
       serviceDate,
+      liveServiceDate: authority.serviceDate,
+      historical,
       statusText: evidenceState,
       terminalCode: authority.terminalCode,
       timeZone: authority.timeZone,
@@ -479,8 +575,9 @@ async function loadAdmin(context: ManagerAccessContext) {
 export async function loadManagerWorkspaceSnapshot(
   context: ManagerAccessContext,
   key: ManagerWorkspaceKey,
+  serviceDate?: string,
 ): Promise<ManagerWorkspaceSnapshot> {
-  if (key === "operations") return loadOperations(context);
+  if (key === "operations") return loadManagerOperationsSnapshot(context, serviceDate);
   if (key === "people") return loadPeople(context);
   if (key === "fleet") return loadFleet(context);
   if (key === "routes") return loadRoutes(context);
