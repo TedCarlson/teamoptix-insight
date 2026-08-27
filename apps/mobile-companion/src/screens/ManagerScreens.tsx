@@ -2100,6 +2100,125 @@ function OperationsReportDateNavigator(props: {
   );
 }
 
+const SERVICE_CALENDAR_WEEKDAYS = ["S", "U", "M", "T", "W", "H", "F"];
+
+function serviceDateBy(value: string, delta: number) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + delta, 12));
+  return date.toISOString().slice(0, 10);
+}
+
+function serviceMonthBy(value: string, delta: number) {
+  const [year, month] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1 + delta, 1, 12));
+  return date.toISOString().slice(0, 7);
+}
+
+function serviceCalendarCells(monthValue: string) {
+  const [year, month] = monthValue.split("-").map(Number);
+  const first = new Date(Date.UTC(year, month - 1, 1, 12));
+  const start = new Date(first);
+  start.setUTCDate(first.getUTCDate() - first.getUTCDay());
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(start);
+    date.setUTCDate(start.getUTCDate() + index);
+    return date.toISOString().slice(0, 10);
+  });
+}
+
+function ServiceDateNavigator(props: {
+  maximum: string;
+  productionDates: string[];
+  serviceDate: string;
+  onServiceDate: (value: string) => void;
+}) {
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 768;
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [visibleMonth, setVisibleMonth] = useState(props.serviceDate.slice(0, 7));
+  const productionDates = new Set(props.productionDates);
+  const next = serviceDateBy(props.serviceDate, 1);
+  const cells = serviceCalendarCells(visibleMonth);
+
+  useEffect(() => setVisibleMonth(props.serviceDate.slice(0, 7)), [props.serviceDate]);
+
+  const choose = (value: string) => {
+    if (value > props.maximum) return;
+    setCalendarOpen(false);
+    props.onServiceDate(value);
+  };
+
+  return (
+    <>
+      <View style={[styles.serviceDateAuthority, isTablet && styles.serviceDateAuthorityTablet]}>
+        <View style={styles.serviceDateAuthorityCopy}>
+          <Text style={styles.reportDateLabel}>SERVICE DATE AUTHORITY</Text>
+          <Text style={styles.serviceDateAuthorityValue}>
+            {readableDate(props.serviceDate, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+          </Text>
+          <Text style={styles.reportDateMeta}>DSW, FCC, routes, manifests, schedule, dispatch, and evidence use this date.</Text>
+        </View>
+        <View style={styles.serviceDateActions}>
+          <Pressable accessibilityLabel="Previous service date" onPress={() => props.onServiceDate(serviceDateBy(props.serviceDate, -1))} style={styles.serviceDateStep}>
+            <Text style={styles.serviceDateStepText}>‹</Text>
+          </Pressable>
+          <Pressable accessibilityLabel="Open production calendar" accessibilityRole="button" onPress={() => setCalendarOpen(true)} style={styles.serviceDateCalendarButton}>
+            <Text style={styles.serviceDateCalendarButtonText}>Production calendar</Text>
+          </Pressable>
+          <Pressable accessibilityLabel="Next service date" disabled={next > props.maximum} onPress={() => next <= props.maximum && props.onServiceDate(next)} style={[styles.serviceDateStep, next > props.maximum && styles.controlDisabled]}>
+            <Text style={styles.serviceDateStepText}>›</Text>
+          </Pressable>
+        </View>
+      </View>
+      <Modal animationType="fade" onRequestClose={() => setCalendarOpen(false)} transparent visible={calendarOpen}>
+        <View style={styles.serviceCalendarBackdrop}>
+          <View style={[styles.serviceCalendarPanel, isTablet && styles.serviceCalendarPanelTablet]}>
+            <View style={styles.serviceCalendarHeader}>
+              <Pressable accessibilityLabel="Previous month" onPress={() => setVisibleMonth(serviceMonthBy(`${visibleMonth}-01`, -1))} style={styles.serviceCalendarMonthButton}>
+                <Text style={styles.serviceDateStepText}>‹</Text>
+              </Pressable>
+              <View style={styles.serviceCalendarTitleCopy}>
+                <Text style={styles.reportDateLabel}>PRODUCTION CALENDAR</Text>
+                <Text style={styles.serviceCalendarTitle}>{readableDate(`${visibleMonth}-01`, { month: "long", year: "numeric" })}</Text>
+              </View>
+              <Pressable accessibilityLabel="Next month" disabled={visibleMonth >= props.maximum.slice(0, 7)} onPress={() => setVisibleMonth(serviceMonthBy(`${visibleMonth}-01`, 1))} style={[styles.serviceCalendarMonthButton, visibleMonth >= props.maximum.slice(0, 7) && styles.controlDisabled]}>
+                <Text style={styles.serviceDateStepText}>›</Text>
+              </Pressable>
+            </View>
+            <View style={styles.serviceCalendarWeekdays}>
+              {SERVICE_CALENDAR_WEEKDAYS.map((day, index) => <Text key={`${day}-${index}`} style={styles.serviceCalendarWeekday}>{day}</Text>)}
+            </View>
+            <View style={styles.serviceCalendarGrid}>
+              {cells.map((value) => {
+                const inMonth = value.slice(0, 7) === visibleMonth;
+                const production = productionDates.has(value);
+                const selected = value === props.serviceDate;
+                const selectable = inMonth && value <= props.maximum;
+                return (
+                  <Pressable
+                    accessibilityLabel={`${readableDate(value, { weekday: "long", month: "long", day: "numeric" })}, ${production ? "production available" : "no production report"}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: !selectable, selected }}
+                    disabled={!selectable}
+                    key={value}
+                    onPress={() => choose(value)}
+                    style={[styles.serviceCalendarDay, production && styles.serviceCalendarDayProduction, selected && styles.serviceCalendarDaySelected, !selectable && styles.serviceCalendarDayDisabled]}
+                  >
+                    <Text style={[styles.serviceCalendarDayText, production && styles.serviceCalendarDayTextProduction]}>{Number(value.slice(-2))}</Text>
+                    {production ? <View style={styles.serviceCalendarProductionDot} /> : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={styles.serviceCalendarLegend}>Green dates have production evidence. Any past date can be reviewed.</Text>
+            <Pressable onPress={() => setCalendarOpen(false)} style={styles.serviceCalendarClose}><Text style={styles.serviceCalendarCloseText}>Close calendar</Text></Pressable>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
+}
+
 function WalkOnAssignmentModal(props: {
   busy: boolean;
   onClose: () => void;
@@ -2499,6 +2618,14 @@ export function ManagerOperationsChildScreen(props: {
           serviceDate={props.snapshot.serviceDate}
         />
       ) : null}
+      {props.childKey === "service" && props.snapshot?.serviceDate && props.snapshot.maximumServiceDate ? (
+        <ServiceDateNavigator
+          maximum={props.snapshot.maximumServiceDate}
+          onServiceDate={props.onServiceDate}
+          productionDates={props.snapshot.availableDates ?? []}
+          serviceDate={props.snapshot.serviceDate}
+        />
+      ) : null}
       {props.childKey === "walk_ons" ? (
         <ManagerWalkOnsSurface
           busy={props.busy}
@@ -2512,7 +2639,7 @@ export function ManagerOperationsChildScreen(props: {
       ) : <WorkspaceSnapshotView error={props.error} loading={props.loading} onRetry={props.onRefresh} snapshot={props.snapshot} />}
       <Card tone="primary">
         <Text style={sharedStyles.bodyStrong}>iPad operations workspace</Text>
-        <Text style={sharedStyles.muted}>{props.childKey === "walk_ons" ? "Create, reuse, govern, assign, and review pay treatment for support identities without leaving the app." : "This surface uses company-authoritative operational data and preserves the current service-date context."}</Text>
+        <Text style={sharedStyles.muted}>{props.childKey === "walk_ons" ? "Create, reuse, govern, assign, and review pay treatment for support identities without leaving the app." : props.childKey === "service" ? "Choose any prior service date to review the same dated production layers used by the web workspace." : "This surface uses company-authoritative operational data and preserves the current service-date context."}</Text>
       </Card>
     </Screen>
   );
@@ -4127,6 +4254,35 @@ const styles = StyleSheet.create({
   reportDateLabel: { color: colors.primary, fontSize: 9, fontWeight: "900", letterSpacing: 1.1 },
   reportDateValue: { color: colors.ink, fontSize: 16, fontWeight: "900" },
   reportDateMeta: { color: colors.muted, fontSize: 9, fontWeight: "700" },
+  serviceDateAuthority: { gap: 12, padding: 14, borderWidth: 1, borderColor: colors.border, borderRadius: 16, backgroundColor: colors.white },
+  serviceDateAuthorityTablet: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  serviceDateAuthorityCopy: { flex: 1, gap: 4 },
+  serviceDateAuthorityValue: { color: colors.ink, fontSize: 16, fontWeight: "900" },
+  serviceDateActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  serviceDateStep: { width: 42, minHeight: 42, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 11, backgroundColor: colors.panel },
+  serviceDateStepText: { color: colors.primary, fontSize: 28, fontWeight: "700", lineHeight: 30 },
+  serviceDateCalendarButton: { flex: 1, minHeight: 42, alignItems: "center", justifyContent: "center", paddingHorizontal: 13, borderRadius: 11, backgroundColor: colors.primary },
+  serviceDateCalendarButtonText: { color: colors.white, fontSize: 11, fontWeight: "900" },
+  serviceCalendarBackdrop: { flex: 1, alignItems: "center", justifyContent: "center", padding: 18, backgroundColor: "rgba(15, 23, 42, 0.55)" },
+  serviceCalendarPanel: { width: "100%", maxWidth: 390, gap: 10, padding: 14, borderRadius: 20, backgroundColor: colors.white },
+  serviceCalendarPanelTablet: { maxWidth: 560, padding: 20 },
+  serviceCalendarHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
+  serviceCalendarMonthButton: { width: 42, minHeight: 42, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 11, backgroundColor: colors.panel },
+  serviceCalendarTitleCopy: { flex: 1, alignItems: "center", gap: 2 },
+  serviceCalendarTitle: { color: colors.ink, fontSize: 17, fontWeight: "900" },
+  serviceCalendarWeekdays: { flexDirection: "row", gap: 5 },
+  serviceCalendarWeekday: { flex: 1, color: colors.muted, fontSize: 9, fontWeight: "900", textAlign: "center" },
+  serviceCalendarGrid: { flexDirection: "row", flexWrap: "wrap", gap: 5 },
+  serviceCalendarDay: { width: "13.1%", aspectRatio: 1, alignItems: "center", justifyContent: "center", gap: 3, borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.white },
+  serviceCalendarDayProduction: { borderColor: colors.success, backgroundColor: "#ECFDF5" },
+  serviceCalendarDaySelected: { borderWidth: 3, borderColor: colors.primary },
+  serviceCalendarDayDisabled: { opacity: 0.25 },
+  serviceCalendarDayText: { color: colors.muted, fontSize: 12, fontWeight: "900" },
+  serviceCalendarDayTextProduction: { color: "#166534" },
+  serviceCalendarProductionDot: { width: 5, height: 5, borderRadius: 999, backgroundColor: colors.success },
+  serviceCalendarLegend: { color: colors.muted, fontSize: 10, fontWeight: "700" },
+  serviceCalendarClose: { minHeight: 42, alignItems: "center", justifyContent: "center", borderRadius: 11, backgroundColor: colors.panel },
+  serviceCalendarCloseText: { color: colors.ink, fontSize: 12, fontWeight: "900" },
   operationsControls: { gap: 8, paddingRight: 20 },
   operationsControlsTablet: { flexDirection: "row", flexWrap: "wrap", paddingRight: 0 },
   operationsControl: { minHeight: 40, justifyContent: "center", paddingHorizontal: 14, borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.white },
