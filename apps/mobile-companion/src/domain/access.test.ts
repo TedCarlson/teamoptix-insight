@@ -51,6 +51,27 @@ describe("MC-8A mobile role contexts", () => {
     expect(contexts[0].role === "MANAGER" && contexts[0].is_platform_owner).toBe(false);
   });
 
+  it("keeps a demo administrator limited to explicit App Review grants", () => {
+    const contexts = buildMobileAccessContexts({
+      memberships: [member({
+        company_id: "company-demo",
+        company_name: "Insight Demo",
+        company_slug: "insight-demo",
+        experience_mode: "DEMO",
+        relationship_type: "admin",
+        grants: ["schedule", "dispatch", "delivery_window", "reports", "fleet", "routes"],
+      })],
+    }, []);
+
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0]).toMatchObject({
+      role: "MANAGER",
+      company_id: "company-demo",
+      experience_mode: "DEMO",
+      grants: ["schedule", "dispatch", "delivery_window", "reports", "fleet", "routes"],
+    });
+  });
+
   it("derives platform-owner manager scope from authorized demo companies", () => {
     const contexts = buildMobileAccessContexts({
       is_platform_owner: true,

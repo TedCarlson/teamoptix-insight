@@ -22,6 +22,7 @@ export type AccessContextMembership = {
   company_name: string;
   company_slug: string;
   company_status?: string | null;
+  experience_mode?: "LIVE" | "DEMO" | null;
   relationship_type: string;
   membership_status: string;
   title?: string | null;
@@ -48,6 +49,7 @@ type BaseMobileContext = {
   company_id: string;
   company_name: string;
   company_slug: string;
+  experience_mode: "LIVE" | "DEMO";
   context_key: string;
   relationship_type: string;
   title: string | null;
@@ -92,7 +94,10 @@ function normalizedGrants(
   membership: AccessContextMembership,
   isPlatformOwner: boolean,
 ) {
-  if (isPlatformOwner || membership.relationship_type === "admin") {
+  if (
+    membership.experience_mode !== "DEMO"
+    && (isPlatformOwner || membership.relationship_type === "admin")
+  ) {
     return [...COMPANY_WORKSPACE_GRANTS];
   }
   if (!Array.isArray(membership.grants)) return [];
@@ -127,6 +132,7 @@ export function buildMobileAccessContexts(
       company_id: membership.company_id,
       company_name: membership.company_name,
       company_slug: membership.company_slug,
+      experience_mode: membership.experience_mode ?? "LIVE",
       context_key: `manager:${membership.company_id}`,
       relationship_type: membership.relationship_type,
       title: membership.title ?? null,
@@ -147,6 +153,7 @@ export function buildMobileAccessContexts(
         company_id: gate.company_id,
         company_name: gate.company_name,
         company_slug: gate.company_slug,
+        experience_mode: "LIVE",
         context_key: `manager:${gate.company_id}`,
         relationship_type: "admin",
         title: "Platform owner",
@@ -166,6 +173,8 @@ export function buildMobileAccessContexts(
     contexts.push({
       ...gate,
       role: "DRIVER",
+      experience_mode: membership?.experience_mode
+        ?? (gate.access_mode === "ADMIN_DEMO" ? "DEMO" : "LIVE"),
       context_key: driverAccessContextKey(gate),
       relationship_type: membership?.relationship_type ?? "member",
       title: membership?.title ?? null,

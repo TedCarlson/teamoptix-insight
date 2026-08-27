@@ -6,6 +6,7 @@ const context: ManagerAccessContext = {
   company_id: "company-1",
   company_name: "Beacon Point Ventures",
   company_slug: "beacon-point-ventures",
+  experience_mode: "LIVE",
   context_key: "manager:company-1",
   relationship_type: "member",
   title: "Fleet Manager",
