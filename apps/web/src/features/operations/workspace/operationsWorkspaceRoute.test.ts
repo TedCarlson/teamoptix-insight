@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { persistentOperationsSurface } from "./operationsWorkspaceRoute";
+import {
+  canAccessPersistentOperationsSurface,
+  persistentOperationsSurface,
+  type PersistentOperationsAccess,
+} from "./operationsWorkspaceRoute";
 
 const slug = "beacon-point-ventures";
 
@@ -21,5 +25,28 @@ describe("persistentOperationsSurface", () => {
         slug
       )
     ).toBeNull();
+  });
+});
+
+describe("canAccessPersistentOperationsSurface", () => {
+  const limitedAccess: PersistentOperationsAccess = {
+    operations: false,
+    dispatch: true,
+    service: true,
+    planning: false,
+  };
+
+  it("keeps granted operational surfaces available", () => {
+    expect(canAccessPersistentOperationsSurface("dispatch", limitedAccess)).toBe(true);
+    expect(canAccessPersistentOperationsSurface("service", limitedAccess)).toBe(true);
+  });
+
+  it("blocks the upload workspace and other ungranted surfaces", () => {
+    expect(canAccessPersistentOperationsSurface("operations", limitedAccess)).toBe(false);
+    expect(canAccessPersistentOperationsSurface("planning", limitedAccess)).toBe(false);
+  });
+
+  it("does not interfere with non-persistent child routes", () => {
+    expect(canAccessPersistentOperationsSurface(null, limitedAccess)).toBe(true);
   });
 });

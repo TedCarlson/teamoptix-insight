@@ -4,6 +4,18 @@ export type PersistentOperationsSurface =
   | "service"
   | "planning";
 
+export type PersistentOperationsAccess = Record<
+  PersistentOperationsSurface,
+  boolean
+>;
+
+export function canAccessPersistentOperationsSurface(
+  surface: PersistentOperationsSurface | null,
+  access: PersistentOperationsAccess
+): boolean {
+  return surface === null || access[surface];
+}
+
 export function persistentOperationsSurface(
   pathname: string,
   slug: string
