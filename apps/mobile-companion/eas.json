@@ -18,15 +18,6 @@
       "environment": "production",
       "distribution": "internal"
     },
-    "e2e-test": {
-      "extends": "base",
-      "environment": "production",
-      "withoutCredentials": true,
-      "android": {
-        "buildType": "apk",
-        "image": "latest"
-      }
-    },
     "production": {
       "extends": "base",
       "environment": "production",
