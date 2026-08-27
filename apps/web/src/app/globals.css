@@ -10965,6 +10965,74 @@ button.payroll-ledger-status {
 .brand-footer__access span { color: rgba(255,255,255,.4); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; }
 .brand-footer__access a { color: var(--brand-signal); font-size: 13px; font-weight: 850; }
 
+/* Public privacy and support information */
+.public-information-page { overflow: visible; }
+.public-information-hero {
+  color: #fff;
+  background:
+    radial-gradient(circle at 76% 30%, rgba(45,178,148,.18), transparent 30%),
+    linear-gradient(140deg, #07111f, #0c2338);
+}
+.public-information-hero__copy {
+  width: min(100% - 64px, 1180px);
+  margin: 0 auto;
+  padding: 95px 0 110px;
+}
+.public-information-hero__copy h1 {
+  max-width: 900px;
+  margin: 0;
+  font-size: clamp(58px, 7vw, 100px);
+  line-height: .92;
+  letter-spacing: -.07em;
+}
+.public-information-hero__copy > p:not(.brand-eyebrow) {
+  max-width: 760px;
+  margin: 30px 0 20px;
+  color: rgba(255,255,255,.68);
+  font-size: 19px;
+  line-height: 1.65;
+}
+.public-information-hero__copy > span {
+  color: var(--brand-signal);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.public-information-content {
+  width: min(100% - 64px, 980px);
+  margin: 0 auto;
+  padding: 90px 0 120px;
+}
+.public-information-content section {
+  display: grid;
+  grid-template-columns: minmax(210px, .42fr) minmax(0, 1fr);
+  gap: 14px 60px;
+  padding: 34px 0;
+  border-top: 1px solid #c5cecc;
+}
+.public-information-content section:last-child { border-bottom: 1px solid #c5cecc; }
+.public-information-content h2 {
+  grid-row: 1 / span 12;
+  margin: 0;
+  font-size: 23px;
+  line-height: 1.1;
+  letter-spacing: -.045em;
+}
+.public-information-content p,
+.public-information-content ul,
+.public-information-content ol {
+  grid-column: 2;
+  margin: 0;
+  color: #4f5f66;
+  font-size: 15px;
+  line-height: 1.75;
+}
+.public-information-content ul,
+.public-information-content ol { padding-left: 20px; }
+.public-information-content li + li { margin-top: 10px; }
+.public-information-content a { color: #087c69; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
+
 /* Insight product page */
 .product-hero { position: relative; isolation: isolate; min-height: 880px; color: #fff; background: linear-gradient(135deg, #07111f, #0c2338); }
 .product-hero__glow { position: absolute; z-index: -1; inset: 0; background: radial-gradient(circle at 72% 34%, rgba(45,178,148,.18), transparent 28%), linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.028) 1px, transparent 1px); background-size: auto, 80px 80px, 80px 80px; mask-image: linear-gradient(#000, rgba(0,0,0,.2)); }
@@ -11098,6 +11166,15 @@ button.payroll-ledger-status {
   .brand-footer { grid-template-columns: 1fr 1fr; gap: 45px; padding: 60px 24px; }
   .brand-footer__lead,
   .brand-footer__access { grid-column: 1 / -1; }
+  .public-information-hero__copy,
+  .public-information-content { width: min(100% - 32px, 980px); }
+  .public-information-hero__copy { padding: 70px 0 85px; }
+  .public-information-content { padding: 65px 0 90px; }
+  .public-information-content section { grid-template-columns: 1fr; gap: 18px; }
+  .public-information-content h2 { grid-row: auto; }
+  .public-information-content p,
+  .public-information-content ul,
+  .public-information-content ol { grid-column: 1; }
   .product-hero { min-height: 1120px; }
   .product-hero__layout { min-height: 0; padding: 80px 0; }
   .product-declaration { padding: 95px 20px; }

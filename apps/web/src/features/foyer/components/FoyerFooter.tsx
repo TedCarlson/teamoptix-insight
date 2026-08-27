@@ -11,6 +11,8 @@ const companyLinks = [
   { href: "/company", label: "Company" },
   { href: "/company-owner", label: "For operators" },
   { href: "/commercial/agreements", label: "Agreements" },
+  { href: "/privacy", label: "Privacy" },
+  { href: "/support", label: "Support" },
   { href: "/sign-in", label: "Sign in" },
 ];
 

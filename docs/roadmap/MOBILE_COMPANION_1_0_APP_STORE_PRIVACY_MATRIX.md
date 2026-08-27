@@ -2,9 +2,10 @@
 
 **Technical audit date:** August 24, 2026
 
-**Status:** Proposed App Store answers based on the shipping code. Legal policy,
-retention periods, deletion process, public URLs, and final answers require Team
-Optix approval before public App Review submission.
+**Status:** Proposed App Store answers based on the shipping code. Public
+Privacy Policy and Support routes are implemented locally as of August 27,
+2026. They must be deployed and verified, and the final App Store Connect
+answers must be reviewed before public App Review submission.
 
 ## Product boundary
 
@@ -66,19 +67,14 @@ The final privacy policy must identify the actual service-provider entities and
 hosting regions selected by Team Optix. Build and distribution services are not
 runtime collection merely because they produced or delivered the binary.
 
-## Policy decisions still required
+## Publication gate
 
-Before public submission, Team Optix must approve and publish:
+Before public submission, Team Optix must deploy and verify:
 
-1. a permanent public Privacy Policy URL;
-2. precise retention periods for duty location, inspections, messages and
-   acknowledgements, schedules/time-off records, account records, and backups;
-3. the user/account deletion and correction request process;
-4. consent and permission-withdrawal language, including that revoking Always
-   Location prevents Start Duty but does not block schedules, messages, or
-   account information;
-5. service-provider and international-transfer disclosures;
-6. a support/contact channel and, optionally, a User Privacy Choices URL.
+1. `https://teamoptix.io/privacy`;
+2. `https://teamoptix.io/support`;
+3. the monitored public support channel currently listed on those pages; and
+4. the App Store Connect privacy answers represented by this matrix.
 
 This matrix must be re-audited whenever remote notifications, analytics,
 crash-reporting, advertising, payments, motion data, or a new runtime SDK is
