@@ -51,4 +51,6 @@ to a weaker authentication or plaintext queue.
   handles duplicate and partial submissions.
 - Location remains observation-only evidence, never automatic payroll,
   vehicle, carrier, or delivery truth.
-- Motion access is not requested or used.
+- The app does not call motion-activity APIs. The iOS bundle still includes a
+  motion purpose string because the linked location module exposes Core Motion
+  APIs and App Store validation requires the declaration.
