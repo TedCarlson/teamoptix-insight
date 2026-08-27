@@ -14,7 +14,7 @@ export default function CompanyWorkspaceHomePage() {
   const destinationCount = groups.reduce((count, group) => count + group.destinations.length, 0);
 
   return (
-    <main className="workspace-shell">
+    <main className="workspace-shell company-workspace-home">
       <section style={{ width: "var(--app-page)", margin: "0 auto", padding: "28px 0 36px", display: "grid", gap: 18 }}>
         <header className="workspace-header">
           <div style={{ display: "grid", gap: 8 }}>
