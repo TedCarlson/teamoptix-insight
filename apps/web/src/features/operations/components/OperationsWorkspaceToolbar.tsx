@@ -1,5 +1,7 @@
 "use client";
 
+import { useAccess } from "@/features/access/AccessProvider";
+import { canAccessCompanyWorkspace } from "@/features/company/config/companyWorkspaceAccess";
 import { useOperationsCollectionSignal } from "@/features/operations/workspace/useOperationsCollectionSignal";
 import type { OperationsCollectionSignal } from "@/features/operations/workspace/operationsCollectionSignal";
 
@@ -37,6 +39,12 @@ export default function OperationsWorkspaceToolbar(props: OperationsWorkspaceToo
     attendanceLabel = "Attendance",
     actions,
   } = props;
+  const access = useAccess();
+  const canUpload = canAccessCompanyWorkspace(
+    access,
+    slug,
+    "operations_uploads"
+  );
   const { signal: authoritativeSignal, refresh: refreshCollectionSignal } =
     useOperationsCollectionSignal(slug, !collectionSignal);
   const renderedSignal = collectionSignal ?? authoritativeSignal;
@@ -130,7 +138,7 @@ export default function OperationsWorkspaceToolbar(props: OperationsWorkspaceToo
           {refreshing ? "Refreshing..." : "Refresh"}
         </button>
 
-        {onUpload ? (
+        {onUpload && canUpload ? (
           <button
             type="button"
             className="button button-primary"

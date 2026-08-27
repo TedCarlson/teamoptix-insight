@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { useAccess } from "@/features/access/AccessProvider";
+import { canAccessCompanyWorkspace } from "@/features/company/config/companyWorkspaceAccess";
 import { hasMobileWorkspaceAccess } from "@/features/mobile-workspace/mobileWorkspace";
 import { useLob } from "@/features/lob/hooks/useLob";
 import CompanyConfigWorkspace, { type CompanyConfigSection } from "@/features/company/config/CompanyConfigWorkspace";
@@ -272,6 +273,11 @@ export default function CompanyPage() {
 
   const isCompanyAdmin = canEditCompany;
   const hasScopedMobileWorkspaces = hasMobileWorkspaceAccess(access, slug);
+  const canUploadOperationsReports = canAccessCompanyWorkspace(
+    access,
+    slug,
+    "operations_uploads"
+  );
 
   useEffect(() => {
     if (access.loading || !slug || pathname !== `/company/${slug}`) return;
@@ -631,7 +637,7 @@ export default function CompanyPage() {
           <SectionCard
             eyebrow="Daily operations"
             title="Summary"
-            action={
+            action={canUploadOperationsReports ? (
               <button
                 type="button"
                 className="button button-primary"
@@ -639,7 +645,7 @@ export default function CompanyPage() {
               >
                 Upload Final Report
               </button>
-            }
+            ) : undefined}
           >
             <DailyOperationsSummary slug={slug} />
           </SectionCard>
@@ -769,16 +775,18 @@ export default function CompanyPage() {
         ) : null}
       </section>
 
-      <OperationsReportUploadOverlay
-        open={uploadOpen}
-        onClose={(refresh) => {
-          setUploadOpen(false);
+      {canUploadOperationsReports ? (
+        <OperationsReportUploadOverlay
+          open={uploadOpen}
+          onClose={(refresh) => {
+            setUploadOpen(false);
 
-          if (refresh) {
-            window.location.reload();
-          }
-        }}
-      />
+            if (refresh) {
+              window.location.reload();
+            }
+          }}
+        />
+      ) : null}
     </main>
   );
 }
