@@ -59,6 +59,7 @@ const membership: AccessMembership = {
   company_id: "44444444-4444-4444-8444-444444444444",
   company_name: "Team Optix LLC",
   company_slug: "team-optix",
+  experience_mode: "LIVE",
   context_key: "44444444-4444-4444-8444-444444444444",
   relationship_type: "member",
   title: "Driver",
