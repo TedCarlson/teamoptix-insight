@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function MasterServiceAgreementRedirectPage() {
-  redirect("/teamoptix/business/contracts/documents/master-service-agreement");
+  redirect("/commercial/agreements#master-service-agreement");
 }

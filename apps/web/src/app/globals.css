@@ -11032,6 +11032,47 @@ button.payroll-ledger-status {
 .public-information-content ol { padding-left: 20px; }
 .public-information-content li + li { margin-top: 10px; }
 .public-information-content a { color: #087c69; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
+.public-information-content section[id] { scroll-margin-top: 24px; }
+.public-information-notice,
+.public-information-closing {
+  margin: 0 0 34px;
+  padding: 26px 28px;
+  border: 1px solid #c5cecc;
+  border-radius: 20px;
+  background: #f3f7f5;
+}
+.public-information-notice > strong,
+.public-information-closing > strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #0a1a29;
+  font-size: 16px;
+}
+.public-information-notice > p,
+.public-information-closing > p {
+  margin: 0;
+  color: #4f5f66;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.agreement-summary-index {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+.agreement-summary-index a {
+  padding: 8px 12px;
+  border: 1px solid #b9cbc6;
+  border-radius: 999px;
+  background: #fff;
+  font-size: 11px;
+  text-decoration: none;
+}
+.public-information-closing {
+  margin: 34px 0 0;
+  background: #fff;
+}
 
 /* Insight product page */
 .product-hero { position: relative; isolation: isolate; min-height: 880px; color: #fff; background: linear-gradient(135deg, #07111f, #0c2338); }
