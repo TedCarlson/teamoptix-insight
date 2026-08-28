@@ -106,6 +106,10 @@ type RouteGpxMap = {
     latitude: number;
     longitude: number;
     stop_count: number;
+    first_sequence: number;
+    last_sequence: number;
+    member_sequences: number[];
+    radius_meters: number;
     execution_status: "OPEN" | "ATTEMPTED" | "CLOSED" | "UNKNOWN";
     stop_type: "EXPRESS" | "DELIVERY" | "PICKUP" | "UNKNOWN";
     status_observed_at_local: string | null;

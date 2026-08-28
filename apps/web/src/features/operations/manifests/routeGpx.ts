@@ -156,41 +156,177 @@ export type RouteGpxStopCluster = {
   stop_count: number;
   first_sequence: number;
   last_sequence: number;
+  member_sequences: number[];
+  radius_meters: number;
   labels: string[];
 };
 
-export function clusterRouteGpxStops(points: RouteGpxPoint[]) {
-  const clusters = new Map<string, RouteGpxStopCluster>();
-  for (const point of points.filter((candidate) => candidate.is_stop)) {
-    const key = `${point.latitude.toFixed(4)}:${point.longitude.toFixed(4)}`;
-    const current = clusters.get(key);
+export type RouteGpxClusterOptions = {
+  radiusMeters?: number;
+};
+
+export type RouteGpxDeliveryClusterAnalysis = {
+  route_key: string | null;
+  route_label: string | null;
+  source_point_count: number;
+  retained_point_count: number;
+  stop_point_count: number;
+  cluster_count: number;
+  cluster_radius_meters: number;
+  clusters: RouteGpxStopCluster[];
+};
+
+export const DEFAULT_ROUTE_GPX_CLUSTER_RADIUS_METERS = 25;
+const EARTH_RADIUS_METERS = 6_371_008.8;
+
+function radians(value: number) {
+  return (value * Math.PI) / 180;
+}
+
+export function routeGpxDistanceMeters(
+  left: Pick<RouteGpxPoint, "latitude" | "longitude">,
+  right: Pick<RouteGpxPoint, "latitude" | "longitude">
+) {
+  const latitudeDelta = radians(right.latitude - left.latitude);
+  const longitudeDelta = radians(right.longitude - left.longitude);
+  const leftLatitude = radians(left.latitude);
+  const rightLatitude = radians(right.latitude);
+  const haversine =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(leftLatitude) *
+      Math.cos(rightLatitude) *
+      Math.sin(longitudeDelta / 2) ** 2;
+  return (
+    2 *
+    EARTH_RADIUS_METERS *
+    Math.asin(Math.min(1, Math.sqrt(haversine)))
+  );
+}
+
+function clusterRadiusMeters(value: number | undefined) {
+  const radius = value ?? DEFAULT_ROUTE_GPX_CLUSTER_RADIUS_METERS;
+  if (!Number.isFinite(radius) || radius < 1 || radius > 250) {
+    throw new Error("Route GPX cluster radius must be between 1 and 250 meters.");
+  }
+  return radius;
+}
+
+type WorkingRouteGpxStopCluster = RouteGpxStopCluster & {
+  members: RouteGpxPoint[];
+};
+
+function recalculateCluster(cluster: WorkingRouteGpxStopCluster) {
+  cluster.stop_count = cluster.members.length;
+  cluster.latitude =
+    cluster.members.reduce((sum, point) => sum + point.latitude, 0) /
+    cluster.stop_count;
+  cluster.longitude =
+    cluster.members.reduce((sum, point) => sum + point.longitude, 0) /
+    cluster.stop_count;
+  cluster.first_sequence = Math.min(
+    ...cluster.members.map((point) => point.sequence_number)
+  );
+  cluster.last_sequence = Math.max(
+    ...cluster.members.map((point) => point.sequence_number)
+  );
+  cluster.member_sequences = cluster.members
+    .map((point) => point.sequence_number)
+    .sort((left, right) => left - right);
+  cluster.radius_meters = Math.max(
+    0,
+    ...cluster.members.map((point) => routeGpxDistanceMeters(cluster, point))
+  );
+  cluster.cluster_key = `${cluster.members[0].latitude.toFixed(6)}:${cluster.members[0].longitude.toFixed(6)}`;
+}
+
+/**
+ * Groups stops that represent the same small delivery location without relying
+ * on coordinate rounding. Every member must remain within the configured
+ * distance of every other member, which prevents a chain of nearby stops from
+ * collapsing an entire street into one cluster.
+ */
+export function clusterRouteGpxStops(
+  points: RouteGpxPoint[],
+  options: RouteGpxClusterOptions = {}
+) {
+  const radiusMeters = clusterRadiusMeters(options.radiusMeters);
+  const clusters: WorkingRouteGpxStopCluster[] = [];
+  const stops = points
+    .filter((candidate) => candidate.is_stop)
+    .sort((left, right) => left.sequence_number - right.sequence_number);
+
+  for (const point of stops) {
+    const candidates = clusters
+      .filter((cluster) =>
+        cluster.members.every(
+          (member) => routeGpxDistanceMeters(member, point) <= radiusMeters
+        )
+      )
+      .map((cluster) => ({
+        cluster,
+        distance: routeGpxDistanceMeters(cluster, point),
+      }))
+      .sort((left, right) => left.distance - right.distance);
+    const current = candidates[0]?.cluster;
     const label = point.point_name ?? point.point_description;
     if (!current) {
-      clusters.set(key, {
-        cluster_key: key,
+      const cluster: WorkingRouteGpxStopCluster = {
+        cluster_key: "",
         latitude: point.latitude,
         longitude: point.longitude,
         stop_count: 1,
         first_sequence: point.sequence_number,
         last_sequence: point.sequence_number,
+        member_sequences: [point.sequence_number],
+        radius_meters: 0,
         labels: label ? [label] : [],
-      });
+        members: [point],
+      };
+      recalculateCluster(cluster);
+      clusters.push(cluster);
       continue;
     }
-    const count = current.stop_count + 1;
-    current.latitude =
-      (current.latitude * current.stop_count + point.latitude) / count;
-    current.longitude =
-      (current.longitude * current.stop_count + point.longitude) / count;
-    current.stop_count = count;
-    current.last_sequence = point.sequence_number;
+    current.members.push(point);
     if (label && !current.labels.includes(label) && current.labels.length < 3) {
       current.labels.push(label);
     }
+    recalculateCluster(current);
   }
-  return [...clusters.values()].sort(
-    (left, right) => left.first_sequence - right.first_sequence
-  );
+
+  return clusters
+    .sort((left, right) => left.first_sequence - right.first_sequence)
+    .map((cluster) => ({
+      cluster_key: cluster.cluster_key,
+      latitude: cluster.latitude,
+      longitude: cluster.longitude,
+      stop_count: cluster.stop_count,
+      first_sequence: cluster.first_sequence,
+      last_sequence: cluster.last_sequence,
+      member_sequences: cluster.member_sequences,
+      radius_meters: cluster.radius_meters,
+      labels: cluster.labels,
+    }));
+}
+
+export function analyzeRouteGpxDeliveryClusters(
+  buffer: Buffer,
+  options: RouteGpxClusterOptions = {}
+): RouteGpxDeliveryClusterAnalysis {
+  const radiusMeters = clusterRadiusMeters(options.radiusMeters);
+  const parsed = parseRouteGpx(buffer);
+  const clusters = clusterRouteGpxStops(parsed.retainedPoints, {
+    radiusMeters,
+  });
+  return {
+    route_key: routeKeyFromGpxText(parsed.trackName),
+    route_label: parsed.trackName,
+    source_point_count: parsed.sourcePointCount,
+    retained_point_count: parsed.retainedPoints.length,
+    stop_point_count: parsed.stopPointCount,
+    cluster_count: clusters.length,
+    cluster_radius_meters: radiusMeters,
+    clusters,
+  };
 }
 
 export function routeKeyFromGpxText(value: unknown) {
