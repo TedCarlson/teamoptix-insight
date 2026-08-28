@@ -8,22 +8,18 @@ import {
   Marker,
   NavigationControl,
   Popup,
-  type StyleSpecification,
 } from "maplibre-gl";
+import {
+  addInternalRoadLayers,
+  applyInternalMapTheme,
+  configureInternalMapWorker,
+  createInternalMapStyle,
+  currentInternalMapTheme,
+  internalMapColors,
+  observeInternalMapTheme,
+} from "@/features/maps/internalMapStyle";
 import type { RouteGpxPresentation } from "@/features/operations/manifests/routeGpxPresentation";
 import styles from "./RouteGpxMap.module.css";
-
-const privateRouteStyle: StyleSpecification = {
-  version: 8,
-  sources: {},
-  layers: [
-    {
-      id: "private-route-background",
-      type: "background",
-      paint: { "background-color": "#e8eef6" },
-    },
-  ],
-};
 
 const statusColors = {
   OPEN: "#facc15",
@@ -66,36 +62,13 @@ function popupContent(properties: {
   return root;
 }
 
-function gridFeatures(bounds: LngLatBounds) {
-  const west = bounds.getWest();
-  const east = bounds.getEast();
-  const south = bounds.getSouth();
-  const north = bounds.getNorth();
-  const features = [];
-  for (let index = 1; index < 6; index += 1) {
-    const longitude = west + ((east - west) * index) / 6;
-    const latitude = south + ((north - south) * index) / 6;
-    features.push({
-      type: "Feature" as const,
-      properties: {},
-      geometry: {
-        type: "LineString" as const,
-        coordinates: [[longitude, south], [longitude, north]],
-      },
-    });
-    features.push({
-      type: "Feature" as const,
-      properties: {},
-      geometry: {
-        type: "LineString" as const,
-        coordinates: [[west, latitude], [east, latitude]],
-      },
-    });
-  }
-  return features;
-}
-
-export default function RouteGpxMap({ routeGpx }: { routeGpx: RouteGpxPresentation }) {
+export default function RouteGpxMap({
+  slug,
+  routeGpx,
+}: {
+  slug: string;
+  routeGpx: RouteGpxPresentation;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const statusCounts = useMemo(
     () =>
@@ -122,30 +95,23 @@ export default function RouteGpxMap({ routeGpx }: { routeGpx: RouteGpxPresentati
       (result, coordinate) => result.extend(coordinate),
       new LngLatBounds(coordinates[0], coordinates[0])
     );
+    configureInternalMapWorker();
+    const mapTheme = currentInternalMapTheme();
+    const mapColors = internalMapColors(mapTheme);
     const map = new MapLibreMap({
       container: containerRef.current,
-      style: privateRouteStyle,
+      style: createInternalMapStyle(mapTheme),
       center: bounds.getCenter(),
       zoom: 12,
       attributionControl: false,
       cooperativeGestures: true,
     });
+    const stopObservingTheme = observeInternalMapTheme(map);
     map.addControl(new NavigationControl({ showCompass: false }), "top-right");
-
-    map.on("load", () => {
-      map.addSource("route-grid", {
-        type: "geojson",
-        data: {
-          type: "FeatureCollection",
-          features: gridFeatures(bounds),
-        },
-      });
-      map.addLayer({
-        id: "route-grid-lines",
-        type: "line",
-        source: "route-grid",
-        paint: { "line-color": "#94a3b8", "line-width": 1, "line-opacity": 0.28 },
-      });
+    map.resize();
+    map.fitBounds(bounds, { padding: 64, maxZoom: 15, duration: 0 });
+    const addRoutePath = () => {
+      addInternalRoadLayers(map, slug, window.location.origin);
       if (pathCoordinates.length >= 2) {
         map.addSource("route-path", {
           type: "geojson",
@@ -162,50 +128,66 @@ export default function RouteGpxMap({ routeGpx }: { routeGpx: RouteGpxPresentati
           id: "route-path-shadow",
           type: "line",
           source: "route-path",
-          paint: { "line-color": "#fff", "line-width": 8, "line-opacity": 0.9 },
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: { "line-color": mapColors.routeCasing, "line-width": 10, "line-opacity": 0.94 },
         });
         map.addLayer({
           id: "route-path-line",
           type: "line",
           source: "route-path",
-          paint: { "line-color": "#2563eb", "line-width": 4, "line-opacity": 0.94 },
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: { "line-color": mapColors.routeLine, "line-width": 5, "line-opacity": 0.98 },
         });
+        applyInternalMapTheme(map, currentInternalMapTheme());
       }
-
-      for (const cluster of routeGpx.stop_clusters) {
-        const marker = document.createElement("button");
-        marker.type = "button";
-        marker.className = styles.marker;
-        marker.textContent = String(cluster.first_sequence);
-        marker.title = `${cluster.stop_type.toLowerCase()} · ${cluster.execution_status.toLowerCase()} · route sequence ${cluster.first_sequence}`;
-        marker.setAttribute("aria-label", marker.title);
-        marker.style.setProperty("--route-marker-fill", statusColors[cluster.execution_status]);
-        marker.style.setProperty("--route-marker-border", stopBorders[cluster.stop_type]);
-        const size = Math.min(38, 24 + Math.sqrt(cluster.stop_count) * 3);
-        marker.style.width = `${size}px`;
-        marker.style.height = `${size}px`;
-        const popup = new Popup({ offset: 14 }).setDOMContent(
-          popupContent({
-            stopType: cluster.stop_type,
-            executionStatus: cluster.execution_status,
-            stopCount: cluster.stop_count,
-            firstSequence: cluster.first_sequence,
-            lastSequence: cluster.last_sequence,
-            observedAt: cluster.status_observed_at_local,
-          })
-        );
-        new Marker({ element: marker, anchor: "center" })
-          .setLngLat([cluster.longitude, cluster.latitude])
-          .setPopup(popup)
-          .addTo(map);
-      }
-
-      map.resize();
-      map.fitBounds(bounds, { padding: 64, maxZoom: 15, duration: 0 });
+    };
+    map.on("error", (event) => {
+      console.error("Route map rendering failed.", event.error);
     });
+    let styleFrame: number | null = null;
+    const installWhenStyleReady = () => {
+      if (map.isStyleLoaded()) {
+        addRoutePath();
+        return;
+      }
+      styleFrame = window.requestAnimationFrame(installWhenStyleReady);
+    };
+    installWhenStyleReady();
 
-    return () => map.remove();
-  }, [routeGpx]);
+    for (const cluster of routeGpx.stop_clusters) {
+      const marker = document.createElement("button");
+      marker.type = "button";
+      marker.className = styles.marker;
+      marker.textContent = String(cluster.first_sequence);
+      marker.title = `${cluster.stop_type.toLowerCase()} · ${cluster.execution_status.toLowerCase()} · route sequence ${cluster.first_sequence}`;
+      marker.setAttribute("aria-label", marker.title);
+      marker.style.setProperty("--route-marker-fill", statusColors[cluster.execution_status]);
+      marker.style.setProperty("--route-marker-border", stopBorders[cluster.stop_type]);
+      const size = Math.min(38, 24 + Math.sqrt(cluster.stop_count) * 3);
+      marker.style.width = `${size}px`;
+      marker.style.height = `${size}px`;
+      const popup = new Popup({ offset: 14 }).setDOMContent(
+        popupContent({
+          stopType: cluster.stop_type,
+          executionStatus: cluster.execution_status,
+          stopCount: cluster.stop_count,
+          firstSequence: cluster.first_sequence,
+          lastSequence: cluster.last_sequence,
+          observedAt: cluster.status_observed_at_local,
+        })
+      );
+      new Marker({ element: marker, anchor: "center" })
+        .setLngLat([cluster.longitude, cluster.latitude])
+        .setPopup(popup)
+        .addTo(map);
+    }
+
+    return () => {
+      if (styleFrame !== null) window.cancelAnimationFrame(styleFrame);
+      stopObservingTheme();
+      map.remove();
+    };
+  }, [routeGpx, slug]);
 
   if (!routeGpx.stop_clusters.length) {
     return <div className={styles.empty}>No GPX delivery clusters are available for this route and date.</div>;
@@ -228,7 +210,7 @@ export default function RouteGpxMap({ routeGpx }: { routeGpx: RouteGpxPresentati
           </span>
         ))}
       </div>
-      <p className={styles.note}>Circle border: orange express · blue pickup · white regular delivery. Select a marker for route sequence and status. This private canvas does not send route coordinates to a third-party map provider.</p>
+      <p className={styles.note}>Circle border: orange express · blue pickup · white regular delivery. Select a marker for route sequence and status. Roads are served from TeamOptix-controlled Census reference data; route coordinates remain inside TeamOptix.</p>
     </section>
   );
 }

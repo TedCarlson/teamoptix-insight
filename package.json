@@ -16,8 +16,13 @@
     "test:runner": "pnpm --filter @insight/report-runner test:controller",
     "typecheck": "pnpm --filter web typecheck",
     "typecheck:mobile": "pnpm --filter @insight/mobile-companion typecheck",
+    "map:roads:import": "node scripts/maps/import-census-road-packs.mjs",
+    "map:zcta:import": "node scripts/maps/import-census-zcta-boundaries.mjs",
     "artifact-ingest-poller": "node ./scripts/local-artifact-ingest-poller.js",
     "verify": "pnpm lint && pnpm test && pnpm test:mobile && pnpm test:runner && pnpm typecheck && pnpm typecheck:mobile && pnpm build && pnpm build:worker",
     "build:worker": "pnpm --filter automation-worker build"
+  },
+  "devDependencies": {
+    "shapefile": "0.6.6"
   }
 }
