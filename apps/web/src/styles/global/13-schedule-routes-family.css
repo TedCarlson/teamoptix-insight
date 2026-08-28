@@ -1,0 +1,383 @@
+
+/* Shared Schedule family contract: calendar, workbench, overrides, and presets. */
+.schedule-theme-scope {
+  min-width: 0;
+  color: var(--text);
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .workspace-shell {
+  color: var(--text);
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .workspace-shell :where(h1, h2, h3, h4, strong) {
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .workspace-shell :where(p, small, label, dt, dd) {
+  color: var(--muted) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope :where(.value-card, .schedule-posture-band, .schedule-workbench-grid) {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .16) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope :where(input, select, textarea) {
+  border-color: #3a5069 !important;
+  background: #111f31 !important;
+  color: var(--text) !important;
+  color-scheme: dark;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope :where(input, textarea)::placeholder {
+  color: #8293a8 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope :where(input, select, textarea):focus {
+  border-color: #6d9dff !important;
+  box-shadow: 0 0 0 3px rgba(72, 125, 235, .2) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope :where(.schedule-workbench-filter-toggle, .schedule-baseline-editor > div, .schedule-preset-editor > div) {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+  color: #dce7f2 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .schedule-family-table th,
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .schedule-history-scroll table th {
+  border-color: #344a64 !important;
+  background: var(--surface-3) !important;
+  color: #afbed0 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .schedule-workbench-grid thead tr {
+  border-color: #344a64 !important;
+  background: var(--surface-3) !important;
+  color: #afbed0 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .schedule-family-table td,
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .schedule-history-scroll table td {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  color: #c8d5e3 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .schedule-family-table tbody tr:hover td,
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .schedule-history-scroll table tbody tr:hover td {
+  background: #12243a !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .schedule-workbench-row[aria-expanded="true"] td,
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .schedule-workbench-row-editor,
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .schedule-workbench-row-editor > div {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+  color: #dce7f2 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .schedule-posture-band > div:first-child {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .schedule-posture-band > div:last-child > div {
+  color: #b8c7d8 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .schedule-delta-pill[data-tone="neutral"] {
+  border-color: #3a5069 !important;
+  background: var(--surface-3) !important;
+  color: #b8c7d8 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .schedule-delta-pill[data-tone="surplus"] {
+  border-color: #3e8d6d !important;
+  background: #123b30 !important;
+  color: #8ce8c0 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .schedule-delta-pill[data-tone="deficit"] {
+  border-color: #73414a !important;
+  background: #2b1e2a !important;
+  color: #f0a7b0 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope :where(.schedule-baseline-editor, .schedule-preset-editor) :where(section, fieldset, details, [role="group"]) {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+  color: #dce7f2 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope :where(.schedule-baseline-editor, .schedule-preset-editor) button[aria-pressed="false"] {
+  border-color: #3a5069 !important;
+  background: #111f31 !important;
+  color: #b8c7d8 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope :where(.schedule-baseline-editor, .schedule-preset-editor) button[aria-pressed="true"] {
+  border-color: #3e8d6d !important;
+  background: #123b30 !important;
+  color: #9aebc8 !important;
+}
+
+/* Override review and history. */
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .schedule-history-scroll {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .schedule-history-footer {
+  border-color: var(--line) !important;
+  background: rgba(20, 38, 59, .98) !important;
+  color: var(--muted) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .schedule-history-scroll tbody tr {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  color: #c8d5e3 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .schedule-history-scroll tbody tr:has(.button-primary) {
+  background: rgba(37, 99, 235, .12) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .schedule-override-impact-card :where(section, article) {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+  color: #dce7f2 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-theme-scope .schedule-override-impact-card > div[style*="dashed"] {
+  border-color: #3a5069 !important;
+  background: var(--surface-2) !important;
+  color: var(--muted) !important;
+}
+
+/* Calendar day detail is an operational drawer, not a light page inside dark mode. */
+html[data-theme="dark"] .schedule-day-drawer-backdrop {
+  background: rgba(1, 8, 18, .64) !important;
+  backdrop-filter: blur(4px);
+}
+
+html[data-theme="dark"] .schedule-day-drawer {
+  border-left: 1px solid #36506b !important;
+  background: rgba(15, 30, 48, .98) !important;
+  color: var(--text) !important;
+  box-shadow: -18px 0 48px rgba(0, 0, 0, .42) !important;
+}
+
+html[data-theme="dark"] .schedule-day-drawer :where(h1, h2, h3, h4, strong) {
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .schedule-day-drawer :where(p, span, small) {
+  color: var(--muted) !important;
+}
+
+html[data-theme="dark"] .schedule-day-drawer-section {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+  color: #dce7f2 !important;
+}
+
+html[data-theme="dark"] .schedule-day-drawer-section > div:first-child {
+  border-color: var(--line) !important;
+  background: var(--surface-3) !important;
+}
+
+/* Shared Routes family contract: route posture, editors, and baseline history. */
+.routes-theme-scope {
+  min-width: 0;
+  color: var(--text);
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .workspace-shell {
+  color: var(--text);
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .workspace-shell :where(h1, h2, h3, h4, strong) {
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .workspace-shell :where(p, small, label, dt, dd) {
+  color: var(--muted) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .value-card {
+  border-color: var(--line) !important;
+  background: rgba(15, 30, 48, .96) !important;
+  color: var(--text) !important;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .16) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .value-card__eyebrow {
+  color: #54d6aa !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .value-card__title {
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .value-card__body {
+  color: #aebed0 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope :where(input, select, textarea) {
+  border-color: #3a5069 !important;
+  background: #111f31 !important;
+  color: var(--text) !important;
+  color-scheme: dark;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope :where(input, textarea)::placeholder {
+  color: #8293a8 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope :where(input, select, textarea):focus {
+  border-color: #6d9dff !important;
+  box-shadow: 0 0 0 3px rgba(72, 125, 235, .2) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope :where(.routes-filter-toggle, .route-draft-editor__days) {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+  color: #dce7f2 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .routes-filter-toggle span,
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .route-draft-editor label {
+  color: #c8d5e3 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .routes-family-table-wrap {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .025);
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .routes-family-table {
+  background: var(--surface) !important;
+  color: #c8d5e3 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .routes-family-table th {
+  border-color: #344a64 !important;
+  background: var(--surface-3) !important;
+  color: #afbed0 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .routes-family-table td {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  color: #d7e2ee !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .routes-family-table tbody tr:hover td {
+  background: #12243a !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .routes-table-secondary {
+  color: #91a3b8 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .routes-day-pill[data-active="true"] {
+  border-color: #3e8d6d !important;
+  background: #123b30 !important;
+  color: #8ce8c0 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .routes-day-pill[data-active="false"] {
+  border-color: #3a5069 !important;
+  background: var(--surface-3) !important;
+  color: #8fa1b6 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope :where(.route-history-row-editor td, .route-history-row-editor__surface) {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+  color: #dce7f2 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .route-draft-editor {
+  border-color: #36506b !important;
+  background: rgba(20, 38, 59, .98) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .route-draft-editor :where(.hero-stat__label, label span) {
+  color: #9eb0c4 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .routes-table-footer-rail {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .16) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .button:not(.button-primary) {
+  border-color: #3a5069 !important;
+  background: #14263b !important;
+  color: #dce7f2 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .button:not(.button-primary):hover:not(:disabled) {
+  border-color: #52708f !important;
+  background: #1b314a !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .routes-theme-scope .button:disabled {
+  color: #718299 !important;
+  opacity: .72;
+}
+
+@media (max-width: 980px) {
+  .routes-filter-controls,
+  .route-draft-editor__fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .routes-filter-controls,
+  .route-draft-editor__fields {
+    grid-template-columns: 1fr !important;
+  }
+
+  .route-draft-editor__days {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 1120px) {
+  .product-living-system__heading { grid-template-columns: 1fr; gap: 24px; }
+  .product-living-system__heading > p { max-width: 650px; }
+  .product-living-system__stage { grid-template-columns: 1fr; }
+  .product-living-system__narrative { min-height: 0; max-width: 620px; }
+  .product-living-system__orbit { justify-self: center; }
+}
+
+@media (max-width: 720px) {
+  .product-living-system { padding: 34px 18px; border-radius: 28px; }
+  .product-living-system__heading h2 { font-size: 43px; }
+  .product-living-system__narrative { padding: 22px 0 22px 20px; }
+  .product-living-system__orbit { width: min(540px, 100%); margin-inline: 0; }
+  .product-living-system__node { width: 68px; gap: 5px; }
+  .product-living-system__node > span { width: 40px; height: 40px; }
+  .product-living-system__node strong { font-size: 8px; }
+  .product-living-system__core { width: 34%; }
+  .product-living-system__core small { display: none; }
+  .product-living-system > footer { flex-wrap: wrap; line-height: 1.7; }
+}
+
+@media (max-width: 430px) {
+  .product-living-system__node strong { display: none; }
+  .product-living-system__node.is-active strong { display: block; position: absolute; top: 45px; white-space: nowrap; }
+  .product-living-system__core img { width: 34px; height: 34px; }
+  .product-living-system__core strong { font-size: 18px; }
+  .product-living-system__core > span { font-size: 6px; }
+}

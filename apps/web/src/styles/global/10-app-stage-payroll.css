@@ -1,0 +1,672 @@
+
+/* One authenticated workspace stage. Pages provide content, never a second shell. */
+.company-workspace-frame {
+  --workspace-stage-bg: #f4f7fb;
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: var(--workspace-stage-bg);
+  color: var(--text);
+}
+
+.company-workspace-stage { min-width: 0; background: transparent; }
+.company-workspace-stage > .workspace-shell,
+.company-workspace-stage > main.workspace-shell { min-height: 0; background: transparent; }
+.company-workspace-stage .workspace-main { box-sizing: border-box; padding-top: 12px; padding-bottom: 36px; }
+
+html[data-theme="dark"] .company-workspace-frame {
+  --workspace-stage-bg: #071321;
+  --surface: #0f1e30;
+  --surface-2: #14263b;
+  --surface-3: #192d45;
+  --text: #edf4fb;
+  --muted: #9caec2;
+  --line: #2a3f57;
+}
+
+html[data-theme="dark"] .company-workspace-stage {
+  background:
+    radial-gradient(circle at 85% -10%, rgba(39, 120, 147, .1), transparent 32%),
+    var(--workspace-stage-bg);
+}
+
+html[data-theme="dark"] .company-workspace-stage .workspace-main > article,
+html[data-theme="dark"] .company-workspace-stage .workspace-main > section,
+html[data-theme="dark"] .company-workspace-stage [class*="__report"],
+html[data-theme="dark"] .company-workspace-stage .payroll-workspace-toolbar,
+html[data-theme="dark"] .company-workspace-stage .payroll-week-control,
+html[data-theme="dark"] .company-workspace-stage .payroll-adjustment-editor,
+html[data-theme="dark"] .company-workspace-stage .payroll-evidence-ledger,
+html[data-theme="dark"] .company-workspace-stage .payroll-adjustment-desk__rail,
+html[data-theme="dark"] .company-workspace-stage .payroll-adjustment-desk__surface {
+  border-color: var(--line) !important;
+  background-color: var(--surface) !important;
+  color: var(--text) !important;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .18) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .company-workspace-home .value-card {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .16) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .company-workspace-home .value-card:hover,
+html[data-theme="dark"] .company-workspace-stage .company-workspace-home .value-card:focus-visible {
+  border-color: #5d91ff !important;
+  background: #142943 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .dispatch-workforce-rail,
+html[data-theme="dark"] .company-workspace-stage .dispatch-route-queue,
+html[data-theme="dark"] .company-workspace-stage .dispatch-route-queue__chrome,
+html[data-theme="dark"] .company-workspace-stage .dispatch-route-queue__express-summary,
+html[data-theme="dark"] .company-workspace-stage .dispatch-right-column > aside,
+html[data-theme="dark"] .company-workspace-stage .operations-status-popover__panel,
+html[data-theme="dark"] .company-workspace-stage .schedule-calendar-day {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .dispatch-workforce-rail__legend,
+html[data-theme="dark"] .company-workspace-stage .dispatch-route-queue__header,
+html[data-theme="dark"] .company-workspace-stage .dispatch-route-row--labels,
+html[data-theme="dark"] .company-workspace-stage .payroll-adjustment-editor__header,
+html[data-theme="dark"] .company-workspace-stage .payroll-evidence-ledger__header {
+  border-color: var(--line) !important;
+  background-color: var(--surface-2) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .schedule-calendar-day__body,
+html[data-theme="dark"] .company-workspace-stage .schedule-calendar-day__body > div:not(:last-child),
+html[data-theme="dark"] .company-workspace-stage .payroll-workspace-toolbar h2,
+html[data-theme="dark"] .company-workspace-stage .payroll-week-control__range {
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .dispatch-workforce-rail__summary,
+html[data-theme="dark"] .company-workspace-stage .dispatch-workforce-rail__summary > div:first-child,
+html[data-theme="dark"] .company-workspace-stage .dispatch-workforce-rail__legend span:first-child,
+html[data-theme="dark"] .company-workspace-stage .dispatch-route-row {
+  border-color: var(--line) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .dispatch-workforce-row,
+html[data-theme="dark"] .company-workspace-stage .dispatch-route-row__seat-button,
+html[data-theme="dark"] .company-workspace-stage .dispatch-route-row__plan-signal,
+html[data-theme="dark"] .company-workspace-stage [data-express-progress="true"],
+html[data-theme="dark"] .company-workspace-stage .dispatch-attendance-toggle > span {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .dispatch-workforce-row.is-called-out:not(.is-staged) {
+  border-color: #73414a !important;
+  background: #2b1e2a !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .dispatch-workforce-row.is-staged,
+html[data-theme="dark"] .company-workspace-stage .dispatch-route-row.is-assignment-target,
+html[data-theme="dark"] .company-workspace-stage .dispatch-route-row.is-editor-open {
+  border-color: #4f7fd8 !important;
+  background: #14294a !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .dispatch-workforce-row__assignment strong,
+html[data-theme="dark"] .company-workspace-stage .dispatch-route-row__identity > strong,
+html[data-theme="dark"] .company-workspace-stage .dispatch-route-row__plan-card,
+html[data-theme="dark"] .company-workspace-stage .dispatch-route-row__plan-signal,
+html[data-theme="dark"] .company-workspace-stage .dispatch-route-row__plan-signal strong,
+html[data-theme="dark"] .company-workspace-stage .dispatch-right-column > aside :where(h1, h2, h3, h4, strong) {
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .dispatch-route-row__identity > span,
+html[data-theme="dark"] .company-workspace-stage .dispatch-route-row__support-assignment small,
+html[data-theme="dark"] .company-workspace-stage .dispatch-workforce-group__label,
+html[data-theme="dark"] .company-workspace-stage .dispatch-workforce-rail__summary dt,
+html[data-theme="dark"] .company-workspace-stage .dispatch-right-column > aside :where(p, small, dt) {
+  color: var(--muted) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .express-progress-signal__segments > div {
+  background: color-mix(in srgb, currentColor 13%, var(--surface-2)) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .dispatch-attendance-toggle.is-present > span {
+  border-color: #3e8d6d !important;
+  background: #123b30 !important;
+  color: #7ee2b8 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .workspace-main > article :where(h1, h2, h3, h4, h5, h6, strong) {
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .workspace-main > article :where(p, small, label, dt, dd, th, td) {
+  color: var(--muted) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .workspace-main > article :where(a, button) {
+  color: inherit;
+}
+
+html[data-theme="dark"] .company-workspace-stage .company-billing-panel,
+html[data-theme="dark"] .company-workspace-stage .company-billing-tier-evidence {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .16) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .company-billing-title,
+html[data-theme="dark"] .company-workspace-stage .company-billing-panel :where(h2, h3, strong),
+html[data-theme="dark"] .company-workspace-stage .company-billing-tier-evidence :where(h2, h3, strong) {
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .company-billing-panel :where(p, small),
+html[data-theme="dark"] .company-workspace-stage .company-billing-tier-evidence :where(p, small) {
+  color: var(--muted) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .company-billing-profile-table,
+html[data-theme="dark"] .company-workspace-stage .company-billing-profile-row,
+html[data-theme="dark"] .company-workspace-stage .company-billing-profile-label,
+html[data-theme="dark"] .company-workspace-stage .company-billing-profile-value,
+html[data-theme="dark"] .company-workspace-stage .company-billing-tier-evidence__stat {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .company-billing-profile-label {
+  color: var(--muted) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-week-summary {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-workspace-toolbar {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-week-control,
+html[data-theme="dark"] .company-workspace-stage .payroll-week-control__button,
+html[data-theme="dark"] .company-workspace-stage .payroll-week-control__range,
+html[data-theme="dark"] .company-workspace-stage .payroll-action-button:not(:disabled) {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-week-control__button:hover,
+html[data-theme="dark"] .company-workspace-stage .payroll-action-button:not(:disabled):hover {
+  border-color: #4c6b8f !important;
+  background: var(--surface-3) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .button:disabled,
+html[data-theme="dark"] .company-workspace-stage .button[aria-disabled="true"],
+html[data-theme="dark"] .company-workspace-stage .payroll-summary-table__memo-save:disabled {
+  border-color: #2d425a !important;
+  background: #111f31 !important;
+  color: #718299 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-summary-table-wrap {
+  border-color: var(--line);
+  background: var(--surface);
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-summary-table th {
+  border-color: #344a64;
+  background: var(--surface-3);
+  color: #afbed0;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-summary-table td {
+  border-color: #2a3f57;
+  background: var(--surface);
+  color: #c8d5e3;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-summary-table__row:hover td {
+  background: #12243a;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-summary-table__row td:first-child strong,
+html[data-theme="dark"] .company-workspace-stage .payroll-summary-table .is-total {
+  color: #f2f7fc;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-summary-table__group td {
+  border-color: #3a526d;
+  background: #192d45;
+  color: #b8c7d8;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-summary-table__memo-input {
+  border-color: #506781;
+  background: #111f31;
+  color: #edf4fb;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-summary-table__memo-input::placeholder { color: #8b9bb0; }
+
+html[data-theme="dark"] .company-workspace-stage .payroll-summary-table__memo-save {
+  border-color: #3a5069;
+  background: #172a40;
+  color: #8495aa;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-summary-table__memo-save.is-changed {
+  border-color: #5d91ff;
+  background: rgba(37, 99, 235, .2);
+  color: #a9c5ff;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-summary-table__day-token {
+  border-color: #3d8d6c;
+  background: #123b30;
+  color: #8ce8c0;
+}
+
+/* Shared Payroll family surfaces. Child views inherit one table and content contract. */
+.payroll-family-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid #e6edf5;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.payroll-family-table {
+  width: 100%;
+  color: #334155;
+}
+
+.payroll-family-table-detail {
+  overflow: hidden;
+}
+
+.payroll-time-summary {
+  border: 1px solid #e6edf5;
+  border-radius: 14px;
+}
+
+.payroll-time-location-dialog {
+  color: #334155;
+}
+
+html[data-theme="dark"] .company-workspace-stage :where(.payroll-workspace, .payroll-compliance-workspace) {
+  color: var(--text);
+}
+
+html[data-theme="dark"] .company-workspace-stage :where(.payroll-workspace, .payroll-compliance-workspace) :where(h1, h2, h3, h4, strong) {
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage :where(.payroll-workspace, .payroll-compliance-workspace) :where(p, small) {
+  color: var(--muted) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-family-table-wrap,
+html[data-theme="dark"] .company-workspace-stage .payroll-family-table-detail {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-family-table {
+  background: var(--surface) !important;
+  color: #c8d5e3 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-family-table tr,
+html[data-theme="dark"] .company-workspace-stage .payroll-family-table tr[style] {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-family-table tr.is-selected,
+html[data-theme="dark"] .company-workspace-stage .payroll-family-table tbody tr:hover {
+  background: #12243a !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-family-table th,
+html[data-theme="dark"] .company-workspace-stage .payroll-family-table th[style] {
+  border-color: #344a64 !important;
+  background: var(--surface-3) !important;
+  color: #afbed0 !important;
+  box-shadow: 1px 0 0 #344a64 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-family-table td,
+html[data-theme="dark"] .company-workspace-stage .payroll-family-table td[style],
+html[data-theme="dark"] .company-workspace-stage .payroll-family-table__detail-cell {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  color: #c8d5e3 !important;
+  box-shadow: 1px 0 0 var(--line) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-family-table td strong {
+  color: #f2f7fc !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-family-table :where(td, th) span:not([style*="border-radius"]) {
+  color: #aebed0 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-family-table td[colspan] {
+  color: var(--muted) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-compliance-workspace .app-card {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .14) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-time-summary {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-time-legend {
+  color: var(--muted) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-time-location-dialog {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-time-location-dialog > div:first-child {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-driver-week-drawer {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-driver-week-drawer :where(h2, strong) {
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-driver-week-drawer__stat {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+}
+
+.payroll-report-recipient {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #b8dccb;
+  border-radius: 11px;
+  padding: 10px 11px;
+  background: #f0fdf7;
+}
+
+.payroll-report-recipient small,
+.payroll-report-bc-options small {
+  color: #64748b;
+}
+
+.payroll-report-recipient__status {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #d9f7e8;
+  color: #166534;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.payroll-report-bc-options {
+  display: grid;
+  grid-template-columns: minmax(0, .7fr) minmax(0, 1.3fr);
+  gap: 7px;
+  margin: 2px 0 0;
+  padding: 8px;
+  border: 1px solid #dbe6f3;
+  border-radius: 11px;
+}
+
+.payroll-report-bc-options legend {
+  padding: 0 4px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.payroll-report-bc-options legend span {
+  color: #64748b;
+  font-weight: 650;
+}
+
+.payroll-report-bc-options label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  border-radius: 8px;
+  padding: 7px 8px;
+  cursor: pointer;
+}
+
+.payroll-report-bc-options label:has(input:checked) {
+  background: #f1f5f9;
+}
+
+.payroll-report-bc-options input {
+  margin-top: 2px;
+}
+
+.payroll-report-bc-options label > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.payroll-report-fallback-field {
+  display: grid;
+  gap: 5px;
+  border-top: 1px solid #e8eef5;
+  padding-top: 11px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.payroll-report-fallback-field > span {
+  font-weight: 750;
+}
+
+.payroll-report-fallback-field input {
+  height: 38px;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  padding: 0 10px;
+  background: #f8fafc;
+  color: #334155;
+  font: inherit;
+}
+
+@media (max-width: 560px) {
+  .payroll-report-recipient {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .payroll-report-bc-options {
+    grid-template-columns: 1fr;
+  }
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-dialog-surface {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-dialog-surface :where(h1, h2, h3, h4, strong) {
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-dialog-surface :where(p, small, label, span) {
+  color: var(--muted);
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-dialog-surface > div:first-child {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-report-email-dialog :where(.payroll-report-recipient, .payroll-report-bc-options) {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-report-email-dialog .payroll-report-recipient__status {
+  background: rgba(34, 197, 94, .16) !important;
+  color: #86efac !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-report-email-dialog .payroll-report-bc-options label:has(input:checked) {
+  background: var(--surface-3) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-report-email-dialog .payroll-report-fallback-field {
+  border-color: var(--line) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-adjustment-desk__rail {
+  background:
+    radial-gradient(circle at 10% 0%, rgba(16, 185, 129, .13), transparent 42%),
+    linear-gradient(155deg, #0f1e30 0%, #0b1929 100%) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage :where(.payroll-adjustment-desk__rail, .payroll-adjustment-editor, .payroll-evidence-ledger) :where(h3, strong) {
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage :where(.payroll-adjustment-desk__rail, .payroll-adjustment-editor, .payroll-evidence-ledger) :where(p, small) {
+  color: var(--muted) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-adjustment-mode {
+  border-color: transparent !important;
+  background: transparent !important;
+  color: #c8d5e3 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-adjustment-mode:hover {
+  border-color: #3c566f !important;
+  background: var(--surface-2) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-adjustment-mode--active {
+  border-color: #3e8d6d !important;
+  background: #123b30 !important;
+  color: #9aebc8 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-adjustment-mode__step {
+  background: var(--surface-3) !important;
+  color: #aebed0 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-adjustment-mode--active .payroll-adjustment-mode__step {
+  background: #087c59 !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-adjustment-desk__guidance,
+html[data-theme="dark"] .company-workspace-stage .payroll-adjustment-editor__header,
+html[data-theme="dark"] .company-workspace-stage .payroll-evidence-ledger__header {
+  border-color: var(--line) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-adjustment-field > span,
+html[data-theme="dark"] .company-workspace-stage .payroll-adjustment-targets > summary strong,
+html[data-theme="dark"] .company-workspace-stage .payroll-adjustment-targets__list label > span {
+  color: #dce7f2 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage :where(.payroll-adjustment-field input, .payroll-adjustment-field select, .payroll-adjustment-field textarea, .payroll-ledger-reversal input) {
+  border-color: #38516b !important;
+  background: #111f31 !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-adjustment-targets {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-adjustment-targets__chips span,
+html[data-theme="dark"] .company-workspace-stage .payroll-evidence-chip,
+html[data-theme="dark"] .company-workspace-stage .payroll-adjustment-targets__list > label {
+  border-color: #3a5069 !important;
+  background: #111f31 !important;
+  color: #c8d5e3 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-adjustment-targets__list {
+  border-color: var(--line) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-evidence-ledger__table {
+  background: var(--surface) !important;
+  color: #c8d5e3 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-evidence-ledger__table th {
+  background: var(--surface-3) !important;
+  color: #afbed0 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-evidence-ledger__table td {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  color: #c8d5e3 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-evidence-ledger__table tbody tr:hover td {
+  background: #12243a !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-ledger-status--active {
+  border-color: #3e8d6d !important;
+  background: #123b30 !important;
+  color: #8ce8c0 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-ledger-status--staged {
+  border-color: #8b6a32 !important;
+  background: #352b1d !important;
+  color: #f3c977 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .payroll-ledger-status--reversed {
+  border-color: #3a5069 !important;
+  background: #172a40 !important;
+  color: #9caec2 !important;
+}
