@@ -28,6 +28,13 @@ const statusColors = {
   UNKNOWN: "#64748b",
 } as const;
 
+const statusTextColors = {
+  OPEN: "#172033",
+  ATTEMPTED: "#2f1508",
+  CLOSED: "#071c0e",
+  UNKNOWN: "#f8fafc",
+} as const;
+
 const stopBorders = {
   EXPRESS: "#9a3412",
   PICKUP: "#1d4ed8",
@@ -129,14 +136,14 @@ export default function RouteGpxMap({
           type: "line",
           source: "route-path",
           layout: { "line-cap": "round", "line-join": "round" },
-          paint: { "line-color": mapColors.routeCasing, "line-width": 10, "line-opacity": 0.94 },
+          paint: { "line-color": mapColors.routeCasing, "line-width": 6, "line-opacity": 0.78 },
         });
         map.addLayer({
           id: "route-path-line",
           type: "line",
           source: "route-path",
           layout: { "line-cap": "round", "line-join": "round" },
-          paint: { "line-color": mapColors.routeLine, "line-width": 5, "line-opacity": 0.98 },
+          paint: { "line-color": mapColors.routeLine, "line-width": 2.75, "line-opacity": 0.94 },
         });
         applyInternalMapTheme(map, currentInternalMapTheme());
       }
@@ -161,9 +168,11 @@ export default function RouteGpxMap({
       marker.textContent = String(cluster.first_sequence);
       marker.title = `${cluster.stop_type.toLowerCase()} · ${cluster.execution_status.toLowerCase()} · route sequence ${cluster.first_sequence}`;
       marker.setAttribute("aria-label", marker.title);
+      marker.setAttribute("aria-expanded", "false");
       marker.style.setProperty("--route-marker-fill", statusColors[cluster.execution_status]);
       marker.style.setProperty("--route-marker-border", stopBorders[cluster.stop_type]);
-      const size = Math.min(38, 24 + Math.sqrt(cluster.stop_count) * 3);
+      marker.style.setProperty("--route-marker-text", statusTextColors[cluster.execution_status]);
+      const size = Math.min(32, 24 + Math.sqrt(cluster.stop_count) * 2);
       marker.style.width = `${size}px`;
       marker.style.height = `${size}px`;
       const popup = new Popup({ offset: 14 }).setDOMContent(
@@ -176,6 +185,14 @@ export default function RouteGpxMap({
           observedAt: cluster.status_observed_at_local,
         })
       );
+      popup.on("open", () => {
+        marker.dataset.active = "true";
+        marker.setAttribute("aria-expanded", "true");
+      });
+      popup.on("close", () => {
+        delete marker.dataset.active;
+        marker.setAttribute("aria-expanded", "false");
+      });
       new Marker({ element: marker, anchor: "center" })
         .setLngLat([cluster.longitude, cluster.latitude])
         .setPopup(popup)

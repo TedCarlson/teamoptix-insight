@@ -1,6 +1,23 @@
 .shell {
+  --route-overlay-surface: #ffffff;
+  --route-overlay-surface-hover: #f8fafc;
+  --route-overlay-border: #cbd5e1;
+  --route-overlay-text: #0f172a;
+  --route-overlay-muted: #475569;
+  --route-overlay-subtle: #64748b;
+  --route-overlay-shadow: rgba(15, 23, 42, 0.24);
   display: grid;
   gap: 12px;
+}
+
+:global(html[data-theme="dark"]) .shell {
+  --route-overlay-surface: #132238;
+  --route-overlay-surface-hover: #1a2c45;
+  --route-overlay-border: #3b4f69;
+  --route-overlay-text: #f8fafc;
+  --route-overlay-muted: #d7e0eb;
+  --route-overlay-subtle: #aebdd0;
+  --route-overlay-shadow: rgba(0, 0, 0, 0.48);
 }
 
 .summary,
@@ -47,23 +64,34 @@
 
 .marker {
   display: grid;
+  box-sizing: border-box;
   place-items: center;
   min-width: 24px;
   min-height: 24px;
-  border: 3px solid var(--route-marker-border, #fff);
+  margin: 0;
+  padding: 0;
+  border: 2px solid var(--route-marker-border, #fff);
   border-radius: 999px;
   background: var(--route-marker-fill, #64748b);
-  color: #0f172a;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.34);
+  color: var(--route-marker-text, #0f172a);
+  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.32);
+  appearance: none;
   cursor: pointer;
-  font: 900 10px/1 system-ui, sans-serif;
+  font: 850 9px/1 system-ui, sans-serif;
+  font-feature-settings: "tnum" 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.025em;
+  text-align: center;
+  transform-origin: center;
 }
 
 .marker:hover,
-.marker:focus-visible {
+.marker:focus-visible,
+.marker[data-active="true"] {
   z-index: 2;
-  outline: 3px solid rgba(37, 99, 235, 0.3);
-  transform: scale(1.12);
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.34), 0 5px 14px rgba(15, 23, 42, 0.34);
+  outline: none;
+  transform: scale(1.08);
 }
 
 .dot {
@@ -97,24 +125,100 @@
   display: grid;
   min-width: 180px;
   gap: 4px;
-  color: #0f172a;
+  color: var(--route-overlay-text);
 }
 
 .popup strong {
+  color: var(--route-overlay-text);
   font-size: 13px;
 }
 
-.popup span,
+.popup span {
+  color: var(--route-overlay-muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+
 .popup small {
-  color: #475569;
+  color: var(--route-overlay-subtle);
   font-size: 11px;
   font-weight: 750;
 }
 
 .shell :global(.maplibregl-popup-content) {
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--route-overlay-border);
   border-radius: 12px;
-  box-shadow: 0 14px 35px rgba(15, 23, 42, 0.24);
+  background: var(--route-overlay-surface);
+  box-shadow: 0 14px 35px var(--route-overlay-shadow);
+  color: var(--route-overlay-text);
+}
+
+.shell :global(.maplibregl-popup-close-button) {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  margin: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--route-overlay-muted);
+  font: 700 18px/1 system-ui, sans-serif;
+  appearance: none;
+}
+
+.shell :global(.maplibregl-popup-close-button:hover),
+.shell :global(.maplibregl-popup-close-button:focus-visible) {
+  background: var(--route-overlay-surface-hover);
+  color: var(--route-overlay-text);
+  outline: 2px solid #60a5fa;
+  outline-offset: 1px;
+}
+
+.shell :global(.maplibregl-popup-anchor-top .maplibregl-popup-tip) {
+  border-bottom-color: var(--route-overlay-surface);
+}
+
+.shell :global(.maplibregl-popup-anchor-top-left .maplibregl-popup-tip),
+.shell :global(.maplibregl-popup-anchor-top-right .maplibregl-popup-tip) {
+  border-bottom-color: var(--route-overlay-surface);
+}
+
+.shell :global(.maplibregl-popup-anchor-bottom .maplibregl-popup-tip),
+.shell :global(.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip),
+.shell :global(.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip) {
+  border-top-color: var(--route-overlay-surface);
+}
+
+.shell :global(.maplibregl-popup-anchor-left .maplibregl-popup-tip) {
+  border-right-color: var(--route-overlay-surface);
+}
+
+.shell :global(.maplibregl-popup-anchor-right .maplibregl-popup-tip) {
+  border-left-color: var(--route-overlay-surface);
+}
+
+:global(html[data-theme="dark"]) .summary span,
+:global(html[data-theme="dark"]) .legend span {
+  border-color: #344860;
+  background: #14243a;
+  color: #e7eef7;
+}
+
+:global(html[data-theme="dark"]) .dot {
+  box-shadow: 0 0 0 2px #14243a, 0 0 0 3px #6d829c;
+}
+
+:global(html[data-theme="dark"]) .note {
+  color: #aebdd0;
+}
+
+:global(html[data-theme="dark"]) .empty {
+  border-color: #3b4f69;
+  background: #132238;
+  color: #d7e0eb;
 }
 
 @media (max-width: 760px) {
