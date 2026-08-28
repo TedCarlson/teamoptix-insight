@@ -12,7 +12,11 @@ import urllib.request
 import urllib.parse
 from datetime import date, timedelta
 from pathlib import Path
-from direct_ingestion import transport_filename as runner_v2_transport_filename
+from direct_ingestion import (
+    DirectIngestionClient,
+    derive_endpoint as derive_direct_ingest_endpoint,
+    transport_filename as runner_v2_transport_filename,
+)
 
 APP_DIR = Path(__file__).resolve().parents[1]
 INSIGHT_ENV_FILE = Path(os.environ.get(
@@ -720,6 +724,88 @@ def handoff_artifact(request: dict, artifact: dict) -> dict:
         },
     )
 
+    if (
+        route_gpx_only(request)
+        and str(artifact.get("artifact_key") or "").upper() == "ROUTE_GPX"
+    ):
+        direct_endpoint = derive_direct_ingest_endpoint(
+            INSIGHT_ENV.get("INSIGHT_DIRECT_ARTIFACT_INGEST_URL"),
+            INSIGHT_ENV.get("INSIGHT_ARTIFACT_INGEST_URL"),
+        )
+        direct_token = INSIGHT_ENV.get("INSIGHT_ARTIFACT_INGEST_TOKEN")
+        if direct_endpoint and direct_token:
+            artifact["source_download_filename"] = (
+                artifact.get("source_download_filename")
+                or artifact.get("filename")
+            )
+            artifact["transport_filename"] = runner_v2_transport_filename(
+                request.get("company_slug") or "unknown-company",
+                artifact.get("service_date") or request.get("service_date") or "",
+                artifact.get("lane_key") or lane_key_for_artifact(artifact),
+                "route_gpx",
+                artifact_execution_key(request, artifact),
+                artifact.get("source_download_filename") or artifact.get("filename"),
+            )
+            request["runner_key"] = RUNNER_KEY
+            direct_started = time.time()
+            direct_result = DirectIngestionClient(
+                direct_endpoint,
+                direct_token,
+                timeout_seconds=25,
+            ).ingest(request, artifact, payload)
+            if direct_result.get("durable") is True:
+                artifact["handoff_mode"] = "DIRECT_INGESTION"
+                direct_artifact_id = direct_result.get("artifact_id")
+                record_runtime_event(
+                    request,
+                    "UPLOAD_COMPLETED",
+                    "UPLOAD",
+                    artifact=artifact,
+                    artifact_id=direct_artifact_id,
+                    duration_ms=int((time.time() - direct_started) * 1000),
+                    outcome="COMPLETE",
+                    metadata={
+                        "handoff_mode": "DIRECT_INGESTION",
+                        "artifact_status": direct_result.get("artifact_status"),
+                        "size_bytes": artifact.get("size_bytes"),
+                    },
+                )
+                registered = {
+                    "id": direct_artifact_id,
+                    "artifact_id": direct_artifact_id,
+                    "artifact_status": direct_result.get("artifact_status"),
+                    "handoff_mode": "DIRECT_INGESTION",
+                }
+                record_runtime_event(
+                    request,
+                    "REGISTRATION_COMPLETED",
+                    "REGISTRATION",
+                    artifact=artifact,
+                    artifact_id=direct_artifact_id,
+                    outcome="COMPLETE",
+                    metadata={"handoff_mode": "DIRECT_INGESTION"},
+                )
+                preserve_acknowledged_route_gpx_state(
+                    request,
+                    artifact,
+                    registered,
+                )
+                return registered
+            artifact["handoff_mode"] = "STORAGE_FALLBACK"
+            record_runtime_event(
+                request,
+                "DIRECT_INGESTION_DEFERRED",
+                "UPLOAD",
+                artifact=artifact,
+                duration_ms=int((time.time() - direct_started) * 1000),
+                outcome="FAILED",
+                metadata={
+                    "reason": direct_result.get("reason") or "DIRECT_INGESTION_UNAVAILABLE",
+                    "http_status": direct_result.get("http_status"),
+                    "fallback": "STORAGE_WORKER",
+                },
+            )
+
     upload_started_at = utc_now()
     upload_started = time.time()
     record_runtime_event(
@@ -800,10 +886,15 @@ def preserve_acknowledged_route_gpx_state(
             metadata={
                 "artifact_id": (
                     registered.get("id")
+                    or registered.get("artifact_id")
                     if isinstance(registered, dict)
                     else artifact.get("artifact_id")
                 ),
-                "handoff_mode": "QUEUED_ARTIFACT_REGISTRATION",
+                "handoff_mode": (
+                    registered.get("handoff_mode")
+                    if isinstance(registered, dict)
+                    else None
+                ) or "QUEUED_ARTIFACT_REGISTRATION",
             },
         )
         return True
@@ -1179,6 +1270,8 @@ def main() -> int:
         # established attachment behavior for every other queued lane.
         child_env["FCMS_PERSIST_BROWSER"] = "0" if gpx_only else "1"
         child_env["FCMS_FRESH_BROWSER"] = "1" if gpx_only else "0"
+        if gpx_only:
+            child_env["FCMS_MAX_RETRIES"] = "3"
         child_env["FCMS_CHROME_DEBUGGER_ADDRESS"] = "127.0.0.1:9222"
         child_env["FCMS_WRITE_LOCAL_DATABASE"] = "0"
         continuous_runtime_dir = APP_DIR / "runtime" / "continuous-runner"

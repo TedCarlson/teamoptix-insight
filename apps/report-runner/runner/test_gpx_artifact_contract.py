@@ -63,6 +63,15 @@ class GpxArtifactContractTests(unittest.TestCase):
             'child_env["FCMS_FRESH_BROWSER"] = "1" if gpx_only else "0"',
             self.source,
         )
+        self.assertIn('child_env["FCMS_MAX_RETRIES"] = "3"', self.source)
+
+    def test_gpx_only_handoff_prefers_direct_parser_ingestion(self):
+        self.assertIn("DirectIngestionClient", self.source)
+        self.assertIn('artifact["handoff_mode"] = "DIRECT_INGESTION"', self.source)
+        self.assertIn('artifact["handoff_mode"] = "STORAGE_FALLBACK"', self.source)
+        direct_index = self.source.index("DirectIngestionClient(")
+        storage_index = self.source.index("upload_artifact_to_storage(artifact, payload)")
+        self.assertLess(direct_index, storage_index)
 
     def test_optional_gpx_failures_are_isolated_from_excel_collection(self):
         for script_name in ("dynamic_script.py", "scrape_particular_date.py"):
