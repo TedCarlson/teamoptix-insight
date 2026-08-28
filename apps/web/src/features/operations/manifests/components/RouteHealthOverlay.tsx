@@ -1,12 +1,24 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+import { List, Map as MapIcon } from "lucide-react";
 import { manifestDetailRequestUrl } from "@/features/operations/manifests/routeEvidence";
+import type { RouteGpxPresentation } from "@/features/operations/manifests/routeGpxPresentation";
 import {
   manifestDeliveryStopTitle,
   manifestPickupStopTitle,
 } from "@/features/operations/manifests/manifestDrawerIdentity";
 import type { ManifestIdentityAccess } from "@/features/operations/manifests/manifestIdentityAccess";
+
+const RouteGpxMapView = dynamic(() => import("./RouteGpxMap"), {
+  ssr: false,
+  loading: () => (
+    <p style={{ color: "#64748b", fontWeight: 800 }}>Preparing interactive map…</p>
+  ),
+});
+
+export type RouteHealthOverlayView = "detail" | "map";
 
 export type ManifestRouteHealthCard = {
   route_key: string;
@@ -76,6 +88,7 @@ type Props = {
     ils_percent?: number | string | null;
     miles?: number | null;
   } | null;
+  initialView?: RouteHealthOverlayView;
   onClose: () => void;
 };
 
@@ -84,37 +97,9 @@ type RouteDetailPayload = {
   packages: Array<Record<string, unknown>>;
   pickups: Array<Record<string, unknown>>;
   stop_clusters: RouteStopCluster[];
-  route_gpx: RouteGpxMap | null;
+  route_gpx: RouteGpxPresentation | null;
   identity_access: ManifestIdentityAccess;
   error?: string;
-};
-
-type RouteGpxMap = {
-  route_key: string;
-  route_label: string | null;
-  track_name: string | null;
-  retained_point_count: number;
-  stop_point_count: number;
-  processed_at: string;
-  path: Array<{
-    sequence_number: number;
-    latitude: number;
-    longitude: number;
-  }>;
-  stop_clusters: Array<{
-    cluster_key: string;
-    latitude: number;
-    longitude: number;
-    stop_count: number;
-    first_sequence: number;
-    last_sequence: number;
-    member_sequences: number[];
-    radius_meters: number;
-    execution_status: "OPEN" | "ATTEMPTED" | "CLOSED" | "UNKNOWN";
-    stop_type: "EXPRESS" | "DELIVERY" | "PICKUP" | "UNKNOWN";
-    status_observed_at_local: string | null;
-    manifest_linked: boolean;
-  }>;
 };
 
 type RouteStopCluster = {
@@ -145,13 +130,19 @@ export default function RouteHealthOverlay({
   routeKey,
   health,
   dsw,
+  initialView = "detail",
   onClose,
 }: Props) {
   const [detail, setDetail] = useState<RouteDetailPayload | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [activeView, setActiveView] = useState<RouteHealthOverlayView>(initialView);
   const warehouseRouteKey = health?.route_key ?? routeKey;
   const asOf = dsw?.generated_at_text ?? health?.artifacts.latest_processed_at ?? null;
+
+  useEffect(() => {
+    if (open) setActiveView(initialView);
+  }, [initialView, open, routeKey]);
 
   useEffect(() => {
     if (!open || !warehouseRouteKey) return;
@@ -197,7 +188,7 @@ export default function RouteHealthOverlay({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Route Health"
+      aria-label={activeView === "map" ? "Route Map" : "Route Health"}
       style={{
         position: "fixed",
         inset: 0,
@@ -211,7 +202,7 @@ export default function RouteHealthOverlay({
       <section
         className="operations-dialog-surface"
         style={{
-          width: "min(620px, 100vw)",
+          width: activeView === "map" ? "min(1040px, 100vw)" : "min(620px, 100vw)",
           height: "100%",
           background: "#f8fafc",
           boxShadow: "-24px 0 60px rgba(15, 23, 42, 0.24)",
@@ -263,24 +254,86 @@ export default function RouteHealthOverlay({
           </button>
         </header>
 
-        <DswContract dsw={dsw} />
-        <WarehouseManifestContract
-          health={health}
-          detail={detail}
-          loading={detailLoading}
-          routeKey={warehouseRouteKey}
-        />
-        <RouteClusterEvidence
-          clusters={detail?.stop_clusters ?? []}
-          routeGpx={detail?.route_gpx ?? null}
-          loading={detailLoading}
-        />
-        <RouteManifestDetail
-          detail={detail}
-          dsw={dsw}
-          loading={detailLoading}
-          error={detailError}
-        />
+        <nav
+          aria-label="Route view"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 6,
+            border: "1px solid #dbe4ee",
+            borderRadius: 12,
+            background: "#eef2f7",
+            padding: 4,
+          }}
+        >
+          {([
+            { key: "detail" as const, label: "Stop sequence", icon: List },
+            { key: "map" as const, label: "Route map", icon: MapIcon },
+          ]).map((view) => {
+            const Icon = view.icon;
+            const selected = activeView === view.key;
+            return (
+              <button
+                type="button"
+                key={view.key}
+                aria-pressed={selected}
+                onClick={() => setActiveView(view.key)}
+                style={{
+                  display: "inline-flex",
+                  minHeight: 40,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 7,
+                  border: selected ? "1px solid #2563eb" : "1px solid transparent",
+                  borderRadius: 9,
+                  background: selected ? "#fff" : "transparent",
+                  color: selected ? "#1d4ed8" : "#475569",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                <Icon size={16} aria-hidden="true" />
+                {view.label}
+              </button>
+            );
+          })}
+        </nav>
+
+        {activeView === "map" ? (
+          detailLoading ? (
+            <p style={{ color: "#64748b", fontWeight: 800 }}>Loading route geometry…</p>
+          ) : detailError ? (
+            <p role="alert" style={{ color: "#b91c1c", fontWeight: 850 }}>{detailError}</p>
+          ) : detail?.route_gpx ? (
+            <RouteGpxMapView routeGpx={detail.route_gpx} />
+          ) : detail?.stop_clusters.length ? (
+            <RouteClusterEvidence
+              clusters={detail.stop_clusters}
+              loading={false}
+              open
+            />
+          ) : (
+            <div style={{ border: "1px dashed #94a3b8", borderRadius: 16, padding: 24, color: "#64748b", fontWeight: 850, textAlign: "center" }}>
+              No retained GPX route geometry is available for this route and service date.
+            </div>
+          )
+        ) : (
+          <>
+            <DswContract dsw={dsw} />
+            <WarehouseManifestContract
+              health={health}
+              detail={detail}
+              loading={detailLoading}
+              routeKey={warehouseRouteKey}
+            />
+            <RouteManifestDetail
+              detail={detail}
+              dsw={dsw}
+              loading={detailLoading}
+              error={detailError}
+            />
+          </>
+        )}
       </section>
     </div>
   );
@@ -396,12 +449,12 @@ function mapCoordinate(value: number, min: number, max: number) {
 
 function RouteClusterEvidence({
   clusters,
-  routeGpx,
   loading,
+  open = false,
 }: {
   clusters: RouteStopCluster[];
-  routeGpx: RouteGpxMap | null;
   loading: boolean;
+  open?: boolean;
 }) {
   const centroidPoints = useMemo(
     () =>
@@ -414,19 +467,11 @@ function RouteClusterEvidence({
     [clusters]
   );
   const mappedPoints = useMemo(
-    () => routeGpx
-      ? [
-          ...routeGpx.path.map((point) => ({
-            latitude: point.latitude,
-            longitude: point.longitude,
-          })),
-          ...routeGpx.stop_clusters,
-        ]
-      : centroidPoints.map((cluster) => ({
-          latitude: cluster.centroid_latitude as number,
-          longitude: cluster.centroid_longitude as number,
-        })),
-    [centroidPoints, routeGpx]
+    () => centroidPoints.map((cluster) => ({
+      latitude: cluster.centroid_latitude as number,
+      longitude: cluster.centroid_longitude as number,
+    })),
+    [centroidPoints]
   );
   const bounds = useMemo(() => {
     const latitudes = mappedPoints.map((point) => point.latitude);
@@ -438,23 +483,11 @@ function RouteClusterEvidence({
       maxLongitude: Math.max(...longitudes),
     };
   }, [mappedPoints]);
-  const gpxPath = routeGpx?.path.map((point) => {
-    const x = mapCoordinate(point.longitude, bounds.minLongitude, bounds.maxLongitude);
-    const y = 100 - mapCoordinate(point.latitude, bounds.minLatitude, bounds.maxLatitude);
-    return `${x},${y}`;
-  }).join(" ") ?? "";
-  const statusCounts = routeGpx?.stop_clusters.reduce(
-    (counts, cluster) => {
-      counts[cluster.execution_status] += cluster.stop_count;
-      return counts;
-    },
-    { OPEN: 0, ATTEMPTED: 0, CLOSED: 0, UNKNOWN: 0 }
-  );
-
   if (loading) return null;
 
   return (
     <details
+      open={open}
       style={{
         border: "1px solid #bfdbfe",
         borderRadius: 14,
@@ -472,12 +505,10 @@ function RouteClusterEvidence({
         }}
       >
         <strong>
-          Route geography · {routeGpx ? `${routeGpx.stop_point_count} GPX stops` : `${clusters.length} stop clusters`}
+          Route geography · {clusters.length} stop clusters
         </strong>
         <small style={{ color: "#64748b", fontWeight: 800 }}>
-          {routeGpx
-            ? "Dispatch-baseline GPX with current manifest execution status. Exact geometry follows the seven-day identifiable-evidence window."
-            : "Privacy-safe ZIP-centroid fallback; exact route geometry has not been collected for this route and date."}
+          Privacy-safe ZIP-centroid fallback; exact route geometry has not been collected for this route and date.
         </small>
       </summary>
 
@@ -514,60 +545,7 @@ function RouteClusterEvidence({
             </span>
           ) : null}
 
-          {routeGpx && gpxPath ? (
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 100 100"
-              preserveAspectRatio="none"
-              style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
-            >
-              <polyline
-                fill="none"
-                points={gpxPath}
-                stroke="#475569"
-                strokeOpacity="0.7"
-                strokeWidth="0.8"
-                vectorEffect="non-scaling-stroke"
-              />
-            </svg>
-          ) : null}
-
-          {routeGpx?.stop_clusters.map((cluster) => {
-            const x = mapCoordinate(cluster.longitude, bounds.minLongitude, bounds.maxLongitude);
-            const y = 100 - mapCoordinate(cluster.latitude, bounds.minLatitude, bounds.maxLatitude);
-            const background = cluster.execution_status === "CLOSED"
-              ? "#16a34a"
-              : cluster.execution_status === "ATTEMPTED"
-                ? "#f97316"
-                : cluster.execution_status === "OPEN"
-                  ? "#facc15"
-                  : "#64748b";
-            const borderColor = cluster.stop_type === "EXPRESS"
-              ? "#9a3412"
-              : cluster.stop_type === "PICKUP"
-                ? "#1d4ed8"
-                : "#fff";
-            return (
-              <span
-                key={`gpx-${cluster.cluster_key}`}
-                title={`${cluster.stop_type.toLowerCase()} · ${cluster.execution_status.toLowerCase()}${cluster.status_observed_at_local ? ` · ${cluster.status_observed_at_local}` : ""}`}
-                style={{
-                  position: "absolute",
-                  left: `${x}%`,
-                  top: `${y}%`,
-                  transform: "translate(-50%, -50%)",
-                  width: Math.min(24, 9 + Math.sqrt(cluster.stop_count) * 2),
-                  height: Math.min(24, 9 + Math.sqrt(cluster.stop_count) * 2),
-                  border: `2px solid ${borderColor}`,
-                  borderRadius: cluster.stop_type === "PICKUP" ? 3 : 999,
-                  background,
-                  boxShadow: "0 4px 10px rgba(15, 23, 42, 0.22)",
-                }}
-              />
-            );
-          })}
-
-          {!routeGpx && centroidPoints.map((cluster) => {
+          {centroidPoints.map((cluster) => {
             const x = mapCoordinate(
               cluster.centroid_longitude as number,
               bounds.minLongitude,
@@ -603,16 +581,7 @@ function RouteClusterEvidence({
         </div>
 
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {routeGpx && statusCounts ? (
-            <>
-              <span style={{ borderRadius: 999, background: "#fef9c3", color: "#854d0e", padding: "5px 8px", fontSize: 10, fontWeight: 900 }}>Open · {statusCounts.OPEN}</span>
-              <span style={{ borderRadius: 999, background: "#fff7ed", color: "#9a3412", padding: "5px 8px", fontSize: 10, fontWeight: 900 }}>Attempted · {statusCounts.ATTEMPTED}</span>
-              <span style={{ borderRadius: 999, background: "#ecfdf5", color: "#166534", padding: "5px 8px", fontSize: 10, fontWeight: 900 }}>Closed · {statusCounts.CLOSED}</span>
-              {statusCounts.UNKNOWN ? <span style={{ borderRadius: 999, background: "#f1f5f9", color: "#475569", padding: "5px 8px", fontSize: 10, fontWeight: 900 }}>Unlinked · {statusCounts.UNKNOWN}</span> : null}
-              <span style={{ borderRadius: 999, border: "2px solid #9a3412", padding: "3px 7px", fontSize: 10, fontWeight: 900 }}>Express ring</span>
-              <span style={{ borderRadius: 3, border: "2px solid #1d4ed8", padding: "3px 7px", fontSize: 10, fontWeight: 900 }}>Pickup square</span>
-            </>
-          ) : clusters.map((cluster) => (
+          {clusters.map((cluster) => (
             <span
               key={`label-${cluster.cluster_key}`}
               style={{
