@@ -177,6 +177,8 @@ export function presentRouteGpx(params: {
       stop_count: cluster.stop_count,
       first_sequence: cluster.first_sequence,
       last_sequence: cluster.last_sequence,
+      member_sequences: cluster.member_sequences,
+      radius_meters: cluster.radius_meters,
     };
     const delivery = linkedDelivery(cluster, params.deliveryStops);
     const pickup = linkedPickup(cluster, params.pickups);
