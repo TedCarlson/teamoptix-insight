@@ -16,6 +16,8 @@ import {
   applyManifestIdentityAccess,
   resolveManifestIdentityAccess,
 } from "@/features/operations/manifests/manifestIdentityAccess";
+import type { RouteGpxGeometry } from "@/features/operations/manifests/routeGpx";
+import { presentRouteGpx } from "@/features/operations/manifests/routeGpxPresentation";
 
 export const runtime = "nodejs";
 
@@ -444,6 +446,7 @@ export async function GET(
         packagesResult,
         pickupsResult,
         clustersResult,
+        routeGpxResult,
         packageStatusResult,
         expressReferenceResult,
       ] = await Promise.all([
@@ -470,6 +473,11 @@ export async function GET(
             .eq("route_key", routeKey)
             .order("ready_at", { ascending: true }),
           supabase.rpc("get_operations_manifest_stop_clusters", {
+            p_company_id: company.id,
+            p_service_date: serviceDate,
+            p_route_key: routeKey,
+          }),
+          serviceRole.rpc("get_operations_route_gpx_geometry", {
             p_company_id: company.id,
             p_service_date: serviceDate,
             p_route_key: routeKey,
@@ -527,6 +535,16 @@ export async function GET(
                 []) as CurrentPackageStatusEvidence[],
           })
         : markPackageEvidenceUnavailable(manifestPackages);
+      const routeGpx = presentRouteGpx({
+        geometry: (routeGpxResult.error
+          ? null
+          : routeGpxResult.data ?? null) as RouteGpxGeometry | null,
+        deliveryStops: (deliveryStopsResult.data ?? []) as Array<
+          Record<string, unknown>
+        >,
+        packages: packages as Array<Record<string, unknown>>,
+        pickups: (pickupsResult.data ?? []) as Array<Record<string, unknown>>,
+      });
 
       return NextResponse.json({
         company_slug: slug,
@@ -543,6 +561,7 @@ export async function GET(
           applyManifestIdentityAccess(row, identityAccess)
         ),
         stop_clusters: clustersResult.data ?? [],
+        route_gpx: routeGpx,
       });
     }
 

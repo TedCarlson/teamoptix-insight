@@ -5,6 +5,7 @@ import {
   isManifestCollectionArtifact,
   isRetryableIngestionTimeout,
 } from "@/features/operations/reports/automation/collectionArtifactAuthority";
+import { isRouteGpxCollectionArtifact } from "@/features/operations/manifests/routeGpx";
 
 export const runtime = "nodejs";
 
@@ -229,7 +230,11 @@ export async function GET() {
   const processed = [];
 
   const workbookArtifacts = (artifacts ?? [])
-    .filter((artifact: any) => !isManifestCollectionArtifact(artifact))
+    .filter(
+      (artifact: any) =>
+        !isManifestCollectionArtifact(artifact) &&
+        !isRouteGpxCollectionArtifact(artifact)
+    )
     .slice(0, 10);
 
   for (const artifact of workbookArtifacts) {

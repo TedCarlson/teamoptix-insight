@@ -7,6 +7,11 @@ import {
   manifestPreparationPayload,
 } from "@/features/operations/reports/automation/collectionArtifactAuthority";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
+import {
+  ingestRouteGpxArtifact,
+  isRouteGpxCollectionArtifact,
+  resolveRouteGpxManifestReadiness,
+} from "@/features/operations/manifests/routeGpx";
 
 export const runtime = "nodejs";
 
@@ -235,6 +240,120 @@ async function reconcileManifestCollectionRequests(
   return reconciled;
 }
 
+async function processRouteGpxCollectionArtifacts(
+  supabase: any,
+  limit: number,
+  collectionRequestId: string | null
+) {
+  let query = supabase
+    .from("operations_collection_artifact_v")
+    .select("*")
+    .eq("artifact_kind", "REPORT_FILE")
+    .in("artifact_status", ["READY_FOR_INGEST", "FAILED"])
+    .order("created_at", { ascending: true })
+    .limit(250);
+  if (collectionRequestId) {
+    query = query.eq("collection_request_id", collectionRequestId);
+  }
+  const { data: artifacts, error } = await query;
+  if (error) throw new Error(error.message);
+
+  const processed = [];
+  for (const artifact of (artifacts ?? [])
+    .filter((artifact: any) =>
+      isRouteGpxCollectionArtifact(artifact) &&
+      (
+        artifact.artifact_status === "READY_FOR_INGEST" ||
+        (
+          artifact.artifact_status === "FAILED" &&
+          artifact.ingest_metadata_json?.source ===
+            "runner_v2_direct_ingestion"
+        )
+      )
+    )
+    .slice(0, Math.max(1, Math.min(limit, 250)))) {
+    try {
+      const readiness = await resolveRouteGpxManifestReadiness({
+        supabase,
+        artifact,
+      });
+      if (readiness.status === "PENDING") {
+        processed.push({
+          artifact_id: artifact.id,
+          status: "WAITING_FOR_MANIFEST",
+        });
+        continue;
+      }
+      if (readiness.status === "INVALID") {
+        throw new Error(
+          "Route GPX requires a workbook-verified sibling manifest for the same route and service date."
+        );
+      }
+      const { error: startError } = await supabase.rpc(
+        "update_operations_collection_artifact_status",
+        {
+          p_artifact_id: artifact.id,
+          p_artifact_status: "INGESTING",
+          p_ingest_metadata_json: {
+            ...(artifact.ingest_metadata_json ?? {}),
+            source: "route_gpx_parser",
+            phase: "INGESTING",
+            started_at: new Date().toISOString(),
+          },
+          p_report_batch_id: null,
+          p_error_message: null,
+        }
+      );
+      if (startError) throw new Error(startError.message);
+
+      const result = await ingestRouteGpxArtifact({
+        supabase,
+        artifact,
+        verifiedManifest: readiness.manifest,
+      });
+      const { error: completeError } = await supabase.rpc(
+        "update_operations_collection_artifact_status",
+        {
+          p_artifact_id: artifact.id,
+          p_artifact_status: "INGESTED",
+          p_ingest_metadata_json: {
+            ...(artifact.ingest_metadata_json ?? {}),
+            source: "route_gpx_parser",
+            phase: "INGESTED",
+            completed_at: new Date().toISOString(),
+            result,
+          },
+          p_report_batch_id: null,
+          p_error_message: null,
+        }
+      );
+      if (completeError) throw new Error(completeError.message);
+      processed.push({ artifact_id: artifact.id, status: "INGESTED", ...result });
+    } catch (gpxError) {
+      const message =
+        gpxError instanceof Error ? gpxError.message : "Route GPX processing failed.";
+      const { error: failureError } = await supabase.rpc(
+        "update_operations_collection_artifact_status",
+        {
+          p_artifact_id: artifact.id,
+          p_artifact_status: "FAILED",
+          p_ingest_metadata_json: {
+            ...(artifact.ingest_metadata_json ?? {}),
+            source: "route_gpx_parser",
+            phase: "FAILED",
+            failed_at: new Date().toISOString(),
+          },
+          p_report_batch_id: null,
+          p_error_message: message,
+        }
+      );
+      if (failureError) throw new Error(failureError.message);
+      processed.push({ artifact_id: artifact.id, status: "FAILED", error: message });
+    }
+  }
+  return processed;
+}
+
 async function handleManifestArtifactProcess(req: NextRequest) {
   const startedAt = Date.now();
 
@@ -281,6 +400,11 @@ async function handleManifestArtifactProcess(req: NextRequest) {
       limit: batchLimit,
       collectionRequestId,
     });
+    const routeGpx = await processRouteGpxCollectionArtifacts(
+      supabase,
+      batchLimit,
+      collectionRequestId
+    );
     const reconciled = await reconcileManifestCollectionRequests(
       supabase,
       collectionRequestId
@@ -293,6 +417,8 @@ async function handleManifestArtifactProcess(req: NextRequest) {
       promoted,
       processed_count: processed.length,
       processed,
+      route_gpx_count: routeGpx.length,
+      route_gpx: routeGpx,
       reconciled_count: reconciled.length,
       reconciled,
       elapsed_ms: Date.now() - startedAt,

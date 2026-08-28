@@ -27,6 +27,12 @@ DONOR_RESERVATION_FILE = (
     APP_DIR / "runtime" / "locks" / "report-runner.reservation"
 )
 SCRAPER_HOME = APP_DIR / "storage" / "app" / "public" / "scraper"
+if str(SCRAPER_HOME) not in sys.path:
+    sys.path.insert(0, str(SCRAPER_HOME))
+try:
+    from gpx_collection import mark_route_gpx_collected
+except ImportError:
+    mark_route_gpx_collected = None
 RUNTIME_LEDGER_DIR = Path(os.environ.get(
     "INSIGHT_RUNTIME_LEDGER_DIR",
     str(APP_DIR / "runtime" / "ledger"),
@@ -72,6 +78,8 @@ def lane_key_for_artifact(artifact: dict) -> str:
         return "FCC_PICKUP_MANIFESTS"
     if key == "DELIVERY_MANIFEST":
         return "FCC_DELIVERY_MANIFESTS"
+    if key == "ROUTE_GPX":
+        return "FCC_ROUTE_GPX"
     return key or "UNKNOWN"
 
 
@@ -153,6 +161,8 @@ def infer_report_identity(filename: str) -> dict:
         return {"artifact_key": "DELIVERY_MANIFEST", "report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Delivery Manifest.xlsx"}
     if "pickupmanifest" in compact_name or re.match(r"^pm\d{8}[_-]", name) or name.startswith("pm"):
         return {"artifact_key": "PICKUP_MANIFEST", "report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Pickup Manifest.xlsx"}
+    if name.endswith(".gpx") and ("routegpx" in compact_name or "gpx" in compact_name):
+        return {"artifact_key": "ROUTE_GPX", "report_family_key": "FCC", "report_shape_key": "FCC_ROUTE_GPX", "report_frame": None, "display_filename": "Route Stops.gpx"}
     if "pickupassignments" in name or name.startswith("pa"):
         return {"report_family_key": "FCC", "report_shape_key": None, "report_frame": None, "display_filename": "Pickup Assignments.xlsx"}
     if "reorderpulistings" in name or name.startswith("rpl"):
@@ -173,6 +183,8 @@ def artifact_priority(artifact: dict) -> int:
         return 30
     if key == "DELIVERY_MANIFEST":
         return 40
+    if key == "ROUTE_GPX":
+        return 45
     return 100
 
 def storage_slug(value: str) -> str:
@@ -264,6 +276,12 @@ def manifest_runtime_options(request: dict) -> dict:
     raw_types = payload.get("manifest_types")
     artifact_keys = target_artifact_keys(request)
 
+    if route_gpx_only(request):
+        return {
+            "manifest_types": [],
+            "skip_combined": True,
+        }
+
     manifest_types: list[str] = []
 
     if isinstance(raw_types, list):
@@ -295,6 +313,15 @@ def manifest_runtime_options(request: dict) -> dict:
         "manifest_types": manifest_types,
         "skip_combined": skip_combined,
     }
+
+def route_gpx_only(request: dict) -> bool:
+    payload = request.get("request_payload") or {}
+    authored = payload.get("route_gpx_only")
+    explicitly_enabled = (
+        authored is True
+        or str(authored).strip().lower() in {"1", "true", "yes", "on"}
+    )
+    return explicitly_enabled or target_artifact_keys(request) == {"ROUTE_GPX"}
 
 def target_runner_sections(request: dict) -> list[str]:
     sections: list[str] = []
@@ -339,6 +366,33 @@ def artifact_matches_targets(request: dict, artifact: dict) -> bool:
         (artifact.get("collection_context") or {}).get("selected_work_area")
         or artifact.get("route_identity")
     )
+
+    artifact_key = str(artifact.get("artifact_key") or "").strip().upper()
+    if artifact_key == "ROUTE_GPX":
+        manifest_keys = {
+            "ROUTE_GPX",
+            "COMBINED_MANIFEST",
+            "DELIVERY_MANIFEST",
+            "PICKUP_MANIFEST",
+        }
+        return any(
+            isinstance(target, dict)
+            and str(target.get("artifact_key") or "").strip().upper()
+            in manifest_keys
+            and (
+                not normalized_manifest_route(
+                    target.get("route_key")
+                    or target.get("route_identity")
+                    or target.get("work_area")
+                )
+                or normalized_manifest_route(
+                    target.get("route_key")
+                    or target.get("route_identity")
+                    or target.get("work_area")
+                ) == artifact_route
+            )
+            for target in targets
+        )
 
     for target in targets:
         if not isinstance(target, dict):
@@ -522,6 +576,9 @@ def collect_artifacts(request: dict, run_started_at: float) -> list[dict]:
             if file.name.endswith(".runner.json"):
                 continue
 
+            if file.name.endswith(".gpx.collected.json"):
+                continue
+
             if file.stat().st_mtime < run_started_at - 2:
                 continue
 
@@ -537,6 +594,8 @@ def collect_artifacts(request: dict, run_started_at: float) -> list[dict]:
                 "content_type": (
                     "text/csv"
                     if file.suffix.lower() == ".csv"
+                    else "application/gpx+xml"
+                    if file.suffix.lower() == ".gpx"
                     else "application/vnd.ms-excel"
                     if file.suffix.lower() == ".xls"
                     else "application/octet-stream"
@@ -706,7 +765,55 @@ def handoff_artifact(request: dict, artifact: dict) -> dict:
         duration_ms=int((time.time() - registration_started) * 1000),
         outcome="COMPLETE",
     )
+    preserve_acknowledged_route_gpx_state(request, artifact, registered)
     return registered
+
+def preserve_acknowledged_route_gpx_state(
+    request: dict,
+    artifact: dict,
+    registered: dict,
+) -> bool:
+    if (
+        str(artifact.get("artifact_key") or "").upper() != "ROUTE_GPX"
+        or mark_route_gpx_collected is None
+    ):
+        return False
+    state_directory = str(request.get("_gpx_state_dir") or "").strip()
+    if not state_directory:
+        return False
+    route_identity = (
+        artifact.get("route_identity")
+        or (artifact.get("collection_context") or {}).get(
+            "selected_work_area"
+        )
+    )
+    service_date = str(
+        artifact.get("service_date")
+        or request.get("service_date")
+        or ""
+    )
+    try:
+        mark_route_gpx_collected(
+            state_directory,
+            route_identity,
+            service_date,
+            metadata={
+                "artifact_id": (
+                    registered.get("id")
+                    if isinstance(registered, dict)
+                    else artifact.get("artifact_id")
+                ),
+                "handoff_mode": "QUEUED_ARTIFACT_REGISTRATION",
+            },
+        )
+        return True
+    except Exception as exc:
+        print(
+            "[insight-runner] optional GPX state preservation failed: "
+            f"{exc}",
+            file=sys.stderr,
+        )
+        return False
 
 def register_artifacts(request: dict, artifacts: list[dict]) -> list[dict]:
     registered = []
@@ -1064,6 +1171,7 @@ def main() -> int:
             target_manifest_routes(request)
         )
         child_env["FCMS_SKIP_COMBINED"] = "1" if manifest_options["skip_combined"] else "0"
+        child_env["FCMS_ROUTE_GPX_ONLY"] = "1" if route_gpx_only(request) else "0"
         child_env["FCMS_SINGLE_SESSION"] = "1"
         child_env["FCMS_PERSIST_BROWSER"] = "1"
         child_env["FCMS_CHROME_DEBUGGER_ADDRESS"] = "127.0.0.1:9222"
@@ -1078,6 +1186,22 @@ def main() -> int:
         child_env["FCMS_SESSION_COOKIE_FILE"] = str(
             continuous_runtime_dir / "fedex-session.json"
         )
+        safe_company = re.sub(
+            r"[^a-z0-9_-]+",
+            "",
+            str(request.get("company_slug") or "").lower(),
+        ).strip("-_")
+        if safe_company:
+            try:
+                gpx_state_dir = (
+                    APP_DIR / "runtime" / "state" / "route-gpx" / safe_company
+                )
+                gpx_state_dir.mkdir(parents=True, exist_ok=True)
+                gpx_state_dir.chmod(0o700)
+                child_env["FCMS_GPX_STATE_DIR"] = str(gpx_state_dir)
+                request["_gpx_state_dir"] = str(gpx_state_dir)
+            except OSError:
+                pass
 
         print("[insight-runner] ready to execute donor runner")
         if os.environ.get("INSIGHT_RUNNER_DRY_RUN", "1") == "1":

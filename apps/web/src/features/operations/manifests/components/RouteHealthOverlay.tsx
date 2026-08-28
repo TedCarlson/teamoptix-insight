@@ -84,8 +84,33 @@ type RouteDetailPayload = {
   packages: Array<Record<string, unknown>>;
   pickups: Array<Record<string, unknown>>;
   stop_clusters: RouteStopCluster[];
+  route_gpx: RouteGpxMap | null;
   identity_access: ManifestIdentityAccess;
   error?: string;
+};
+
+type RouteGpxMap = {
+  route_key: string;
+  route_label: string | null;
+  track_name: string | null;
+  retained_point_count: number;
+  stop_point_count: number;
+  processed_at: string;
+  path: Array<{
+    sequence_number: number;
+    latitude: number;
+    longitude: number;
+  }>;
+  stop_clusters: Array<{
+    cluster_key: string;
+    latitude: number;
+    longitude: number;
+    stop_count: number;
+    execution_status: "OPEN" | "ATTEMPTED" | "CLOSED" | "UNKNOWN";
+    stop_type: "EXPRESS" | "DELIVERY" | "PICKUP" | "UNKNOWN";
+    status_observed_at_local: string | null;
+    manifest_linked: boolean;
+  }>;
 };
 
 type RouteStopCluster = {
@@ -243,6 +268,7 @@ export default function RouteHealthOverlay({
         />
         <RouteClusterEvidence
           clusters={detail?.stop_clusters ?? []}
+          routeGpx={detail?.route_gpx ?? null}
           loading={detailLoading}
         />
         <RouteManifestDetail
@@ -366,12 +392,14 @@ function mapCoordinate(value: number, min: number, max: number) {
 
 function RouteClusterEvidence({
   clusters,
+  routeGpx,
   loading,
 }: {
   clusters: RouteStopCluster[];
+  routeGpx: RouteGpxMap | null;
   loading: boolean;
 }) {
-  const mappable = useMemo(
+  const centroidPoints = useMemo(
     () =>
       clusters.filter(
         (cluster) =>
@@ -381,16 +409,43 @@ function RouteClusterEvidence({
       ),
     [clusters]
   );
+  const mappedPoints = useMemo(
+    () => routeGpx
+      ? [
+          ...routeGpx.path.map((point) => ({
+            latitude: point.latitude,
+            longitude: point.longitude,
+          })),
+          ...routeGpx.stop_clusters,
+        ]
+      : centroidPoints.map((cluster) => ({
+          latitude: cluster.centroid_latitude as number,
+          longitude: cluster.centroid_longitude as number,
+        })),
+    [centroidPoints, routeGpx]
+  );
   const bounds = useMemo(() => {
-    const latitudes = mappable.map((cluster) => cluster.centroid_latitude as number);
-    const longitudes = mappable.map((cluster) => cluster.centroid_longitude as number);
+    const latitudes = mappedPoints.map((point) => point.latitude);
+    const longitudes = mappedPoints.map((point) => point.longitude);
     return {
       minLatitude: Math.min(...latitudes),
       maxLatitude: Math.max(...latitudes),
       minLongitude: Math.min(...longitudes),
       maxLongitude: Math.max(...longitudes),
     };
-  }, [mappable]);
+  }, [mappedPoints]);
+  const gpxPath = routeGpx?.path.map((point) => {
+    const x = mapCoordinate(point.longitude, bounds.minLongitude, bounds.maxLongitude);
+    const y = 100 - mapCoordinate(point.latitude, bounds.minLatitude, bounds.maxLatitude);
+    return `${x},${y}`;
+  }).join(" ") ?? "";
+  const statusCounts = routeGpx?.stop_clusters.reduce(
+    (counts, cluster) => {
+      counts[cluster.execution_status] += cluster.stop_count;
+      return counts;
+    },
+    { OPEN: 0, ATTEMPTED: 0, CLOSED: 0, UNKNOWN: 0 }
+  );
 
   if (loading) return null;
 
@@ -412,9 +467,13 @@ function RouteClusterEvidence({
           listStyle: "none",
         }}
       >
-        <strong>Route geography · {clusters.length} stop clusters</strong>
+        <strong>
+          Route geography · {routeGpx ? `${routeGpx.stop_point_count} GPX stops` : `${clusters.length} stop clusters`}
+        </strong>
         <small style={{ color: "#64748b", fontWeight: 800 }}>
-          Privacy-safe ZIP-centroid route shape. GPX breadcrumbs will replace centroid-only pins when their warehouse parser is connected.
+          {routeGpx
+            ? "Dispatch-baseline GPX with current manifest execution status. Exact geometry follows the seven-day identifiable-evidence window."
+            : "Privacy-safe ZIP-centroid fallback; exact route geometry has not been collected for this route and date."}
         </small>
       </summary>
 
@@ -431,7 +490,7 @@ function RouteClusterEvidence({
             overflow: "hidden",
           }}
         >
-          {mappable.length === 0 ? (
+          {mappedPoints.length === 0 ? (
             <span
               style={{
                 position: "absolute",
@@ -451,7 +510,60 @@ function RouteClusterEvidence({
             </span>
           ) : null}
 
-          {mappable.map((cluster) => {
+          {routeGpx && gpxPath ? (
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+              style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
+            >
+              <polyline
+                fill="none"
+                points={gpxPath}
+                stroke="#475569"
+                strokeOpacity="0.7"
+                strokeWidth="0.8"
+                vectorEffect="non-scaling-stroke"
+              />
+            </svg>
+          ) : null}
+
+          {routeGpx?.stop_clusters.map((cluster) => {
+            const x = mapCoordinate(cluster.longitude, bounds.minLongitude, bounds.maxLongitude);
+            const y = 100 - mapCoordinate(cluster.latitude, bounds.minLatitude, bounds.maxLatitude);
+            const background = cluster.execution_status === "CLOSED"
+              ? "#16a34a"
+              : cluster.execution_status === "ATTEMPTED"
+                ? "#f97316"
+                : cluster.execution_status === "OPEN"
+                  ? "#facc15"
+                  : "#64748b";
+            const borderColor = cluster.stop_type === "EXPRESS"
+              ? "#9a3412"
+              : cluster.stop_type === "PICKUP"
+                ? "#1d4ed8"
+                : "#fff";
+            return (
+              <span
+                key={`gpx-${cluster.cluster_key}`}
+                title={`${cluster.stop_type.toLowerCase()} · ${cluster.execution_status.toLowerCase()}${cluster.status_observed_at_local ? ` · ${cluster.status_observed_at_local}` : ""}`}
+                style={{
+                  position: "absolute",
+                  left: `${x}%`,
+                  top: `${y}%`,
+                  transform: "translate(-50%, -50%)",
+                  width: Math.min(24, 9 + Math.sqrt(cluster.stop_count) * 2),
+                  height: Math.min(24, 9 + Math.sqrt(cluster.stop_count) * 2),
+                  border: `2px solid ${borderColor}`,
+                  borderRadius: cluster.stop_type === "PICKUP" ? 3 : 999,
+                  background,
+                  boxShadow: "0 4px 10px rgba(15, 23, 42, 0.22)",
+                }}
+              />
+            );
+          })}
+
+          {!routeGpx && centroidPoints.map((cluster) => {
             const x = mapCoordinate(
               cluster.centroid_longitude as number,
               bounds.minLongitude,
@@ -487,7 +599,16 @@ function RouteClusterEvidence({
         </div>
 
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {clusters.map((cluster) => (
+          {routeGpx && statusCounts ? (
+            <>
+              <span style={{ borderRadius: 999, background: "#fef9c3", color: "#854d0e", padding: "5px 8px", fontSize: 10, fontWeight: 900 }}>Open · {statusCounts.OPEN}</span>
+              <span style={{ borderRadius: 999, background: "#fff7ed", color: "#9a3412", padding: "5px 8px", fontSize: 10, fontWeight: 900 }}>Attempted · {statusCounts.ATTEMPTED}</span>
+              <span style={{ borderRadius: 999, background: "#ecfdf5", color: "#166534", padding: "5px 8px", fontSize: 10, fontWeight: 900 }}>Closed · {statusCounts.CLOSED}</span>
+              {statusCounts.UNKNOWN ? <span style={{ borderRadius: 999, background: "#f1f5f9", color: "#475569", padding: "5px 8px", fontSize: 10, fontWeight: 900 }}>Unlinked · {statusCounts.UNKNOWN}</span> : null}
+              <span style={{ borderRadius: 999, border: "2px solid #9a3412", padding: "3px 7px", fontSize: 10, fontWeight: 900 }}>Express ring</span>
+              <span style={{ borderRadius: 3, border: "2px solid #1d4ed8", padding: "3px 7px", fontSize: 10, fontWeight: 900 }}>Pickup square</span>
+            </>
+          ) : clusters.map((cluster) => (
             <span
               key={`label-${cluster.cluster_key}`}
               style={{

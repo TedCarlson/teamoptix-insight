@@ -152,6 +152,7 @@ def enforce_local_retention(
     for path, cutoff in (
         (app_dir / "storage/app/public/scraper/Excels", artifact_cutoff),
         (app_dir / "runtime/spool", artifact_cutoff),
+        (app_dir / "runtime/state/route-gpx", artifact_cutoff),
         (app_dir / "storage/app/public/scraper/Logs", diagnostic_cutoff),
         (app_dir / "runtime/logs", diagnostic_cutoff),
         (app_dir / "runtime/ledger", diagnostic_cutoff),

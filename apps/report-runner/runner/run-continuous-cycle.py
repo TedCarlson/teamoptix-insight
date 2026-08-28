@@ -53,6 +53,13 @@ def load_legacy_runner():
 
 
 RUNNER = load_legacy_runner()
+SCRAPER_DIR = APP_DIR / "storage" / "app" / "public" / "scraper"
+if str(SCRAPER_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRAPER_DIR))
+try:
+    from gpx_collection import mark_route_gpx_collected
+except ImportError:
+    mark_route_gpx_collected = None
 
 REPORT_TARGETS: dict[str, dict[str, Any]] = {
     "DRO": {
@@ -286,7 +293,59 @@ def child_environment(
     scraper_home = str(request.get("_scraper_home") or "").strip()
     if scraper_home:
         environment["FCMS_SCRAPER_WORK_DIR"] = scraper_home
+    safe_company = re.sub(
+        r"[^a-z0-9_-]+",
+        "",
+        args.company_slug.lower(),
+    ).strip("-_")
+    if safe_company:
+        try:
+            gpx_state_dir = (
+                APP_DIR / "runtime" / "state" / "route-gpx" / safe_company
+            )
+            gpx_state_dir.mkdir(parents=True, exist_ok=True)
+            gpx_state_dir.chmod(0o700)
+            environment["FCMS_GPX_STATE_DIR"] = str(gpx_state_dir)
+            request["_gpx_state_dir"] = str(gpx_state_dir)
+        except OSError:
+            # State optimization is optional; collection remains authoritative.
+            pass
     return environment
+
+
+def preserve_acknowledged_route_gpx_state(
+    request: dict[str, Any],
+    artifacts: list[dict[str, Any]],
+) -> int:
+    state_directory = str(request.get("_gpx_state_dir") or "").strip()
+    if not state_directory or mark_route_gpx_collected is None:
+        return 0
+    preserved = 0
+    for artifact in artifacts:
+        if str(artifact.get("artifact_key") or "").upper() != "ROUTE_GPX":
+            continue
+        route_identity = (
+            artifact.get("route_identity")
+            or (artifact.get("collection_context") or {}).get(
+                "selected_work_area"
+            )
+        )
+        service_date = str(
+            artifact.get("service_date")
+            or request.get("service_date")
+            or ""
+        )
+        mark_route_gpx_collected(
+            state_directory,
+            route_identity,
+            service_date,
+            metadata={
+                "artifact_id": artifact.get("artifact_id"),
+                "handoff_mode": artifact.get("handoff_mode"),
+            },
+        )
+        preserved += 1
+    return preserved
 
 
 def parse_runtime_marker(line: str) -> dict[str, Any] | None:
@@ -1263,6 +1322,24 @@ def main() -> int:
         stream="HANDOFF",
         metadata={"artifact_count": len(artifacts)},
     )
+    try:
+        preserved_gpx_count = preserve_acknowledged_route_gpx_state(
+            request,
+            artifacts,
+        )
+    except Exception as error:
+        preserved_gpx_count = 0
+        log_evidence.append(
+            f"Optional route GPX state preservation was isolated: {error}",
+            level="WARN",
+            stream="HANDOFF",
+        )
+    if preserved_gpx_count:
+        log_evidence.append(
+            "Route GPX baseline state preserved after acknowledged handoff.",
+            stream="HANDOFF",
+            metadata={"route_gpx_count": preserved_gpx_count},
+        )
     spool_release = release_cycle_spool(APP_DIR, cycle_spool)
     log_evidence.append(
         "Cycle-local working files released.",
