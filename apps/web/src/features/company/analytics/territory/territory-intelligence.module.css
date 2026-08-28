@@ -24,7 +24,8 @@
 .sectionHead > div > span { display: block; max-width: 720px; margin-top: 5px; color: #687487; font-size: 12px; line-height: 1.45; }
 .mapKey { display: flex; align-items: center; gap: 14px; color: #667085; font-size: 10px; }
 .mapKey span { display: flex; align-items: center; gap: 6px; }
-.terminalMark { width: 9px; height: 9px; transform: rotate(45deg); background: #13a36d; }
+.terminalMark { display: inline-block; flex: 0 0 auto; width: 9px; height: 9px; transform: rotate(45deg); background: #13a36d; }
+.boundaryMark { display: inline-block; flex: 0 0 auto; width: 18px; height: 0; border-top: 2px dashed #7c3aed; }
 .mapShell { position: relative; width: calc(100% - 36px); margin: 0 18px; overflow: hidden; border: 1px solid #d6dee8; border-radius: 12px; background: #eef3f6; }
 .interactiveMap { width: 100%; height: clamp(390px, 42vw, 560px); }
 .resetMap { position: absolute; z-index: 2; top: 12px; left: 12px; padding: 8px 11px; border: 1px solid rgba(19,32,57,.18); border-radius: 8px; background: rgba(255,255,255,.94); box-shadow: 0 2px 9px rgba(15,23,42,.11); color: #25354c; font: inherit; font-size: 10px; font-weight: 850; cursor: pointer; }
@@ -45,6 +46,15 @@
 .mapPanel > footer { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 12px 20px 16px; color: #697689; font-size: 10px; }
 .mapPanel > footer span { color: #169b69; font-weight: 850; text-transform: uppercase; }
 .mapPanel > footer strong { color: #344054; font-size: 11px; }
+:global(html[data-theme="dark"]) .mapPanel { border-color: #2b3b52; background: #101c2c; color: #e8eef7; }
+:global(html[data-theme="dark"]) .mapPanel .sectionHead > div > span,
+:global(html[data-theme="dark"]) .mapPanel .mapKey,
+:global(html[data-theme="dark"]) .mapPanel > footer { color: #9cadc2; }
+:global(html[data-theme="dark"]) .boundaryMark { border-color: #a78bfa; }
+:global(html[data-theme="dark"]) .mapShell { border-color: #2b3b52; background: #0b1523; }
+:global(html[data-theme="dark"]) .resetMap { border-color: #41536c; background: rgba(16,28,44,.94); color: #e8eef7; }
+:global(html[data-theme="dark"]) .resetMap:hover { border-color: #51c99b; background: #17263a; }
+:global(html[data-theme="dark"]) .mapPanel > footer strong { color: #d9e3ef; }
 .twoColumn { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
 .panel .sectionHead { border-bottom: 1px solid #e5eaf0; }
 .bandRows { display: grid; gap: 10px; padding: 15px 18px 19px; }

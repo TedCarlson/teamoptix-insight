@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "maps:sync-worker": "node scripts/sync-maplibre-worker.mjs",
+    "predev": "pnpm maps:sync-worker",
     "dev": "next dev --turbopack",
+    "prebuild": "pnpm maps:sync-worker",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",

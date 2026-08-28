@@ -185,9 +185,9 @@ export default function TerritoryIntelligenceSurface({ slug }: { slug: string })
               <div className={styles.coverageNotice}><strong>Known territory</strong><span>This report grows with normalized manifest history. It currently covers {format(zipNumber(coverage?.manifest_days))} manifest days inside the selected calendar range with {zipCoverage === null ? "no" : `${format(zipCoverage * 100, 1)}%`} ZIP attribution.</span></div>
 
               <section className={styles.mapPanel}>
-                <header className={styles.sectionHead}><div><p>Observed service footprint</p><h2>Interactive ZIP dominance map</h2><span>Pan, zoom, or select a ZIP for detail. Larger ZIP labels indicate greater observed delivery-plus-pickup stop volume.</span></div><div className={styles.mapKey}><span><i className={styles.terminalMark} />Terminal</span><span>Label color follows RUCA context</span></div></header>
-                <TerritoryMap rows={model.mapRows} terminal={payload.terminal} />
-                <footer><span>{payload.terminal.terminal_name ?? "Active terminal"}</span><strong>{payload.terminal.matched_address ?? payload.terminal.submitted_address ?? "Terminal address not configured"}</strong><small>Core territory only · centroid analysis, not driven route miles.</small></footer>
+                <header className={styles.sectionHead}><div><p>Observed service footprint</p><h2>Interactive ZIP dominance map</h2><span>Pan, zoom, or select a ZIP for detail. Larger ZIP labels indicate greater observed delivery-plus-pickup stop volume.</span></div><div className={styles.mapKey}><span><i className={styles.terminalMark} />Terminal</span><span><i className={styles.boundaryMark} />Census ZCTA boundary</span><span>Label color follows RUCA context</span></div></header>
+                <TerritoryMap slug={slug} rows={model.mapRows} terminal={payload.terminal} />
+                <footer><span>{payload.terminal.terminal_name ?? "Active terminal"}</span><strong>{payload.terminal.matched_address ?? payload.terminal.submitted_address ?? "Terminal address not configured"}</strong><small>Core territory only · Census ZCTA boundaries · centroid analysis, not driven route miles.</small></footer>
               </section>
 
               <section className={styles.twoColumn}>

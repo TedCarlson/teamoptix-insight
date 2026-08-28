@@ -7,8 +7,15 @@ import {
   Marker,
   NavigationControl,
   Popup,
-  type StyleSpecification,
 } from "maplibre-gl";
+import {
+  addInternalRoadLayers,
+  addInternalZctaBoundaryLayers,
+  configureInternalMapWorker,
+  createInternalMapStyle,
+  currentInternalMapTheme,
+  observeInternalMapTheme,
+} from "@/features/maps/internalMapStyle";
 import { zipNumber } from "@/features/opportunity-analysis/zipIntelligence";
 import { territoryWorkload, type TerritoryPayload, type TerritoryRow } from "./territoryIntelligence";
 import styles from "./territory-intelligence.module.css";
@@ -19,29 +26,6 @@ const rucaColors: Record<string, string> = {
   SMALL_TOWN: "#b66b13",
   RURAL: "#8e4e28",
   UNKNOWN: "#778397",
-};
-
-const territoryRasterStyle: StyleSpecification = {
-  version: 8,
-  sources: {
-    "openstreetmap-raster": {
-      type: "raster",
-      tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-      tileSize: 256,
-      minzoom: 0,
-      maxzoom: 19,
-      attribution: "© OpenStreetMap contributors",
-    },
-  },
-  layers: [
-    {
-      id: "openstreetmap-raster",
-      type: "raster",
-      source: "openstreetmap-raster",
-      minzoom: 0,
-      maxzoom: 22,
-    },
-  ],
 };
 
 function resolvedTerminalPoint(
@@ -102,9 +86,11 @@ function popupContent(row: TerritoryRow) {
 }
 
 export default function TerritoryMap({
+  slug,
   rows,
   terminal,
 }: {
+  slug: string;
   rows: TerritoryRow[];
   terminal: TerritoryPayload["terminal"];
 }) {
@@ -117,73 +103,89 @@ export default function TerritoryMap({
     if (!containerRef.current || !rows.length) return;
     const maxWorkload = Math.max(1, ...rows.map(territoryWorkload));
     const bounds = boundsFor(rows, terminalPoint);
+    configureInternalMapWorker();
+    const mapTheme = currentInternalMapTheme();
     const map = new MapLibreMap({
       container: containerRef.current,
-      style: territoryRasterStyle,
+      style: createInternalMapStyle(mapTheme),
       center: centerFor(bounds),
       zoom: 7,
       attributionControl: { compact: true },
       cooperativeGestures: true,
     });
+    const stopObservingTheme = observeInternalMapTheme(map);
     mapRef.current = map;
     map.addControl(new NavigationControl({ showCompass: false }), "top-right");
-
-    map.on("load", () => {
-      map.resize();
-      map.fitBounds(bounds, { padding: 64, maxZoom: 10, duration: 0 });
-      const rankedRows = [...rows].sort(
-        (left, right) => territoryWorkload(right) - territoryWorkload(left),
-      );
-      const zipMarkers = rankedRows.map((row, rank) => {
-        const workload = territoryWorkload(row);
-        const marker = document.createElement("button");
-        marker.className = styles.zipMapMarker;
-        marker.type = "button";
-        marker.textContent = row.zip_code;
-        marker.title = `${row.zip_code} · ${workload.toLocaleString()} observed stops`;
-        marker.setAttribute("aria-label", marker.title);
-        marker.style.color = rucaColors[row.ruca_category ?? "UNKNOWN"] ?? rucaColors.UNKNOWN;
-        marker.style.fontSize = `${10 + 10 * Math.sqrt(workload / maxWorkload)}px`;
-        marker.style.zIndex = String(rankedRows.length - rank);
-        new Marker({ element: marker, anchor: "center" })
-          .setLngLat([zipNumber(row.longitude), zipNumber(row.latitude)])
-          .setPopup(new Popup({ offset: 12, closeButton: false }).setDOMContent(popupContent(row)))
-          .addTo(map);
-        return { marker, rank };
-      });
-      const updateZipVisibility = () => {
-        const zoom = map.getZoom();
-        const visibleCount = zoom < 7 ? 8 : zoom < 8 ? 14 : rankedRows.length;
-        for (const item of zipMarkers) {
-          item.marker.style.display = item.rank < visibleCount ? "block" : "none";
-        }
-      };
-      updateZipVisibility();
-      map.on("zoom", updateZipVisibility);
-
-      if (terminalPoint) {
-        const marker = document.createElement("div");
-        marker.className = styles.mapTerminal;
-        marker.title = terminal.terminal_name ?? "Terminal";
-        const terminalIcon = document.createElement("strong");
-        terminalIcon.textContent = "T";
-        const terminalLabel = document.createElement("span");
-        terminalLabel.textContent = "Terminal";
-        marker.append(terminalIcon, terminalLabel);
-        new Marker({ element: marker })
-          .setLngLat([terminalPoint.longitude, terminalPoint.latitude])
-          .setPopup(new Popup({ offset: 14 }).setText(
-            `${terminal.terminal_name ?? "Terminal"} · ${terminal.matched_address ?? terminal.submitted_address ?? "Known location"}`,
-          ))
-          .addTo(map);
+    map.resize();
+    map.fitBounds(bounds, { padding: 64, maxZoom: 10, duration: 0 });
+    const addReferenceLayers = () => {
+      addInternalRoadLayers(map, slug, window.location.origin);
+      addInternalZctaBoundaryLayers(map, slug, window.location.origin);
+    };
+    let styleFrame: number | null = null;
+    const installWhenStyleReady = () => {
+      if (map.isStyleLoaded()) {
+        addReferenceLayers();
+        return;
       }
+      styleFrame = window.requestAnimationFrame(installWhenStyleReady);
+    };
+    installWhenStyleReady();
+
+    const rankedRows = [...rows].sort(
+      (left, right) => territoryWorkload(right) - territoryWorkload(left),
+    );
+    const zipMarkers = rankedRows.map((row, rank) => {
+      const workload = territoryWorkload(row);
+      const marker = document.createElement("button");
+      marker.className = styles.zipMapMarker;
+      marker.type = "button";
+      marker.textContent = row.zip_code;
+      marker.title = `${row.zip_code} · ${workload.toLocaleString()} observed stops`;
+      marker.setAttribute("aria-label", marker.title);
+      marker.style.color = rucaColors[row.ruca_category ?? "UNKNOWN"] ?? rucaColors.UNKNOWN;
+      marker.style.fontSize = `${10 + 10 * Math.sqrt(workload / maxWorkload)}px`;
+      marker.style.zIndex = String(rankedRows.length - rank);
+      new Marker({ element: marker, anchor: "center" })
+        .setLngLat([zipNumber(row.longitude), zipNumber(row.latitude)])
+        .setPopup(new Popup({ offset: 12, closeButton: false }).setDOMContent(popupContent(row)))
+        .addTo(map);
+      return { marker, rank };
     });
+    const updateZipVisibility = () => {
+      const zoom = map.getZoom();
+      const visibleCount = zoom < 7 ? 8 : zoom < 8 ? 14 : rankedRows.length;
+      for (const item of zipMarkers) {
+        item.marker.style.display = item.rank < visibleCount ? "block" : "none";
+      }
+    };
+    updateZipVisibility();
+    map.on("zoom", updateZipVisibility);
+
+    if (terminalPoint) {
+      const marker = document.createElement("div");
+      marker.className = styles.mapTerminal;
+      marker.title = terminal.terminal_name ?? "Terminal";
+      const terminalIcon = document.createElement("strong");
+      terminalIcon.textContent = "T";
+      const terminalLabel = document.createElement("span");
+      terminalLabel.textContent = "Terminal";
+      marker.append(terminalIcon, terminalLabel);
+      new Marker({ element: marker })
+        .setLngLat([terminalPoint.longitude, terminalPoint.latitude])
+        .setPopup(new Popup({ offset: 14 }).setText(
+          `${terminal.terminal_name ?? "Terminal"} · ${terminal.matched_address ?? terminal.submitted_address ?? "Known location"}`,
+        ))
+        .addTo(map);
+    }
 
     return () => {
+      if (styleFrame !== null) window.cancelAnimationFrame(styleFrame);
+      stopObservingTheme();
       mapRef.current = null;
       map.remove();
     };
-  }, [rows, terminal, terminalPoint]);
+  }, [rows, slug, terminal, terminalPoint]);
 
   if (!rows.length) {
     return <div className={styles.emptyMap}>Known core ZIPs do not yet have mappable centroid references.</div>;

@@ -305,7 +305,7 @@ export default function RouteHealthOverlay({
           ) : detailError ? (
             <p role="alert" style={{ color: "#b91c1c", fontWeight: 850 }}>{detailError}</p>
           ) : detail?.route_gpx ? (
-            <RouteGpxMapView routeGpx={detail.route_gpx} />
+            <RouteGpxMapView slug={slug} routeGpx={detail.route_gpx} />
           ) : detail?.stop_clusters.length ? (
             <RouteClusterEvidence
               clusters={detail.stop_clusters}

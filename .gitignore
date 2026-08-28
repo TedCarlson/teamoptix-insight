@@ -20,6 +20,7 @@ apps/automation-worker/.env.production
 # Automation runtime downloads
 .automation-downloads/
 apps/web/.automation-downloads/
+apps/web/public/maplibre/
 tmp/automation-downloads/
 tmp/pdfs/
 *.xls
