@@ -1,0 +1,117 @@
+.shell {
+  display: grid;
+  gap: 12px;
+}
+
+.summary,
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.summary span,
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #dbe4ee;
+  border-radius: 999px;
+  background: #fff;
+  padding: 6px 9px;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.map {
+  width: 100%;
+  min-height: min(68vh, 680px);
+  border: 1px solid #cbd5e1;
+  border-radius: 16px;
+  overflow: hidden;
+  background-color: #e8eef6;
+  background-image:
+    linear-gradient(rgba(100, 116, 139, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(100, 116, 139, 0.12) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.marker {
+  display: grid;
+  place-items: center;
+  min-width: 24px;
+  min-height: 24px;
+  border: 3px solid var(--route-marker-border, #fff);
+  border-radius: 999px;
+  background: var(--route-marker-fill, #64748b);
+  color: #0f172a;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.34);
+  cursor: pointer;
+  font: 900 10px/1 system-ui, sans-serif;
+}
+
+.marker:hover,
+.marker:focus-visible {
+  z-index: 2;
+  outline: 3px solid rgba(37, 99, 235, 0.3);
+  transform: scale(1.12);
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--route-map-dot);
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3px #94a3b8;
+}
+
+.note,
+.empty {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.empty {
+  display: grid;
+  min-height: 320px;
+  place-items: center;
+  border: 1px dashed #94a3b8;
+  border-radius: 16px;
+  padding: 24px;
+  text-align: center;
+  background: #f8fafc;
+}
+
+.popup {
+  display: grid;
+  min-width: 180px;
+  gap: 4px;
+  color: #0f172a;
+}
+
+.popup strong {
+  font-size: 13px;
+}
+
+.popup span,
+.popup small {
+  color: #475569;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.shell :global(.maplibregl-popup-content) {
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  box-shadow: 0 14px 35px rgba(15, 23, 42, 0.24);
+}
+
+@media (max-width: 760px) {
+  .map {
+    min-height: 64vh;
+    border-radius: 12px;
+  }
+}

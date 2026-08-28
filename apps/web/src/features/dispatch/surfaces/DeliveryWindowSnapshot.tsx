@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { MapPinned } from "lucide-react";
 import type { DispatchRoute } from "../lib/dispatchSupport";
 import { eyebrow, panel } from "../lib/dispatchSupport";
 import ServiceSnapshotCard from "@/features/operations/components/ServiceSnapshotCard";
@@ -9,6 +10,7 @@ import ComplianceReportOverlay from "@/features/operations/components/Compliance
 import OperationsWorkspaceToolbar from "@/features/operations/components/OperationsWorkspaceToolbar";
 import RouteHealthOverlay, {
   type ManifestRouteHealthCard,
+  type RouteHealthOverlayView,
 } from "@/features/operations/manifests/components/RouteHealthOverlay";
 import RouteHealthSignal from "@/features/operations/delivery-window/components/RouteHealthSignal";
 import { ExpressProgressSignal } from "@/features/operations/express/ExpressProgressSignal";
@@ -95,6 +97,7 @@ type SelectedManifestRouteHealth = {
   routeKey: string;
   health: ManifestRouteHealthCard | null;
   dsw: DswCurrentRow | null;
+  initialView: RouteHealthOverlayView;
 };
 
 
@@ -964,6 +967,26 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
           {visibleRouteRows.map((item) => {
             const { route, row, signal, completion, fccRow, fccHealth } = item;
             const routeManifestHealth = manifestHealthForItem(item);
+            const selectedRouteLabel = item.route
+              ? routeLabelForDisplay(item.route)
+              : dswDisplayKey(row!, item.sortOrder);
+            const selectedRouteKey = preferredManifestRouteKey(
+              routeManifestHealth?.route_key,
+              item.route?.current_wa_num,
+              item.row?.wa_number,
+              item.route?.route_key,
+              item.row?.route_baseline_id,
+              item.row?.route_name,
+              item.key
+            );
+            const openRouteView = (initialView: RouteHealthOverlayView) =>
+              setSelectedRouteHealth({
+                routeLabel: selectedRouteLabel,
+                routeKey: selectedRouteKey,
+                health: routeManifestHealth,
+                dsw: row ?? null,
+                initialView,
+              });
 
             return (
               <div
@@ -1091,25 +1114,28 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
                   <RouteHealthSignal
                     health={fccHealth}
                     title={`${fccHealth.tooltip} · Open route health`}
-                    onClick={() =>
-                      setSelectedRouteHealth({
-                        routeLabel: item.route
-                          ? routeLabelForDisplay(item.route)
-                          : dswDisplayKey(row!, item.sortOrder),
-                        routeKey: preferredManifestRouteKey(
-                          routeManifestHealth?.route_key,
-                          item.route?.current_wa_num,
-                          item.row?.wa_number,
-                          item.route?.route_key,
-                          item.row?.route_baseline_id,
-                          item.row?.route_name,
-                          item.key
-                        ),
-                        health: routeManifestHealth,
-                        dsw: row ?? null,
-                      })
-                    }
+                    onClick={() => openRouteView("detail")}
                   />
+                  <button
+                    type="button"
+                    aria-label={`Open route map for ${selectedRouteLabel}`}
+                    title={`Open route map for ${selectedRouteLabel}`}
+                    onClick={() => openRouteView("map")}
+                    style={{
+                      width: 30,
+                      height: 30,
+                      display: "inline-grid",
+                      placeItems: "center",
+                      border: "1px solid #d7e1ee",
+                      borderRadius: 10,
+                      background: "#fff",
+                      color: routeManifestHealth ? "#2563eb" : "#64748b",
+                      boxShadow: "0 3px 8px rgba(15, 23, 42, 0.08)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <MapPinned size={17} aria-hidden="true" />
+                  </button>
                   <div
                     style={{
                       minWidth: 64,
@@ -1156,6 +1182,7 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
         routeKey={selectedRouteHealth?.routeKey ?? ""}
         health={selectedRouteHealth?.health ?? null}
         dsw={selectedRouteHealth?.dsw ?? null}
+        initialView={selectedRouteHealth?.initialView ?? "detail"}
         onClose={() => setSelectedRouteHealth(null)}
       />
 
