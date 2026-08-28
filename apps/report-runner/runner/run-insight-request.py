@@ -1170,10 +1170,15 @@ def main() -> int:
         child_env["FCMS_MANIFEST_WORK_AREAS"] = ",".join(
             target_manifest_routes(request)
         )
+        gpx_only = route_gpx_only(request)
         child_env["FCMS_SKIP_COMBINED"] = "1" if manifest_options["skip_combined"] else "0"
-        child_env["FCMS_ROUTE_GPX_ONLY"] = "1" if route_gpx_only(request) else "0"
+        child_env["FCMS_ROUTE_GPX_ONLY"] = "1" if gpx_only else "0"
         child_env["FCMS_SINGLE_SESSION"] = "1"
-        child_env["FCMS_PERSIST_BROWSER"] = "1"
+        # GPX-only recovery is self-contained and must not depend on the
+        # retired, externally managed Chrome debugger endpoint. Preserve the
+        # established attachment behavior for every other queued lane.
+        child_env["FCMS_PERSIST_BROWSER"] = "0" if gpx_only else "1"
+        child_env["FCMS_FRESH_BROWSER"] = "1" if gpx_only else "0"
         child_env["FCMS_CHROME_DEBUGGER_ADDRESS"] = "127.0.0.1:9222"
         child_env["FCMS_WRITE_LOCAL_DATABASE"] = "0"
         continuous_runtime_dir = APP_DIR / "runtime" / "continuous-runner"

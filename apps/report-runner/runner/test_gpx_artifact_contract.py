@@ -53,6 +53,17 @@ class GpxArtifactContractTests(unittest.TestCase):
             self.assertIn('os.environ.get("FCMS_ROUTE_GPX_ONLY"', source)
             self.assertIn("if should_collect_route_gpx():", source)
 
+    def test_targeted_gpx_only_pass_uses_an_isolated_browser(self):
+        self.assertIn("gpx_only = route_gpx_only(request)", self.source)
+        self.assertIn(
+            'child_env["FCMS_PERSIST_BROWSER"] = "0" if gpx_only else "1"',
+            self.source,
+        )
+        self.assertIn(
+            'child_env["FCMS_FRESH_BROWSER"] = "1" if gpx_only else "0"',
+            self.source,
+        )
+
     def test_optional_gpx_failures_are_isolated_from_excel_collection(self):
         for script_name in ("dynamic_script.py", "scrape_particular_date.py"):
             source = (SCRAPER_HOME / script_name).read_text(encoding="utf-8")
