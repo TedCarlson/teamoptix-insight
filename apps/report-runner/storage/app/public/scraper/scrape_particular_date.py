@@ -729,6 +729,47 @@ def scrollTo(el, driver):
     scroll_y_by = desired_y - current_y
     driver.execute_script("window.scrollBy(0, arguments[0]);", scroll_y_by)
 
+
+def selectManifestWorkArea(driver, option_index):
+    """Reacquire the AJAX-refreshed selector for GPX-only route scans."""
+    gpx_only = os.environ.get("FCMS_ROUTE_GPX_ONLY", "0").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+    attempts = 3 if gpx_only else 1
+    for attempt in range(1, attempts + 1):
+        try:
+            select_element = WebDriverWait(driver, 30).until(
+                EC.presence_of_element_located(
+                    (By.XPATH, "//select[@id='manifestForm:workAreas']")
+                )
+            )
+            select = Select(select_element)
+            work_area_hint = (
+                select.options[option_index].text
+                or select.options[option_index].get_attribute("value")
+                or f"option-{option_index}"
+            ).strip()
+            if not should_collect_manifest_work_area(work_area_hint):
+                return work_area_hint, None
+            select.select_by_index(option_index)
+            selected_work_area = (
+                select.first_selected_option.text
+                or select.first_selected_option.get_attribute("value")
+                or work_area_hint
+            ).strip()
+            return work_area_hint, selected_work_area
+        except StaleElementReferenceException:
+            if attempt >= attempts:
+                raise
+            logging.info(
+                "Manifest work-area selector refreshed during GPX scan; "
+                "reacquiring option %s (%s/%s)",
+                option_index,
+                attempt,
+                attempts,
+            )
+            time.sleep(0.5)
+
 def main(section_='', option_=0, retry=1):
     global SECTION_LIST, ACTIVE_SECTION, ACTIVE_SECTION_OPTION
     purge_expired_local_package_artifacts(MAIN_FOLDER)
@@ -825,24 +866,15 @@ def main(section_='', option_=0, retry=1):
                 # if i == 0: continue
                 logging.info(f'Selecting option {i}')
                 ACTIVE_SECTION_OPTION = i
-                select_element = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//select[@id='manifestForm:workAreas']")))
                 time.sleep(1)
-                select = Select(select_element)
-                # logging.info([op.text for op in select.options])
-                if i == 0 and select.options[0].text == 'ALL': continue
-                work_area_hint = (
-                    select.options[i].text
-                    or select.options[i].get_attribute("value")
-                    or f"option-{i}"
-                ).strip()
-                if not should_collect_manifest_work_area(work_area_hint):
+                work_area_hint, selected_work_area = selectManifestWorkArea(
+                    driver,
+                    i,
+                )
+                if i == 0 and work_area_hint == 'ALL':
                     continue
-                select.select_by_index(i)
-                selected_work_area = (
-                    select.first_selected_option.text
-                    or select.first_selected_option.get_attribute("value")
-                    or work_area_hint
-                ).strip()
+                if selected_work_area is None:
+                    continue
                 collected_work_areas.add(
                     normalize_manifest_work_area(selected_work_area)
                 )

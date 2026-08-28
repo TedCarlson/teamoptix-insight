@@ -7,6 +7,14 @@ import gpx_collection
 
 
 class GpxCollectionTests(unittest.TestCase):
+    def test_historical_gpx_scan_reacquires_ajax_refreshed_work_area(self):
+        source = (Path(__file__).with_name("scrape_particular_date.py")).read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("def selectManifestWorkArea", source)
+        self.assertIn("except StaleElementReferenceException", source)
+        self.assertIn("attempts = 3 if gpx_only else 1", source)
+
     def test_prefers_route_delivery_gpx_for_selected_work_area(self):
         candidates = [
             {
