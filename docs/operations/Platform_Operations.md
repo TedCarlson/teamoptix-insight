@@ -83,11 +83,65 @@ Responsibilities
 - Obeys the signed daily-package RUN/REST gate.
 - Owns report-collection mechanics and serial donor execution.
 - Executes Prior Day, DRO AM, and the Operations Pulse success chain.
+- Collects the GPX control adjacent to the Combined Manifest export control
+  once per route and service date. The manifest workbook, not the GPX filename,
+  remains route/date identity authority.
 - Submits a terminal receipt after each runner-owned cycle; the receipt becomes
   the audit request and registers its artifacts.
 - Claims queued requests only for ticket-owned work such as historical sweep
   and targeted recovery.
 - Never performs ingest.
+
+### Route GPX evidence
+
+The first successful route-scoped Combined Manifest view may establish one
+dispatch-baseline GPX artifact for that route and service date without
+requiring the Combined Excel workbook. Later pulse
+cycles do not download another local baseline. They refresh manifest and
+package state against the fixed waypoint geometry so Service can render open,
+attempted, and completed stops, including express and pickup distinctions.
+The customer-scoped once-daily marker is committed only after the runner's
+artifact handoff receipt is accepted, and it expires through bounded runner
+retention. A marker failure never blocks the established Excel collection.
+
+GPX ingestion is rejected until a sibling manifest workbook verifies the same
+route and service date. Exact coordinates are service-role warehouse data and
+are returned only through the company-authorized Service route-detail API.
+They follow the existing seven-day identifiable FCC artifact retention window;
+only privacy-safe derived cluster facts may survive that window. Insight does
+not expose an artifact-download action for GPX evidence.
+
+A bounded route-baseline backfill uses the existing governed historical queue
+with an exact one-day range and this payload contract:
+
+```json
+{
+  "runner_goal": "collect_historical_dsw_range",
+  "collect_scope": "ROUTE_GPX_BASELINE",
+  "route_gpx_only": true,
+  "manifest_types": [],
+  "skip_combined": true,
+  "targets": [
+    {
+      "artifact_key": "ROUTE_GPX",
+      "runner_section": "P_AND_D"
+    }
+  ]
+}
+```
+
+The exact date is carried by `service_date_start` and `service_date_end`.
+This invocation opens each route's Combined view, downloads only the GPX
+artifact, skips previously acknowledged route/day baselines, and never
+downloads Combined, Delivery, or Pickup Excel. A route-day GPX may use a
+workbook verified in an earlier collection cycle for the same company, date,
+and route; the collection request does not need to duplicate that workbook.
+
+Runner concurrency remains a separate capacity decision. The current browser
+profile, download directory, and donor lock are one serial attribution domain.
+Capacity should scale first through customer-isolated runner environments with
+bounded concurrency and measured donor latency, rather than uncoordinated tabs
+sharing a session and download folder.
 
 Systemd service
 

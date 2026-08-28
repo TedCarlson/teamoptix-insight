@@ -3,6 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { manifestIdentityFromBuffer } from "@/features/operations/manifests/manifest.identity";
 import { processManifestArtifact } from "@/features/operations/manifests/manifest.processor";
 import {
+  ingestRouteGpxArtifact,
+  isRouteGpxCollectionArtifact,
+  resolveRouteGpxManifestReadiness,
+} from "@/features/operations/manifests/routeGpx";
+import {
   isManifestCollectionArtifact,
   isRetryableIngestionTimeout,
   manifestPreparationPayload,
@@ -307,6 +312,77 @@ export async function POST(req: NextRequest) {
         file_type: identity.manifest_type,
         route_key: identity.route_key,
         service_date: identity.service_date,
+        elapsed_ms: Date.now() - startedAt,
+      });
+    }
+
+    if (isRouteGpxCollectionArtifact(artifact)) {
+      const readiness = await resolveRouteGpxManifestReadiness({
+        supabase,
+        artifact,
+      });
+      if (readiness.status === "PENDING") {
+        await markArtifact({
+          supabase,
+          artifactId: artifact.id,
+          status: "READY_FOR_INGEST",
+          metadata: {
+            source: "runner_v2_direct_ingestion",
+            phase: "WAITING_FOR_MANIFEST",
+            deferred_at: new Date().toISOString(),
+          },
+        });
+        return NextResponse.json(
+          {
+            ok: false,
+            durable: false,
+            fallback_required: true,
+            artifact_id: artifact.id,
+            artifact_status: "READY_FOR_INGEST",
+            reason: "WAITING_FOR_MANIFEST",
+            elapsed_ms: Date.now() - startedAt,
+          },
+          { status: 409 }
+        );
+      }
+      if (readiness.status === "INVALID") {
+        throw new Error(
+          "Route GPX requires a workbook-verified sibling manifest for the same route and service date."
+        );
+      }
+      const result = await ingestRouteGpxArtifact({
+        supabase,
+        artifact,
+        buffer,
+        verifiedManifest: readiness.manifest,
+      });
+      await markArtifact({
+        supabase,
+        artifactId: artifact.id,
+        status: "INGESTED",
+        metadata: {
+          source: "runner_v2_direct_ingestion",
+          phase: "INGESTED",
+          completed_at: new Date().toISOString(),
+          result,
+        },
+      });
+      logReceipt({
+        artifactId: artifact.id,
+        companySlug: artifact.company_slug,
+        fileType: "ROUTE_GPX",
+        outcome: "INGESTED",
+        sizeBytes: metadata.size_bytes,
+        elapsedMs: Date.now() - startedAt,
+      });
+      return NextResponse.json({
+        ok: true,
+        durable: true,
+        artifact_id: artifact.id,
+        company_slug: artifact.company_slug,
+        artifact_status: "INGESTED",
+        file_type: "ROUTE_GPX",
+        route_key: result?.route_key ?? null,
         elapsed_ms: Date.now() - startedAt,
       });
     }

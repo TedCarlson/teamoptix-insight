@@ -23,6 +23,13 @@ from manifest_identity import (
     quarantineRejectedManifest,
     renameDownloadedManifest,
 )
+from gpx_collection import (
+    click_best_gpx_control,
+    finalize_route_gpx,
+    gpx_download_snapshot,
+    route_gpx_already_collected,
+    wait_for_gpx_download,
+)
 from dsw_package_status import (
     collect_dsw_daily_service,
     collect_dsw_package_status,
@@ -248,6 +255,107 @@ def recordObservedDownload(
         **event_common,
     )
     return downloaded_path
+
+
+def _collectOptionalRouteGpx(
+    driver,
+    route_identity,
+    excel_button_xpath,
+    wait_seconds=8,
+):
+    service_date = current_date.strftime("%Y-%m-%d")
+    if route_gpx_already_collected(
+        DOWNLOAD_FOLDER,
+        route_identity,
+        service_date,
+    ):
+        logging.info(
+            "Historical route GPX baseline already collected for %s on %s",
+            route_identity,
+            service_date,
+        )
+        return None
+    before_download = gpx_download_snapshot(DOWNLOAD_FOLDER)
+    deadline = time.time() + wait_seconds
+    selection = None
+    while time.time() < deadline and selection is None:
+        selection = click_best_gpx_control(
+            driver,
+            route_identity,
+            excel_button_xpath,
+        )
+        if selection is None:
+            time.sleep(0.5)
+    if selection is None:
+        logging.info(
+            "No route GPX export was available for historical manifest search %s",
+            route_identity,
+        )
+        return None
+
+    requested_at = time.time()
+    try:
+        downloaded_path, _ = wait_for_gpx_download(
+            DOWNLOAD_FOLDER,
+            before_download,
+        )
+        final_path, metadata = finalize_route_gpx(
+            downloaded_path,
+            route_identity=route_identity,
+            service_date=service_date,
+            selection_evidence=selection,
+        )
+        emit_runtime_event(
+            "SOURCE_REQUESTED",
+            "SOURCE",
+            occurred_at=datetime.fromtimestamp(
+                requested_at, timezone.utc
+            ).isoformat().replace("+00:00", "Z"),
+            artifact_key="ROUTE_GPX",
+            lane_key="FCC_ROUTE_GPX",
+            route_identity=metadata["route_identity"],
+            filename=os.path.basename(final_path),
+        )
+        emit_runtime_event(
+            "DOWNLOAD_COMPLETED",
+            "DOWNLOAD",
+            artifact_key="ROUTE_GPX",
+            lane_key="FCC_ROUTE_GPX",
+            route_identity=metadata["route_identity"],
+            filename=os.path.basename(final_path),
+        )
+        return final_path
+    except Exception as error:
+        logging.info(
+            "Historical route GPX download failed for %s: %s",
+            route_identity,
+            error,
+        )
+        return None
+
+
+def collectOptionalRouteGpx(
+    driver,
+    route_identity,
+    excel_button_xpath,
+    wait_seconds=8,
+):
+    """Keep supplemental GPX failures outside the manifest collection path."""
+    try:
+        return _collectOptionalRouteGpx(
+            driver,
+            route_identity,
+            excel_button_xpath,
+            wait_seconds,
+        )
+    except Exception as error:
+        logging.info(
+            "Optional historical route GPX collection was isolated for %s: %s",
+            route_identity,
+            error,
+        )
+        return None
+
 
 def getDriver():
     global PERSIST_DSW_WINDOW_HANDLE, PERSIST_ORIGINAL_WINDOW_HANDLES
@@ -541,6 +649,11 @@ ACTIVE_SECTION = ''
 ACTIVE_SECTION_OPTION = 0
 
 def requested_manifest_types():
+    if os.environ.get("FCMS_ROUTE_GPX_ONLY", "0").strip().lower() in {
+        "1", "true", "yes", "on"
+    }:
+        return set()
+
     raw_types = os.environ.get("FCMS_MANIFEST_TYPES", "").strip().lower()
     requested = {
         value.strip()
@@ -557,6 +670,13 @@ def requested_manifest_types():
     return requested
 
 REQUESTED_MANIFEST_TYPES = requested_manifest_types()
+
+def should_collect_route_gpx():
+    return (
+        os.environ.get("FCMS_ROUTE_GPX_ONLY", "0").strip().lower()
+        in {"1", "true", "yes", "on"}
+        or bool(REQUESTED_MANIFEST_TYPES)
+    )
 
 def should_download_manifest(manifest_type):
     return manifest_type in REQUESTED_MANIFEST_TYPES
@@ -739,19 +859,22 @@ def main(section_='', option_=0, retry=1):
                 WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//div[@class='mobi-submitnotific-container-hide']")))
                 time.sleep(1)
 
-                # Combined Manifest
-                if should_download_manifest("combined"):
-                    c_m = WebDriverWait(driver, 30).until( EC.element_to_be_clickable((By.XPATH, "//em[contains(text(), 'Combined Manifest')]")) )
-                    time.sleep(1)
-                    try:
-                        c_m.click()
-                    except:
-                        c_m.find_element(By.XPATH, '..').click()
+                # Always initialize Combined Manifest because its GPX is the
+                # complete route baseline. The Combined workbook remains
+                # optional and the established Delivery/Pickup Excel policy
+                # is unchanged.
+                c_m = WebDriverWait(driver, 30).until( EC.element_to_be_clickable((By.XPATH, "//em[contains(text(), 'Combined Manifest')]")) )
+                time.sleep(1)
+                try:
+                    c_m.click()
+                except:
+                    c_m.find_element(By.XPATH, '..').click()
 
-                    logging.info("Clicked the tab Combined Manifest...")
-                    WebDriverWait(driver, 30).until( element_opacity_exists(c_m.find_element(By.XPATH, '../..').get_attribute('id')) )
-                    time.sleep(1)
-                    logging.info("Waiting for loading...")
+                logging.info("Initialized the Combined Manifest tab...")
+                WebDriverWait(driver, 30).until( element_opacity_exists(c_m.find_element(By.XPATH, '../..').get_attribute('id')) )
+                time.sleep(1)
+                logging.info("Waiting for loading...")
+                if should_download_manifest("combined"):
                     if driver.find_elements(By.XPATH, "//input[@id='manifestForm:buttonCombinedGenerateExcel']"):
                         requested_at = time.time()
                         driver.find_element(By.XPATH, "//input[@id='manifestForm:buttonCombinedGenerateExcel']").click()
@@ -765,6 +888,12 @@ def main(section_='', option_=0, retry=1):
                         )
                 else:
                     logging.info("Skipping Combined Manifest by request payload")
+                if should_collect_route_gpx():
+                    collectOptionalRouteGpx(
+                        driver,
+                        selected_work_area,
+                        "//input[@id='manifestForm:buttonCombinedGenerateExcel']",
+                    )
 
                 # Delivery Manifest
                 if should_download_manifest("delivery"):

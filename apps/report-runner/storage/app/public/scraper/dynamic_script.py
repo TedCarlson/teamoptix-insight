@@ -30,6 +30,13 @@ from manifest_identity import (
     quarantineRejectedManifest,
     renameDownloadedManifest,
 )
+from gpx_collection import (
+    click_best_gpx_control,
+    finalize_route_gpx,
+    gpx_download_snapshot,
+    route_gpx_already_collected,
+    wait_for_gpx_download,
+)
 from dsw_package_status import (
     collect_dsw_daily_service,
     collect_dsw_package_status,
@@ -470,6 +477,137 @@ def collectOptionalManifest(
         return None
 
 
+def _collectOptionalRouteGpx(
+    driver,
+    route_identity,
+    excel_button_xpath,
+    wait_seconds=8,
+):
+    service_date = current_date.strftime("%Y-%m-%d")
+    if route_gpx_already_collected(
+        DOWNLOAD_FOLDER,
+        route_identity,
+        service_date,
+    ):
+        logging.info(
+            "Route GPX baseline already collected for %s on %s",
+            route_identity,
+            service_date,
+        )
+        return None
+    event_common = {
+        "artifact_key": "ROUTE_GPX",
+        "lane_key": "FCC_ROUTE_GPX",
+        "route_identity": route_identity,
+    }
+    before_download = gpx_download_snapshot(DOWNLOAD_FOLDER)
+    deadline = time.time() + wait_seconds
+    selection = None
+    while time.time() < deadline and selection is None:
+        selection = click_best_gpx_control(
+            driver,
+            route_identity,
+            excel_button_xpath,
+        )
+        if selection is None:
+            time.sleep(0.5)
+
+    if selection is None:
+        logging.info(
+            "No route GPX export was available for manifest search %s",
+            route_identity,
+        )
+        emit_runtime_event(
+            "SOURCE_UNAVAILABLE",
+            "SOURCE",
+            metadata={
+                "reason": "GPX_EXPORT_NOT_AVAILABLE",
+                "optional_artifact": True,
+            },
+            **event_common,
+        )
+        return None
+
+    requested_at = time.time()
+    try:
+        downloaded_path, source_ready_at = wait_for_gpx_download(
+            DOWNLOAD_FOLDER,
+            before_download,
+        )
+        final_path, metadata = finalize_route_gpx(
+            downloaded_path,
+            route_identity=route_identity,
+            service_date=service_date,
+            selection_evidence=selection,
+        )
+        event_common["route_identity"] = metadata["route_identity"]
+        event_common["filename"] = os.path.basename(final_path)
+        emit_runtime_event(
+            "SOURCE_REQUESTED",
+            "SOURCE",
+            occurred_at=datetime.fromtimestamp(
+                requested_at, timezone.utc
+            ).isoformat().replace("+00:00", "Z"),
+            metadata={"selection_score": metadata["collection_context"]["selection_evidence"]["score"]},
+            **event_common,
+        )
+        emit_runtime_event(
+            "SOURCE_READY",
+            "SOURCE",
+            occurred_at=datetime.fromtimestamp(
+                source_ready_at, timezone.utc
+            ).isoformat().replace("+00:00", "Z"),
+            **event_common,
+        )
+        emit_runtime_event("DOWNLOAD_COMPLETED", "DOWNLOAD", **event_common)
+        logging.info(
+            "Collected route GPX %s for manifest search %s",
+            os.path.basename(final_path),
+            route_identity,
+        )
+        return final_path
+    except Exception as error:
+        logging.info(
+            "Route GPX download failed for %s: %s",
+            route_identity,
+            error,
+        )
+        emit_runtime_event(
+            "DOWNLOAD_FAILED",
+            "DOWNLOAD",
+            metadata={
+                "reason": "GPX_DOWNLOAD_FAILED",
+                "optional_artifact": True,
+                "error": str(error)[:500],
+            },
+            **event_common,
+        )
+        return None
+
+
+def collectOptionalRouteGpx(
+    driver,
+    route_identity,
+    excel_button_xpath,
+    wait_seconds=8,
+):
+    """Keep supplemental GPX failures outside the manifest collection path."""
+    try:
+        return _collectOptionalRouteGpx(
+            driver,
+            route_identity,
+            excel_button_xpath,
+            wait_seconds,
+        )
+    except Exception as error:
+        logging.info(
+            "Optional route GPX collection was isolated for %s: %s",
+            route_identity,
+            error,
+        )
+        return None
+
+
 def finalizeSimpleDownload(
     before,
     artifact_key,
@@ -678,6 +816,11 @@ ACTIVE_SECTION = ''
 ACTIVE_SECTION_OPTION = 0
 
 def requested_manifest_types():
+    if os.environ.get("FCMS_ROUTE_GPX_ONLY", "0").strip().lower() in {
+        "1", "true", "yes", "on"
+    }:
+        return set()
+
     raw_types = os.environ.get("FCMS_MANIFEST_TYPES", "").strip().lower()
     requested = {
         value.strip()
@@ -694,6 +837,13 @@ def requested_manifest_types():
     return requested
 
 REQUESTED_MANIFEST_TYPES = requested_manifest_types()
+
+def should_collect_route_gpx():
+    return (
+        os.environ.get("FCMS_ROUTE_GPX_ONLY", "0").strip().lower()
+        in {"1", "true", "yes", "on"}
+        or bool(REQUESTED_MANIFEST_TYPES)
+    )
 
 def should_download_manifest(manifest_type):
     return manifest_type in REQUESTED_MANIFEST_TYPES
@@ -1388,6 +1538,12 @@ def main(section_='', option_=0, retry=1):
                 else:
                     logging.info(
                         "Skipping Combined Manifest download after initialization"
+                    )
+                if should_collect_route_gpx():
+                    collectOptionalRouteGpx(
+                        driver,
+                        selected_work_area,
+                        "//input[@id='manifestForm:buttonCombinedGenerateExcel']",
                     )
 
                 # Delivery Manifest
