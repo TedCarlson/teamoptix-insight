@@ -1,0 +1,333 @@
+
+/* Shared People family contract: one theme boundary for directory, hiring, HR, and records. */
+.people-theme-scope {
+  min-width: 0;
+  color: var(--text);
+}
+
+.people-family-table-wrap {
+  max-width: 100%;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.people-family-table {
+  width: 100%;
+  color: #334155;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope .workspace-shell {
+  color: var(--text);
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope .workspace-shell :where(h1, h2, h3, h4, h5, h6, strong) {
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope .workspace-shell :where(p, small, label, dt, dd) {
+  color: var(--muted) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope :where(.value-card, .app-card, .people-data-surface) {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .16) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope :where(.hero-stat, .context-stat) {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+  color: #dce7f2 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope :where(input, select, textarea) {
+  border-color: #3a5069 !important;
+  background: #111f31 !important;
+  color: var(--text) !important;
+  color-scheme: dark;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope :where(input, textarea)::placeholder {
+  color: #8293a8 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope :where(input, select, textarea):focus {
+  border-color: #6d9dff !important;
+  box-shadow: 0 0 0 3px rgba(72, 125, 235, .2) !important;
+}
+
+/* People overview and roster. */
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope [class*="people-landing-module"] {
+  border-color: var(--line) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope :where([class*="people-landing-module"][class*="commandSurface"], [class*="people-landing-module"][class*="intelligencePanel"], [class*="people-landing-module"][class*="retentionPanel"]) {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope :where([class*="people-landing-module"][class*="intelligenceGrid"], [class*="people-landing-module"][class*="postureSummary"], [class*="people-landing-module"][class*="noticeDatum"], [class*="people-landing-module"][class*="agendaRow"], [class*="people-landing-module"][class*="changeRow"]) {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+  color: #dce7f2 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope [class*="people-landing-module"][class*="empty"] {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+  color: var(--muted) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope :where([class*="people-landing-module"] h2, [class*="people-landing-module"] strong) {
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope :where([class*="people-landing-module"] p, [class*="people-landing-module"] span, [class*="people-landing-module"] small) {
+  color: var(--muted) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope [class*="people-landing-module"][class*="notice"] {
+  border-color: #8b6a32 !important;
+  background: #352b1d !important;
+  color: #f3c977 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope .people-family-table-wrap {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope .people-family-table th {
+  border-color: #344a64 !important;
+  background: var(--surface-3) !important;
+  color: #afbed0 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope .people-family-table td {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  color: #c8d5e3 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope .people-family-table tbody tr:hover td {
+  background: #12243a !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope .people-status-pill--neutral {
+  border-color: #3a5069 !important;
+  background: var(--surface-3) !important;
+  color: #b8c7d8 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope .people-status-pill--good {
+  border-color: #3e8d6d !important;
+  background: #123b30 !important;
+  color: #8ce8c0 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope .people-status-pill--warn {
+  border-color: #8b6a32 !important;
+  background: #352b1d !important;
+  color: #f3c977 !important;
+}
+
+/* Compliance and reporting tables. */
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope :where(.people-workspace-toolbar, .people-workspace-stats) {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope .people-workspace-stats > span {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope .people-workspace-stats .is-alert {
+  background: #2b1e2a !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope .people-workspace-stats .is-warning {
+  background: #352b1d !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope .people-workspace-table th {
+  border-color: #344a64 !important;
+  background: var(--surface-3) !important;
+  color: #afbed0 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope .people-workspace-table td {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  color: #c8d5e3 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope .people-workspace-table tbody tr:hover td {
+  background: #12243a !important;
+}
+
+/* Hiring workbench, interviews, invitations, and requirements. */
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope :where(
+  [class*="hiring-workspace-module"][class*="surface"],
+  [class*="hiring-workspace-module"][class*="summaryItem"],
+  [class*="hiring-workspace-module"][class*="ownerStrip"],
+  [class*="hiring-workspace-module"][class*="workbenchRail"],
+  [class*="hiring-workspace-module"][class*="editor"],
+  [class*="hiring-workspace-module"][class*="previewCard"],
+  [class*="hiring-workspace-module"][class*="tableWrap"],
+  [class*="hiring-workspace-module"][class*="card"],
+  [class*="hiring-workspace-module"][class*="panel"]
+) {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .14) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope :where(
+  [class*="hiring-workspace-module"][class*="surfaceHeader"],
+  [class*="hiring-workspace-module"][class*="railHeader"],
+  [class*="hiring-workspace-module"][class*="railFooter"],
+  [class*="hiring-workspace-module"][class*="editorHeader"],
+  [class*="hiring-workspace-module"][class*="table"] th,
+  [class*="hiring-workspace-module"][class*="dayButton"]
+) {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+  color: #c8d5e3 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope :where(
+  [class*="hiring-workspace-module"][class*="choice"],
+  [class*="hiring-workspace-module"][class*="railItem"],
+  [class*="hiring-workspace-module"][class*="listItem"],
+  [class*="hiring-workspace-module"][class*="agendaEvents"],
+  [class*="hiring-workspace-module"][class*="stat"],
+  [class*="hiring-workspace-module"][class*="emptyState"]
+) {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+  color: #dce7f2 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope :where(
+  [class*="hiring-workspace-module"][class*="choiceActive"],
+  [class*="hiring-workspace-module"][class*="railItemActive"],
+  [class*="hiring-workspace-module"][class*="dayButtonActive"]
+) {
+  border-color: #6d9dff !important;
+  background: rgba(37, 99, 235, .2) !important;
+  color: #a9c5ff !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope [class*="hiring-workspace-module"] :where(h1, h2, h3, h4, strong) {
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope [class*="hiring-workspace-module"] :where(p, span, small, label) {
+  color: var(--muted) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope [class*="hiring-workspace-module"] table td {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  color: #c8d5e3 !important;
+}
+
+/* Candidate and person drawers share the same readable glass surface. */
+html[data-theme="dark"] :where(.people-dialog-surface, [class*="candidate-workflow-drawer-module"][class*="drawer"]) {
+  border-color: #36506b !important;
+  background: rgba(15, 30, 48, .98) !important;
+  color: var(--text) !important;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, .48) !important;
+}
+
+html[data-theme="dark"] :where(.people-dialog-surface, [class*="candidate-workflow-drawer-module"][class*="drawer"]) :where(h1, h2, h3, h4, strong) {
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] :where(.people-dialog-surface, [class*="candidate-workflow-drawer-module"][class*="drawer"]) :where(p, span, small, label) {
+  color: var(--muted) !important;
+}
+
+html[data-theme="dark"] :where(.people-dialog-surface, [class*="candidate-workflow-drawer-module"][class*="drawer"]) :where(header, section, article, aside, details, [class*="tabPage"], [class*="workflowRail"], [class*="railSection"], [class*="content"]) {
+  border-color: var(--line) !important;
+  background-color: var(--surface-2) !important;
+  color: #dce7f2 !important;
+}
+
+html[data-theme="dark"] :where(.people-dialog-surface, [class*="candidate-workflow-drawer-module"][class*="drawer"]) :where(input, select, textarea) {
+  border-color: #3a5069 !important;
+  background: #111f31 !important;
+  color: var(--text) !important;
+  color-scheme: dark;
+}
+
+html[data-theme="dark"] [class*="candidate-checklist-module"] :where(section, article, button, [role="button"]) {
+  border-color: var(--line) !important;
+  background-color: var(--surface-2) !important;
+  color: #dce7f2 !important;
+}
+
+/* Corrective Actions and policy administration. */
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope :where(
+  .can-template-editor,
+  .can-policy-list,
+  .can-policy-document,
+  .can-policy-inspector,
+  .can-policy-response,
+  .can-evidence-picker,
+  .can-evidence-auto,
+  .can-dsw-summary,
+  .can-attendance-evidence,
+  .can-evidence-suggestions,
+  .policy-details-strip,
+  .policy-ack-table,
+  .employee-policy-document > footer
+) {
+  border-color: var(--line) !important;
+  background: var(--surface-2) !important;
+  color: #dce7f2 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope :where(.can-policy-option, .can-evidence-suggestion, .can-policy-evidence-list span, .can-dsw-summary__metrics span, .can-attendance-evidence span, .employee-policy-option) {
+  border-color: var(--line) !important;
+  background: #111f31 !important;
+  color: #c8d5e3 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope :where(.can-policy-option.is-selected, .can-evidence-suggestion.is-selected, .employee-policy-option.is-selected) {
+  border-color: #3e8d6d !important;
+  background: #123b30 !important;
+  color: #9aebc8 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope :where(.can-workspace table, .policy-ack-table) th {
+  border-color: #344a64 !important;
+  background: var(--surface-3) !important;
+  color: #afbed0 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope :where(.can-workspace table, .policy-ack-table) td,
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope .policy-ack-row {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  color: #c8d5e3 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope .policy-ack-row.is-head {
+  background: var(--surface-3) !important;
+  color: #afbed0 !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope :where(.employee-policy-content > section, .employee-policy-document > header, .policy-version-list article, .can-policy-response > div, .can-policy-inspector > section) {
+  border-color: var(--line) !important;
+}
+
+html[data-theme="dark"] .company-workspace-stage .people-theme-scope .employee-policy-content > section > span {
+  background: var(--surface-3) !important;
+  color: #a9c5ff !important;
+}

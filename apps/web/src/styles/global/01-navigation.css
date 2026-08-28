@@ -1,0 +1,130 @@
+
+/* Unified navigation chrome */
+.app-nav-shell {
+  width: 100%;
+  padding: 12px 18px 0;
+}
+
+.app-nav-inner {
+  width: 100%;
+  max-width: var(--app-page);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border: 1px solid rgba(214, 223, 235, 0.95);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(10px);
+}
+
+.app-nav-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.app-nav-pill {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+}
+
+.app-nav-pill--active {
+  border-color: #0f172a;
+  background: #0f172a;
+  color: #fff;
+}
+
+.app-nav-menu {
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 900;
+  box-shadow: var(--shadow-sm);
+}
+
+.company-subnav {
+  width: 100%;
+  max-width: var(--app-page);
+  margin: 20px auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0 16px;
+}
+
+@media (max-width: 900px) {
+  .app-nav-shell {
+    padding: 8px 10px 0;
+  }
+
+  .app-nav-inner {
+    gap: 8px;
+    padding: 10px;
+    border-radius: 18px;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .app-nav-group {
+    width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app-nav-group::-webkit-scrollbar {
+    display: none;
+  }
+
+  .app-nav-pill {
+    min-height: 34px;
+    padding: 0 11px;
+    font-size: 13px;
+    flex: 0 0 auto;
+  }
+
+  .app-nav-menu {
+    width: 38px;
+    min-width: 38px;
+    height: 38px;
+    flex: 0 0 auto;
+  }
+
+  .company-subnav {
+    margin: 10px auto 12px;
+    padding: 0 10px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .company-subnav::-webkit-scrollbar {
+    display: none;
+  }
+}
