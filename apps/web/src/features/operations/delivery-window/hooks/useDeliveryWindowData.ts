@@ -19,7 +19,7 @@ import {
   type HistoricalFccRoute,
   type HistoricalManifestRoute,
 } from "../lib/historicalServiceRoutes";
-import { hasHistoricalFccEvidence } from "../lib/historicalServicePresentation";
+import type { DroPlanRow } from "../lib/serviceRouteEvidence";
 
 function removeDriver(route: DispatchRoute, rosterMemberId: string): DispatchRoute {
   return {
@@ -77,6 +77,20 @@ function applyDispatchDriverEvents(
       delete next[routeKey];
     }
 
+    if (event.event_code === "ASSIGN_DRIVER" && routeKey && !next[routeKey]) {
+      next[routeKey] = {
+        route_key: routeKey,
+        route_name: event.route_label?.trim() || routeKey,
+        current_wa_num: routeKey,
+        route_location: null,
+        route_type: "DISPATCH",
+        driver: null,
+        helpers: [],
+        trainees: [],
+        extras: [],
+      };
+    }
+
     if (event.event_code === "ASSIGN_DRIVER" && routeKey && driver && next[routeKey]) {
       const cleaned: Record<string, DispatchRoute> = {};
       for (const [key, route] of Object.entries(next)) {
@@ -124,29 +138,40 @@ export function useDeliveryWindowData(
         const routesUrl = `/api/company/${slug}/routes`;
         const scheduleUrl = `/api/company/${slug}/schedule/generated?date=${serviceDate}`;
         const dispatchDayUrl = `/api/company/${slug}/dispatch/day?date=${serviceDate}`;
-        const [routesRes, scheduleRes, dispatchDayRes, dswRes, fccRes, manifestRes] =
+        const [
+          routesRes,
+          scheduleRes,
+          dispatchDayRes,
+          dswRes,
+          droAmRes,
+          droPmRes,
+          fccRes,
+          manifestRes,
+        ] =
           await Promise.all([
             fetchServiceJsonOnce(routesUrl, refreshKey),
             fetchServiceJsonOnce(scheduleUrl, refreshKey),
             fetchServiceJsonOnce(dispatchDayUrl, refreshKey),
-            historical
-              ? fetchServiceJsonOnce(
-                  `/api/company/${slug}/operations/reports/dsw-current?date=${serviceDate}`,
-                  refreshKey
-                )
-              : Promise.resolve({ ok: true, status: 200, data: { rows: [] } }),
-            historical
-              ? fetchServiceJsonOnce(
-                  `/api/company/${slug}/operations/reports/fcc-current?date=${serviceDate}`,
-                  refreshKey
-                )
-              : Promise.resolve({ ok: true, status: 200, data: { rows: [] } }),
-            historical
-              ? fetchServiceJsonOnce(
-                  `/api/company/${slug}/operations/route-health?serviceDate=${encodeURIComponent(serviceDate)}`,
-                  refreshKey
-                )
-              : Promise.resolve({ ok: true, status: 200, data: { routes: [] } }),
+            fetchServiceJsonOnce(
+              `/api/company/${slug}/operations/reports/dsw-current?date=${serviceDate}`,
+              refreshKey
+            ),
+            fetchServiceJsonOnce(
+              `/api/company/${slug}/operations/reports/dro-plan?date=${serviceDate}&frame=AM`,
+              refreshKey
+            ),
+            fetchServiceJsonOnce(
+              `/api/company/${slug}/operations/reports/dro-plan?date=${serviceDate}&frame=PM`,
+              refreshKey
+            ),
+            fetchServiceJsonOnce(
+              `/api/company/${slug}/operations/reports/fcc-current?date=${serviceDate}`,
+              refreshKey
+            ),
+            fetchServiceJsonOnce(
+              `/api/company/${slug}/operations/route-health?serviceDate=${encodeURIComponent(serviceDate)}`,
+              refreshKey
+            ),
           ]);
 
         const routesData = routesRes.data;
@@ -178,43 +203,25 @@ export function useDeliveryWindowData(
         ) as RouteRow[];
         const routeMap = new Map<string, DispatchRoute>();
         const routeAliases = new Map<string, string>();
-
-        if (historical) {
-          const selectedDay = buildHistoricalServiceRoutes({
-            configuredRoutes,
-            dswRows: (dswRes.data?.rows ?? []) as HistoricalDswRoute[],
-            fccRows: ((fccRes.data?.rows ?? []) as HistoricalFccRoute[]).filter(
-              hasHistoricalFccEvidence
-            ),
-            manifestRoutes: (manifestRes.data?.routes ?? []) as HistoricalManifestRoute[],
-          });
-          selectedDay.routes.forEach((route, key) => routeMap.set(key, route));
-          selectedDay.aliases.forEach((key, alias) => routeAliases.set(alias, key));
-        } else {
-          const runFlag = runFlagForDate(serviceDate);
-          for (const route of configuredRoutes) {
-            if (!route[runFlag as keyof RouteRow]) continue;
-
-            const key = cleanRouteKey(route.current_wa_num || route.route_name);
-            routeMap.set(key, {
-              route_key: key,
-              route_name: route.route_name?.trim() || key,
-              current_wa_num: route.current_wa_num,
-              route_location: route.route_location,
-              route_type: route.route_type,
-              driver: null,
-              helpers: [],
-              trainees: [],
-              extras: [],
-            });
-            for (const alias of [key, route.route_name, route.current_wa_num]) {
-              const normalized = String(alias ?? "")
-                .toLowerCase()
-                .replace(/[^a-z0-9]/g, "");
-              if (normalized) routeAliases.set(normalized, key);
-            }
-          }
-        }
+        const runFlag = runFlagForDate(serviceDate);
+        const baseRoutes = historical
+          ? []
+          : configuredRoutes.filter((route) => Boolean(route[runFlag as keyof RouteRow]));
+        const selectedDay = buildHistoricalServiceRoutes({
+          configuredRoutes,
+          baseRoutes,
+          dswRows: (dswRes.ok ? dswRes.data?.rows ?? [] : []) as HistoricalDswRoute[],
+          droRows: [
+            ...((droAmRes.ok ? droAmRes.data?.rows ?? [] : []) as DroPlanRow[]),
+            ...((droPmRes.ok ? droPmRes.data?.rows ?? [] : []) as DroPlanRow[]),
+          ],
+          fccRows: (fccRes.ok ? fccRes.data?.rows ?? [] : []) as HistoricalFccRoute[],
+          manifestRoutes: (manifestRes.ok
+            ? manifestRes.data?.routes ?? []
+            : []) as HistoricalManifestRoute[],
+        });
+        selectedDay.routes.forEach((route, key) => routeMap.set(key, route));
+        selectedDay.aliases.forEach((key, alias) => routeAliases.set(alias, key));
 
         for (const row of (
           scheduleRes.ok ? scheduleData?.rows ?? [] : []
@@ -229,8 +236,29 @@ export function useDeliveryWindowData(
             .replace(/[^a-z0-9]/g, "");
           const key =
             routeAliases.get(normalizedRouteName) ?? cleanRouteKey(rawRouteName);
-          const route = routeMap.get(key);
-          if (!route) continue;
+          let route = routeMap.get(key);
+          if (!route) {
+            const configured = configuredRoutes.find((candidate) =>
+              [candidate.route_name, candidate.current_wa_num].some(
+                (alias) =>
+                  String(alias ?? "")
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]/g, "") === normalizedRouteName
+              )
+            );
+            route = {
+              route_key: key,
+              route_name: configured?.route_name?.trim() || rawRouteName,
+              current_wa_num: configured?.current_wa_num ?? null,
+              route_location: configured?.route_location ?? null,
+              route_type: configured?.route_type ?? "DISPATCH",
+              driver: null,
+              helpers: [],
+              trainees: [],
+              extras: [],
+            };
+            routeMap.set(key, route);
+          }
 
           const person = personFromRow(row);
           const seat = classifyPerson(row);

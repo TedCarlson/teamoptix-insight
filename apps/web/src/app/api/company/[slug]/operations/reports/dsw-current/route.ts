@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  inventoryRowToDswRow,
+  shouldUseDswInventory,
+  type DswInventoryRow,
+} from "@/features/operations/delivery-window/lib/authoritativeDswInventory";
 
 export const runtime = "nodejs";
 
@@ -57,16 +62,33 @@ export async function GET(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Company not found.", rows: [] }, { status: 404 });
     }
 
-    const { data, error } = await supabase.rpc("get_operations_dsw_current_rows", {
-      p_company_id: company.id,
-      p_service_date: serviceDate,
-    });
+    const [currentResult, inventoryResult] = await Promise.all([
+      supabase.rpc("get_operations_dsw_current_rows", {
+        p_company_id: company.id,
+        p_service_date: serviceDate,
+      }),
+      supabase.rpc("get_operations_manifest_route_inventory", {
+        p_company_id: company.id,
+        p_service_date: serviceDate,
+      }),
+    ]);
 
-    if (error) {
-      return NextResponse.json({ error: error.message, rows: [] }, { status: 500 });
+    if (currentResult.error && inventoryResult.error) {
+      return NextResponse.json(
+        { error: currentResult.error.message, rows: [] },
+        { status: 500 }
+      );
     }
 
-    const rows = data ?? [];
+    const inventoryRows = (inventoryResult.data ?? []) as DswInventoryRow[];
+    const inventorySource = inventoryRows[0]?.inventory_source ?? null;
+    const useInventory = shouldUseDswInventory(
+      inventorySource,
+      (currentResult.data ?? []).length
+    );
+    const rows = useInventory
+      ? inventoryRows.map(inventoryRowToDswRow)
+      : currentResult.data ?? [];
 
     const { data: rosterOps, error: rosterOpsError } = await supabase
       .from("company_roster_view")
@@ -111,7 +133,8 @@ export async function GET(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json({
       source: "DSW",
-      snapshot_kind: "IN_DAY",
+      snapshot_kind: inventorySource === "DSW_FINAL" ? "FINAL" : "IN_DAY",
+      inventory_source: inventorySource,
       generated_at_text: first?.generated_at_text ?? null,
       terminal_identity: first?.terminal_identity ?? null,
       contract_filter: first?.contract_filter ?? null,

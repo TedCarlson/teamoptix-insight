@@ -10,6 +10,8 @@ import {
   manifestPickupStopTitle,
 } from "@/features/operations/manifests/manifestDrawerIdentity";
 import type { ManifestIdentityAccess } from "@/features/operations/manifests/manifestIdentityAccess";
+import type { FccRouteSignalRow } from "@/features/operations/delivery-window/lib/fccRouteHealth";
+import type { DroPlanRow } from "@/features/operations/delivery-window/lib/serviceRouteEvidence";
 
 const RouteGpxMapView = dynamic(() => import("./RouteGpxMap"), {
   ssr: false,
@@ -87,8 +89,15 @@ type Props = {
     generated_at_text?: string | null;
     ils_percent?: number | string | null;
     miles?: number | null;
+    driver_name?: string | null;
+    vehicle_text?: string | null;
+    authoritative_inventory_only?: boolean;
   } | null;
   initialView?: RouteHealthOverlayView;
+  droAm?: DroPlanRow | null;
+  droPm?: DroPlanRow | null;
+  fcc?: FccRouteSignalRow | null;
+  dispatchDriver?: string | null;
   onClose: () => void;
 };
 
@@ -131,6 +140,10 @@ export default function RouteHealthOverlay({
   health,
   dsw,
   initialView = "detail",
+  droAm = null,
+  droPm = null,
+  fcc = null,
+  dispatchDriver = null,
   onClose,
 }: Props) {
   const [detail, setDetail] = useState<RouteDetailPayload | null>(null);
@@ -138,7 +151,11 @@ export default function RouteHealthOverlay({
   const [detailError, setDetailError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<RouteHealthOverlayView>(initialView);
   const warehouseRouteKey = health?.route_key ?? routeKey;
-  const asOf = dsw?.generated_at_text ?? health?.artifacts.latest_processed_at ?? null;
+  const asOf =
+    fcc?.export_generated_text ??
+    dsw?.generated_at_text ??
+    health?.artifacts.latest_processed_at ??
+    null;
 
   useEffect(() => {
     if (open) setActiveView(initialView);
@@ -233,7 +250,7 @@ export default function RouteHealthOverlay({
                 letterSpacing: "0.08em",
               }}
             >
-              Service · Warehouse Manifest
+              Service · Route evidence
             </p>
             <h2 style={{ margin: 0, fontSize: 22 }}>{routeLabel}</h2>
             <p style={{ margin: "6px 0 0", color: "#64748b", fontSize: 13, fontWeight: 800 }}>
@@ -319,6 +336,14 @@ export default function RouteHealthOverlay({
           )
         ) : (
           <>
+            <RouteEvidenceLedger
+              dispatchDriver={dispatchDriver}
+              droAm={droAm}
+              droPm={droPm}
+              dsw={dsw}
+              fcc={fcc}
+              health={health}
+            />
             <DswContract dsw={dsw} />
             <WarehouseManifestContract
               health={health}
@@ -349,6 +374,230 @@ function formatAsOf(input: string | null) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function comparableDriver(value: string | null | undefined) {
+  const normalized = String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z,\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return "";
+  if (normalized.includes(",")) {
+    const [last = "", rest = ""] = normalized.split(",");
+    return `${last.trim()}|${rest.trim().split(" ")[0] ?? ""}`;
+  }
+  const parts = normalized.split(" ").filter(Boolean);
+  return parts.length > 1 ? `${parts.at(-1)}|${parts[0]}` : normalized;
+}
+
+function compactNumber(value: number | string | null | undefined) {
+  const parsed = Number(value ?? 0);
+  if (!Number.isFinite(parsed)) return "—";
+  return parsed.toFixed(1).replace(/\.0$/, "");
+}
+
+function RouteEvidenceLedger({
+  dispatchDriver,
+  droAm,
+  droPm,
+  dsw,
+  fcc,
+  health,
+}: {
+  dispatchDriver: string | null;
+  droAm: DroPlanRow | null;
+  droPm: DroPlanRow | null;
+  dsw: Props["dsw"];
+  fcc: FccRouteSignalRow | null;
+  health: ManifestRouteHealthCard | null;
+}) {
+  const dro = droAm ?? droPm;
+  const droFrame = droAm ? "AM" : droPm ? "PM" : null;
+  const manifestPresent = Boolean(
+    Number(health?.artifacts.total ?? 0) > 0 ||
+      Number(health?.delivery.stop_count ?? 0) > 0 ||
+      Number(health?.pickup.stop_count ?? 0) > 0
+  );
+  const inventoryOnly = dsw?.authoritative_inventory_only === true;
+  const cards = [
+    {
+      source: "DRO",
+      authority: "Plan",
+      present: Boolean(dro),
+      value: dro
+        ? `${droFrame} · ${Number(dro.stops ?? 0)} stops · ${Number(dro.packages ?? 0)} packages`
+        : "No selected-day route plan",
+      detail: dro
+        ? `${compactNumber(dro.miles)} miles · ${compactNumber(dro.planned_time)} planned hours · ${Number(dro.time_commits ?? 0)} time critical`
+        : "AM and PM frames checked",
+    },
+    {
+      source: "DSW",
+      authority: "Execution",
+      present: Boolean(dsw),
+      value: dsw
+        ? `${dsw.actual_delivery_stops}/${dsw.planned_delivery_stops} stops · ${dsw.actual_delivery_packages}${!inventoryOnly && Number(dsw.vscan_packages ?? 0) > 0 ? `/${dsw.vscan_packages}` : " delivered"} packages`
+        : "No selected-day execution row",
+      detail: dsw
+        ? inventoryOnly
+          ? "FINAL route inventory · package plan and pickup detail are not repeated here"
+          : `${dsw.actual_pickup_stops}/${dsw.planned_pickup_stops} pickups · ${dsw.actual_pickup_packages} pickup packages`
+        : "No DSW totals available",
+    },
+    {
+      source: "Manifest",
+      authority: "Intended stops",
+      present: manifestPresent,
+      value: manifestPresent
+        ? `${Number(health?.delivery.stop_count ?? 0)} stops · ${Number(health?.delivery.package_count ?? 0)} packages`
+        : "No warehouse manifest rows",
+      detail: manifestPresent
+        ? `${Number(health?.pickup.stop_count ?? 0)} pickup stops · ${Number(health?.express.package_count ?? 0)} Express packages`
+        : "Delivery and pickup artifacts checked",
+    },
+    {
+      source: "FCC",
+      authority: "Closeout",
+      present: Boolean(fcc),
+      value: fcc
+        ? fcc.final_stop_time
+          ? `Final stop ${fcc.final_stop_time}`
+          : fcc.last_delivery_time
+            ? `Last delivery ${fcc.last_delivery_time}`
+            : "Route row present"
+        : "No selected-day closeout row",
+      detail: fcc
+        ? [
+            fcc.last_pickup_time ? `Last pickup ${fcc.last_pickup_time}` : null,
+            fcc.last_transmission_time ? `Transmission ${fcc.last_transmission_time}` : null,
+          ].filter(Boolean).join(" · ") || "No activity timestamp reported"
+        : "FCC route signal unavailable",
+    },
+  ];
+  const conflicts: string[] = [];
+  const droStops = Number(dro?.stops ?? 0);
+  const dswPlannedStops = Number(dsw?.planned_delivery_stops ?? 0);
+  const manifestStops = Number(health?.delivery.stop_count ?? 0);
+
+  if (dro && dsw && droStops > 0 && dswPlannedStops > 0 && droStops !== dswPlannedStops) {
+    conflicts.push(`Planned stops differ: DRO ${droStops} · DSW ${dswPlannedStops}.`);
+  }
+  if (manifestPresent && dsw && manifestStops > 0 && dswPlannedStops > 0 && manifestStops !== dswPlannedStops) {
+    conflicts.push(`Route volume differs: Manifest ${manifestStops} stops · DSW ${dswPlannedStops} planned.`);
+  }
+  if (
+    fcc?.deliveries_complete &&
+    dsw &&
+    Number(dsw.actual_delivery_stops ?? 0) < dswPlannedStops
+  ) {
+    conflicts.push(
+      `FCC marks deliveries complete while DSW reports ${dsw.actual_delivery_stops}/${dswPlannedStops} stops.`
+    );
+  }
+
+  const driverSources = [
+    ["Dispatch", dispatchDriver],
+    ["DSW", dsw?.driver_name],
+    ["FCC", fcc?.driver_name],
+  ] as const;
+  const driverIdentities = new Set(
+    driverSources.map(([, value]) => comparableDriver(value)).filter(Boolean)
+  );
+  if (driverIdentities.size > 1) {
+    conflicts.push(
+      `Driver identity differs across ${driverSources
+        .filter(([, value]) => Boolean(comparableDriver(value)))
+        .map(([source]) => source)
+        .join(", ")}.`
+    );
+  }
+
+  const represented = cards.filter((card) => card.present).length;
+
+  return (
+    <section
+      aria-label="Route source ledger"
+      style={{
+        border: "1px solid #dbe4ef",
+        borderRadius: 14,
+        background: "#fff",
+        padding: 12,
+        display: "grid",
+        gap: 9,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+        <span style={{ display: "grid", gap: 2 }}>
+          <strong style={{ fontSize: 14 }}>Selected-day source ledger</strong>
+          <small style={{ color: "#64748b", fontWeight: 800 }}>
+            Each source keeps its own authority; disagreements remain visible.
+          </small>
+        </span>
+        <strong
+          style={{
+            alignSelf: "start",
+            borderRadius: 999,
+            background: represented === 4 ? "#ecfdf5" : "#fffbeb",
+            color: represented === 4 ? "#166534" : "#92400e",
+            padding: "5px 8px",
+            fontSize: 10,
+          }}
+        >
+          {represented} / 4 sources
+        </strong>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 7 }}>
+        {cards.map((card) => (
+          <div
+            key={card.source}
+            style={{
+              border: `1px solid ${card.present ? "#bfdbfe" : "#e5e7eb"}`,
+              borderRadius: 11,
+              background: card.present ? "#f8fbff" : "#f8fafc",
+              padding: 9,
+              display: "grid",
+              gap: 3,
+            }}
+          >
+            <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+              <strong style={{ color: card.present ? "#1d4ed8" : "#94a3b8", fontSize: 10 }}>
+                {card.source}
+              </strong>
+              <small style={{ color: "#64748b", fontSize: 8, fontWeight: 900 }}>
+                {card.authority}
+              </small>
+            </span>
+            <strong style={{ color: card.present ? "#0f172a" : "#94a3b8", fontSize: 11 }}>
+              {card.value}
+            </strong>
+            <small style={{ color: "#64748b", fontSize: 9, fontWeight: 800 }}>
+              {card.detail}
+            </small>
+          </div>
+        ))}
+      </div>
+
+      <div
+        style={{
+          border: `1px solid ${conflicts.length ? "#fecaca" : "#bbf7d0"}`,
+          borderRadius: 10,
+          background: conflicts.length ? "#fef2f2" : "#f0fdf4",
+          color: conflicts.length ? "#991b1b" : "#166534",
+          padding: "8px 9px",
+          display: "grid",
+          gap: 3,
+          fontSize: 10,
+          fontWeight: 900,
+        }}
+      >
+        {conflicts.length
+          ? conflicts.map((conflict) => <span key={conflict}>{conflict}</span>)
+          : <span>No cross-source conflict detected in comparable facts.</span>}
+      </div>
+    </section>
+  );
 }
 
 function WarehouseManifestContract({
@@ -607,20 +856,22 @@ function RouteClusterEvidence({
 
 function DswContract({ dsw }: { dsw: Props["dsw"] }) {
   if (!dsw) return null;
-  const ilsRaw = Number(String(dsw.ils_percent ?? "").replace("%", ""));
-  const ils = Number.isFinite(ilsRaw)
+  const inventoryOnly = dsw.authoritative_inventory_only === true;
+  const ilsText = String(dsw.ils_percent ?? "").replace("%", "").trim();
+  const ilsRaw = Number(ilsText);
+  const ils = ilsText && Number.isFinite(ilsRaw)
     ? `${(ilsRaw <= 1 ? ilsRaw * 100 : ilsRaw).toFixed(1).replace(/\.0$/, "")}%`
     : "—";
   const facts = [
     { label: "Stops", value: `${dsw.actual_delivery_stops} / ${dsw.planned_delivery_stops}`, color: "#16a34a", bg: "#ecfdf5" },
-    { label: "Packages", value: `${dsw.actual_delivery_packages} / ${dsw.vscan_packages}`, color: "#7c3aed", bg: "#f5f3ff" },
-    { label: "Pickups", value: `${dsw.actual_pickup_stops} / ${dsw.planned_pickup_stops}`, color: "#2563eb", bg: "#eff6ff" },
-    { label: "Pickup Pkgs", value: String(dsw.actual_pickup_packages), color: "#0284c7", bg: "#f0f9ff" },
+    { label: "Packages", value: inventoryOnly ? `${dsw.actual_delivery_packages} delivered` : `${dsw.actual_delivery_packages} / ${dsw.vscan_packages}`, color: "#7c3aed", bg: "#f5f3ff" },
+    { label: "Pickups", value: inventoryOnly ? "See DSW summary" : `${dsw.actual_pickup_stops} / ${dsw.planned_pickup_stops}`, color: "#2563eb", bg: "#eff6ff" },
+    { label: "Pickup Pkgs", value: inventoryOnly ? "See DSW summary" : String(dsw.actual_pickup_packages), color: "#0284c7", bg: "#f0f9ff" },
     { label: "ILS", value: ils, color: "#0f766e", bg: "#f0fdfa" },
   ];
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 6 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(105px, 1fr))", gap: 6 }}>
       {facts.map((fact) => (
         <div key={fact.label} style={{ border: `1px solid ${fact.color}33`, borderTop: `4px solid ${fact.color}`, borderRadius: 11, background: fact.bg, padding: "7px 8px", display: "grid", gap: 2 }}>
           <span style={{ color: fact.color, fontSize: 8, fontWeight: 950, letterSpacing: "0.05em", textTransform: "uppercase" }}>{fact.label}</span>
@@ -939,20 +1190,6 @@ function RouteManifestDetail(props: {
   const closedCount = manifestClosedCount;
   const attentionCount = manifestAttentionCount;
   const packageCount = props.detail.packages.length;
-  const remainingStops = props.dsw
-    ? Math.max(
-        props.dsw.planned_delivery_stops -
-          props.dsw.actual_delivery_stops,
-        0
-      )
-    : null;
-  const remainingPackages = props.dsw
-    ? Math.max(
-        props.dsw.vscan_packages -
-          props.dsw.actual_delivery_packages,
-        0
-      )
-    : null;
   const typeOptions = [
     { key: "delivery", label: "Delivery", count: evidenceItems.filter((item) => item.kind === "delivery").length, color: "#166534", bg: "#ecfdf5" },
     { key: "express", label: "Express", count: evidenceItems.filter((item) => item.express).length, color: "#9a3412", bg: "#fff7ed" },
@@ -995,7 +1232,7 @@ function RouteManifestDetail(props: {
           : "Recipient and shipper names are hidden because verified FedEx credentials are not currently available."}
       </div>
 
-      {props.dsw ? (
+      {props.dsw && evidenceItems.length > 0 ? (
         <div
           style={{
             border: "1px solid #93c5fd",
@@ -1012,29 +1249,6 @@ function RouteManifestDetail(props: {
           <span>
             DSW totals may differ from the combined manifest; displaying
             complete manifest detail with the latest matched execution status.
-          </span>
-        </div>
-      ) : remainingStops !== null && remainingPackages !== null ? (
-        <div
-          style={{
-            border: "1px solid #fed7aa",
-            borderRadius: 12,
-            background: "#fff7ed",
-            color: "#9a3412",
-            padding: "10px 12px",
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 10,
-            flexWrap: "wrap",
-            fontSize: 12,
-            fontWeight: 900,
-          }}
-        >
-          <span>
-            Open by DSW · {remainingStops} stops · {remainingPackages} packages
-          </span>
-          <span style={{ color: "#64748b" }}>
-            Manifest rows below provide item-level delivery and attempt evidence.
           </span>
         </div>
       ) : null}

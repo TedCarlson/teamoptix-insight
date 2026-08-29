@@ -1,8 +1,8 @@
-import ManifestHistoryReport from "@/features/operations/manifests/components/ManifestHistoryReport";
+import { redirect } from "next/navigation";
 
 export default async function ManifestHistoryPage(props: {
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await props.params;
-  return <ManifestHistoryReport slug={slug} />;
+  redirect(`/company/${slug}/operations/service`);
 }

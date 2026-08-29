@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { MapPinned } from "lucide-react";
 import type { DispatchRoute } from "../lib/dispatchSupport";
 import { eyebrow, panel } from "../lib/dispatchSupport";
@@ -26,6 +26,13 @@ import {
   historicalRouteSignal,
   historicalServiceSummary,
 } from "@/features/operations/delivery-window/lib/historicalServicePresentation";
+import {
+  type DroPlanRow,
+  hasManifestRouteEvidence,
+  hasServiceActivity,
+  routeEvidenceStatus,
+  sourceCoverage,
+} from "@/features/operations/delivery-window/lib/serviceRouteEvidence";
 
 type DswCurrentRow = {
   batch_id: string;
@@ -49,6 +56,7 @@ type DswCurrentRow = {
   ils_percent?: number | string | null;
   normalized_row_json?: Record<string, unknown> | null;
   route_match_method: string | null;
+  authoritative_inventory_only?: boolean;
   matched_roster_member_id?: string | null;
   matched_roster_full_name?: string | null;
   matched_roster_dswid?: string | null;
@@ -56,7 +64,8 @@ type DswCurrentRow = {
 
 type DswPayload = {
   source: "DSW";
-  snapshot_kind: "IN_DAY";
+  snapshot_kind: "IN_DAY" | "FINAL";
+  inventory_source?: "DSW_IN_DAY" | "DSW_FINAL" | null;
   generated_at_text: string | null;
   terminal_identity: string | null;
   contract_filter: string | null;
@@ -71,6 +80,12 @@ type FccPayload = {
   generated_at_text: string | null;
   report_date_text: string | null;
   rows: FccRouteSignalRow[];
+};
+
+type DroPayload = {
+  source_frame: "AM" | "PM";
+  fallback_used: boolean;
+  rows: DroPlanRow[];
 };
 
 type DeliveryWindowSnapshotProps = {
@@ -98,6 +113,10 @@ type SelectedManifestRouteHealth = {
   health: ManifestRouteHealthCard | null;
   dsw: DswCurrentRow | null;
   initialView: RouteHealthOverlayView;
+  droAm: DroPlanRow | null;
+  droPm: DroPlanRow | null;
+  fcc: FccRouteSignalRow | null;
+  dispatchDriver: string | null;
 };
 
 
@@ -163,6 +182,18 @@ function routeSortToken(value: string | null | undefined) {
   return number ? Number(number) : Number.MAX_SAFE_INTEGER;
 }
 
+function operationalRouteOrder(item: {
+  route: DispatchRoute | null;
+  row: DswCurrentRow | null;
+}) {
+  const routeName = item.route?.route_name ?? item.row?.route_name ?? "";
+  const bpv = routeName.match(/\bbpv\s*0*(\d+)/i)?.[1];
+  if (bpv) return Number(bpv);
+
+  const wa = item.route?.current_wa_num ?? item.row?.wa_number ?? routeName;
+  return 1000 + routeSortToken(wa);
+}
+
 function dswDisplayKey(row: DswCurrentRow, index: number) {
   return row.route_name || row.wa_number || `dsw-${index}`;
 }
@@ -177,6 +208,48 @@ function dswRowIdentity(row: DswCurrentRow, index: number) {
   ]
     .filter(Boolean)
     .join(":");
+}
+
+function droIndex(rows: DroPlanRow[]) {
+  const map = new Map<string, DroPlanRow>();
+
+  for (const row of rows) {
+    for (const key of [
+      row.route_baseline_id,
+      row.wa_number,
+      row.route_name,
+      normalizedRouteName(row.route_name),
+    ]) {
+      const normalized = normalizeKey(key);
+      if (normalized) map.set(normalized, row);
+    }
+  }
+
+  return map;
+}
+
+function findDroRow(
+  index: Map<string, DroPlanRow>,
+  route: DispatchRoute | null,
+  dsw: DswCurrentRow | null,
+  fallbackKey: string
+) {
+  for (const candidate of [
+    route?.route_key,
+    route?.current_wa_num,
+    route?.route_name,
+    dsw?.route_baseline_id,
+    dsw?.wa_number,
+    dsw?.route_name,
+    fallbackKey,
+  ]) {
+    const direct = index.get(normalizeKey(candidate));
+    if (direct) return direct;
+    const named = index.get(normalizedRouteName(candidate));
+    if (named) return named;
+  }
+
+  return null;
 }
 
 function isActiveDswRow(row: DswCurrentRow) {
@@ -335,9 +408,11 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
     onAttendance,
   } = props;
   const [payload, setPayload] = useState<DswPayload | null>(null);
+  const [droAmPayload, setDroAmPayload] = useState<DroPayload | null>(null);
+  const [droPmPayload, setDroPmPayload] = useState<DroPayload | null>(null);
   const [fccPayload, setFccPayload] = useState<FccPayload | null>(null);
   const [serviceSnapshotPayload, setServiceSnapshotPayload] = useState<any>(null);
-  const [routeView, setRouteView] = useState<"all" | "on_road" | "returned">("all");
+  const [routeView, setRouteView] = useState<"all" | "exceptions" | "on_road" | "returned">("all");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -374,6 +449,39 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
     }
 
     loadSnapshot();
+
+    return () => {
+      active = false;
+    };
+  }, [requestVersion, serviceDate, slug]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadDroPlans() {
+      try {
+        const [amResult, pmResult] = await Promise.all([
+          fetchServiceJsonOnce(
+            `/api/company/${slug}/operations/reports/dro-plan?date=${serviceDate}&frame=AM`,
+            requestVersion
+          ),
+          fetchServiceJsonOnce(
+            `/api/company/${slug}/operations/reports/dro-plan?date=${serviceDate}&frame=PM`,
+            requestVersion
+          ),
+        ]);
+        if (!active) return;
+
+        setDroAmPayload(amResult.ok ? (amResult.data as DroPayload) : null);
+        setDroPmPayload(pmResult.ok ? (pmResult.data as DroPayload) : null);
+      } catch {
+        if (!active) return;
+        setDroAmPayload(null);
+        setDroPmPayload(null);
+      }
+    }
+
+    if (slug && serviceDate) void loadDroPlans();
 
     return () => {
       active = false;
@@ -478,6 +586,15 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
     return map;
   }, [payload?.rows]);
 
+  const droAmIndex = useMemo(
+    () => droIndex(droAmPayload?.rows ?? []),
+    [droAmPayload?.rows]
+  );
+  const droPmIndex = useMemo(
+    () => droIndex(droPmPayload?.rows ?? []),
+    [droPmPayload?.rows]
+  );
+
   const fccIndex = useMemo(() => {
     const map = new Map<string, FccRouteSignalRow>();
 
@@ -507,11 +624,11 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
     return map;
   }, [routeHealthPayload?.routes]);
 
-  function manifestHealthForItem(item: {
+  const manifestHealthForItem = useCallback((item: {
     route: DispatchRoute | null;
     row: DswCurrentRow | null;
     key: string;
-  }) {
+  }) => {
     const candidates = [
       item.route?.route_key,
       item.route?.current_wa_num,
@@ -537,7 +654,7 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
     }
 
     return null;
-  }
+  }, [manifestRouteHealthIndex]);
 
 
   const routeRows = useMemo(() => {
@@ -576,6 +693,8 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
       const completion = completionPct(row);
       const fccRow = fccIndex.get(normalizeWaNumber(route.current_wa_num ?? route.route_key)) ?? null;
       const fccHealth = computeFccRouteHealth(fccRow);
+      const droAm = findDroRow(droAmIndex, route, row, route.route_key);
+      const droPm = findDroRow(droPmIndex, route, row, route.route_key);
 
       const roadHours = row?.normalized_row_json?.on_road_hours ?? null;
       const dutyHours = row?.normalized_row_json?.on_duty_hours ?? null;
@@ -586,18 +705,12 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
         roadHours !== null &&
         dutyHours !== null;
 
-      const hasManifest = [
-        route.route_key,
-        route.current_wa_num,
-        route.route_name,
-      ].some((candidate) => {
-        const normalized = normalizeKey(candidate);
-        const normalizedName = normalizedRouteName(candidate);
-        return Boolean(
-          (normalized && manifestRouteHealthIndex.has(normalized)) ||
-          (normalizedName && manifestRouteHealthIndex.has(normalizedName))
-        );
+      const routeManifestHealth = manifestHealthForItem({
+        route,
+        row,
+        key: route.route_key,
       });
+      const hasManifest = hasManifestRouteEvidence(routeManifestHealth);
       const signal = dataMode === "historical"
         ? historicalRouteSignal({
             hasDsw: Boolean(row),
@@ -618,6 +731,14 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
               row?.matched_roster_full_name,
               completion
             );
+      const evidencePresence = {
+        dsw: Boolean(row),
+        dro: Boolean(droAm || droPm),
+        manifest: hasManifest,
+        fcc: Boolean(fccRow),
+        dispatch: Boolean(route.driver),
+        identityConflict: signal.key === "driver_mismatch",
+      };
 
       return {
         key: route.route_key || route.current_wa_num || route.route_name || `route-${index}`,
@@ -627,6 +748,11 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
         signal,
         fccRow,
         fccHealth,
+        droAm,
+        droPm,
+        routeManifestHealth,
+        evidencePresence,
+        evidence: routeEvidenceStatus(evidencePresence),
         returned,
         roadHours,
         dutyHours,
@@ -644,6 +770,8 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
         const completion = completionPct(row);
         const fccRow = fccIndex.get(normalizeWaNumber(row.wa_number ?? row.route_name)) ?? null;
         const fccHealth = computeFccRouteHealth(fccRow);
+        const droAm = findDroRow(droAmIndex, null, row, row.wa_number ?? row.route_name ?? "");
+        const droPm = findDroRow(droPmIndex, null, row, row.wa_number ?? row.route_name ?? "");
 
         const roadHours = row?.normalized_row_json?.on_road_hours ?? null;
         const dutyHours = row?.normalized_row_json?.on_duty_hours ?? null;
@@ -651,18 +779,7 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
 
         const returned = Boolean(miles && roadHours && dutyHours);
 
-        return {
-          key: `dsw-active-${dswRowIdentity(row, index) || index}`,
-          route: null,
-          row,
-          completion,
-          fccRow,
-          fccHealth,
-          returned,
-          roadHours,
-          dutyHours,
-          miles,
-        signal: dataMode === "historical"
+        const signal = dataMode === "historical"
           ? historicalRouteSignal({
               hasDsw: true,
               hasFcc: hasHistoricalFccEvidence(fccRow),
@@ -674,7 +791,38 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
               null,
               row.matched_roster_full_name,
               completion
-            ),
+            );
+        const routeManifestHealth = manifestHealthForItem({
+          route: null,
+          row,
+          key: row.wa_number ?? row.route_name ?? "",
+        });
+        const evidencePresence = {
+          dsw: true,
+          dro: Boolean(droAm || droPm),
+          manifest: hasManifestRouteEvidence(routeManifestHealth),
+          fcc: Boolean(fccRow),
+          dispatch: false,
+          identityConflict: signal.key === "driver_mismatch",
+        };
+
+        return {
+          key: `dsw-active-${dswRowIdentity(row, index) || index}`,
+          route: null,
+          row,
+          completion,
+          fccRow,
+          fccHealth,
+          droAm,
+          droPm,
+          routeManifestHealth,
+          evidencePresence,
+          evidence: routeEvidenceStatus(evidencePresence),
+          returned,
+          roadHours,
+          dutyHours,
+          miles,
+          signal,
           sortOrder: routes.length + routeSortToken(row.route_name ?? row.wa_number),
           configOrder: routes.length + index,
           isConfigRoute: false,
@@ -685,7 +833,16 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
       if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
       return a.configOrder - b.configOrder;
     });
-  }, [dataMode, dswIndex, fccIndex, manifestRouteHealthIndex, payload?.rows, routes]);
+  }, [
+    dataMode,
+    droAmIndex,
+    droPmIndex,
+    dswIndex,
+    fccIndex,
+    manifestHealthForItem,
+    payload?.rows,
+    routes,
+  ]);
 
   const matchedDswIds = useMemo(() => {
     const ids = new Set<DswCurrentRow>();
@@ -703,20 +860,67 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
   const hiddenEmptyDswRows = dswRows.filter((row) => !isActiveDswRow(row));
   const unplannedActiveRows = activeDswRows.filter((row) => !matchedDswIds.has(row));
 
+  const serviceRouteRows = useMemo(
+    () =>
+      routeRows
+        .filter((item) =>
+          hasServiceActivity({
+            dsw: item.evidencePresence.dsw,
+            dro: item.evidencePresence.dro,
+            manifest: item.evidencePresence.manifest,
+            fccActivity: hasHistoricalFccEvidence(item.fccRow),
+          })
+        )
+        .sort((a, b) => {
+          const authorityA = a.evidencePresence.dsw
+            ? 0
+            : a.evidencePresence.dro
+              ? 1
+              : a.evidencePresence.manifest
+                ? 2
+                : 3;
+          const authorityB = b.evidencePresence.dsw
+            ? 0
+            : b.evidencePresence.dro
+              ? 1
+              : b.evidencePresence.manifest
+                ? 2
+                : 3;
+          if (authorityA !== authorityB) return authorityA - authorityB;
+
+          const order = operationalRouteOrder(a) - operationalRouteOrder(b);
+          if (order !== 0) return order;
+          return a.configOrder - b.configOrder;
+        }),
+    [routeRows]
+  );
+
   const visibleRouteRows = useMemo(() => {
     switch (routeView) {
+      case "exceptions":
+        return serviceRouteRows.filter((row) => row.evidence.key !== "complete");
+
       case "on_road":
-        return routeRows.filter((row) => !row.returned);
+        return serviceRouteRows.filter((row) => !row.returned);
 
       case "returned":
-        return routeRows.filter((row) => row.returned);
+        return serviceRouteRows.filter((row) => row.returned);
 
       default:
-        return routeRows;
+        return serviceRouteRows;
     }
-  }, [routeRows, routeView]);
+  }, [routeView, serviceRouteRows]);
 
-  const driverStats = routeRows.reduce(
+  const coverage = useMemo(
+    () => sourceCoverage(serviceRouteRows.map((route) => route.evidencePresence)),
+    [serviceRouteRows]
+  );
+  const completeEvidenceRouteCount = serviceRouteRows.filter(
+    (route) => route.evidence.key === "complete"
+  ).length;
+  const evidenceExceptionCount = serviceRouteRows.length - completeEvidenceRouteCount;
+
+  const driverStats = serviceRouteRows.reduce(
     (acc, item) => {
       if (item.signal.key === "awaiting_login") acc.awaitingLogin += 1;
       if (item.signal.key === "logged_in") acc.loggedIn += 1;
@@ -735,32 +939,32 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
   );
 
   const fleetCompletion = useMemo(() => {
-    const plannedStops = routeRows.reduce(
+    const plannedStops = serviceRouteRows.reduce(
       (sum, item) => sum + Number(item.row?.planned_delivery_stops ?? 0),
       0
     );
-    const actualStops = routeRows.reduce(
+    const actualStops = serviceRouteRows.reduce(
       (sum, item) => sum + Number(item.row?.actual_delivery_stops ?? 0),
       0
     );
 
     if (plannedStops > 0) return pct(actualStops, plannedStops);
 
-    const plannedPackages = routeRows.reduce(
+    const plannedPackages = serviceRouteRows.reduce(
       (sum, item) => sum + Number(item.row?.vscan_packages ?? 0),
       0
     );
-    const actualPackages = routeRows.reduce(
+    const actualPackages = serviceRouteRows.reduce(
       (sum, item) => sum + Number(item.row?.actual_delivery_packages ?? 0),
       0
     );
 
     return pct(actualPackages, plannedPackages);
-  }, [routeRows]);
+  }, [serviceRouteRows]);
 
 
   const executionTotals = useMemo(() => {
-    return routeRows.reduce(
+    return serviceRouteRows.reduce(
       (acc, item) => {
         const row = item.row;
         if (!row || !isActiveDswRow(row)) return acc;
@@ -807,14 +1011,14 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
         ilsWeight: 0,
       }
     );
-  }, [routeRows]);
+  }, [serviceRouteRows]);
 
   const historicalSummary = useMemo(
     () => historicalServiceSummary(
       serviceSnapshotPayload,
-      [...fccIndex.values()].filter(hasHistoricalFccEvidence).length
+      serviceRouteRows.length
     ),
-    [fccIndex, serviceSnapshotPayload]
+    [serviceRouteRows.length, serviceSnapshotPayload]
   );
   const companyIlsPercent = findContractIlsPercent(serviceSnapshotPayload) ?? "—";
 
@@ -869,8 +1073,8 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
             <h2 style={{ margin: 0, fontSize: 18 }}>Service Line Up</h2>
             <small style={{ color: "#64748b", fontWeight: 800 }}>
               {dataMode === "live"
-                ? "Today · shared Dispatch signal"
-                : `${serviceDate} · selected-day DSW, FCC, manifest, and dispatch evidence`}
+                ? "Today · selected-day Dispatch, DRO, DSW, manifest, and FCC evidence"
+                : `${serviceDate} · selected-day Dispatch, DRO, DSW, manifest, and FCC evidence`}
             </small>
           </div>
         </div>
@@ -928,6 +1132,71 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
           />
         </div>
 
+        <section
+          aria-label="Selected-day source coverage"
+          style={{
+            border: "1px solid #dbe4ef",
+            borderRadius: 14,
+            background: "#fff",
+            padding: 10,
+            display: "grid",
+            gap: 8,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <span style={{ display: "grid", gap: 2 }}>
+              <strong style={{ fontSize: 13 }}>Route evidence coverage</strong>
+              <small style={{ color: "#64748b", fontWeight: 800 }}>
+                Every source is resolved against the {serviceRouteRows.length} routes with service activity for this date.
+              </small>
+            </span>
+            <span
+              style={{
+                alignSelf: "start",
+                borderRadius: 999,
+                background: evidenceExceptionCount ? "#fffbeb" : "#ecfdf5",
+                color: evidenceExceptionCount ? "#92400e" : "#166534",
+                padding: "6px 9px",
+                fontSize: 10,
+                fontWeight: 950,
+              }}
+            >
+              {completeEvidenceRouteCount} complete · {evidenceExceptionCount} inspect
+            </span>
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+              gap: 6,
+            }}
+          >
+            {coverage.map((source) => {
+              const complete = source.total > 0 && source.represented === source.total;
+              return (
+                <div
+                  key={source.key}
+                  style={{
+                    border: `1px solid ${complete ? "#bbf7d0" : "#fde68a"}`,
+                    borderRadius: 11,
+                    background: complete ? "#f0fdf4" : "#fffbeb",
+                    padding: "8px 9px",
+                    display: "grid",
+                    gap: 2,
+                  }}
+                >
+                  <small style={{ color: "#64748b", fontSize: 9, fontWeight: 950 }}>
+                    {source.label}
+                  </small>
+                  <strong style={{ fontSize: 13 }}>
+                    {source.represented} / {source.total} routes
+                  </strong>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
         {error ? (
           <div style={{ border: "1px solid #fecaca", background: "#fef2f2", color: "#991b1b", borderRadius: 12, padding: 10, fontSize: 13, fontWeight: 800 }}>
             {error}
@@ -941,12 +1210,13 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
         <div className="delivery-window__filters" style={{ display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center" }}>
           {[
             ["all", "All Routes"],
+            ["exceptions", `Inspect ${evidenceExceptionCount}`],
             ["on_road", "On Road"],
           ].map(([key, label]) => (
             <button
               key={key}
               type="button"
-              onClick={() => setRouteView(key as "all" | "on_road")}
+              onClick={() => setRouteView(key as "all" | "exceptions" | "on_road")}
               style={{
                 border: routeView === key ? "1px solid #2563eb" : "1px solid #d7e1ee",
                 background: routeView === key ? "#eff6ff" : "#fff",
@@ -965,9 +1235,19 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
 
         <div className="delivery-window__route-list" style={{ display: "grid", gap: 8 }}>
           {visibleRouteRows.map((item) => {
-            const { route, row, signal, completion, fccRow, fccHealth } = item;
-            const routeManifestHealth = manifestHealthForItem(item);
-            const selectedRouteLabel = item.route
+            const {
+              route,
+              row,
+              signal,
+              completion,
+              fccRow,
+              fccHealth,
+              droAm,
+              droPm,
+              routeManifestHealth,
+              evidence,
+            } = item;
+            const selectedRouteLabel = route
               ? routeLabelForDisplay(item.route)
               : dswDisplayKey(row!, item.sortOrder);
             const selectedRouteKey = preferredManifestRouteKey(
@@ -986,6 +1266,10 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
                 health: routeManifestHealth,
                 dsw: row ?? null,
                 initialView,
+                droAm,
+                droPm,
+                fcc: fccRow,
+                dispatchDriver: route?.driver?.full_name ?? null,
               });
 
             return (
@@ -994,7 +1278,7 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
                 className="delivery-window__route-row"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "minmax(180px, 1.1fr) minmax(280px, 1.5fr) 72px",
+                  gridTemplateColumns: "minmax(220px, 0.9fr) minmax(520px, 2.1fr) minmax(176px, 0.55fr)",
                   gap: 12,
                   alignItems: "center",
                   padding: "10px 12px",
@@ -1038,81 +1322,46 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
                       </span>
                     ) : null}
                   </span>
-                </div>
-
-                {row ? (
-                  <div
-                    className="delivery-window__route-progress"
+                  <span
                     style={{
-                      display: "flex",
-                      gap: 10,
-                      flexWrap: "wrap",
-                      color: "#334155",
-                      fontSize: 13,
-                      fontWeight: 900,
+                      display: "inline-flex",
+                      marginTop: 5,
+                      borderRadius: 999,
+                      background: evidence.background,
+                      color: evidence.tone,
+                      padding: "4px 7px",
+                      fontSize: 9,
+                      fontWeight: 950,
                     }}
                   >
-                    <ProgressPill
-                      icon="📍"
-                      actual={row.actual_delivery_stops ?? 0}
-                      planned={row.planned_delivery_stops ?? 0}
-                    />
-                    <ProgressPill
-                      icon="📦"
-                      actual={row.actual_delivery_packages ?? 0}
-                      planned={row.vscan_packages ?? 0}
-                    />
-                    <ProgressPill
-                      icon="🛻"
-                      actual={row.actual_pickup_stops ?? 0}
-                      planned={row.planned_pickup_stops ?? 0}
-                    />
-                    {routeManifestHealth && routeManifestHealth.express.package_count > 0 ? (
-                      <ExpressProgressSignal
-                        progress={{
-                          total: routeManifestHealth.express.package_count,
-                          complete: routeManifestHealth.express.complete_package_count,
-                          attempted: routeManifestHealth.express.attempted_package_count,
-                          open: routeManifestHealth.express.open_package_count,
-                        }}
-                        dataHealth={{
-                          trackingIdentityMissing: routeManifestHealth.express.data_health.tracking_identity_missing_count,
-                          stopLinkMissing: routeManifestHealth.express.data_health.stop_link_missing_count,
-                          stopLinkAmbiguous: routeManifestHealth.express.data_health.stop_link_ambiguous_count,
-                          referenceMatchAvailable: routeManifestHealth.express.data_health.reference_match_available,
-                        }}
-                        compact
-                        style={{ minWidth: 210 }}
-                      />
-                    ) : null}
-                  </div>
-                ) : dataMode === "historical" ? (
-                  <div className="delivery-window__route-progress" style={{ color: "#475569", fontSize: 12, fontWeight: 900 }}>
-                    {fccRow?.last_delivery_time
-                      ? `FCC last delivery ${fccRow.last_delivery_time}`
-                      : routeManifestHealth
-                        ? "Manifest evidence retained"
-                        : route?.driver
-                          ? "Dispatch assignment retained"
-                          : "Selected-day route evidence"}
-                  </div>
-                ) : (
-                  <div className="delivery-window__route-progress" style={{ color: "#94a3b8", fontSize: 12, fontWeight: 900 }}>
-                    No active DSW row matched
-                  </div>
-                )}
+                    {evidence.label}
+                  </span>
+                </div>
+
+                <div className="delivery-window__route-progress" style={{ display: "grid", gap: 6 }}>
+                  <RouteSourceFacts
+                    dsw={row}
+                    droAm={droAm}
+                    droPm={droPm}
+                    manifest={routeManifestHealth}
+                    fcc={fccRow}
+                  />
+                </div>
 
                 <div
                   className="delivery-window__route-health"
                   style={{
                     justifySelf: "end",
-                    display: "inline-flex",
+                    width: "100%",
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
                     alignItems: "center",
-                    gap: 8,
+                    gap: 6,
                   }}
                 >
                   <RouteHealthSignal
                     health={fccHealth}
+                    label="Evidence"
                     title={`${fccHealth.tooltip} · Open route health`}
                     onClick={() => openRouteView("detail")}
                   />
@@ -1122,10 +1371,13 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
                     title={`Open route map for ${selectedRouteLabel}`}
                     onClick={() => openRouteView("map")}
                     style={{
-                      width: 30,
+                      width: "100%",
                       height: 30,
-                      display: "inline-grid",
+                      display: "inline-flex",
                       placeItems: "center",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 5,
                       border: "1px solid #d7e1ee",
                       borderRadius: 10,
                       background: "#fff",
@@ -1135,13 +1387,14 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
                     }}
                   >
                     <MapPinned size={17} aria-hidden="true" />
+                    <span style={{ fontSize: 10, fontWeight: 900 }}>Map</span>
                   </button>
                   <div
                     style={{
-                      minWidth: 64,
+                      gridColumn: "1 / -1",
                       textAlign: "center",
-                      borderRadius: 13,
-                      padding: "8px 10px",
+                      borderRadius: 10,
+                      padding: "5px 8px",
                       border: "1px solid #e6edf5",
                       background: completion >= 100 ? "#ecfdf5" : "#f8fafc",
                       color: completion >= 100 ? "#166534" : "#0f172a",
@@ -1183,6 +1436,10 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
         health={selectedRouteHealth?.health ?? null}
         dsw={selectedRouteHealth?.dsw ?? null}
         initialView={selectedRouteHealth?.initialView ?? "detail"}
+        droAm={selectedRouteHealth?.droAm ?? null}
+        droPm={selectedRouteHealth?.droPm ?? null}
+        fcc={selectedRouteHealth?.fcc ?? null}
+        dispatchDriver={selectedRouteHealth?.dispatchDriver ?? null}
         onClose={() => setSelectedRouteHealth(null)}
       />
 
@@ -1194,47 +1451,126 @@ export function DeliveryWindowSnapshot(props: DeliveryWindowSnapshotProps) {
   );
 }
 
-function ProgressPill(props: {
-  icon: string;
-  actual: number;
-  planned: number;
-}) {
-  return (
-    <span
-      className="delivery-window__progress-pill"
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 5,
-        border: "1px solid #edf2f7",
-        borderRadius: 999,
-        padding: "7px 10px",
-        background: "#f8fafc",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {props.icon} {props.actual} of {props.planned}
-    </span>
-  );
+function routePlanFact(am: DroPlanRow | null, pm: DroPlanRow | null) {
+  if (!am && !pm) return "No route plan";
+  if (am && pm && Number(am.stops ?? 0) !== Number(pm.stops ?? 0)) {
+    return `AM ${Number(am.stops ?? 0)} → PM ${Number(pm.stops ?? 0)} stops`;
+  }
+
+  const plan = am ?? pm;
+  const frame = am ? "AM" : "PM";
+  const miles = Number(plan?.miles ?? 0);
+  return [
+    `${frame} · ${Number(plan?.stops ?? 0)} stops`,
+    `${Number(plan?.packages ?? 0)} pkg`,
+    miles > 0 ? `${miles.toFixed(1).replace(/\.0$/, "")} mi` : null,
+  ].filter(Boolean).join(" · ");
 }
 
-function RailStat(props: { label: string; value: string | number }) {
+function RouteSourceFacts({
+  dsw,
+  droAm,
+  droPm,
+  manifest,
+  fcc,
+}: {
+  dsw: DswCurrentRow | null;
+  droAm: DroPlanRow | null;
+  droPm: DroPlanRow | null;
+  manifest: ManifestRouteHealthCard | null;
+  fcc: FccRouteSignalRow | null;
+}) {
+  const manifestPresent = hasManifestRouteEvidence(manifest);
+  const dswPackageFact = dsw
+    ? !dsw.authoritative_inventory_only && Number(dsw.vscan_packages ?? 0) > 0
+      ? `${Number(dsw.actual_delivery_packages ?? 0)}/${Number(dsw.vscan_packages ?? 0)} pkg`
+      : `${Number(dsw.actual_delivery_packages ?? 0)} delivered pkg`
+    : null;
+  const express = manifest?.express;
+  const facts = [
+    {
+      label: "DRO",
+      present: Boolean(droAm || droPm),
+      value: routePlanFact(droAm, droPm),
+    },
+    {
+      label: "DSW",
+      present: Boolean(dsw),
+      value: dsw
+        ? `${Number(dsw.actual_delivery_stops ?? 0)}/${Number(dsw.planned_delivery_stops ?? 0)} stops · ${dswPackageFact}`
+        : "No execution row",
+    },
+    {
+      label: "Manifest",
+      present: manifestPresent,
+      value: manifestPresent
+        ? `${Number(manifest?.delivery.stop_count ?? 0)} stops · ${Number(manifest?.delivery.package_count ?? 0)} pkg · ${Number(manifest?.pickup.stop_count ?? 0)} PU`
+        : "No manifest rows",
+    },
+    {
+      label: "Express",
+      present: manifestPresent,
+      value: manifestPresent
+        ? `${Number(express?.package_count ?? 0)} total · ${Number(express?.complete_package_count ?? 0)} complete · ${Number(express?.attempted_package_count ?? 0)} attempted · ${Number(express?.open_package_count ?? 0)} open`
+        : "No Express manifest seam",
+    },
+    {
+      label: "FCC",
+      present: Boolean(fcc),
+      value: fcc
+        ? fcc.final_stop_time
+          ? `Last Stop ${fcc.final_stop_time}`
+          : fcc.last_delivery_time
+            ? `Last Delivery ${fcc.last_delivery_time}`
+            : fcc.last_transmission_time
+              ? `Last Transmission ${fcc.last_transmission_time}`
+              : "Route row present"
+        : "No closeout row",
+    },
+  ];
+
   return (
     <div
+      aria-label="Route source evidence"
+      className="delivery-window__source-facts"
       style={{
-        display: "flex",
-        justifyContent: "space-between",
-        gap: 12,
-        border: "1px solid #edf2f7",
-        borderRadius: 12,
-        padding: "9px 10px",
-        alignItems: "center",
+        display: "grid",
+        gridTemplateColumns: "repeat(3, minmax(170px, 1fr))",
+        gap: 5,
       }}
     >
-      <span style={{ color: "#64748b", fontSize: 12, fontWeight: 900 }}>
-        {props.label}
-      </span>
-      <strong>{props.value}</strong>
+      {facts.map((fact) => (
+        <span
+          key={fact.label}
+          style={{
+            minWidth: 0,
+            border: `1px solid ${fact.present ? "#dbeafe" : "#e5e7eb"}`,
+            borderRadius: 9,
+            background: fact.present ? "#f8fbff" : "#f8fafc",
+            padding: "6px 7px",
+            display: "grid",
+            gap: 2,
+          }}
+        >
+          <small style={{ color: fact.present ? "#1d4ed8" : "#94a3b8", fontSize: 8, fontWeight: 950 }}>
+            {fact.label}
+          </small>
+          <strong
+            title={fact.value}
+            style={{
+              minWidth: 0,
+              minHeight: 25,
+              whiteSpace: "normal",
+              overflowWrap: "anywhere",
+              lineHeight: 1.25,
+              color: fact.present ? "#334155" : "#94a3b8",
+              fontSize: 10,
+            }}
+          >
+            {fact.value}
+          </strong>
+        </span>
+      ))}
     </div>
   );
 }

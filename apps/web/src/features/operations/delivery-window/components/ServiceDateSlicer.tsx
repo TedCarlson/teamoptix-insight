@@ -149,29 +149,13 @@ export default function ServiceDateSlicer({
       </span>
 
       <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <input
-          aria-label="Choose service date"
-          type="date"
-          value={value}
-          max={maximum}
-          onChange={(event) => choose(event.target.value)}
-          style={{
-            minHeight: 38,
-            border: "1px solid #cbd5e1",
-            borderRadius: 10,
-            background: "#fff",
-            color: "#0f172a",
-            padding: "0 10px",
-            fontWeight: 900,
-          }}
-        />
         <button
           type="button"
           className="button"
           aria-expanded={calendarOpen}
           onClick={() => setCalendarOpen((current) => !current)}
         >
-          {calendarOpen ? "Close calendar" : "Production calendar"}
+          {calendarOpen ? "Close date selector" : "Select service date"}
         </button>
       </span>
 

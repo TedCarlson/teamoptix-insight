@@ -3,6 +3,7 @@ import type {
   DispatchRoute,
   RouteRow,
 } from "@/features/dispatch/lib/dispatchSupport";
+import type { DroPlanRow } from "./serviceRouteEvidence";
 
 export type HistoricalDswRoute = {
   route_name?: string | null;
@@ -43,6 +44,10 @@ function waIdentity(value: string | null | undefined) {
   return numeric.replace(/^0+/, "") || numeric;
 }
 
+function isGenericWaLabel(value: string) {
+  return /^wa\s*0*\d+$/i.test(value.trim());
+}
+
 function routePerson(row: HistoricalDswRoute, routeKey: string): DispatchPerson | null {
   const fullName = text(row.matched_roster_full_name || row.driver_name);
   if (!fullName) return null;
@@ -73,12 +78,16 @@ function configuredMatch(
 
 export function buildHistoricalServiceRoutes({
   configuredRoutes,
+  baseRoutes = [],
   dswRows,
+  droRows = [],
   fccRows,
   manifestRoutes,
 }: {
   configuredRoutes: RouteRow[];
+  baseRoutes?: RouteRow[];
   dswRows: HistoricalDswRoute[];
+  droRows?: DroPlanRow[];
   fccRows: HistoricalFccRoute[];
   manifestRoutes: HistoricalManifestRoute[];
 }) {
@@ -97,10 +106,14 @@ export function buildHistoricalServiceRoutes({
     if (!key) return;
 
     const existing = routes.get(key);
+    const configuredName = configured?.route_name?.trim() ?? "";
+    const preferredRouteName =
+      routeName && !isGenericWaLabel(routeName)
+        ? routeName
+        : configuredName || existing?.route_name || routeName || key;
     routes.set(key, {
       route_key: key,
-      route_name:
-        routeName || configured?.route_name?.trim() || existing?.route_name || key,
+      route_name: preferredRouteName,
       current_wa_num:
         waNumber || configured?.current_wa_num || existing?.current_wa_num || null,
       route_location:
@@ -118,9 +131,17 @@ export function buildHistoricalServiceRoutes({
     }
   }
 
+  for (const route of baseRoutes) {
+    addRoute(route.current_wa_num, route.route_name);
+  }
+
   for (const row of dswRows) {
     const routeKey = waIdentity(row.wa_number) || text(row.route_name);
     addRoute(row.wa_number, row.route_name, routePerson(row, routeKey));
+  }
+
+  for (const row of droRows) {
+    addRoute(row.wa_number, row.route_name);
   }
 
   for (const row of fccRows) {

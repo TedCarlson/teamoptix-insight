@@ -12,28 +12,33 @@ type RouteHealthSignalProps = {
   health: FccRouteHealth;
   onClick?: () => void;
   title?: string;
+  label?: string;
 };
 
 export default function RouteHealthSignal(props: RouteHealthSignalProps) {
-  const { health, onClick, title } = props;
+  const { health, onClick, title, label } = props;
 
   const content = (
-    <Image
-      src={iconByStatus[health.status]}
-      alt=""
-      aria-hidden="true"
-      width={24}
-      height={24}
-      style={{ display: "block" }}
-    />
+    <>
+      <Image
+        src={iconByStatus[health.status]}
+        alt=""
+        aria-hidden="true"
+        width={24}
+        height={24}
+        style={{ display: "block" }}
+      />
+      {label ? <span style={{ fontSize: 10, fontWeight: 900 }}>{label}</span> : null}
+    </>
   );
 
   const sharedStyle = {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 30,
+    width: label ? "100%" : 30,
     height: 30,
+    gap: label ? 5 : 0,
     borderRadius: 10,
     border: "1px solid #e6edf5",
     background: "#fff",
@@ -49,7 +54,7 @@ export default function RouteHealthSignal(props: RouteHealthSignalProps) {
         onClick={onClick}
         style={{
           ...sharedStyle,
-          padding: 0,
+          padding: label ? "0 8px" : 0,
           cursor: "pointer",
         }}
       >
