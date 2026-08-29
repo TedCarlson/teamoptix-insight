@@ -17,8 +17,8 @@ describe("route GPX presentation", () => {
           { sequence_number: 2, point_kind: "RTEPT", latitude: 39.2, longitude: -76.8, elevation_meters: null, observed_at: null, point_name: null, point_description: null, is_stop: false },
         ],
       },
-      deliveryStops: [{ st_number: "15", sid: "A", completed: "Y" }],
-      packages: [{ st_number: "15", sid: "A", is_express: true, delivery_evidence_state: "COMPLETED", star_scan_at_local: "10:42" }],
+      deliveryStops: [{ st_number: "15", sid: "A", completed: "Y", recipient: "Private Recipient", address_line_1: "100 Private Street", _route_map_ref: "D:0" }],
+      packages: [{ st_number: "15", sid: "A", tracking_id: "PRIVATE-TRACKING-ID", is_express: true, delivery_evidence_state: "COMPLETED", star_scan_at_local: "10:42" }],
       pickups: [],
     });
     expect(presentation?.stop_clusters[0]).toMatchObject({
@@ -26,8 +26,13 @@ describe("route GPX presentation", () => {
       stop_type: "EXPRESS",
       status_observed_at_local: "10:42",
       manifest_linked: true,
+      manifest_ref: "D:0",
+      package_count: 1,
     });
     expect(presentation?.stop_clusters[0]).not.toHaveProperty("labels");
+    expect(JSON.stringify(presentation)).not.toContain("Private Recipient");
+    expect(JSON.stringify(presentation)).not.toContain("100 Private Street");
+    expect(JSON.stringify(presentation)).not.toContain("PRIVATE-TRACKING-ID");
   });
 
   it("does not invent a manifest link when GPX identity is ambiguous", () => {

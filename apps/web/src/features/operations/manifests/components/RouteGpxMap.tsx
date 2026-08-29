@@ -2,6 +2,7 @@
 
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useMemo, useRef, type CSSProperties } from "react";
+import { Maximize2 } from "lucide-react";
 import {
   LngLatBounds,
   Map as MapLibreMap,
@@ -19,6 +20,7 @@ import {
   observeInternalMapTheme,
 } from "@/features/maps/internalMapStyle";
 import type { RouteGpxPresentation } from "@/features/operations/manifests/routeGpxPresentation";
+import type { RouteGpxExecutionCluster } from "@/features/operations/manifests/routeGpxPresentation";
 import styles from "./RouteGpxMap.module.css";
 
 const statusColors = {
@@ -42,6 +44,17 @@ const stopBorders = {
   UNKNOWN: "#334155",
 } as const;
 
+export type RouteMapStopDetail = {
+  title: string;
+  address: string;
+  window: string;
+  outcome: string;
+  evidence: string;
+  statusCodes: string[];
+  packageReferences: string[];
+  serviceFlags: string[];
+};
+
 function popupContent(properties: {
   stopType: string;
   executionStatus: string;
@@ -49,18 +62,66 @@ function popupContent(properties: {
   firstSequence: number;
   lastSequence: number;
   observedAt: string | null;
+  packageCount: number;
+  manifestLinked: boolean;
+  privateDetail?: RouteMapStopDetail;
 }) {
   const root = document.createElement("div");
   root.className = styles.popup;
   const title = document.createElement("strong");
-  title.textContent = `${properties.stopType.toLowerCase()} cluster`;
+  title.textContent = properties.privateDetail?.title ?? (
+    properties.firstSequence === properties.lastSequence
+      ? `Stop ${properties.firstSequence} · ${properties.stopType.toLowerCase()}`
+      : `Stops ${properties.firstSequence}–${properties.lastSequence} · ${properties.stopType.toLowerCase()}`
+  );
   const status = document.createElement("span");
-  status.textContent = `${properties.executionStatus.toLowerCase()} · ${properties.stopCount} stop${properties.stopCount === 1 ? "" : "s"}`;
+  if (properties.privateDetail) status.className = styles.popupOutcome;
+  status.textContent = properties.privateDetail?.outcome ??
+    `${properties.executionStatus.toLowerCase()} · ${properties.stopCount} stop${properties.stopCount === 1 ? "" : "s"}`;
   const sequence = document.createElement("small");
-  sequence.textContent = properties.firstSequence === properties.lastSequence
-    ? `Route sequence ${properties.firstSequence}`
-    : `Route sequence ${properties.firstSequence}–${properties.lastSequence}`;
+  const routeSequence = properties.firstSequence === properties.lastSequence
+    ? String(properties.firstSequence)
+    : `${properties.firstSequence}–${properties.lastSequence}`;
+  sequence.textContent = [
+    properties.stopType.toLowerCase(),
+    `route sequence ${routeSequence}`,
+    `${properties.packageCount} package${properties.packageCount === 1 ? "" : "s"}`,
+    properties.stopCount > 1 ? `${properties.stopCount} co-located stops` : "",
+  ].filter(Boolean).join(" · ");
   root.append(title, status, sequence);
+  if (properties.privateDetail) {
+    const detail = document.createElement("div");
+    detail.className = styles.popupDetail;
+    const address = document.createElement("span");
+    address.textContent = properties.privateDetail.address || "Address unavailable";
+    const window = document.createElement("small");
+    window.textContent = `Window ${properties.privateDetail.window}`;
+    const evidence = document.createElement("small");
+    evidence.textContent = properties.privateDetail.evidence;
+    detail.append(address, window, evidence);
+    if (properties.privateDetail.statusCodes.length) {
+      const codes = document.createElement("small");
+      codes.textContent = `Status evidence · ${properties.privateDetail.statusCodes.join(" · ")}`;
+      detail.append(codes);
+    }
+    if (properties.privateDetail.packageReferences.length) {
+      const references = document.createElement("small");
+      references.textContent = `Package${properties.privateDetail.packageReferences.length === 1 ? "" : "s"} · ${properties.privateDetail.packageReferences.join(" · ")}`;
+      detail.append(references);
+    }
+    if (properties.privateDetail.serviceFlags.length) {
+      const flags = document.createElement("small");
+      flags.textContent = properties.privateDetail.serviceFlags.join(" · ");
+      detail.append(flags);
+    }
+    root.append(detail);
+  } else {
+    const linkState = document.createElement("small");
+    linkState.textContent = properties.manifestLinked
+      ? "Manifest detail is linked but unavailable in this view."
+      : "No manifest row is linked to this waypoint.";
+    root.append(linkState);
+  }
   if (properties.observedAt) {
     const observed = document.createElement("small");
     observed.textContent = `Last evidence ${properties.observedAt}`;
@@ -72,11 +133,36 @@ function popupContent(properties: {
 export default function RouteGpxMap({
   slug,
   routeGpx,
+  selectedClusterKey = null,
+  onClusterSelect,
+  compact = false,
+  stopDetailsByRef = {},
 }: {
   slug: string;
   routeGpx: RouteGpxPresentation;
+  selectedClusterKey?: string | null;
+  onClusterSelect?: (cluster: RouteGpxExecutionCluster) => void;
+  compact?: boolean;
+  stopDetailsByRef?: Record<string, RouteMapStopDetail>;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<MapLibreMap | null>(null);
+  const routeBoundsRef = useRef<LngLatBounds | null>(null);
+  const markersRef = useRef(
+    new Map<
+      string,
+      {
+        element: HTMLButtonElement;
+        marker: Marker;
+        popup: Popup;
+        coordinates: [number, number];
+      }
+    >()
+  );
+  const selectRef = useRef(onClusterSelect);
+  useEffect(() => {
+    selectRef.current = onClusterSelect;
+  }, [onClusterSelect]);
   const statusCounts = useMemo(
     () =>
       routeGpx.stop_clusters.reduce(
@@ -91,6 +177,16 @@ export default function RouteGpxMap({
 
   useEffect(() => {
     if (!containerRef.current || !routeGpx.stop_clusters.length) return;
+    const markerElements = new Map<
+      string,
+      {
+        element: HTMLButtonElement;
+        marker: Marker;
+        popup: Popup;
+        coordinates: [number, number];
+      }
+    >();
+    markersRef.current = markerElements;
     const coordinates = [
       ...routeGpx.path.map((point) => [point.longitude, point.latitude] as [number, number]),
       ...routeGpx.stop_clusters.map((cluster) => [cluster.longitude, cluster.latitude] as [number, number]),
@@ -102,6 +198,7 @@ export default function RouteGpxMap({
       (result, coordinate) => result.extend(coordinate),
       new LngLatBounds(coordinates[0], coordinates[0])
     );
+    routeBoundsRef.current = bounds;
     configureInternalMapWorker();
     const mapTheme = currentInternalMapTheme();
     const mapColors = internalMapColors(mapTheme);
@@ -113,6 +210,16 @@ export default function RouteGpxMap({
       attributionControl: { compact: true },
       cooperativeGestures: true,
     });
+    mapRef.current = map;
+    let resizeFrame: number | null = null;
+    const resizeObserver = new ResizeObserver(() => {
+      if (resizeFrame !== null) window.cancelAnimationFrame(resizeFrame);
+      resizeFrame = window.requestAnimationFrame(() => {
+        resizeFrame = null;
+        if (mapRef.current === map) map.resize();
+      });
+    });
+    resizeObserver.observe(containerRef.current);
     const mapRequest = new AbortController();
     const stopObservingTheme = observeInternalMapTheme(map, window.location.origin);
     map.addControl(new NavigationControl({ showCompass: false }), "top-right");
@@ -178,13 +285,16 @@ export default function RouteGpxMap({
       marker.title = `${cluster.stop_type.toLowerCase()} · ${cluster.execution_status.toLowerCase()} · route sequence ${cluster.first_sequence}`;
       marker.setAttribute("aria-label", marker.title);
       marker.setAttribute("aria-expanded", "false");
+      marker.dataset.clusterKey = cluster.cluster_key;
+      marker.dataset.selected = "false";
       marker.style.setProperty("--route-marker-fill", statusColors[cluster.execution_status]);
       marker.style.setProperty("--route-marker-border", stopBorders[cluster.stop_type]);
       marker.style.setProperty("--route-marker-text", statusTextColors[cluster.execution_status]);
       const size = Math.min(32, 24 + Math.sqrt(cluster.stop_count) * 2);
       marker.style.width = `${size}px`;
       marker.style.height = `${size}px`;
-      const popup = new Popup({ offset: 14 }).setDOMContent(
+      const coordinates: [number, number] = [cluster.longitude, cluster.latitude];
+      const popup = new Popup({ offset: 14, closeOnClick: false }).setDOMContent(
         popupContent({
           stopType: cluster.stop_type,
           executionStatus: cluster.execution_status,
@@ -192,6 +302,11 @@ export default function RouteGpxMap({
           firstSequence: cluster.first_sequence,
           lastSequence: cluster.last_sequence,
           observedAt: cluster.status_observed_at_local,
+          packageCount: cluster.package_count,
+          manifestLinked: cluster.manifest_linked,
+          privateDetail: cluster.manifest_ref
+            ? stopDetailsByRef[cluster.manifest_ref]
+            : undefined,
         })
       );
       popup.on("open", () => {
@@ -202,22 +317,72 @@ export default function RouteGpxMap({
         delete marker.dataset.active;
         marker.setAttribute("aria-expanded", "false");
       });
-      new Marker({ element: marker, anchor: "center" })
-        .setLngLat([cluster.longitude, cluster.latitude])
-        .setPopup(popup)
+      marker.addEventListener("click", (event) => {
+        event.stopPropagation();
+        markerElements.forEach((entry) => {
+          if (entry.popup !== popup && entry.popup.isOpen()) entry.popup.remove();
+        });
+        if (!popup.isOpen()) popup.setLngLat(coordinates).addTo(map);
+        selectRef.current?.(cluster);
+      });
+      const mapMarker = new Marker({ element: marker, anchor: "center" })
+        .setLngLat(coordinates)
         .addTo(map);
+      markerElements.set(cluster.cluster_key, {
+        element: marker,
+        marker: mapMarker,
+        popup,
+        coordinates,
+      });
     }
 
     return () => {
       mapRequest.abort();
+      resizeObserver.disconnect();
+      if (resizeFrame !== null) window.cancelAnimationFrame(resizeFrame);
       if (styleFrame !== null) window.cancelAnimationFrame(styleFrame);
       stopObservingTheme();
+      markerElements.clear();
+      if (markersRef.current === markerElements) markersRef.current = new Map();
+      if (mapRef.current === map) mapRef.current = null;
+      if (routeBoundsRef.current === bounds) routeBoundsRef.current = null;
       map.remove();
     };
-  }, [routeGpx, slug]);
+  }, [routeGpx, slug, stopDetailsByRef]);
+
+  useEffect(() => {
+    markersRef.current.forEach((entry, clusterKey) => {
+      const selected = clusterKey === selectedClusterKey;
+      entry.element.dataset.selected = String(selected);
+      if (!selected && entry.popup.isOpen()) entry.popup.remove();
+    });
+    if (!selectedClusterKey) return;
+    const entry = markersRef.current.get(selectedClusterKey);
+    const map = mapRef.current;
+    if (!entry || !map) return;
+    map.easeTo({
+      center: entry.coordinates,
+      zoom: Math.max(map.getZoom(), 12.5),
+      duration: 420,
+    });
+    if (!entry.popup.isOpen()) entry.popup.setLngLat(entry.coordinates).addTo(map);
+  }, [selectedClusterKey]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => mapRef.current?.resize());
+    return () => window.cancelAnimationFrame(frame);
+  }, [compact]);
 
   if (!routeGpx.stop_clusters.length) {
     return <div className={styles.empty}>No GPX delivery clusters are available for this route and date.</div>;
+  }
+
+  function fitEntireRoute() {
+    const map = mapRef.current;
+    const bounds = routeBoundsRef.current;
+    if (!map || !bounds) return;
+    markersRef.current.forEach((entry) => entry.popup.remove());
+    map.fitBounds(bounds, { padding: 64, maxZoom: 15, duration: 420 });
   }
 
   return (
@@ -227,8 +392,21 @@ export default function RouteGpxMap({
         <span>{routeGpx.stop_point_count} route stops</span>
         <span>{statusCounts.CLOSED} completed</span>
         <span>{statusCounts.OPEN} open</span>
+        <span>{statusCounts.ATTEMPTED} attempted</span>
+        <span>{statusCounts.UNKNOWN} unknown</span>
       </div>
-      <div className={styles.map} ref={containerRef} role="region" aria-label="Route stop map" />
+      <div className={styles.mapFrame}>
+        <button
+          type="button"
+          className={styles.fitRoute}
+          aria-label="Fit entire route"
+          title="Fit entire route"
+          onClick={fitEntireRoute}
+        >
+          <Maximize2 size={15} aria-hidden="true" />
+        </button>
+        <div className={`${styles.map} ${compact ? styles.mapCompact : ""}`} ref={containerRef} role="region" aria-label="Route stop map" />
+      </div>
       <div className={styles.legend} aria-label="Map legend">
         {Object.entries(statusColors).map(([status, color]) => (
           <span key={status}>
@@ -237,7 +415,7 @@ export default function RouteGpxMap({
           </span>
         ))}
       </div>
-      <p className={styles.note}>Circle border: orange express · blue pickup · white regular delivery. Select a marker for route sequence and status. The regional reference map is hosted by TeamOptix; private route coordinates remain a separate overlay inside TeamOptix.</p>
+      <p className={styles.note}>Circle border: orange express · blue pickup · white regular delivery. Waypoint geometry is de-identified. Authorized manifest detail is joined only after selection and is never sent to the regional basemap.</p>
     </section>
   );
 }

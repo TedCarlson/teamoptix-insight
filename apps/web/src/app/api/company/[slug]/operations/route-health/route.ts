@@ -18,6 +18,10 @@ import {
 } from "@/features/operations/manifests/manifestIdentityAccess";
 import type { RouteGpxGeometry } from "@/features/operations/manifests/routeGpx";
 import { presentRouteGpx } from "@/features/operations/manifests/routeGpxPresentation";
+import {
+  buildManifestCollectionPace,
+  manifestCollectionPaceFromDayFact,
+} from "@/features/operations/manifests/manifestCollectionPace";
 
 export const runtime = "nodejs";
 
@@ -127,6 +131,20 @@ type RouteHealthCard = {
   };
 };
 
+type DurablePackageFact = {
+  stop_number: string | null;
+  postal_code_5: string | null;
+  tracking_ref: string;
+  tracking_ref_version: string;
+  service_code: string | null;
+  execution_status: "OPEN" | "CLOSED" | "UNKNOWN";
+  is_express: boolean;
+  is_residential: boolean;
+  is_signature: boolean;
+  is_hazmat: boolean;
+  is_collection: boolean;
+};
+
 function normalizeDate(value: string | null) {
   const raw = String(value ?? "").trim();
   if (!raw) return null;
@@ -192,6 +210,54 @@ function packagesWithManifestCompletion(params: {
             : "MISSING",
     };
   });
+}
+
+function durableTrackingAlias(trackingRef: string) {
+  const digest = trackingRef.split("_").at(-1) ?? trackingRef;
+  return `PKG-${digest.slice(-12).toUpperCase()}`;
+}
+
+function presentDurableManifestFacts(facts: DurablePackageFact[]) {
+  const packages = facts.map<Record<string, unknown>>((fact, index) => {
+    const stopNumber = fact.stop_number || String(index + 1);
+    return {
+      st_number: stopNumber,
+      sid: `DEIDENTIFIED-${stopNumber}`,
+      tracking_id: durableTrackingAlias(fact.tracking_ref),
+      tracking_ref: fact.tracking_ref,
+      tracking_ref_version: fact.tracking_ref_version,
+      postal_code: fact.postal_code_5,
+      prem_svc_raw: fact.service_code,
+      manifest_completed: fact.execution_status === "CLOSED" ? "Y" : "N",
+      manifest_stop_link_status: "LINKED",
+      is_express: fact.is_express,
+      is_residential: fact.is_residential,
+      is_signature: fact.is_signature,
+      is_hazmat: fact.is_hazmat,
+      is_collection: fact.is_collection,
+    };
+  });
+  const byStop = facts.reduce<Map<string, DurablePackageFact[]>>((groups, fact, index) => {
+    const stopNumber = fact.stop_number || String(index + 1);
+    groups.set(stopNumber, [...(groups.get(stopNumber) ?? []), fact]);
+    return groups;
+  }, new Map());
+  const stops = Array.from(byStop, ([stopNumber, stopFacts]) => ({
+    st_number: stopNumber,
+    sid: `DEIDENTIFIED-${stopNumber}`,
+    postal_code: stopFacts.find((fact) => fact.postal_code_5)?.postal_code_5 ?? null,
+    package_count: stopFacts.length,
+    completed: stopFacts.every((fact) => fact.execution_status === "CLOSED") ? "Y" : "N",
+  }));
+
+  return { packages, stops };
+}
+
+function removeInternalTrackingReference(row: Record<string, unknown>) {
+  const presented = { ...row };
+  delete presented.tracking_ref;
+  delete presented.tracking_ref_version;
+  return presented;
 }
 
 function statusCounts(rows: RouteHealthRow[]) {
@@ -449,6 +515,9 @@ export async function GET(
         routeGpxResult,
         packageStatusResult,
         expressReferenceResult,
+        manifestCollectionResult,
+        durablePackageResult,
+        durableManifestDayResult,
       ] = await Promise.all([
           supabase
             .from("operations_delivery_manifest_stop_v")
@@ -495,6 +564,36 @@ export async function GET(
             .eq("company_id", company.id)
             .eq("service_date", serviceDate)
             .eq("route_key", routeKey),
+          serviceRole
+            .from("operations_collection_artifact_v")
+            .select(
+              "created_at,ingest_completed_at,runner_artifact_json,ingest_metadata_json"
+            )
+            .eq("company_id", company.id)
+            .eq("service_date", serviceDate)
+            .eq("artifact_status", "INGESTED")
+            .contains("runner_artifact_json", {
+              route_key: routeKey,
+              artifact_key: "DELIVERY_MANIFEST",
+            })
+            .order("created_at", { ascending: true })
+            .limit(200),
+          serviceRole
+            .from("operations_route_package_fact_v")
+            .select(
+              "stop_number,postal_code_5,tracking_ref,tracking_ref_version,service_code,execution_status,is_express,is_residential,is_signature,is_hazmat,is_collection"
+            )
+            .eq("company_id", company.id)
+            .eq("service_date", serviceDate)
+            .eq("route_key", routeKey)
+            .order("stop_number", { ascending: true }),
+          serviceRole
+            .from("operations_route_manifest_day_fact_v")
+            .select("pace_summary_json")
+            .eq("company_id", company.id)
+            .eq("service_date", serviceDate)
+            .eq("route_key", routeKey)
+            .maybeSingle(),
         ]);
 
       const detailError =
@@ -504,6 +603,31 @@ export async function GET(
         clustersResult.error ??
         packageStatusResult.error ??
         expressReferenceResult.error;
+
+      if (manifestCollectionResult.error) {
+        console.error("Route manifest collection pace unavailable.", {
+          companyId: company.id,
+          serviceDate,
+          routeKey,
+          error: manifestCollectionResult.error.message,
+        });
+      }
+      if (durablePackageResult.error) {
+        console.error("Durable route package facts unavailable.", {
+          companyId: company.id,
+          serviceDate,
+          routeKey,
+          error: durablePackageResult.error.message,
+        });
+      }
+      if (durableManifestDayResult.error) {
+        console.error("Durable route manifest day facts unavailable.", {
+          companyId: company.id,
+          serviceDate,
+          routeKey,
+          error: durableManifestDayResult.error.message,
+        });
+      }
 
       if (detailError) {
         return NextResponse.json({ error: detailError.message }, { status: 500 });
@@ -515,11 +639,30 @@ export async function GET(
           row,
         ])
       );
+      const durableFacts = durablePackageResult.error
+        ? []
+        : (durablePackageResult.data ?? []) as DurablePackageFact[];
+      const useDurableFacts =
+        (deliveryStopsResult.data ?? []).length === 0 &&
+        (packagesResult.data ?? []).length === 0 &&
+        durableFacts.length > 0;
+      const durableManifest = presentDurableManifestFacts(durableFacts);
+      const sourceDeliveryStops = useDurableFacts
+        ? durableManifest.stops
+        : (deliveryStopsResult.data ?? []) as Array<Record<string, unknown>>;
+      const sourcePackages = useDurableFacts
+        ? durableManifest.packages
+        : (packagesResult.data ?? []) as Array<Record<string, unknown>>;
+      const deliveryStops = sourceDeliveryStops.map((row, index) => ({
+        ...row,
+        _route_map_ref: useDurableFacts ? undefined : `D:${index}`,
+      }));
+      const pickups = (
+        (pickupsResult.data ?? []) as Array<Record<string, unknown>>
+      ).map((row, index) => ({ ...row, _route_map_ref: `P:${index}` }));
       const manifestPackages = packagesWithManifestCompletion({
-        packages: (packagesResult.data ?? []) as Array<Record<string, unknown>>,
-        stops: (deliveryStopsResult.data ?? []) as Array<
-          Record<string, unknown>
-        >,
+        packages: sourcePackages,
+        stops: deliveryStops,
       }).map((packageRow) => {
         const reference = referenceByTrackingId.get(
           String(packageRow.tracking_id ?? "").trim()
@@ -539,29 +682,45 @@ export async function GET(
         geometry: (routeGpxResult.error
           ? null
           : routeGpxResult.data ?? null) as RouteGpxGeometry | null,
-        deliveryStops: (deliveryStopsResult.data ?? []) as Array<
-          Record<string, unknown>
-        >,
+        deliveryStops,
         packages: packages as Array<Record<string, unknown>>,
-        pickups: (pickupsResult.data ?? []) as Array<Record<string, unknown>>,
+        pickups,
       });
+      const liveCollectionPace = buildManifestCollectionPace(
+        manifestCollectionResult.error
+          ? []
+          : manifestCollectionResult.data ?? []
+      );
+      const durableCollectionPace = durableManifestDayResult.error
+        ? null
+        : manifestCollectionPaceFromDayFact(
+            durableManifestDayResult.data?.pace_summary_json
+          );
 
       return NextResponse.json({
         company_slug: slug,
         service_date: serviceDate,
         route_key: routeKey,
+        retention_mode: useDurableFacts ? "DEIDENTIFIED" : "IDENTIFIABLE",
         identity_access: identityAccess,
-        delivery_stops: (deliveryStopsResult.data ?? []).map((row) =>
+        delivery_stops: deliveryStops.map((row) =>
           applyManifestIdentityAccess(row, identityAccess)
         ),
-        packages: packages.map((row) =>
-          applyManifestIdentityAccess(row, identityAccess)
-        ),
-        pickups: (pickupsResult.data ?? []).map((row) =>
+        packages: packages.map((row) => {
+          const accessible = applyManifestIdentityAccess(row, identityAccess);
+          return useDurableFacts
+            ? removeInternalTrackingReference(accessible)
+            : accessible;
+        }),
+        pickups: pickups.map((row) =>
           applyManifestIdentityAccess(row, identityAccess)
         ),
         stop_clusters: clustersResult.data ?? [],
         route_gpx: routeGpx,
+        collection_pace:
+          liveCollectionPace.capture_count > 0
+            ? liveCollectionPace
+            : durableCollectionPace ?? liveCollectionPace,
       });
     }
 

@@ -111,6 +111,28 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  const { data: routePackageMaterialization, error: routePackageError } =
+    await supabase.rpc("materialize_operations_route_package_facts", {
+      p_limit: 50_000,
+    });
+  if (routePackageError) {
+    return NextResponse.json(
+      { ok: false, error: routePackageError.message },
+      { status: 500 }
+    );
+  }
+
+  const { data: routeManifestDayMaterialization, error: routeManifestDayError } =
+    await supabase.rpc("materialize_operations_route_manifest_day_facts", {
+      p_limit: 5_000,
+    });
+  if (routeManifestDayError) {
+    return NextResponse.json(
+      { ok: false, error: routeManifestDayError.message },
+      { status: 500 }
+    );
+  }
+
   const { data: manifestData, error: manifestListError } = await supabase.rpc(
     "list_operations_manifest_history_artifacts_for_purge",
     { p_limit: 1000 }
@@ -206,6 +228,8 @@ export async function GET(req: NextRequest) {
     failure_count: failures.length,
     failures,
     route_stop_cluster_materialization: routeClusterMaterialization,
+    route_package_fact_materialization: routePackageMaterialization,
+    route_manifest_day_materialization: routeManifestDayMaterialization,
     manifest_source_candidate_count: manifestCandidates.length,
     manifest_source_deleted_count: manifestSourceDeletedCount,
     manifest_warehouse_deleted_count: manifestWarehouseDeletedCount,

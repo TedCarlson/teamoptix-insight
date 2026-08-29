@@ -9,6 +9,8 @@ export type RouteGpxExecutionCluster = Omit<RouteGpxStopCluster, "labels"> & {
   stop_type: "EXPRESS" | "DELIVERY" | "PICKUP" | "UNKNOWN";
   status_observed_at_local: string | null;
   manifest_linked: boolean;
+  manifest_ref: string | null;
+  package_count: number;
 };
 
 export type RouteGpxPresentation = Omit<RouteGpxGeometry, "points"> & {
@@ -209,6 +211,8 @@ export function presentRouteGpx(params: {
         stop_type: express ? "EXPRESS" : "DELIVERY",
         status_observed_at_local: observedAt || null,
         manifest_linked: true,
+        manifest_ref: text(delivery._route_map_ref) || null,
+        package_count: packages.length || Number(delivery.package_count ?? 0),
       } satisfies RouteGpxExecutionCluster;
     }
     if (pickup) {
@@ -220,6 +224,8 @@ export function presentRouteGpx(params: {
         stop_type: "PICKUP",
         status_observed_at_local: closedAt || null,
         manifest_linked: true,
+        manifest_ref: text(pickup._route_map_ref) || null,
+        package_count: Number(pickup.packages_picked_up ?? pickup.package_count_expected ?? 0),
       } satisfies RouteGpxExecutionCluster;
     }
     return {
@@ -228,6 +234,8 @@ export function presentRouteGpx(params: {
       stop_type: "UNKNOWN",
       status_observed_at_local: null,
       manifest_linked: false,
+      manifest_ref: null,
+      package_count: 0,
     } satisfies RouteGpxExecutionCluster;
   });
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { processCapturedManifestArtifacts } from "@/features/operations/manifests/manifest.processor";
+import { backfillManifestCollectionPaceMetadata } from "@/features/operations/manifests/manifestCollectionBackfill";
 import { manifestIdentityFromBuffer } from "@/features/operations/manifests/manifest.identity";
 import {
   isManifestCollectionArtifact,
@@ -409,6 +410,21 @@ async function handleManifestArtifactProcess(req: NextRequest) {
       supabase,
       collectionRequestId
     );
+    const sourceRetentionAudit = collectionRequestId
+      ? null
+      : await supabase.rpc(
+          "audit_operations_direct_ingestion_source_retention",
+          { p_limit: 500 }
+        );
+    if (sourceRetentionAudit?.error) {
+      throw new Error(sourceRetentionAudit.error.message);
+    }
+    const paceBackfill = collectionRequestId
+      ? []
+      : await backfillManifestCollectionPaceMetadata({
+          supabase,
+          limit: batchLimit,
+        });
 
     return NextResponse.json({
       ok: true,
@@ -421,6 +437,11 @@ async function handleManifestArtifactProcess(req: NextRequest) {
       route_gpx: routeGpx,
       reconciled_count: reconciled.length,
       reconciled,
+      source_retention_audit: sourceRetentionAudit?.data ?? null,
+      pace_backfill_count: paceBackfill.filter(
+        (row) => row.status === "BACKFILLED"
+      ).length,
+      pace_backfill: paceBackfill,
       elapsed_ms: Date.now() - startedAt,
     });
   } catch (error) {
