@@ -1,4 +1,8 @@
 import type { CompanyWorkspaceGrantKey } from "@/features/company/config/companyAccessModel";
+import {
+  hasMobileWorkspaceAccess,
+  isCompanyAdminAccess,
+} from "@/features/mobile-workspace/mobileWorkspace";
 
 type Membership = {
   company_slug?: string;
@@ -17,6 +21,17 @@ const COMPANY_GRANTS = new Set<CompanyWorkspaceGrantKey>([
   "operations_uploads", "reports", "fleet", "roster", "hiring",
   "payroll", "admin_config", "grant_management", "opportunity_analysis",
 ]);
+
+export function resolveCompanyRootDestination(
+  access: AccessContext | null | undefined,
+  slug: string
+): string | null {
+  if (isCompanyAdminAccess(access, slug)) return null;
+
+  return hasMobileWorkspaceAccess(access, slug)
+    ? `/company/${slug}/workspace`
+    : `/company/${slug}/home`;
+}
 
 export function resolveWorkspaceEntry(access: AccessContext | null | undefined) {
   if (access?.is_platform_owner) return "/teamoptix/command-center";

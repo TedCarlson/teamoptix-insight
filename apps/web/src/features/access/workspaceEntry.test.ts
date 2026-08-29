@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { resolveWorkspaceEntry } from "./workspaceEntry";
+import {
+  resolveCompanyRootDestination,
+  resolveWorkspaceEntry,
+} from "./workspaceEntry";
 
 describe("workspace entry", () => {
   it("sends a basic driver to the driver experience", () => {
@@ -22,5 +25,27 @@ describe("workspace entry", () => {
       { company_slug: "acme", membership_status: "active" },
       { company_slug: "beta", membership_status: "active" },
     ] })).toBe("/companies");
+  });
+});
+
+describe("company root destination", () => {
+  it("keeps company admins on the Admin overview route", () => {
+    expect(resolveCompanyRootDestination({ memberships: [{ company_slug: "acme", membership_status: "active", relationship_type: "admin", grants: [] }] }, "acme"))
+      .toBeNull();
+  });
+
+  it("keeps platform owners on the Admin overview route", () => {
+    expect(resolveCompanyRootDestination({ is_platform_owner: true, memberships: [] }, "acme"))
+      .toBeNull();
+  });
+
+  it("sends a grant-scoped member to the tailored workspace", () => {
+    expect(resolveCompanyRootDestination({ memberships: [{ company_slug: "acme", membership_status: "active", relationship_type: "member", grants: ["reports"] }] }, "acme"))
+      .toBe("/company/acme/workspace");
+  });
+
+  it("sends a basic member to the driver experience", () => {
+    expect(resolveCompanyRootDestination({ memberships: [{ company_slug: "acme", membership_status: "active", relationship_type: "member", grants: [] }] }, "acme"))
+      .toBe("/company/acme/home");
   });
 });

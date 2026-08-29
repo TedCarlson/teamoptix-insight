@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { useAccess } from "@/features/access/AccessProvider";
+import { resolveCompanyRootDestination } from "@/features/access/workspaceEntry";
 import { canAccessCompanyWorkspace } from "@/features/company/config/companyWorkspaceAccess";
-import { hasMobileWorkspaceAccess } from "@/features/mobile-workspace/mobileWorkspace";
 import { useLob } from "@/features/lob/hooks/useLob";
 import CompanyConfigWorkspace, { type CompanyConfigSection } from "@/features/company/config/CompanyConfigWorkspace";
 import DailyOperationsSummary from "@/features/company/components/DailyOperationsSummary";
@@ -272,7 +272,6 @@ export default function CompanyPage() {
     (membership?.relationship_type === "admin" && membership?.membership_status === "active");
 
   const isCompanyAdmin = canEditCompany;
-  const hasScopedMobileWorkspaces = hasMobileWorkspaceAccess(access, slug);
   const canUploadOperationsReports = canAccessCompanyWorkspace(
     access,
     slug,
@@ -282,13 +281,9 @@ export default function CompanyPage() {
   useEffect(() => {
     if (access.loading || !slug || pathname !== `/company/${slug}`) return;
 
-    if (hasScopedMobileWorkspaces) {
-      router.replace(`/company/${slug}/workspace`);
-      return;
-    }
-
-    if (!isCompanyAdmin) router.replace(`/company/${slug}/home`);
-  }, [access.loading, hasScopedMobileWorkspaces, isCompanyAdmin, pathname, router, slug]);
+    const destination = resolveCompanyRootDestination(access, slug);
+    if (destination) router.replace(destination);
+  }, [access, pathname, router, slug]);
 
   useEffect(() => {
     setActiveSurface(getSurfaceFromPath(pathname));
