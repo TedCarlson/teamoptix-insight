@@ -107,25 +107,34 @@ export default function TerritoryMap({
     const mapTheme = currentInternalMapTheme();
     const map = new MapLibreMap({
       container: containerRef.current,
-      style: createInternalMapStyle(mapTheme),
+      style: createInternalMapStyle(mapTheme, window.location.origin),
       center: centerFor(bounds),
       zoom: 7,
       attributionControl: { compact: true },
       cooperativeGestures: true,
     });
-    const stopObservingTheme = observeInternalMapTheme(map);
+    const mapRequest = new AbortController();
+    const stopObservingTheme = observeInternalMapTheme(map, window.location.origin);
     mapRef.current = map;
     map.addControl(new NavigationControl({ showCompass: false }), "top-right");
     map.resize();
     map.fitBounds(bounds, { padding: 64, maxZoom: 10, duration: 0 });
-    const addReferenceLayers = () => {
-      addInternalRoadLayers(map, slug, window.location.origin);
+    const addReferenceLayers = async () => {
+      const reference = await addInternalRoadLayers(
+        map,
+        slug,
+        window.location.origin,
+        mapRequest.signal,
+      );
+      if (reference === "aborted") return;
       addInternalZctaBoundaryLayers(map, slug, window.location.origin);
     };
     let styleFrame: number | null = null;
     const installWhenStyleReady = () => {
       if (map.isStyleLoaded()) {
-        addReferenceLayers();
+        void addReferenceLayers().catch((error) => {
+          if (!mapRequest.signal.aborted) console.error("Territory reference map failed.", error);
+        });
         return;
       }
       styleFrame = window.requestAnimationFrame(installWhenStyleReady);
@@ -180,6 +189,7 @@ export default function TerritoryMap({
     }
 
     return () => {
+      mapRequest.abort();
       if (styleFrame !== null) window.cancelAnimationFrame(styleFrame);
       stopObservingTheme();
       mapRef.current = null;

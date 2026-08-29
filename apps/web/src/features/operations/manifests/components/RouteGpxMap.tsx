@@ -107,18 +107,25 @@ export default function RouteGpxMap({
     const mapColors = internalMapColors(mapTheme);
     const map = new MapLibreMap({
       container: containerRef.current,
-      style: createInternalMapStyle(mapTheme),
+      style: createInternalMapStyle(mapTheme, window.location.origin),
       center: bounds.getCenter(),
       zoom: 12,
-      attributionControl: false,
+      attributionControl: { compact: true },
       cooperativeGestures: true,
     });
-    const stopObservingTheme = observeInternalMapTheme(map);
+    const mapRequest = new AbortController();
+    const stopObservingTheme = observeInternalMapTheme(map, window.location.origin);
     map.addControl(new NavigationControl({ showCompass: false }), "top-right");
     map.resize();
     map.fitBounds(bounds, { padding: 64, maxZoom: 15, duration: 0 });
-    const addRoutePath = () => {
-      addInternalRoadLayers(map, slug, window.location.origin);
+    const addRoutePath = async () => {
+      const reference = await addInternalRoadLayers(
+        map,
+        slug,
+        window.location.origin,
+        mapRequest.signal,
+      );
+      if (reference === "aborted") return;
       if (pathCoordinates.length >= 2) {
         map.addSource("route-path", {
           type: "geojson",
@@ -145,7 +152,7 @@ export default function RouteGpxMap({
           layout: { "line-cap": "round", "line-join": "round" },
           paint: { "line-color": mapColors.routeLine, "line-width": 2.75, "line-opacity": 0.94 },
         });
-        applyInternalMapTheme(map, currentInternalMapTheme());
+        applyInternalMapTheme(map, currentInternalMapTheme(), window.location.origin);
       }
     };
     map.on("error", (event) => {
@@ -154,7 +161,9 @@ export default function RouteGpxMap({
     let styleFrame: number | null = null;
     const installWhenStyleReady = () => {
       if (map.isStyleLoaded()) {
-        addRoutePath();
+        void addRoutePath().catch((error) => {
+          if (!mapRequest.signal.aborted) console.error("Route reference map failed.", error);
+        });
         return;
       }
       styleFrame = window.requestAnimationFrame(installWhenStyleReady);
@@ -200,6 +209,7 @@ export default function RouteGpxMap({
     }
 
     return () => {
+      mapRequest.abort();
       if (styleFrame !== null) window.cancelAnimationFrame(styleFrame);
       stopObservingTheme();
       map.remove();
@@ -227,7 +237,7 @@ export default function RouteGpxMap({
           </span>
         ))}
       </div>
-      <p className={styles.note}>Circle border: orange express · blue pickup · white regular delivery. Select a marker for route sequence and status. Roads are served from TeamOptix-controlled Census reference data; route coordinates remain inside TeamOptix.</p>
+      <p className={styles.note}>Circle border: orange express · blue pickup · white regular delivery. Select a marker for route sequence and status. The regional reference map is hosted by TeamOptix; private route coordinates remain a separate overlay inside TeamOptix.</p>
     </section>
   );
 }
