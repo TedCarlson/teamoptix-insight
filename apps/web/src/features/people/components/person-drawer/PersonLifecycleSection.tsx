@@ -174,9 +174,17 @@ export default function PersonLifecycleSection({
           >
             <option value="Candidate">Candidate</option>
             <option value="Trainee">Trainee</option>
-            <option value="Active">Active</option>
+            {person.employment_status === "Trainee" ? null : (
+              <option value="Active">Active</option>
+            )}
             <option value="Former">Former</option>
           </select>
+
+          {person.employment_status === "Trainee" ? (
+            <p className="app-card__body" style={{ margin: 0 }}>
+              Use Promote to Driver above so role, status, and both pay-rate dates move together.
+            </p>
+          ) : null}
 
           <input
             type="date"

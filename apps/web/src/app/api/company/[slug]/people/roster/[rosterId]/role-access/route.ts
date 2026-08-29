@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { defaultDriverEffectiveDate } from "@/features/people/lib/driverPromotionDate";
 
 export const runtime = "nodejs";
 
@@ -81,7 +82,7 @@ export async function PATCH(
           p_effective_date:
             typeof body.effective_date === "string" && body.effective_date.trim()
               ? body.effective_date.trim()
-              : null,
+              : defaultDriverEffectiveDate(),
         })
       : await supabase.rpc("apply_company_person_role_change", {
           p_company_slug: slug,

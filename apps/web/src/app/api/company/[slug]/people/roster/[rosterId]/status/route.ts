@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { defaultDriverEffectiveDate } from "@/features/people/lib/driverPromotionDate";
 
 export const runtime = "nodejs";
 
@@ -17,8 +18,9 @@ export async function PATCH(
 
     const body = await req.json().catch(() => ({}));
     const status = cleanText(body.employment_status);
+    const requestedEffectiveDate = cleanText(body.effective_date);
     const effectiveDate =
-      cleanText(body.effective_date) ?? new Date().toISOString().slice(0, 10);
+      requestedEffectiveDate ?? new Date().toISOString().slice(0, 10);
     const note = cleanText(body.note);
 
     const { data: currentRoster, error: currentRosterError } = await supabase
@@ -40,7 +42,8 @@ export async function PATCH(
         {
           p_company_slug: slug,
           p_roster_id: rosterId,
-          p_effective_date: effectiveDate,
+          p_effective_date:
+            requestedEffectiveDate ?? defaultDriverEffectiveDate(),
         },
       );
 

@@ -70,7 +70,12 @@ export default function PersonRoleAccessSection({ companySlug, person, onSaved }
 
   useEffect(() => { void load(); }, [load]);
 
-  const options = useMemo(() => getFedExRoleOptions(roleLabel), [roleLabel]);
+  const options = useMemo(
+    () => getFedExRoleOptions(roleLabel).filter(
+      (option) => !(person.employment_status === "Trainee" && option.value === "Driver"),
+    ),
+    [person.employment_status, roleLabel],
+  );
   const grantSet = useMemo(() => new Set(grants), [grants]);
 
   function changeRole(nextRole: string) {
@@ -118,7 +123,7 @@ export default function PersonRoleAccessSection({ companySlug, person, onSaved }
       await onSaved();
       setMessage(
         promoteToDriver
-          ? "Promoted to Driver. Standard daily pay starts today; trainee pay ended yesterday."
+          ? "Promoted to Driver. The standard rate begins on the selected first Driver day."
           : "Role, leadership, and workspace access updated together.",
       );
     } catch (saveError) {
@@ -154,25 +159,6 @@ export default function PersonRoleAccessSection({ companySlug, person, onSaved }
           </div>
           {!context?.is_linked ? (
             <p style={{ margin: 0, color: "#92400e" }}>Invite this person to the app before assigning workspace tools. Their roster role and leadership responsibility can still be maintained.</p>
-          ) : null}
-          {person.employment_status === "Trainee" ? (
-            <div style={{ border: "1px solid #bfdbfe", borderRadius: 12, background: "#eff6ff", padding: 12, display: "grid", gap: 8 }}>
-              <div>
-                <strong style={{ color: "#1e3a8a" }}>Ready to drive?</strong>
-                <p style={{ margin: "3px 0 0", color: "#475569", fontSize: 12 }}>
-                  One click activates Driver status and switches payroll from trainee pay to the standard daily rate.
-                </p>
-              </div>
-              <button
-                className="button button-primary"
-                type="button"
-                disabled={saving}
-                onClick={() => void persistRoleChange({ promoteToDriver: true })}
-                style={{ justifySelf: "start" }}
-              >
-                {saving ? "Promoting…" : "Promote to Driver"}
-              </button>
-            </div>
           ) : null}
         </div>
       ) : (

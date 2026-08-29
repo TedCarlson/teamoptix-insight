@@ -10,6 +10,10 @@ import PersonLifecycleSection from "@/features/people/components/person-drawer/P
 import PersonTimelineSection from "@/features/people/components/person-drawer/PersonTimelineSection";
 import RosterAssignedResourcesSection from "@/features/company/assets/RosterAssignedResourcesSection";
 import CandidateChecklistPanel from "@/features/hiring/components/candidate-detail/CandidateChecklistPanel";
+import {
+  defaultDriverEffectiveDate,
+  lastTraineeDate,
+} from "@/features/people/lib/driverPromotionDate";
 import styles from "@/features/hiring/components/candidate-drawer/candidate-workflow-drawer.module.css";
 
 type CoreDraft = {
@@ -120,6 +124,17 @@ export default function ManagePersonDrawer({
   onSendInvite,
 }: Props) {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("record");
+  const [promotionEffectiveDate, setPromotionEffectiveDate] = useState(
+    defaultDriverEffectiveDate,
+  );
+
+  async function promoteTraineeToDriver() {
+    return onSaveStatus({
+      employment_status: "Active",
+      effective_date: promotionEffectiveDate,
+      note: "Promoted from Trainee to Driver",
+    });
+  }
 
   if (!open || !person) return null;
 
@@ -275,6 +290,63 @@ export default function ManagePersonDrawer({
             className={`${styles.workflowRail} ${activeTab === "actions" ? styles.workflowRailActive : ""}`}
             id="roster-panel-actions"
           >
+            {person.employment_status === "Trainee" ? (
+              <section className={`${styles.railSection} ${styles.promotionSection}`}>
+                <div>
+                  <p className="workspace-eyebrow">Roster promotion</p>
+                  <h3>Promote trainee to Driver</h3>
+                </div>
+                <p>
+                  Trainee pay applies through the preceding day. Standard Driver pay begins on the selected date.
+                </p>
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span className="hero-stat__label">First Driver day</span>
+                  <input
+                    type="date"
+                    value={promotionEffectiveDate}
+                    onChange={(event) => setPromotionEffectiveDate(event.target.value)}
+                  />
+                  <small style={{ color: "#3d6657" }}>
+                    Defaults to today. Change it only for late promotion bookkeeping.
+                  </small>
+                </label>
+                <div style={{ display: "grid", gap: 5, padding: "10px 0", borderTop: "1px solid #b9dfce", borderBottom: "1px solid #b9dfce" }}>
+                  <span style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12 }}>
+                    <span>Last Trainee day</span>
+                    <strong>{lastTraineeDate(promotionEffectiveDate) || "Choose a date"}</strong>
+                  </span>
+                  <span style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12 }}>
+                    <span>Trainee rate</span>
+                    <strong>
+                      {person.trainee_daily_pay_rate == null
+                        ? "Not set"
+                        : `$${Number(person.trainee_daily_pay_rate).toFixed(2)}/day`}
+                    </strong>
+                  </span>
+                  <span style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12 }}>
+                    <span>First Driver day</span>
+                    <strong>{promotionEffectiveDate || "Choose a date"}</strong>
+                  </span>
+                  <span style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12 }}>
+                    <span>Standard Driver rate</span>
+                    <strong>
+                      {person.daily_pay_rate == null
+                        ? "Not set"
+                        : `$${Number(person.daily_pay_rate).toFixed(2)}/day`}
+                    </strong>
+                  </span>
+                </div>
+                <button
+                  className={`button ${styles.promoteButton}`}
+                  disabled={savingStatus || !promotionEffectiveDate}
+                  onClick={() => void promoteTraineeToDriver()}
+                  type="button"
+                >
+                  {savingStatus ? "Promoting…" : "Promote to Driver"}
+                </button>
+              </section>
+            ) : null}
+
             <div className={styles.railSection}>
               <PersonLifecycleSection
                 companySlug={companySlug}
