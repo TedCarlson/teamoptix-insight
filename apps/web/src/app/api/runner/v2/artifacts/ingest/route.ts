@@ -103,6 +103,7 @@ export async function POST(req: NextRequest) {
   const startedAt = Date.now();
   let artifactId: string | null = null;
   let supabase: any = null;
+  let sourceRetention: Record<string, unknown> | null = null;
 
   try {
     if (!isRunnerAuthorized(req)) {
@@ -176,6 +177,26 @@ export async function POST(req: NextRequest) {
       : registeredData;
     if (!artifact) throw new Error("Direct-ingestion receipt was not created.");
 
+    const { error: sourceStorageError } = await supabase.storage
+      .from(artifact.storage_bucket)
+      .upload(artifact.storage_path, buffer, {
+        contentType: metadata.content_type,
+        upsert: true,
+      });
+    if (sourceStorageError) {
+      throw new Error(
+        `Direct-ingestion source retention failed: ${sourceStorageError.message}`
+      );
+    }
+    sourceRetention = {
+      status: "STORED",
+      stored_at: new Date().toISOString(),
+      storage_bucket: artifact.storage_bucket,
+      storage_path: artifact.storage_path,
+      source_hash: metadata.source_hash,
+      size_bytes: metadata.size_bytes,
+    };
+
     if (["INGESTED", "IGNORED"].includes(artifact.artifact_status)) {
       logReceipt({
         artifactId: artifact.id,
@@ -208,6 +229,7 @@ export async function POST(req: NextRequest) {
           phase: "VERIFIED_IGNORED",
           completed_at: new Date().toISOString(),
           reason: "DECOMMISSIONED_FCC_ARTIFACT",
+          source_retention: sourceRetention,
         },
       });
       logReceipt({
@@ -291,6 +313,7 @@ export async function POST(req: NextRequest) {
           identity_authority: "INGESTION_PIPELINE",
           manifest_identity: identity,
           ingest: result,
+          source_retention: sourceRetention,
         },
       });
 
@@ -330,6 +353,7 @@ export async function POST(req: NextRequest) {
             source: "runner_v2_direct_ingestion",
             phase: "WAITING_FOR_MANIFEST",
             deferred_at: new Date().toISOString(),
+            source_retention: sourceRetention,
           },
         });
         return NextResponse.json(
@@ -365,6 +389,7 @@ export async function POST(req: NextRequest) {
           phase: "INGESTED",
           completed_at: new Date().toISOString(),
           result,
+          source_retention: sourceRetention,
         },
       });
       logReceipt({
@@ -404,6 +429,7 @@ export async function POST(req: NextRequest) {
         phase: "INGESTED",
         completed_at: new Date().toISOString(),
         ingest,
+        source_retention: sourceRetention,
       },
       reportBatchId: ingest.batch_id ?? null,
     });
@@ -446,6 +472,7 @@ export async function POST(req: NextRequest) {
             ? "DATABASE_STATEMENT_TIMEOUT"
             : null,
           error: message,
+          ...(sourceRetention ? { source_retention: sourceRetention } : {}),
         },
         errorMessage: retryable ? null : message,
       }).catch(() => null);

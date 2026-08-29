@@ -48,18 +48,45 @@
   border-radius: 16px;
   overflow: hidden;
   background-color: #e8eef6;
-  background-image:
-    linear-gradient(rgba(100, 116, 139, 0.12) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(100, 116, 139, 0.12) 1px, transparent 1px);
-  background-size: 32px 32px;
+}
+
+.mapFrame {
+  position: relative;
+}
+
+.fitRoute {
+  position: absolute;
+  z-index: 4;
+  top: 10px;
+  right: 48px;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--route-overlay-border);
+  border-radius: 7px;
+  padding: 0;
+  background: var(--route-overlay-surface);
+  color: var(--route-overlay-muted);
+  box-shadow: 0 2px 8px var(--route-overlay-shadow);
+  cursor: pointer;
+}
+
+.fitRoute:hover,
+.fitRoute:focus-visible {
+  background: var(--route-overlay-surface-hover);
+  color: var(--route-overlay-text);
+  outline: 2px solid #60a5fa;
+  outline-offset: 1px;
+}
+
+.mapCompact {
+  min-height: min(62vh, 620px);
 }
 
 :global(html[data-theme="dark"]) .map {
   border-color: #2b3b50;
   background-color: #0b1523;
-  background-image:
-    linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
 }
 
 .marker {
@@ -87,11 +114,17 @@
 
 .marker:hover,
 .marker:focus-visible,
-.marker[data-active="true"] {
+.marker[data-active="true"],
+.marker[data-selected="true"] {
   z-index: 2;
   box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.34), 0 5px 14px rgba(15, 23, 42, 0.34);
   outline: none;
   transform: scale(1.08);
+}
+
+.marker[data-selected="true"] {
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.42), 0 8px 20px rgba(15, 23, 42, 0.42);
+  transform: scale(1.18);
 }
 
 .dot {
@@ -123,9 +156,30 @@
 
 .popup {
   display: grid;
-  min-width: 180px;
+  min-width: 240px;
+  max-width: 340px;
   gap: 4px;
   color: var(--route-overlay-text);
+}
+
+.popupDetail {
+  display: grid;
+  max-height: 260px;
+  gap: 4px;
+  margin-top: 7px;
+  border-top: 1px solid var(--route-overlay-border);
+  padding-top: 7px;
+  overflow-y: auto;
+}
+
+.popupDetail > span,
+.popupDetail > small {
+  overflow-wrap: anywhere;
+}
+
+.popupOutcome {
+  color: var(--route-overlay-text) !important;
+  font-weight: 900 !important;
 }
 
 .popup strong {

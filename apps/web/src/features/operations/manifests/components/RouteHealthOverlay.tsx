@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import dynamic from "next/dynamic";
-import { List, Map as MapIcon } from "lucide-react";
+import { List } from "lucide-react";
 import { manifestDetailRequestUrl } from "@/features/operations/manifests/routeEvidence";
 import type { RouteGpxPresentation } from "@/features/operations/manifests/routeGpxPresentation";
 import {
@@ -12,6 +12,10 @@ import {
 import type { ManifestIdentityAccess } from "@/features/operations/manifests/manifestIdentityAccess";
 import type { FccRouteSignalRow } from "@/features/operations/delivery-window/lib/fccRouteHealth";
 import type { DroPlanRow } from "@/features/operations/delivery-window/lib/serviceRouteEvidence";
+import type { ManifestCollectionPace } from "@/features/operations/manifests/manifestCollectionPace";
+import type { RouteGpxExecutionCluster } from "@/features/operations/manifests/routeGpxPresentation";
+import type { RouteMapStopDetail } from "./RouteGpxMap";
+import styles from "./RouteHealthOverlay.module.css";
 
 const RouteGpxMapView = dynamic(() => import("./RouteGpxMap"), {
   ssr: false,
@@ -108,6 +112,8 @@ type RouteDetailPayload = {
   stop_clusters: RouteStopCluster[];
   route_gpx: RouteGpxPresentation | null;
   identity_access: ManifestIdentityAccess;
+  collection_pace: ManifestCollectionPace;
+  retention_mode?: "IDENTIFIABLE" | "DEIDENTIFIED";
   error?: string;
 };
 
@@ -131,6 +137,60 @@ type RouteStopCluster = {
   is_location_suppressed: boolean;
 };
 
+const routeDetailCache = new Map<string, RouteDetailPayload>();
+const routeDetailRequests = new Map<string, Promise<RouteDetailPayload>>();
+const ROUTE_DETAIL_CACHE_LIMIT = 32;
+const ROUTE_DETAIL_CACHE_VERSION = "v2";
+
+function cacheRouteDetail(key: string, payload: RouteDetailPayload) {
+  routeDetailCache.delete(key);
+  routeDetailCache.set(key, payload);
+  while (routeDetailCache.size > ROUTE_DETAIL_CACHE_LIMIT) {
+    const oldestKey = routeDetailCache.keys().next().value;
+    if (!oldestKey) break;
+    routeDetailCache.delete(oldestKey);
+  }
+}
+
+function routeDetailCacheKey(slug: string, serviceDate: string, routeKey: string) {
+  return `${ROUTE_DETAIL_CACHE_VERSION}|${slug}|${serviceDate}|${routeKey}`;
+}
+
+async function fetchRouteDetail(params: {
+  slug: string;
+  serviceDate: string;
+  routeKey: string;
+}) {
+  const cacheKey = routeDetailCacheKey(
+    params.slug,
+    params.serviceDate,
+    params.routeKey
+  );
+  const cached = routeDetailCache.get(cacheKey);
+  if (cached) return cached;
+  const pending = routeDetailRequests.get(cacheKey);
+  if (pending) return pending;
+
+  const request = (async () => {
+    const response = await fetch(manifestDetailRequestUrl(params), {
+      credentials: "include",
+      cache: "no-store",
+    });
+    const payload = (await response.json()) as RouteDetailPayload;
+    if (!response.ok) {
+      throw new Error(payload.error ?? "Unable to load route detail.");
+    }
+    cacheRouteDetail(cacheKey, payload);
+    return payload;
+  })();
+  routeDetailRequests.set(cacheKey, request);
+  try {
+    return await request;
+  } finally {
+    routeDetailRequests.delete(cacheKey);
+  }
+}
+
 export default function RouteHealthOverlay({
   open,
   slug,
@@ -139,7 +199,6 @@ export default function RouteHealthOverlay({
   routeKey,
   health,
   dsw,
-  initialView = "detail",
   droAm = null,
   droPm = null,
   fcc = null,
@@ -149,7 +208,9 @@ export default function RouteHealthOverlay({
   const [detail, setDetail] = useState<RouteDetailPayload | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<RouteHealthOverlayView>(initialView);
+  const [activeView, setActiveView] = useState<RouteHealthOverlayView>("map");
+  const [selectedManifestRef, setSelectedManifestRef] = useState<string | null>(null);
+  const [selectedClusterKey, setSelectedClusterKey] = useState<string | null>(null);
   const warehouseRouteKey = health?.route_key ?? routeKey;
   const asOf =
     fcc?.export_generated_text ??
@@ -158,8 +219,39 @@ export default function RouteHealthOverlay({
     null;
 
   useEffect(() => {
-    if (open) setActiveView(initialView);
-  }, [initialView, open, routeKey]);
+    if (open) {
+      setActiveView("map");
+      setSelectedManifestRef(null);
+      setSelectedClusterKey(null);
+    }
+  }, [open, routeKey]);
+
+  const manifestItems = useMemo(
+    () => (detail ? buildCombinedManifest(detail) : []),
+    [detail]
+  );
+  const mapStopDetailsByRef = useMemo(
+    () => buildMapStopDetails(manifestItems),
+    [manifestItems]
+  );
+
+  function selectCluster(cluster: RouteGpxExecutionCluster) {
+    setSelectedClusterKey(cluster.cluster_key);
+    if (cluster.manifest_ref) {
+      setSelectedManifestRef(cluster.manifest_ref);
+    }
+  }
+
+  function selectManifest(item: CombinedManifestItem) {
+    const nextRef = selectedManifestRef && item.mapRefs.includes(selectedManifestRef)
+      ? null
+      : item.mapRefs[0] ?? item.key;
+    setSelectedManifestRef(nextRef);
+    const cluster = detail?.route_gpx?.stop_clusters.find((candidate) =>
+      candidate.manifest_ref ? item.mapRefs.includes(candidate.manifest_ref) : false
+    );
+    setSelectedClusterKey(cluster?.cluster_key ?? null);
+  }
 
   useEffect(() => {
     if (!open || !warehouseRouteKey) return;
@@ -169,19 +261,16 @@ export default function RouteHealthOverlay({
     async function loadDetail() {
       setDetailLoading(true);
       setDetailError(null);
-      setDetail(null);
+      const cacheKey = routeDetailCacheKey(slug, serviceDate, selectedRouteKey);
+      const cached = routeDetailCache.get(cacheKey);
+      setDetail(cached ?? null);
       try {
-        const response = await fetch(
-          manifestDetailRequestUrl({
-            slug,
-            serviceDate,
-            routeKey: selectedRouteKey,
-          }),
-          { credentials: "include", cache: "no-store" }
-        );
-        const payload = (await response.json()) as RouteDetailPayload;
+        const payload = await fetchRouteDetail({
+          slug,
+          serviceDate,
+          routeKey: selectedRouteKey,
+        });
         if (!active) return;
-        if (!response.ok) throw new Error(payload.error ?? "Unable to load route detail.");
         setDetail(payload);
       } catch (error) {
         if (active) {
@@ -217,18 +306,7 @@ export default function RouteHealthOverlay({
       onClick={onClose}
     >
       <section
-        className="operations-dialog-surface"
-        style={{
-          width: activeView === "map" ? "min(1040px, 100vw)" : "min(620px, 100vw)",
-          height: "100%",
-          background: "#f8fafc",
-          boxShadow: "-24px 0 60px rgba(15, 23, 42, 0.24)",
-          padding: 18,
-          overflow: "auto",
-          display: "grid",
-          alignContent: "start",
-          gap: 12,
-        }}
+        className={`operations-dialog-surface ${styles.drawer}`}
         onClick={(event) => event.stopPropagation()}
       >
         <header
@@ -271,71 +349,9 @@ export default function RouteHealthOverlay({
           </button>
         </header>
 
-        <nav
-          aria-label="Route view"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 6,
-            border: "1px solid #dbe4ee",
-            borderRadius: 12,
-            background: "#eef2f7",
-            padding: 4,
-          }}
-        >
-          {([
-            { key: "detail" as const, label: "Stop sequence", icon: List },
-            { key: "map" as const, label: "Route map", icon: MapIcon },
-          ]).map((view) => {
-            const Icon = view.icon;
-            const selected = activeView === view.key;
-            return (
-              <button
-                type="button"
-                key={view.key}
-                aria-pressed={selected}
-                onClick={() => setActiveView(view.key)}
-                style={{
-                  display: "inline-flex",
-                  minHeight: 40,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 7,
-                  border: selected ? "1px solid #2563eb" : "1px solid transparent",
-                  borderRadius: 9,
-                  background: selected ? "#fff" : "transparent",
-                  color: selected ? "#1d4ed8" : "#475569",
-                  fontWeight: 900,
-                  cursor: "pointer",
-                }}
-              >
-                <Icon size={16} aria-hidden="true" />
-                {view.label}
-              </button>
-            );
-          })}
-        </nav>
-
-        {activeView === "map" ? (
-          detailLoading ? (
-            <p style={{ color: "#64748b", fontWeight: 800 }}>Loading route geometry…</p>
-          ) : detailError ? (
-            <p role="alert" style={{ color: "#b91c1c", fontWeight: 850 }}>{detailError}</p>
-          ) : detail?.route_gpx ? (
-            <RouteGpxMapView slug={slug} routeGpx={detail.route_gpx} />
-          ) : detail?.stop_clusters.length ? (
-            <RouteClusterEvidence
-              clusters={detail.stop_clusters}
-              loading={false}
-              open
-            />
-          ) : (
-            <div style={{ border: "1px dashed #94a3b8", borderRadius: 16, padding: 24, color: "#64748b", fontWeight: 850, textAlign: "center" }}>
-              No retained GPX route geometry is available for this route and service date.
-            </div>
-          )
-        ) : (
-          <>
+        <details className={styles.sourceDisclosure} hidden={activeView === "map"}>
+          <summary>Route source reconciliation · DRO, DSW, manifest, and FCC</summary>
+          <div className={styles.sourcePanel}>
             <RouteEvidenceLedger
               dispatchDriver={dispatchDriver}
               droAm={droAm}
@@ -351,16 +367,174 @@ export default function RouteHealthOverlay({
               loading={detailLoading}
               routeKey={warehouseRouteKey}
             />
+          </div>
+        </details>
+        <div className={`${styles.workspace} ${activeView === "map" ? styles.workspaceFull : ""}`}>
+          <section className={styles.mapPanel} aria-label="Route map and collection pace">
+            <button
+              type="button"
+              className={styles.manifestToggle}
+              aria-pressed={activeView === "detail"}
+              aria-label={activeView === "detail" ? "Hide manifest" : "Show manifest"}
+              onClick={() => setActiveView((current) => current === "detail" ? "map" : "detail")}
+            >
+              <List size={14} aria-hidden="true" />
+              Manifest
+            </button>
+            <RouteCollectionPace
+              pace={detail?.collection_pace ?? null}
+              compact={activeView === "map"}
+            />
+            {detailLoading ? (
+              <p style={{ color: "#64748b", fontWeight: 800 }}>Loading route geometry…</p>
+            ) : detailError ? (
+              <p role="alert" style={{ color: "#b91c1c", fontWeight: 850 }}>{detailError}</p>
+            ) : detail?.route_gpx ? (
+              <RouteGpxMapView
+                slug={slug}
+                routeGpx={detail.route_gpx}
+                selectedClusterKey={selectedClusterKey}
+                onClusterSelect={selectCluster}
+                compact={activeView === "detail"}
+                stopDetailsByRef={mapStopDetailsByRef}
+              />
+            ) : detail?.stop_clusters.length ? (
+              <RouteClusterEvidence
+                clusters={detail.stop_clusters}
+                loading={false}
+                open
+              />
+            ) : (
+              <div style={{ border: "1px dashed #94a3b8", borderRadius: 16, padding: 24, color: "#64748b", fontWeight: 850, textAlign: "center" }}>
+                No retained GPX route geometry is available for this route and service date.
+              </div>
+            )}
+          </section>
+          <aside className={styles.manifestPanel} aria-label="Selectable route manifest" hidden={activeView === "map"}>
             <RouteManifestDetail
               detail={detail}
               dsw={dsw}
               loading={detailLoading}
               error={detailError}
+              items={manifestItems}
+              selectedRef={selectedManifestRef}
+              onSelect={selectManifest}
+              visible={activeView === "detail"}
             />
-          </>
-        )}
+          </aside>
+        </div>
       </section>
     </div>
+  );
+}
+
+function terminalTime(input: string) {
+  const parsed = new Date(input);
+  if (Number.isNaN(parsed.getTime())) return "—";
+  return parsed.toLocaleTimeString([], {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function RouteCollectionPace({
+  pace,
+  compact = false,
+}: {
+  pace: ManifestCollectionPace | null;
+  compact?: boolean;
+}) {
+  if (!pace) return null;
+  const measured = pace.intervals.filter(
+    (interval) => interval.completed_since_prior !== null
+  );
+  const last = measured.at(-1) ?? null;
+  const totalCompleted = measured.reduce(
+    (sum, interval) => sum + Number(interval.completed_since_prior ?? 0),
+    0
+  );
+  const elapsedMinutes = measured.reduce(
+    (sum, interval) => sum + Number(interval.minutes_since_prior ?? 0),
+    0
+  );
+  const averagePace = elapsedMinutes > 0
+    ? Math.round((totalCompleted / elapsedMinutes) * 600) / 10
+    : null;
+  const maxDelta = Math.max(
+    1,
+    ...measured.map((interval) => Number(interval.completed_since_prior ?? 0))
+  );
+  const collectionWindow = pace.first_capture_at && pace.last_capture_at
+    ? `${terminalTime(pace.first_capture_at)}–${terminalTime(pace.last_capture_at)}`
+    : null;
+  const medianCadence = Number(pace.median_cadence_minutes);
+  const hasMedianCadence = Number.isFinite(medianCadence) && medianCadence > 0;
+
+  if (!measured.length || compact) {
+    return (
+      <section className={styles.paceEmpty} aria-label="Manifest collection pace">
+        <strong>Collection pace</strong>
+        <span>{pace.capture_count} collection receipts</span>
+        {collectionWindow ? <span>{collectionWindow}</span> : null}
+        {hasMedianCadence ? (
+          <span>{medianCadence} min median cadence</span>
+        ) : null}
+        {measured.length ? (
+          <>
+            <span>{averagePace ?? "—"} average stops/hr</span>
+            <span>{last?.completed_since_prior ?? "—"} stops in latest block</span>
+          </>
+        ) : (
+          <small>
+            {pace.capture_count
+              ? "Collection time is verified. Completion pace is pending the retained-file metadata backfill."
+              : "No delivery-manifest collection receipts are available for this route and date."}
+          </small>
+        )}
+      </section>
+    );
+  }
+
+  return (
+    <section className={styles.pacePanel} aria-label="Manifest collection pace">
+      <div className={styles.paceHeader}>
+        <div>
+          <strong style={{ fontSize: 13 }}>Collection pace</strong>
+          <div style={{ color: "#bfdbfe", fontSize: 10, marginTop: 2 }}>
+            Route-level completion change between authoritative manifest captures
+          </div>
+        </div>
+        <strong style={{ fontSize: 18 }}>
+          {last?.stops_per_hour ?? "—"} <span style={{ fontSize: 10, color: "#bfdbfe" }}>stops/hr</span>
+        </strong>
+      </div>
+      <div className={styles.paceStats}>
+        <span>{pace.capture_count} collection receipts</span>
+        <span>{pace.measured_capture_count} measured captures</span>
+        {pace.first_capture_at && pace.last_capture_at ? (
+          <span>{terminalTime(pace.first_capture_at)}–{terminalTime(pace.last_capture_at)}</span>
+        ) : null}
+        <span>{averagePace ?? "—"} average stops/hr</span>
+        <span>{last?.completed_since_prior ?? "—"} stops in latest block</span>
+      </div>
+      <div className={styles.paceChart} aria-label="Stops completed per collection interval">
+        {measured.map((interval) => {
+          const delta = Number(interval.completed_since_prior ?? 0);
+          return (
+            <div
+              key={interval.captured_at}
+              className={styles.paceBar}
+              style={{ height: `${Math.max(10, Math.round((delta / maxDelta) * 68))}px` }}
+              title={`${delta} stops completed in ${interval.minutes_since_prior ?? "—"} minutes · ${interval.stops_per_hour ?? "—"} stops/hour`}
+            >
+              <strong>{delta}</strong>
+              <span>{terminalTime(interval.captured_at)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -896,6 +1070,7 @@ function address(row: Record<string, unknown>) {
 
 type CombinedManifestItem = {
   key: string;
+  mapRefs: string[];
   kind: "delivery" | "pickup" | "combined";
   sequence: number;
   title: string;
@@ -1008,6 +1183,9 @@ function buildCombinedManifest(detail: RouteDetailPayload) {
       );
     return {
       key: `delivery-${identity(stop)}-${index}`,
+      mapRefs: rawValue(stop, "_route_map_ref")
+        ? [rawValue(stop, "_route_map_ref")]
+        : [],
       kind: "delivery",
       sequence: sequenceValue(stop.st_number, index + 1),
       title: manifestDeliveryStopTitle(stop, identityVerified),
@@ -1040,6 +1218,9 @@ function buildCombinedManifest(detail: RouteDetailPayload) {
     const expected = numberValue(pickup, "package_count_expected");
     return {
       key: `pickup-${value(pickup, "puid")}-${index}`,
+      mapRefs: rawValue(pickup, "_route_map_ref")
+        ? [rawValue(pickup, "_route_map_ref")]
+        : [],
       kind: "pickup",
       sequence: sequenceValue(pickup.pickup_list, 10000 + index),
       title: manifestPickupStopTitle(pickup, identityVerified),
@@ -1107,6 +1288,7 @@ function buildCombinedManifest(detail: RouteDetailPayload) {
       ...delivery,
       key: `combined-${delivery.key}-${pickup.key}`,
       kind: "combined",
+      mapRefs: [...delivery.mapRefs, ...pickup.mapRefs],
       title: `${delivery.title} · Delivery + Pickup`,
       subtitle: `${delivery.subtitle} · ${pickup.subtitle}`,
       window: `${delivery.window} · Pickup ${pickup.window}`,
@@ -1139,80 +1321,154 @@ function buildCombinedManifest(detail: RouteDetailPayload) {
   );
 }
 
+function buildMapStopDetails(items: CombinedManifestItem[]) {
+  const details: Record<string, RouteMapStopDetail> = {};
+
+  items.forEach((item) => {
+    const evidenceStates = item.packages
+      .map((packageRow) => rawValue(packageRow, "delivery_evidence_state"))
+      .filter(Boolean);
+    const evidenceCounts = evidenceStates.reduce<Record<string, number>>(
+      (counts, state) => {
+        counts[state] = (counts[state] ?? 0) + 1;
+        return counts;
+      },
+      {}
+    );
+    const evidenceSummary = Object.entries(evidenceCounts)
+      .map(([state, count]) => `${count} ${state.toLowerCase().replaceAll("_", " ")}`)
+      .join(" · ");
+    const observedTimes = item.packages
+      .flatMap((packageRow) => [
+        rawValue(packageRow, "star_scan_at_local"),
+        rawValue(packageRow, "vision_label_at_local"),
+      ])
+      .filter(Boolean)
+      .sort();
+    const latestObserved = observedTimes.at(-1);
+    const evidence = evidenceSummary
+      ? `${evidenceSummary}${latestObserved ? ` · latest ${terminalTime(latestObserved)}` : ""}`
+      : item.kind === "pickup"
+        ? `${item.pickupPackageCount} of ${item.pickupExpectedCount ?? "—"} pickup packages recorded`
+        : "No package-level delivery or attempt evidence is linked to this stop.";
+    const outcome = item.unmanifested
+      ? "Manifest link unavailable"
+      : item.packageMismatch
+        ? "Manifest stop found · package evidence link failed"
+        : item.complete
+          ? "Delivered / completed"
+          : item.coded
+            ? "Attempt recorded · coded"
+            : item.open
+              ? "Open · no delivery or attempt evidence"
+              : item.attention
+                ? "Evidence needs inspection"
+                : "Current outcome unavailable";
+    const statusCodes = Array.from(new Set(item.packages.flatMap((packageRow) => {
+      const codes = [
+        ["VSA", rawValue(packageRow, "vsa_status_code")],
+        ["STAR", rawValue(packageRow, "star_status_code")],
+        ["Vision label", rawValue(packageRow, "vision_label")],
+      ] as const;
+      return codes
+        .filter(([, code]) => code && code !== "0")
+        .map(([label, code]) => `${label} ${code}`);
+    })));
+    const trackingIds = Array.from(new Set(
+      item.packages.map((packageRow) => rawValue(packageRow, "tracking_id")).filter(Boolean)
+    ));
+    const packageReferences = trackingIds.length > 5
+      ? [...trackingIds.slice(0, 5), `+${trackingIds.length - 5} more`]
+      : trackingIds;
+    const dataHealth = Array.from(new Set(item.packages.flatMap((packageRow) => {
+      const valueToRead = packageRow.delivery_data_health;
+      return Array.isArray(valueToRead)
+        ? valueToRead.map((entry) => String(entry).replaceAll("_", " ").toLowerCase())
+        : [];
+    })));
+    const serviceFlags = [
+      item.express ? "Express" : "",
+      item.signature ? "Signature required" : "",
+      item.hazmat ? "Hazmat" : "",
+      item.collection ? "Collection" : "",
+      ...dataHealth,
+    ].filter(Boolean);
+    const stopDetail: RouteMapStopDetail = {
+      title: item.title,
+      address: item.address,
+      window: item.window,
+      outcome,
+      evidence,
+      statusCodes,
+      packageReferences,
+      serviceFlags,
+    };
+
+    item.mapRefs.forEach((mapRef) => {
+      details[mapRef] = stopDetail;
+    });
+  });
+
+  return details;
+}
+
+type CompletionFilter = "all" | "open" | "coded" | "completed" | "attention";
+
+function matchesCompletionFilter(item: CombinedManifestItem, filter: CompletionFilter) {
+  return filter === "all" ||
+    (filter === "open" && item.open) ||
+    (filter === "coded" && item.coded) ||
+    (filter === "completed" && item.complete) ||
+    (filter === "attention" && item.attention);
+}
+
 function RouteManifestDetail(props: {
   detail: RouteDetailPayload | null;
   dsw: Props["dsw"];
   loading: boolean;
   error: string | null;
+  items: CombinedManifestItem[];
+  selectedRef: string | null;
+  onSelect: (item: CombinedManifestItem) => void;
+  visible: boolean;
 }) {
-  const [completionFilter, setCompletionFilter] = useState<
-    "all" | "open" | "coded" | "completed" | "attention"
-  >("all");
-  const [typeFilter, setTypeFilter] = useState<"all" | "delivery" | "express" | "pickup" | "combined" | "unmanifested" | "package_mismatch" | "signature" | "hazmat">("all");
-  const items = useMemo(
-    () => (props.detail ? buildCombinedManifest(props.detail) : []),
-    [props.detail]
-  );
+  const [completionFilter, setCompletionFilter] = useState<CompletionFilter>("all");
+  const selectedRowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!props.visible || !props.selectedRef) return;
+    const selectedItem = props.items.find((item) =>
+      item.mapRefs.includes(props.selectedRef ?? "") || item.key === props.selectedRef
+    );
+    if (!selectedItem) return;
+    const frame = window.requestAnimationFrame(() => {
+      selectedRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      selectedRowRef.current?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [completionFilter, props.items, props.selectedRef, props.visible]);
   if (props.loading) return <div style={{ padding: 12, color: "#64748b" }}>Loading manifest rows…</div>;
   if (props.error) return <div style={{ padding: 12, color: "#991b1b" }}>{props.error}</div>;
   if (!props.detail) return null;
 
   const identityVerified = props.detail.identity_access?.verified === true;
-  const evidenceItems = items;
-  const visibleItems = evidenceItems.filter((item) => {
-    const completionMatches =
-      completionFilter === "all" ||
-      (completionFilter === "open" && item.open) ||
-      (completionFilter === "coded" && item.coded) ||
-      (completionFilter === "completed" && item.complete) ||
-      (completionFilter === "attention" && item.attention);
-    const typeMatches =
-      typeFilter === "all" ||
-      (typeFilter === "delivery" && item.kind === "delivery") ||
-      (typeFilter === "pickup" && item.kind === "pickup") ||
-      (typeFilter === "combined" && item.kind === "combined") ||
-      (typeFilter === "unmanifested" && item.unmanifested) ||
-      (typeFilter === "package_mismatch" && item.packageMismatch) ||
-      (typeFilter === "express" && item.express) ||
-      (typeFilter === "signature" && item.signature) ||
-      (typeFilter === "hazmat" && item.hazmat);
-    return completionMatches && typeMatches;
-  });
-  const manifestOpenCount = evidenceItems.filter((item) => item.open).length;
-  const manifestCodedCount = evidenceItems.filter((item) => item.coded).length;
-  const manifestClosedCount = evidenceItems.filter((item) => item.complete).length;
-  const manifestAttentionCount = evidenceItems.filter(
-    (item) => item.attention
-  ).length;
-  const allCount = items.length;
-  const openCount = manifestOpenCount;
-  const codedCount = manifestCodedCount;
-  const closedCount = manifestClosedCount;
-  const attentionCount = manifestAttentionCount;
+  const visibleItems = props.items.filter((item) =>
+    matchesCompletionFilter(item, completionFilter) ||
+    item.mapRefs.includes(props.selectedRef ?? "") ||
+    item.key === props.selectedRef
+  );
+  const allCount = props.items.length;
+  const openCount = props.items.filter((item) => item.open).length;
+  const codedCount = props.items.filter((item) => item.coded).length;
+  const closedCount = props.items.filter((item) => item.complete).length;
+  const attentionCount = props.items.filter((item) => item.attention).length;
   const packageCount = props.detail.packages.length;
-  const typeOptions = [
-    { key: "delivery", label: "Delivery", count: evidenceItems.filter((item) => item.kind === "delivery").length, color: "#166534", bg: "#ecfdf5" },
-    { key: "express", label: "Express", count: evidenceItems.filter((item) => item.express).length, color: "#9a3412", bg: "#fff7ed" },
-    { key: "pickup", label: "Pickup", count: evidenceItems.filter((item) => item.kind === "pickup").length, color: "#1d4ed8", bg: "#eff6ff" },
-    { key: "combined", label: "Combined", count: evidenceItems.filter((item) => item.kind === "combined").length, color: "#7c3aed", bg: "#f5f3ff" },
-    { key: "unmanifested", label: "Unmanifested", count: evidenceItems.filter((item) => item.unmanifested).length, color: "#b91c1c", bg: "#fef2f2" },
-    { key: "package_mismatch", label: "Package Link Failure", count: evidenceItems.filter((item) => item.packageMismatch).length, color: "#be123c", bg: "#fff1f2" },
-    { key: "signature", label: "Signature", count: evidenceItems.filter((item) => item.signature).length, color: "#6d28d9", bg: "#f5f3ff" },
-    { key: "hazmat", label: "Hazmat", count: evidenceItems.filter((item) => item.hazmat).length, color: "#991b1b", bg: "#fef2f2" },
-  ].filter((option) => option.count > 0) as Array<{
-    key: Exclude<typeof typeFilter, "all">;
-    label: string;
-    count: number;
-    color: string;
-    bg: string;
-  }>;
 
   return (
     <section style={{ display: "grid", gap: 10 }}>
       <div>
-        <strong style={{ fontSize: 18 }}>Route execution sequence</strong>
+        <strong style={{ fontSize: 18 }}>Manifest</strong>
         <div style={{ color: "#64748b", fontSize: 12, marginTop: 3 }}>
-          {allCount} stops · {packageCount} packages · {codedCount} attempted/coded · {openCount} open · {attentionCount} need attention
+          {allCount} stops · {packageCount} packages · select a row to inspect and locate
         </div>
       </div>
 
@@ -1227,159 +1483,82 @@ function RouteManifestDetail(props: {
           fontWeight: 900,
         }}
       >
-        {identityVerified
+        {props.detail.retention_mode === "DEIDENTIFIED"
+          ? "Retention view · recipient, street address, and original tracking identity have expired. Operational stop, ZIP, status, flags, and non-reversible package references remain."
+          : identityVerified
           ? "Verified FedEx credentials · original manifest identity detail is available."
           : "Recipient and shipper names are hidden because verified FedEx credentials are not currently available."}
       </div>
 
-      {props.dsw && evidenceItems.length > 0 ? (
-        <div
-          style={{
-            border: "1px solid #93c5fd",
-            borderRadius: 12,
-            background: "#eff6ff",
-            color: "#1e40af",
-            padding: "10px 12px",
-            display: "grid",
-            gap: 4,
-            fontSize: 12,
-            fontWeight: 900,
-          }}
-        >
-          <span>
-            DSW totals may differ from the combined manifest; displaying
-            complete manifest detail with the latest matched execution status.
-          </span>
-        </div>
-      ) : null}
-
-      <div style={{ border: "1px solid #dbe4ef", borderRadius: 14, background: "#fff", padding: 8, display: "grid", gap: 8 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 6 }}>
+      <div style={{ border: "1px solid #dbe4ef", borderRadius: 12, background: "#fff", padding: 6 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 4 }}>
           {([[
             "all", "All", allCount,
           ], ["open", "Open", openCount], ["coded", "Attempted", codedCount], ["completed", "Completed", closedCount], ["attention", "Inspect", attentionCount]] as const).map(([key, label, count]) => (
-            <button key={key} type="button" onClick={() => setCompletionFilter(key)} style={{ border: `1px solid ${completionFilter === key ? "#0f172a" : "transparent"}`, borderRadius: 9, background: completionFilter === key ? "#0f172a" : "#f8fafc", color: completionFilter === key ? "#fff" : "#475569", minHeight: 36, fontSize: 11, fontWeight: 950 }}>
-              {label} · {count}
+            <button key={key} type="button" onClick={() => setCompletionFilter(key)} style={{ border: `1px solid ${completionFilter === key ? "#0f172a" : "transparent"}`, borderRadius: 8, background: completionFilter === key ? "#0f172a" : "#f8fafc", color: completionFilter === key ? "#fff" : "#475569", minHeight: 32, fontSize: 9, fontWeight: 950 }}>
+              {label}<br />{count}
             </button>
           ))}
         </div>
-
-        {typeOptions.length ? (
-          <div style={{ borderTop: "1px solid #eef2f7", paddingTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {typeOptions.length > 1 ? (
-              <button type="button" onClick={() => setTypeFilter("all")} style={{ border: `1px solid ${typeFilter === "all" ? "#64748b" : "#dbe4ef"}`, borderRadius: 999, background: typeFilter === "all" ? "#f1f5f9" : "#fff", color: "#475569", padding: "6px 9px", fontSize: 10, fontWeight: 950 }}>
-                All types · {allCount}
-              </button>
-            ) : null}
-            {typeOptions.map((option) => (
-              <button key={option.key} type="button" onClick={() => setTypeFilter((current) => current === option.key ? "all" : option.key)} style={{ border: `1px solid ${option.color}`, borderRadius: 999, background: option.bg, color: option.color, boxShadow: typeFilter === option.key ? `0 0 0 2px ${option.color}33` : "none", opacity: typeFilter === "all" || typeFilter === option.key ? 1 : 0.55, padding: "6px 9px", fontSize: 10, fontWeight: 950 }}>
-                {option.label} · {option.count}
-              </button>
-            ))}
-          </div>
-        ) : null}
       </div>
 
-      <div style={{ display: "grid", gap: 8 }}>
+      <div className={styles.manifestRows}>
         {visibleItems.length === 0 ? (
           <div style={{ border: "1px solid #e5ecf6", borderRadius: 14, background: "#fff", padding: 14, color: "#64748b", fontSize: 13 }}>No combined-manifest stops match this view.</div>
         ) : visibleItems.map((item) => {
           const itemColor = item.unmanifested ? "#b91c1c" : item.hazmat ? "#dc2626" : item.kind === "combined" ? "#7c3aed" : item.kind === "pickup" ? "#2563eb" : item.express ? "#f97316" : item.collection ? "#0284c7" : "#16a34a";
-          const itemTint = item.unmanifested ? "#fef2f2" : item.hazmat ? "#fef2f2" : item.kind === "combined" ? "#f5f3ff" : item.kind === "pickup" ? "#eff6ff" : item.express ? "#fff7ed" : item.collection ? "#f0f9ff" : "#ecfdf5";
+          const selected = item.mapRefs.includes(props.selectedRef ?? "") || item.key === props.selectedRef;
+          const status = item.unmanifested
+            ? "Unmanifested"
+            : item.packageMismatch
+              ? "Link failure"
+              : item.complete
+                ? "Completed"
+                : item.coded
+                  ? "Attempted"
+                  : "Open";
           return (
-          <details key={item.key} style={{ border: `1px solid ${item.attention ? "#ef4444" : item.coded ? "#f97316" : item.open ? "#fbbf24" : itemColor}`, borderLeft: `6px solid ${itemColor}`, borderRadius: 14, background: "#fff", overflow: "hidden" }}>
-            <summary style={{ listStyle: "none", cursor: "pointer", padding: 12, display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}>
-              <div style={{ display: "grid", gap: 3, minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-                  <span style={{ color: itemColor, background: itemTint, borderRadius: 999, padding: "3px 6px", fontSize: 9, fontWeight: 950, textTransform: "uppercase" }}>{item.kind === "delivery" && item.express ? "Express delivery" : item.kind}</span>
-                  <strong style={{ fontSize: 13 }}>{item.title}</strong>
-                </div>
-                <span style={{ color: "#64748b", fontSize: 11 }}>{item.subtitle} · {item.address || "Address unavailable"}</span>
-                <span style={{ color: "#475569", fontSize: 10, fontWeight: 850 }}>Window {item.window} · {item.instructions === "—" ? "No stop instructions" : item.instructions}</span>
-              </div>
-              <div style={{ textAlign: "right", display: "grid", gap: 2 }}>
-                <strong style={{ fontSize: 12 }}>
-                  {item.kind === "combined"
-                    ? `D ${item.packageCount} · P ${item.pickupPackageCount}${item.pickupExpectedCount !== null ? ` / ${item.pickupExpectedCount}` : ""}`
-                    : `${item.packageCount}${item.expectedCount !== null ? ` / ${item.expectedCount}` : ""} pkg`}
-                </strong>
-                <span style={{ color: item.attention ? "#b91c1c" : item.complete ? "#166534" : item.coded ? "#c2410c" : "#92400e", fontSize: 10, fontWeight: 950 }}>
-                  {item.unmanifested ? "UNMANIFESTED" : item.packageMismatch ? "PACKAGE LINK FAILURE" : item.attention ? "NEEDS ATTENTION" : item.complete ? "COMPLETED" : item.coded ? "ATTEMPTED · CODED" : "OPEN"}
+            <div key={item.key} ref={selected ? selectedRowRef : undefined}>
+              <button
+                type="button"
+                className={styles.manifestRow}
+                data-selected={String(selected)}
+                aria-expanded={selected}
+                onClick={() => props.onSelect(item)}
+                style={{ "--manifest-row-color": itemColor } as CSSProperties}
+              >
+                <span className={styles.manifestSequence}>{item.sequence}</span>
+                <span className={styles.manifestPrimary}>{item.title}</span>
+                <span className={styles.manifestMeta}>
+                  {item.kind === "combined" ? `D ${item.packageCount} · P ${item.pickupPackageCount}` : `${item.packageCount} pkg`}
                 </span>
-              </div>
-            </summary>
-            <div style={{ borderTop: "1px solid #eef2f7", padding: 12, display: "grid", gap: 8, fontSize: 12 }}>
-              <div><strong>Window:</strong> {item.window}</div>
-              {identityVerified ? (
-                <div><strong>Contact:</strong> {item.contact} · <strong>Instructions:</strong> {item.instructions}</div>
-              ) : (
-                <div><strong>Instructions:</strong> {item.instructions}</div>
-              )}
-              {item.unmanifested ? (
-                <div style={{ border: "1px solid #fecaca", borderRadius: 10, background: "#fef2f2", color: "#991b1b", padding: 8, fontWeight: 900 }}>
-                  Terminal scan/tender missing. No SID was assigned before the parcel was loaded to the route.
-                </div>
-              ) : null}
-              {item.packageMismatch ? (
-                <div style={{ border: "1px solid #fecdd3", borderRadius: 10, background: "#fff1f2", color: "#9f1239", padding: 8, fontWeight: 900 }}>
-                  SID exists, but no package facts link to this stop. Open/completed status is withheld until the package contract reconciles.
-                </div>
-              ) : null}
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {item.express ? <span style={{ borderRadius: 999, background: "#fff7ed", color: "#9a3412", padding: "4px 7px", fontWeight: 900 }}>Express</span> : null}
-                {item.signature ? <span style={{ borderRadius: 999, background: "#f5f3ff", color: "#6d28d9", padding: "4px 7px", fontWeight: 900 }}>Signature</span> : null}
-                {item.hazmat ? <span style={{ borderRadius: 999, background: "#fef2f2", color: "#991b1b", padding: "4px 7px", fontWeight: 900 }}>Hazmat</span> : null}
-                {item.collection ? <span style={{ borderRadius: 999, background: "#eff6ff", color: "#1d4ed8", padding: "4px 7px", fontWeight: 900 }}>Collection</span> : null}
-              </div>
-              {item.packages.length ? (
-                <div style={{ display: "grid", gap: 4 }}>
-                  {item.packages.map((packageRow, index) => {
-                    const evidenceState = rawValue(
-                      packageRow,
-                      "delivery_evidence_state"
-                    );
-                    const codeParts = [
-                      rawValue(packageRow, "vsa_status_code")
-                        ? `VSA ${rawValue(packageRow, "vsa_status_code")}`
-                        : "",
-                      rawValue(packageRow, "star_status_code")
-                        ? `STAR ${rawValue(packageRow, "star_status_code")}`
-                        : "",
-                    ].filter(Boolean);
-                    const evidenceLabel =
-                      evidenceState === "CODED_ATTEMPT"
-                        ? `ATTEMPTED${codeParts.length ? ` · ${codeParts.join(" · ")}` : " · CODED"}`
-                        : evidenceState === "OPEN"
-                          ? "OPEN"
-                        : evidenceState === "COMPLETED"
-                          ? "COMPLETED"
-                          : "EVIDENCE UNAVAILABLE";
-                    const evidenceColor =
-                      evidenceState === "CODED_ATTEMPT"
-                        ? "#c2410c"
-                        : evidenceState === "OPEN"
-                          ? "#92400e"
-                        : evidenceState === "COMPLETED"
-                          ? "#166534"
-                          : "#b91c1c";
-                    return (
-                      <div key={`${value(packageRow, "tracking_id")}-${index}`} style={{ borderTop: "1px solid #eef2f7", paddingTop: 6, display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8 }}>
-                        <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
-                          <span>{value(packageRow, "tracking_id")}</span>
-                          <span style={{ color: "#64748b", fontSize: 10 }}>
-                            {value(packageRow, "prem_svc_raw")}
-                          </span>
+                <span className={styles.manifestStatus}>{status}</span>
+              </button>
+              {selected ? (
+                <div className={styles.manifestInline}>
+                  <div className={styles.manifestInlineGrid}>
+                    <div><strong>Type</strong><br />{item.express ? "Express delivery" : item.kind}</div>
+                    <div><strong>Window</strong><br />{item.window}</div>
+                    <div style={{ gridColumn: "1 / -1" }}><strong>Address</strong><br />{item.address || "Address unavailable"}</div>
+                    <div style={{ gridColumn: "1 / -1" }}><strong>Reference</strong><br />{item.subtitle}</div>
+                    {identityVerified ? (
+                      <div style={{ gridColumn: "1 / -1" }}><strong>Contact</strong><br />{item.contact}</div>
+                    ) : null}
+                    <div style={{ gridColumn: "1 / -1" }}><strong>Instructions</strong><br />{item.instructions}</div>
+                  </div>
+                  {item.packages.length ? (
+                    <div style={{ display: "grid", gap: 4, marginTop: 9 }}>
+                      {item.packages.map((packageRow, index) => (
+                        <div key={`${value(packageRow, "tracking_id")}-${index}`} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8, borderTop: "1px solid #dbeafe", paddingTop: 5 }}>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{value(packageRow, "tracking_id")}</span>
+                          <strong>{value(packageRow, "delivery_evidence_state")}</strong>
                         </div>
-                        <span style={{ color: evidenceColor, fontSize: 10, fontWeight: 950, textAlign: "right" }}>
-                          {evidenceLabel}
-                        </span>
-                      </div>
-                    );
-                  })}
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>
-          </details>
           );
         })}
       </div>

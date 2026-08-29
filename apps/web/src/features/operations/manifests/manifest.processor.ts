@@ -11,6 +11,7 @@ import {
 } from "@/features/operations/manifests/deliveryManifest.dedupe";
 import { trackingReference } from "@/features/operations/reports/dsw/packageStatus/packageStatus.crypto";
 import { packageEvidenceConfigurationAvailable } from "@/features/operations/reports/dsw/packageStatus/packageStatus.evidence";
+import { summarizeManifestStops } from "@/features/operations/manifests/manifestCollectionPace";
 
 type SupabaseClientLike = any;
 
@@ -47,6 +48,8 @@ type ManifestProcessorResult = {
   status: "NORMALIZED" | "FAILED";
   route_status?: string | null;
   inserted_stop_count?: number;
+  completed_stop_count?: number;
+  open_stop_count?: number;
   inserted_package_count?: number;
   inserted_pickup_count?: number;
   error?: string;
@@ -241,6 +244,7 @@ async function processDeliveryArtifact(params: {
   const parsed = parseDeliveryManifest(deliveryManifestSheetsFromWorkbook(workbook));
   const stopRows = dedupeDeliveryManifestStops(parsed.stopDetail.rows);
   const packageRows = dedupeDeliveryManifestPackages(parsed.packageDetail.rows);
+  const stopSummary = summarizeManifestStops(stopRows.rows);
 
   const { data: replaceResult, error: replaceError } = await supabase.rpc(
     "replace_operations_delivery_manifest_rows",
@@ -285,6 +289,8 @@ async function processDeliveryArtifact(params: {
 
   return {
     inserted_stop_count: Number(replaceResult?.delivery_stop_count ?? 0),
+    completed_stop_count: stopSummary.completed_stop_count,
+    open_stop_count: stopSummary.open_stop_count,
     inserted_package_count: Number(replaceResult?.delivery_package_count ?? 0),
     metadata: parsed.metadata,
     stop_detail: {
@@ -392,6 +398,10 @@ export async function processManifestArtifact(params: {
       route_status: routeStatus,
       inserted_stop_count:
         "inserted_stop_count" in result ? result.inserted_stop_count : undefined,
+      completed_stop_count:
+        "completed_stop_count" in result ? result.completed_stop_count : undefined,
+      open_stop_count:
+        "open_stop_count" in result ? result.open_stop_count : undefined,
       inserted_package_count:
         "inserted_package_count" in result ? result.inserted_package_count : undefined,
       inserted_pickup_count:
