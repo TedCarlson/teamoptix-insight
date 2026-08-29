@@ -1,6 +1,11 @@
+import { classifyDriverProgram } from "@/features/people/lib/driverWorkforceType";
+
 export type TenureRosterRecord = {
   employment_status: string | null;
   hire_date: string | null;
+  worker_type?: string | null;
+  driver_program?: string | null;
+  driver_utilization_category?: string | null;
 };
 
 export type TenureSegment = {
@@ -40,7 +45,15 @@ function validDate(value: string | null) {
 
 export function buildWorkforceTenureProfile(records: TenureRosterRecord[], asOfDate: string): WorkforceTenureProfile {
   const asOf = validDate(asOfDate) ?? new Date();
-  const active = records.filter((record) => record.employment_status === "Active");
+  const active = records.filter(
+    (record) =>
+      record.employment_status === "Active" &&
+      (record.driver_program != null ||
+        classifyDriverProgram(record.worker_type) != null ||
+        record.worker_type == null) &&
+      (record.driver_utilization_category == null ||
+        record.driver_utilization_category === "FULL_TIME")
+  );
   const tenureDays = active.map((record) => {
     const hireDate = validDate(record.hire_date);
     return hireDate ? Math.max(0, Math.floor((asOf.getTime() - hireDate.getTime()) / DAY_MS)) : null;

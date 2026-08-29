@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { usePeopleWorkspaceRoster } from "@/features/people/hooks/usePeopleWorkspaceRoster";
+import {
+  driverUtilizationLabel,
+  isDriverRole,
+} from "@/features/people/lib/driverWorkforceType";
 
 type ReportKey = "workforce_readiness" | "candidate_conversion" | "workforce_roster" | "compliance_expirations" | "staffing_movement";
 type ReportRow = Record<string, string | number>;
@@ -22,6 +26,27 @@ type LifecycleFunnel = {
   introduced: number;
   checkpoints: Array<{ key: string; label: string; reached: number; observed: number; inferred: number; lifecycle_conversion: number; step_conversion: number }>;
   failures: Array<{ label: string; count: number; reasons: Record<string, number> }>;
+  driver_utilization?: {
+    full_time: number;
+    part_time: number;
+    unscheduled: number;
+    avp: number;
+    route_day_equivalents: number;
+    full_time_day_threshold: number;
+  };
+  schedule_coverage?: {
+    demandRouteDays: number;
+    coveredRouteDays: number;
+    openRouteDays: number;
+    coveragePercent: number;
+    seamCount: number;
+    seams: Array<{
+      serviceDate: string;
+      type: string;
+      routeLabel: string;
+      detail: string;
+    }>;
+  };
 };
 
 const reportLabels: Record<ReportKey, string> = {
@@ -95,7 +120,7 @@ export default function PeopleReportsPage() {
         if (!funnelResponse.ok) throw new Error(funnelBody?.error || "Unable to load candidate lifecycle history.");
         return { candidateBody, funnelBody };
       })
-      .then(({ candidateBody, funnelBody }) => { if (active) { setCandidates(Array.isArray(candidateBody?.candidates) ? candidateBody.candidates : []); setFunnel({ introduced: Number(funnelBody?.introduced ?? 0), checkpoints: Array.isArray(funnelBody?.checkpoints) ? funnelBody.checkpoints : [], failures: Array.isArray(funnelBody?.failures) ? funnelBody.failures : [] }); } })
+      .then(({ candidateBody, funnelBody }) => { if (active) { setCandidates(Array.isArray(candidateBody?.candidates) ? candidateBody.candidates : []); setFunnel({ introduced: Number(funnelBody?.introduced ?? 0), checkpoints: Array.isArray(funnelBody?.checkpoints) ? funnelBody.checkpoints : [], failures: Array.isArray(funnelBody?.failures) ? funnelBody.failures : [], driver_utilization: funnelBody?.driver_utilization, schedule_coverage: funnelBody?.schedule_coverage }); } })
       .catch((cause) => { if (active) { setCandidates([]); setPipelineError(cause instanceof Error ? cause.message : "Unable to load recruiting pipeline."); } })
       .finally(() => { if (active) setPipelineLoading(false); });
     return () => { active = false; };
@@ -104,9 +129,9 @@ export default function PeopleReportsPage() {
   const currentPeople = useMemo(() => rows.filter((row) => row.employment_status !== "Former"), [rows]);
   const employmentStatuses = useMemo(() => Array.from(new Set(currentPeople.map((person) => person.employment_status))).sort(), [currentPeople]);
   const complianceDocumentTypes = useMemo(() => Array.from(new Set(currentPeople.flatMap((person) => (person.compliance_signals ?? []).map((signal) => signal.label)))).sort(), [currentPeople]);
-  const activeHeadcount = useMemo(() => rows.filter((row) => row.employment_status === "Active").length, [rows]);
+  const activeHeadcount = useMemo(() => rows.filter((row) => row.employment_status === "Active" && row.driver_utilization_category === "FULL_TIME").length, [rows]);
   const traineeCount = useMemo(() => rows.filter((row) => row.employment_status === "Trainee").length, [rows]);
-  const activeDrivers = useMemo(() => rows.filter((row) => row.employment_status === "Active"), [rows]);
+  const activeDrivers = useMemo(() => rows.filter((row) => row.employment_status === "Active" && isDriverRole(row.worker_type)), [rows]);
   const trainees = useMemo(() => rows.filter((row) => row.employment_status === "Trainee"), [rows]);
   const openCandidates = useMemo(() => candidates.filter((candidate) => !candidate.stage_is_terminal), [candidates]);
   const activationForecast = useMemo(() => openCandidates.map((candidate) => ({ candidate, estimate: activationEstimate(candidate, asOfMs) })), [asOfMs, openCandidates]);
@@ -120,7 +145,8 @@ export default function PeopleReportsPage() {
 
   const reportRows = useMemo<ReportRow[]>(() => {
     if (report === "workforce_readiness") return [
-      ...activeDrivers.map((person) => ({ Person: person.full_name, "Roster position": "Driver", Role: person.worker_type || "—", Market: person.market_code || "—", Stage: "Active roster", Readiness: person.compliance_signals?.length ? `${person.compliance_signals.length} compliance item${person.compliance_signals.length === 1 ? "" : "s"}` : "Ready", "Days to driver seat": "0 days", Basis: "Current active status" })),
+      ...activeDrivers.map((person) => ({ Person: person.full_name, "Roster position": person.driver_program === "AVP" ? "AVP Driver" : "Driver", Role: person.worker_type || "—", Market: person.market_code || "—", Stage: driverUtilizationLabel(person.driver_utilization_category), Readiness: `${Math.round(Number(person.route_utilization_ratio ?? 0) * 100)}% route-day contribution`, "Days to driver seat": "0 days", Basis: `${person.scheduled_days_per_week ?? 0} baseline days ÷ ${person.driver_full_time_day_threshold ?? 5}-day FT threshold` })),
+      ...(funnel.schedule_coverage?.seams ?? []).map((seam) => ({ Person: "Schedule seam", "Roster position": seam.type.replaceAll("_", " "), Role: seam.routeLabel, Market: "—", Stage: displayDate(seam.serviceDate), Readiness: "Review", "Days to driver seat": "—", Basis: seam.detail })),
       ...trainees.map((person) => ({ Person: person.full_name, "Roster position": "Pipeline", Role: person.worker_type || "—", Market: person.market_code || "—", Stage: "Trainer seat", Readiness: person.compliance_signals?.length ? `${person.compliance_signals.length} compliance item${person.compliance_signals.length === 1 ? "" : "s"}` : "Final training", "Days to driver seat": "0–7 days", Basis: "Trainer seat · estimated" })),
       ...activationForecast.map(({ candidate, estimate }) => ({ Person: candidate.full_name, "Roster position": "Pipeline", Role: candidate.role || "—", Market: candidate.market || "—", Stage: candidate.stage_label, Readiness: `${candidate.progress?.percent ?? 0}%`, "Days to driver seat": estimate.timing, Basis: estimate.basis })),
     ];
@@ -196,7 +222,9 @@ export default function PeopleReportsPage() {
       </div>
 
       <div className="people-workspace-stats people-reports-stats" aria-label="Workforce readiness summary">
-        <span><small>Drivers now</small><strong>{activeHeadcount}</strong></span>
+        <span><small>Full-time drivers</small><strong>{activeHeadcount}</strong></span>
+        <span><small>Route coverage</small><strong>{(funnel.schedule_coverage?.demandRouteDays ?? 0) > 0 ? `${Math.round(funnel.schedule_coverage?.coveragePercent ?? 0)}%` : "—"}</strong></span>
+        <span><small>PT / AVP</small><strong>{funnel.driver_utilization?.part_time ?? 0} / {funnel.driver_utilization?.avp ?? 0}</strong></span>
         <span><small>In pipeline</small><strong>{pipelineCount}</strong></span>
         <span><small>Next driver seat</small><strong>{nextDriverSeat}</strong></span>
       </div>

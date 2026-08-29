@@ -11,6 +11,8 @@ describe("buildWorkforceTenureProfile", () => {
       { employment_status: "Active", hire_date: "2024-07-01" },
       { employment_status: "Trainee", hire_date: "2026-08-01" },
       { employment_status: "Active", hire_date: null },
+      { employment_status: "Active", hire_date: "2026-07-01", worker_type: "Fleet Manager" },
+      { employment_status: "Active", hire_date: "2026-07-01", worker_type: "Driver", driver_utilization_category: "PART_TIME" },
     ], "2026-08-07");
 
     expect(profile.active_drivers).toBe(6);

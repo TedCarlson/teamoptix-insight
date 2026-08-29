@@ -22,6 +22,14 @@ export type RosterRow = {
 
   worker_type: string | null;
   job_title?: string | null;
+  driver_program?: "STANDARD" | "AVP" | null;
+  schedule_baseline_id?: string | null;
+  schedule_preset_id?: string | null;
+  schedule_preset_code?: string | null;
+  scheduled_days_per_week?: number | null;
+  driver_full_time_day_threshold?: number | null;
+  driver_utilization_category?: "FULL_TIME" | "PART_TIME" | "UNSCHEDULED" | null;
+  route_utilization_ratio?: number | string | null;
 
   employment_status: RosterOperationalStatus;
 

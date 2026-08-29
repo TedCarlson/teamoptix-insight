@@ -3,6 +3,9 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import { buildWorkforceTenureProfile } from "@/features/company/analytics/workforce/workforceTenure";
 import { buildResignationNoticeCountdowns } from "@/features/company/analytics/workforce/resignationNotice";
+import { summarizeScheduleCoverage } from "@/features/schedule/lib/scheduleCoverageSummary";
+import { loadRosterUtilizationRows } from "@/features/people/server/loadRosterUtilizationRows";
+import { loadScheduleCoverageRows } from "@/features/schedule/server/loadScheduleCoverageRows";
 
 export const runtime = "nodejs";
 
@@ -70,11 +73,15 @@ export async function GET(
       return NextResponse.json({ error: "Company not found." }, { status: 404 });
     }
 
-    const [rosterResult, expressResult, noticeResult] = await Promise.all([
-      supabase
-        .from("company_roster_view")
-        .select("roster_member_id, full_name, worker_type, employment_status, hire_date")
-        .eq("company_id", company.id),
+    const scheduleCoverageCandidate = addDays(endDate, -34);
+    const scheduleCoverageStart =
+      startDate > scheduleCoverageCandidate ? startDate : scheduleCoverageCandidate;
+    const [rosterResult, expressResult, noticeResult, routesResult, scheduleResult] = await Promise.all([
+      loadRosterUtilizationRows({
+        supabase,
+        companyId: company.id,
+        companySlug: slug,
+      }),
       serviceRole
         .from("operations_manifest_express_route_signal_v")
         .select(
@@ -91,6 +98,18 @@ export async function GET(
         .eq("company_id", company.id)
         .eq("override_type", "RESIGNATION_NOTICE")
         .eq("is_active", true),
+      supabase
+        .from("route_baseline")
+        .select("id, route_name, current_wa_num, runs_s, runs_u, runs_m, runs_t, runs_w, runs_h, runs_f")
+        .eq("company_id", company.id)
+        .eq("is_active", true)
+        .is("effective_end", null),
+      loadScheduleCoverageRows({
+        supabase,
+        companyId: company.id,
+        startDate: scheduleCoverageStart,
+        endDate,
+      }),
     ]);
 
     if (rosterResult.error) {
@@ -99,9 +118,17 @@ export async function GET(
     if (noticeResult.error) {
       return NextResponse.json({ error: noticeResult.error.message }, { status: 500 });
     }
+    if (routesResult.error || scheduleResult.error) {
+      return NextResponse.json({ error: routesResult.error?.message ?? scheduleResult.error?.message }, { status: 500 });
+    }
 
     const roster = rosterResult.data ?? [];
-    const activeDrivers = roster.filter((row) => row.employment_status === "Active").length;
+    const activeDriverRows = roster.filter(
+      (row) => row.employment_status === "Active" && row.driver_program
+    );
+    const activeDrivers = activeDriverRows.filter(
+      (row) => row.driver_utilization_category === "FULL_TIME"
+    ).length;
     const trainees = roster.filter((row) => row.employment_status === "Trainee").length;
     const tenure = buildWorkforceTenureProfile(roster, endDate);
     const noticeAsOf = new Date().toISOString().slice(0, 10);
@@ -110,6 +137,12 @@ export async function GET(
       roster,
       noticeAsOf
     );
+    const scheduleCoverage = summarizeScheduleCoverage({
+      startDate: scheduleCoverageStart,
+      endDate,
+      routes: routesResult.data ?? [],
+      scheduleRows: scheduleResult.data ?? [],
+    });
 
     // A route/day can appear under more than one capture plan. Retain the
     // largest observed counts for that route/day rather than double-counting.
@@ -144,6 +177,15 @@ export async function GET(
         tenure,
         notice_as_of: noticeAsOf,
         notice_resignations: noticeResignations,
+        driver_utilization: {
+          full_time: activeDrivers,
+          part_time: activeDriverRows.filter((row) => row.driver_utilization_category === "PART_TIME").length,
+          unscheduled: activeDriverRows.filter((row) => row.driver_utilization_category === "UNSCHEDULED").length,
+          avp: activeDriverRows.filter((row) => row.driver_program === "AVP").length,
+          route_day_equivalents: activeDriverRows.reduce((sum, row) => sum + number(row.route_utilization_ratio), 0),
+          full_time_day_threshold: number(activeDriverRows[0]?.driver_full_time_day_threshold) || 5,
+        },
+        schedule_coverage: scheduleCoverage,
       },
       express: {
         start_date: expressStart,

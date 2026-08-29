@@ -13,6 +13,7 @@ describe("FedEx role options", () => {
   it("exposes the temporary governed catalog in order", () => {
     expect(FEDEX_ROLE_OPTIONS.map((option) => option.value)).toEqual([
       "Driver",
+      "AVP Driver",
       "Jumper / Helper",
       "Lead Driver",
       "Business Contact",

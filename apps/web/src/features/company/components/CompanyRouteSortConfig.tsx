@@ -6,6 +6,7 @@ type RouteSortKey = "route_name" | "current_wa_num";
 
 type OperationsConfig = {
   route_sort_key: RouteSortKey;
+  driver_full_time_day_threshold: number;
 };
 
 const inputStyle: React.CSSProperties = {
@@ -24,6 +25,7 @@ export default function CompanyRouteSortConfig(props: {
 
   const [config, setConfig] = useState<OperationsConfig>({
     route_sort_key: "route_name",
+    driver_full_time_day_threshold: 5,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -57,6 +59,8 @@ export default function CompanyRouteSortConfig(props: {
             data?.config?.route_sort_key === "current_wa_num"
               ? "current_wa_num"
               : "route_name",
+          driver_full_time_day_threshold:
+            Number(data?.config?.driver_full_time_day_threshold) || 5,
         });
       } catch {
         if (active) setError("Failed to load route order.");
@@ -76,7 +80,7 @@ export default function CompanyRouteSortConfig(props: {
     setSaving(true);
     setMessage(null);
     setError(null);
-    setConfig({ route_sort_key: routeSortKey });
+    setConfig((current) => ({ ...current, route_sort_key: routeSortKey }));
 
     try {
       const res = await fetch(`/api/company/${slug}/config/operations`, {
@@ -101,10 +105,42 @@ export default function CompanyRouteSortConfig(props: {
           data?.config?.route_sort_key === "current_wa_num"
             ? "current_wa_num"
             : "route_name",
+        driver_full_time_day_threshold:
+          Number(data?.config?.driver_full_time_day_threshold) ||
+          config.driver_full_time_day_threshold,
       });
       setMessage("Route order saved.");
     } catch {
       setError("Failed to save route order.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveDriverThreshold(threshold: number) {
+    setSaving(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const res = await fetch(`/api/company/${slug}/config/operations`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ driver_full_time_day_threshold: threshold }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data?.error ?? "Failed to save driver utilization threshold.");
+        return;
+      }
+      setConfig((current) => ({
+        ...current,
+        driver_full_time_day_threshold:
+          Number(data?.config?.driver_full_time_day_threshold) || threshold,
+      }));
+      setMessage("Driver utilization threshold saved.");
+    } catch {
+      setError("Failed to save driver utilization threshold.");
     } finally {
       setSaving(false);
     }
@@ -182,6 +218,31 @@ export default function CompanyRouteSortConfig(props: {
               : "Route name"}
           </strong>
         </p>
+      </div>
+
+      <div style={{ borderTop: "1px solid #e6edf5", paddingTop: 12 }}>
+        <p className="value-card__eyebrow">Driver utilization</p>
+        <h4 style={{ margin: "4px 0 0", fontSize: 15 }}>
+          Full-time baseline threshold
+        </h4>
+        <p className="app-card__body" style={{ marginTop: 4 }}>
+          A Driver or AVP Driver at or above this many baseline days is derived as full-time. Lower scheduled utilization is derived as part-time.
+        </p>
+        <label style={{ display: "grid", gap: 6, maxWidth: 260, marginTop: 10 }}>
+          <span style={{ fontSize: 12, fontWeight: 800, color: "#475569" }}>
+            Baseline days per week
+          </span>
+          <select
+            disabled={!canEdit || loading || saving}
+            value={config.driver_full_time_day_threshold}
+            onChange={(event) => void saveDriverThreshold(Number(event.target.value))}
+            style={inputStyle}
+          >
+            {Array.from({ length: 7 }, (_, index) => index + 1).map((days) => (
+              <option key={days} value={days}>{days} day{days === 1 ? "" : "s"}</option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {message ? <p style={{ color: "#0f9f6e", margin: 0 }}>{message}</p> : null}

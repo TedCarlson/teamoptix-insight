@@ -151,13 +151,19 @@ export default function DashboardHealthPanel({
         })}
       </section>
 
-      <div className={`${styles.capacityBand} ${workforce.routeReadyDepartures > 0 ? styles.capacityAtRisk : ""}`}>
-        <span>People capacity</span>
-        <strong>{number(workforce.activeDrivers)} Active · {number(workforce.routeReadyDepartures)} on notice</strong>
-        <b>{number(workforce.fiveDayTarget)} sustainable target</b>
-        <em>{number(workforce.projectedReadinessPercent)}% projected</em>
+      <div className={`${styles.capacityBand} ${workforce.scheduleOpenRouteDays > 0 || workforce.routeReadyDepartures > 0 ? styles.capacityAtRisk : ""}`}>
+        <span>{workforce.readinessBasis === "schedule" ? "Scheduled route coverage" : "Roster depth fallback"}</span>
+        <strong>{workforce.readinessBasis === "schedule"
+          ? `${number(workforce.scheduleCoveredRouteDays)} of ${number(workforce.scheduleDemandRouteDays)} route-days covered`
+          : `${number(workforce.activeDrivers)} full-time drivers · ${number(workforce.routeReadyDepartures)} on notice`}</strong>
+        <b>{workforce.readinessBasis === "schedule"
+          ? `${number(workforce.scheduleOpenRouteDays)} open route-days`
+          : `${number(workforce.fiveDayTarget)} sustainable target`}</b>
+        <em>{number(workforce.readinessBasis === "schedule" ? workforce.scheduleCoveragePercent : workforce.projectedReadinessPercent)}%</em>
         <small>
-          {workforce.routeReadyDepartures > 0
+          {workforce.readinessBasis === "schedule"
+            ? `${number(workforce.partTimeDrivers)} PT · ${number(workforce.avpDrivers)} AVP · ${number(workforce.routeDayEquivalents, 1)} route-day equivalents · ${number(workforce.scheduleSeamCount)} seams`
+            : workforce.routeReadyDepartures > 0
             ? `${number(workforce.projectedActiveDrivers)} route-ready after notice · next last day in ${number(nextRouteReadyNotice?.days_until_last_day ?? 0)} days`
             : `${number(workforce.firstNinetyDayDrivers)} inside first 90 days · ${number(workforce.trainees)} trainee${workforce.trainees === 1 ? "" : "s"}`}
         </small>

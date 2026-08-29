@@ -8,6 +8,7 @@ export const DEFAULT_FEDEX_ROLE = "Driver";
 
 export const FEDEX_ROLE_OPTIONS: readonly FedExRoleOption[] = [
   { key: "driver", label: "Driver", value: "Driver" },
+  { key: "avp_driver", label: "AVP Driver", value: "AVP Driver" },
   { key: "jumper_helper", label: "Jumper / Helper", value: "Jumper / Helper" },
   { key: "lead_driver", label: "Lead Driver", value: "Lead Driver" },
   { key: "business_contact", label: "Business Contact", value: "Business Contact" },

@@ -19,6 +19,11 @@ function cleanTimekeepingOversightMode(value: unknown) {
   return typeof value === "string" && TIMEKEEPING_OVERSIGHT_MODES.has(value) ? value : "off";
 }
 
+function cleanDriverFullTimeDayThreshold(value: unknown) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 7 ? parsed : null;
+}
+
 export async function GET(
   _req: NextRequest,
   context: { params: Promise<{ slug: string }> }
@@ -55,8 +60,41 @@ export async function PATCH(
 
     const updatesTimekeepingOnly =
       body.timekeeping_oversight_mode !== undefined &&
+      body.driver_full_time_day_threshold === undefined &&
       body.route_sort_key === undefined &&
       body.route_sort_direction === undefined;
+
+    const updatesDriverUtilizationOnly =
+      body.driver_full_time_day_threshold !== undefined &&
+      body.timekeeping_oversight_mode === undefined &&
+      body.route_sort_key === undefined &&
+      body.route_sort_direction === undefined;
+
+    if (updatesDriverUtilizationOnly) {
+      const threshold = cleanDriverFullTimeDayThreshold(
+        body.driver_full_time_day_threshold
+      );
+      if (threshold == null) {
+        return NextResponse.json(
+          { error: "Full-time driver threshold must be between 1 and 7 days." },
+          { status: 400 }
+        );
+      }
+
+      const { data, error } = await supabase.rpc(
+        "update_company_driver_utilization_config",
+        {
+          p_company_slug: slug,
+          p_driver_full_time_day_threshold: threshold,
+        }
+      );
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({ config: data }, { status: 200 });
+    }
 
     if (updatesTimekeepingOnly) {
       const { data, error } = await supabase.rpc("update_company_timekeeping_config", {

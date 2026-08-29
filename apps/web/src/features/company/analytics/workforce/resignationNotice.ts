@@ -1,3 +1,5 @@
+import { classifyDriverProgram } from "@/features/people/lib/driverWorkforceType";
+
 export type ResignationNoticeSourceRow = {
   id: string;
   roster_member_id: string;
@@ -14,6 +16,7 @@ export type ResignationNoticeRosterRow = {
   full_name?: string | null;
   worker_type?: string | null;
   employment_status?: string | null;
+  driver_utilization_category?: string | null;
 };
 
 export type WorkforceResignationNotice = {
@@ -89,7 +92,12 @@ export function buildResignationNoticeCountdowns(
       workflow_status: String(row.workflow_status ?? "COUNTDOWN_ACTIVE"),
       days_until_last_day: Math.max(0, daysBetween(asOfDate, row.end_date)),
       days_until_separation: Math.max(0, daysBetween(asOfDate, separationDate)),
-      route_ready_departure: roster.employment_status === "Active",
+      route_ready_departure:
+        roster.employment_status === "Active" &&
+        (classifyDriverProgram(roster.worker_type) != null ||
+          roster.worker_type == null) &&
+        (roster.driver_utilization_category == null ||
+          roster.driver_utilization_category === "FULL_TIME"),
     };
 
     const current = noticesByRoster.get(notice.roster_member_id);

@@ -1,3 +1,8 @@
+import {
+  classifyDriverProgram,
+  type DriverProgram,
+} from "@/features/people/lib/driverWorkforceType";
+
 export type ScheduleCapacityRoute = {
   id: string;
   route_name: string | null;
@@ -30,6 +35,22 @@ export type DailyScheduleCapacity = {
   openRoutes: ScheduleCapacityRoute[];
   standbyDrivers: ScheduleCapacityPerson[];
   capacityDelta: number;
+  routeCoveragePercent: number;
+  coveredRoutesByProgram: Record<DriverProgram, number>;
+  seams: ScheduleCoverageSeam[];
+};
+
+export type ScheduleCoverageSeamType =
+  | "UNCOVERED_ROUTE"
+  | "DUPLICATE_ROUTE_ASSIGNMENT"
+  | "UNMATCHED_ROUTE_ASSIGNMENT"
+  | "NON_DRIVER_ROUTE_ASSIGNMENT";
+
+export type ScheduleCoverageSeam = {
+  type: ScheduleCoverageSeamType;
+  routeLabel: string;
+  rosterMemberIds: string[];
+  detail: string;
 };
 
 type RouteRunFlag =
@@ -83,10 +104,7 @@ export function isDriverSeatWorker(
   workerType: string | null,
   employmentStatus?: string | null
 ) {
-  const normalized = String(workerType ?? "").trim().toLowerCase();
-
-  return !normalized.includes("helper") &&
-    !normalized.includes("jumper") &&
+  return classifyDriverProgram(workerType) != null &&
     !isTraineeWorker(workerType, employmentStatus);
 }
 
@@ -152,6 +170,73 @@ export function resolveDailyScheduleCapacity(params: {
     (row) => !normalizeRouteKey(row.route_name)
   );
 
+  const coveredRoutesByProgram: Record<DriverProgram, number> = {
+    STANDARD: 0,
+    AVP: 0,
+  };
+  const seams: ScheduleCoverageSeam[] = [];
+
+  for (const route of demandedRoutes) {
+    const aliases = routeAliases(route);
+    const assignments = assignedDrivers.filter((row) =>
+      aliases.has(normalizeRouteKey(row.route_name))
+    );
+
+    if (!assignments.length) {
+      seams.push({
+        type: "UNCOVERED_ROUTE",
+        routeLabel: scheduleRouteLabel(route),
+        rosterMemberIds: [],
+        detail: "A running route has no scheduled driver assignment.",
+      });
+      continue;
+    }
+
+    const coverageProgram = classifyDriverProgram(assignments[0].worker_type);
+    if (coverageProgram) coveredRoutesByProgram[coverageProgram] += 1;
+
+    if (assignments.length > 1) {
+      seams.push({
+        type: "DUPLICATE_ROUTE_ASSIGNMENT",
+        routeLabel: scheduleRouteLabel(route),
+        rosterMemberIds: assignments.map((row) => row.roster_member_id),
+        detail: `${assignments.length} scheduled drivers point to the same running route.`,
+      });
+    }
+  }
+
+  for (const row of assignedDrivers) {
+    const routeKey = normalizeRouteKey(row.route_name);
+    const matchesDemand = demandedRoutes.some((route) =>
+      routeAliases(route).has(routeKey)
+    );
+    if (!matchesDemand) {
+      seams.push({
+        type: "UNMATCHED_ROUTE_ASSIGNMENT",
+        routeLabel: row.route_name?.trim() || "Unnamed route",
+        rosterMemberIds: [row.roster_member_id],
+        detail: "A scheduled driver points to a route that is not running in the route baseline.",
+      });
+    }
+  }
+
+  for (const row of scheduleRows) {
+    if (
+      !row.planned_on ||
+      !normalizeRouteKey(row.route_name) ||
+      isDriverSeatWorker(row.worker_type, row.employment_status)
+    ) continue;
+
+    seams.push({
+      type: "NON_DRIVER_ROUTE_ASSIGNMENT",
+      routeLabel: row.route_name?.trim() || "Unnamed route",
+      rosterMemberIds: [row.roster_member_id],
+      detail: isTraineeWorker(row.worker_type, row.employment_status)
+        ? "A trainee is assigned to a route but does not independently cover it."
+        : "A non-driver role is assigned to a route and does not count as route coverage.",
+    });
+  }
+
   return {
     scheduledDrivers: scheduledDrivers.length,
     routeDemand: demandedRoutes.length,
@@ -160,6 +245,11 @@ export function resolveDailyScheduleCapacity(params: {
     openRoutes,
     standbyDrivers,
     capacityDelta: scheduledDrivers.length - demandedRoutes.length,
+    routeCoveragePercent: demandedRoutes.length
+      ? (assignedRoutes.length / demandedRoutes.length) * 100
+      : 100,
+    coveredRoutesByProgram,
+    seams,
   };
 }
 

@@ -107,6 +107,40 @@ describe("buildDashboardHealth", () => {
     expect(result.suggestions[0].key).toBe("maintain");
   });
 
+  it("uses scheduled route coverage as the readiness authority when demand exists", () => {
+    const result = buildDashboardHealth(
+      tenWeeks(false),
+      "2026-08-01",
+      {
+        active_drivers: 30,
+        trainees: 0,
+        tenure: { new_driver_count: 2, new_driver_share: 0.08 },
+        driver_utilization: {
+          full_time: 30,
+          part_time: 3,
+          unscheduled: 1,
+          avp: 2,
+          route_day_equivalents: 32.4,
+          full_time_day_threshold: 5,
+        },
+        schedule_coverage: {
+          demandRouteDays: 100,
+          coveredRouteDays: 82,
+          openRouteDays: 18,
+          coveragePercent: 82,
+          seamCount: 20,
+        },
+      }
+    );
+
+    expect(result.workforce.readinessBasis).toBe("schedule");
+    expect(result.workforce.scheduleCoveragePercent).toBe(82);
+    expect(result.workforce.partTimeDrivers).toBe(3);
+    expect(result.suggestions.find((item) => item.key === "workforce")?.title)
+      .toBe("Cover 18 open scheduled route-days");
+    expect(result.status).toBe("critical");
+  });
+
   it("projects known Active resignations without removing current capacity early", () => {
     const result = buildDashboardHealth(
       tenWeeks(false),

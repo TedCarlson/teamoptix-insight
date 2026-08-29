@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadRosterAssetValues } from "@/features/people/server/assetAssignments";
 import { deriveRosterComplianceSignals } from "@/features/compliance/lib/rosterCompliance";
+import { loadRosterUtilizationRows } from "@/features/people/server/loadRosterUtilizationRows";
 
 type Input = {
   supabase: SupabaseClient;
@@ -16,20 +17,17 @@ export async function loadRosterAuthoritativeDto({
   rosterId,
 }: Input) {
   const [
-    rosterResult,
+    rosterRowsResult,
     operationsResult,
     personalResult,
     licenseResult,
     assetValues,
   ] = await Promise.all([
-    supabase
-      .from("company_roster_view")
-      .select(
-        "roster_member_id, company_id, profile_id, person_id, full_name, email, phone, worker_type, job_title, employment_status, market_code, reports_to_name, hire_date, separation_date, reports_to_roster_id, invite_status, notes, fx_id, dswid, roster_record_kind",
-      )
-      .eq("company_id", companyId)
-      .eq("roster_member_id", rosterId)
-      .maybeSingle(),
+    loadRosterUtilizationRows({
+      supabase,
+      companyId,
+      companySlug,
+    }),
 
     supabase
       .from("company_roster_operations_fact_v")
@@ -60,13 +58,16 @@ export async function loadRosterAuthoritativeDto({
     loadRosterAssetValues(supabase, companySlug, [rosterId]),
   ]);
 
-  if (rosterResult.error) {
+  if (rosterRowsResult.error) {
     throw new Error(
-      `Failed to load roster record: ${rosterResult.error.message}`,
+      `Failed to load roster record: ${rosterRowsResult.error.message}`,
     );
   }
 
-  if (!rosterResult.data) return null;
+  const roster = rosterRowsResult.data?.find(
+    (row) => row.roster_member_id === rosterId,
+  );
+  if (!roster) return null;
 
   if (operationsResult.error) {
     throw new Error(
@@ -86,7 +87,6 @@ export async function loadRosterAuthoritativeDto({
     );
   }
 
-  const roster = rosterResult.data;
   const operations = operationsResult.data;
   const personal = personalResult.data;
   const license = licenseResult.data;
@@ -106,6 +106,16 @@ export async function loadRosterAuthoritativeDto({
     email: roster.email,
     phone: roster.phone,
     worker_type: roster.worker_type,
+    driver_program: roster.driver_program ?? null,
+    schedule_baseline_id: roster.schedule_baseline_id ?? null,
+    schedule_preset_id: roster.schedule_preset_id ?? null,
+    schedule_preset_code: roster.schedule_preset_code ?? null,
+    scheduled_days_per_week: roster.scheduled_days_per_week ?? null,
+    driver_full_time_day_threshold:
+      roster.driver_full_time_day_threshold ?? null,
+    driver_utilization_category:
+      roster.driver_utilization_category ?? null,
+    route_utilization_ratio: roster.route_utilization_ratio ?? null,
     job_title: roster.job_title,
     employment_status: roster.employment_status,
     market_code: roster.market_code,

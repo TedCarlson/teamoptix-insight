@@ -99,6 +99,15 @@ export type DashboardHealth = {
     projectedReadinessPercent: number;
     firstNinetyDayDrivers: number;
     firstNinetyDayShare: number;
+    readinessBasis: "schedule" | "roster";
+    scheduleDemandRouteDays: number;
+    scheduleCoveredRouteDays: number;
+    scheduleOpenRouteDays: number;
+    scheduleCoveragePercent: number;
+    scheduleSeamCount: number;
+    partTimeDrivers: number;
+    avpDrivers: number;
+    routeDayEquivalents: number;
   };
   routeComposition: {
     currentRoutesPerDay: number;
@@ -116,6 +125,21 @@ export type DashboardWorkforceContext = {
   tenure: {
     new_driver_count: number;
     new_driver_share: number;
+  };
+  driver_utilization?: {
+    full_time: number;
+    part_time: number;
+    unscheduled: number;
+    avp: number;
+    route_day_equivalents: number;
+    full_time_day_threshold: number;
+  };
+  schedule_coverage?: {
+    demandRouteDays: number;
+    coveredRouteDays: number;
+    openRouteDays: number;
+    coveragePercent: number;
+    seamCount: number;
   };
 };
 
@@ -450,6 +474,11 @@ export function buildDashboardHealth(
   const projectedReadinessPercent = fiveDayTarget > 0
     ? (projectedActiveDrivers / fiveDayTarget) * 100
     : 100;
+  const scheduleCoverage = workforce.schedule_coverage;
+  const hasScheduleCoverage = Number(scheduleCoverage?.demandRouteDays ?? 0) > 0;
+  const operatingReadinessPercent = hasScheduleCoverage
+    ? Number(scheduleCoverage?.coveragePercent ?? 0)
+    : projectedReadinessPercent;
 
   const priorLoadEquivalentRoutesPerDay = baseline && baseline.deliveryStopsPerRoute > 0 && baseline.deliveryPackagesPerRoute > 0
     ? Math.max(
@@ -478,9 +507,9 @@ export function buildDashboardHealth(
     currentServiceStatus,
     weekendServiceStatus
   );
-  const workforceStatus: DashboardHealthStatus = projectedReadinessPercent < 85
+  const workforceStatus: DashboardHealthStatus = operatingReadinessPercent < 85
     ? "critical"
-    : projectedReadinessPercent < 100
+    : operatingReadinessPercent < 100
       ? "watch"
       : "healthy";
   const routeStatus: DashboardHealthStatus = workloadPressure != null && workloadPressure >= 10
@@ -514,7 +543,15 @@ export function buildDashboardHealth(
       detail: `${nextNotice.full_name}${routeReadyDepartures > 1 ? ` and ${routeReadyDepartures - 1} other driver${routeReadyDepartures - 1 === 1 ? "" : "s"}` : ""} ${nextNotice.days_until_last_day === 0 ? "reaches the final scheduled day today" : `has ${nextNotice.days_until_last_day} day${nextNotice.days_until_last_day === 1 ? "" : "s"} until the final scheduled day`}. Route-ready capacity is projected to move from ${activeDrivers} to ${projectedActiveDrivers}, widening the sustainable five-day gap to ${projectedShortfall}.`,
     });
   }
-  if (projectedShortfall > 0) {
+  if (hasScheduleCoverage && Number(scheduleCoverage?.openRouteDays ?? 0) > 0) {
+    const openRouteDays = Number(scheduleCoverage?.openRouteDays ?? 0);
+    suggestions.push({
+      key: "workforce",
+      level: workforceStatus,
+      title: `Cover ${openRouteDays} open scheduled route-day${openRouteDays === 1 ? "" : "s"}`,
+      detail: `${Number(scheduleCoverage?.coveredRouteDays ?? 0)} of ${Number(scheduleCoverage?.demandRouteDays ?? 0)} route-days are assigned in the schedule window. FT, PT, and AVP labels describe baseline utilization; only an actual route assignment closes route readiness.`,
+    });
+  } else if (!hasScheduleCoverage && projectedShortfall > 0) {
     suggestions.push({
       key: "workforce",
       level: workforceStatus,
@@ -614,6 +651,15 @@ export function buildDashboardHealth(
       projectedReadinessPercent,
       firstNinetyDayDrivers: workforce.tenure.new_driver_count,
       firstNinetyDayShare: workforce.tenure.new_driver_share,
+      readinessBasis: hasScheduleCoverage ? "schedule" : "roster",
+      scheduleDemandRouteDays: Number(scheduleCoverage?.demandRouteDays ?? 0),
+      scheduleCoveredRouteDays: Number(scheduleCoverage?.coveredRouteDays ?? 0),
+      scheduleOpenRouteDays: Number(scheduleCoverage?.openRouteDays ?? 0),
+      scheduleCoveragePercent: Number(scheduleCoverage?.coveragePercent ?? 100),
+      scheduleSeamCount: Number(scheduleCoverage?.seamCount ?? 0),
+      partTimeDrivers: Number(workforce.driver_utilization?.part_time ?? 0),
+      avpDrivers: Number(workforce.driver_utilization?.avp ?? 0),
+      routeDayEquivalents: Number(workforce.driver_utilization?.route_day_equivalents ?? activeDrivers),
     },
     routeComposition: {
       currentRoutesPerDay: recent.routesPerDay,

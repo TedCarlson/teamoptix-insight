@@ -6,11 +6,13 @@ import ManagePersonDrawer from "@/features/people/components/ManagePersonDrawer"
 import CandidateWorkflowDrawer from "@/features/hiring/components/candidate-drawer/CandidateWorkflowDrawer";
 import TraineePayOverrideOverlay from "@/features/people/components/TraineePayOverrideOverlay";
 import RosterControlsBar, {
+  type DriverRosterSlice,
   type RosterTab,
 } from "@/features/people/components/RosterControlsBar";
 import RosterTable from "@/features/people/components/RosterTable";
 import type { RosterRow } from "@/features/people/types/roster.types";
 import type { RosterComplianceSignal } from "@/features/compliance/lib/rosterCompliance";
+import { isDriverRole } from "@/features/people/lib/driverWorkforceType";
 
 type TimelineEvent = {
   id: string;
@@ -31,6 +33,14 @@ type ApiRosterRow = {
   email: string | null;
   phone: string | null;
   worker_type: string | null;
+  driver_program?: "STANDARD" | "AVP" | null;
+  schedule_baseline_id?: string | null;
+  schedule_preset_id?: string | null;
+  schedule_preset_code?: string | null;
+  scheduled_days_per_week?: number | null;
+  driver_full_time_day_threshold?: number | null;
+  driver_utilization_category?: "FULL_TIME" | "PART_TIME" | "UNSCHEDULED" | null;
+  route_utilization_ratio?: number | string | null;
   employment_status: "Active" | "Candidate" | "Trainee" | "Former" | "Support" | null;
   market_code: string | null;
   reports_to_name: string | null;
@@ -75,6 +85,15 @@ function normalizeRosterRow(row: ApiRosterRow): RosterRow {
     email: row.email ?? null,
     phone: row.phone ?? null,
     worker_type: row.worker_type ?? "Unassigned",
+    driver_program: row.driver_program ?? null,
+    schedule_baseline_id: row.schedule_baseline_id ?? null,
+    schedule_preset_id: row.schedule_preset_id ?? null,
+    schedule_preset_code: row.schedule_preset_code ?? null,
+    scheduled_days_per_week: row.scheduled_days_per_week ?? null,
+    driver_full_time_day_threshold:
+      row.driver_full_time_day_threshold ?? null,
+    driver_utilization_category: row.driver_utilization_category ?? null,
+    route_utilization_ratio: row.route_utilization_ratio ?? null,
     employment_status: row.employment_status ?? "Candidate",
     market_code: row.market_code ?? "—",
     reports_to_name: row.reports_to_name ?? "—",
@@ -122,11 +141,6 @@ function matchesRosterTab(row: RosterRow, tab: RosterTab) {
   return true;
 }
 
-function isDriverRole(value?: string | null) {
-  const role = value?.trim().toLowerCase();
-  return role === "driver" || role === "lead driver";
-}
-
 function StatCard(props: { label: string; value: number }) {
 
   
@@ -148,7 +162,7 @@ export default function CompanyRosterPage() {
 
   const [tab, setTab] = useState<RosterTab>("active");
   const [search, setSearch] = useState("");
-  const [driversOnly, setDriversOnly] = useState(false);
+  const [driverSlice, setDriverSlice] = useState<DriverRosterSlice>("all_roles");
   const [rows, setRows] = useState<RosterRow[]>([]);
   const [managedPerson, setManagedPerson] = useState<RosterRow | null>(null);
   const [traineePayPerson, setTraineePayPerson] = useState<RosterRow | null>(null);
@@ -279,15 +293,26 @@ export default function CompanyRosterPage() {
     [rows, tab]
   );
 
-  const driverCount = useMemo(
-    () => statusRows.filter((row) => isDriverRole(row.worker_type)).length,
+  const driverCounts = useMemo(
+    () => ({
+      drivers: statusRows.filter((row) => isDriverRole(row.worker_type)).length,
+      full_time: statusRows.filter((row) => row.driver_utilization_category === "FULL_TIME").length,
+      part_time: statusRows.filter((row) => row.driver_utilization_category === "PART_TIME").length,
+      avp: statusRows.filter((row) => row.driver_program === "AVP").length,
+      unscheduled: statusRows.filter((row) => row.driver_utilization_category === "UNSCHEDULED").length,
+    }),
     [statusRows]
   );
 
   const filteredRows = useMemo(() => {
-    const byRole = driversOnly
-      ? statusRows.filter((row) => isDriverRole(row.worker_type))
-      : statusRows;
+    const byRole = statusRows.filter((row) => {
+      if (driverSlice === "drivers") return isDriverRole(row.worker_type);
+      if (driverSlice === "full_time") return row.driver_utilization_category === "FULL_TIME";
+      if (driverSlice === "part_time") return row.driver_utilization_category === "PART_TIME";
+      if (driverSlice === "avp") return row.driver_program === "AVP";
+      if (driverSlice === "unscheduled") return row.driver_utilization_category === "UNSCHEDULED";
+      return true;
+    });
 
     const q = search.trim().toLowerCase();
     if (!q) return byRole;
@@ -308,7 +333,7 @@ export default function CompanyRosterPage() {
         .toLowerCase()
         .includes(q)
     );
-  }, [driversOnly, search, statusRows]);
+  }, [driverSlice, search, statusRows]);
 
   const activeCount = rows.filter((r) => r.roster_record_kind !== "WALK_ON" && r.employment_status === "Active").length;
   const traineeCount = rows.filter((r) => r.roster_record_kind !== "WALK_ON" && r.employment_status === "Trainee").length;
@@ -639,9 +664,9 @@ export default function CompanyRosterPage() {
             setTab={setTab}
             search={search}
             setSearch={setSearch}
-            driversOnly={driversOnly}
-            setDriversOnly={setDriversOnly}
-            driverCount={driverCount}
+            driverSlice={driverSlice}
+            setDriverSlice={setDriverSlice}
+            driverCounts={driverCounts}
             counts={{
               active: activeCount,
               trainee: traineeCount,

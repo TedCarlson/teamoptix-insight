@@ -53,6 +53,44 @@ describe("buildResignationNoticeCountdowns", () => {
     expect(notices[0].route_ready_departure).toBe(false);
   });
 
+  it("keeps part-time driver notices visible without reducing full-time readiness", () => {
+    const notices = buildResignationNoticeCountdowns([
+      {
+        id: "notice-3",
+        roster_member_id: "active-1",
+        start_date: "2026-08-06",
+        end_date: "2026-08-14",
+        is_active: true,
+      },
+    ], [
+      {
+        ...roster[0],
+        driver_utilization_category: "PART_TIME" as const,
+      },
+    ], "2026-08-07");
+
+    expect(notices[0].route_ready_departure).toBe(false);
+  });
+
+  it("keeps non-driver notices visible without reducing route-ready capacity", () => {
+    const notices = buildResignationNoticeCountdowns([
+      {
+        id: "notice-4",
+        roster_member_id: "manager-1",
+        start_date: "2026-08-06",
+        end_date: "2026-08-14",
+        is_active: true,
+      },
+    ], [{
+      roster_member_id: "manager-1",
+      full_name: "Fleet Manager",
+      worker_type: "Fleet Manager",
+      employment_status: "Active",
+    }], "2026-08-07");
+
+    expect(notices[0].route_ready_departure).toBe(false);
+  });
+
   it("excludes cancelled, completed, and former-roster notices", () => {
     const notices = buildResignationNoticeCountdowns([
       {

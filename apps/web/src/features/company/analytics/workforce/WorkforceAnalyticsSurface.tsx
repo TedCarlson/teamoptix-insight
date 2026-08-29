@@ -61,6 +61,23 @@ type ReadinessPayload = {
   tenure?: WorkforceTenureProfile;
   notice_as_of?: string;
   notice_resignations?: WorkforceResignationNotice[];
+  driver_utilization?: {
+    full_time: number;
+    part_time: number;
+    unscheduled: number;
+    avp: number;
+    route_day_equivalents: number;
+    full_time_day_threshold: number;
+  };
+  schedule_coverage?: {
+    startDate: string;
+    endDate: string;
+    demandRouteDays: number;
+    coveredRouteDays: number;
+    openRouteDays: number;
+    coveragePercent: number;
+    seamCount: number;
+  };
   checkpoints?: Array<{
     key: string;
     label: string;
@@ -208,7 +225,7 @@ export default function WorkforceAnalyticsSurface({ slug }: { slug: string }) {
     1
   );
   const summary = workforce?.summary;
-  const activeHeadcount = activeRosterHeadcount(summary);
+  const activeHeadcount = readiness?.driver_utilization?.full_time ?? activeRosterHeadcount(summary);
   const schedulePatterns = workforce?.schedule_patterns;
   const scheduleHistoryPartial = Boolean(
     workforce?.coverage.schedule_start && startDate && workforce.coverage.schedule_start > startDate
@@ -220,15 +237,15 @@ export default function WorkforceAnalyticsSurface({ slug }: { slug: string }) {
   ).length;
   const projectedActiveDrivers = Math.max(
     0,
-    (summary?.active ?? 0) - routeReadyNoticeDepartures
+    activeHeadcount - routeReadyNoticeDepartures
   );
   const workforcePlan = useMemo(() => buildWorkforcePlan(
     payload?.rows ?? [],
     throughDate ?? "",
-    summary?.active ?? 0,
+    activeHeadcount,
     workforce?.monthly ?? [],
     routeReadyNoticeDepartures
-  ), [payload, throughDate, summary?.active, workforce?.monthly, routeReadyNoticeDepartures]);
+  ), [payload, throughDate, activeHeadcount, workforce?.monthly, routeReadyNoticeDepartures]);
   const tenure = readiness?.tenure;
 
   return (
@@ -256,12 +273,21 @@ export default function WorkforceAnalyticsSurface({ slug }: { slug: string }) {
             <>
               <section className={styles.summary}>
                 <article className={noticeResignations.length ? styles.offRampCard : ""}>
-                  <span>Active workforce</span>
+                  <span>Full-time drivers</span>
                   <strong>{formatNumber(activeHeadcount)}</strong>
                   <small>
-                    {formatNumber(summary?.trainees ?? 0)} trainees tracked separately
+                    Derived at {formatNumber(readiness?.driver_utilization?.full_time_day_threshold ?? 5)} baseline days · {formatNumber(readiness?.driver_utilization?.part_time ?? 0)} PT
                     {noticeResignations.length ? ` · ${formatNumber(noticeResignations.length)} on notice` : ""}
                   </small>
+                </article>
+                <article className={(readiness?.schedule_coverage?.openRouteDays ?? 0) > 0 ? styles.signalCard : ""}>
+                  <span>Scheduled route coverage</span>
+                  <strong>{(readiness?.schedule_coverage?.demandRouteDays ?? 0) > 0
+                    ? `${formatNumber(readiness?.schedule_coverage?.coveragePercent ?? 0)}%`
+                    : "—"}</strong>
+                  <small>{(readiness?.schedule_coverage?.demandRouteDays ?? 0) > 0
+                    ? `${formatNumber(readiness?.schedule_coverage?.coveredRouteDays ?? 0)} of ${formatNumber(readiness?.schedule_coverage?.demandRouteDays ?? 0)} route-days · ${formatNumber(readiness?.schedule_coverage?.openRouteDays ?? 0)} open`
+                    : "No scheduled route demand in this window"}</small>
                 </article>
                 <article><span>Candidate pipeline</span><strong>{formatNumber(readiness?.onboarding_candidates ?? 0)}</strong><small>Current candidates in Onboarding</small></article>
                 <article><span>Range hires</span><strong>{formatNumber(summary?.contract_hires ?? 0)}</strong><small>Hire date inside the selected range</small></article>
@@ -314,12 +340,12 @@ export default function WorkforceAnalyticsSurface({ slug }: { slug: string }) {
                   <header className={styles.sectionHead}>
                     <div>
                       <p>Demand-based workforce guidance</p>
-                      <h2>Workforce readiness target</h2>
-                      <span>Route-ready headcount for normal operations, six-day flex, and a seven-day seasonal ramp. Trainees are tracked separately and excluded from active workforce headcount and independent route capacity.</span>
+                      <h2>Roster depth planning</h2>
+                      <span>Secondary planning context behind the primary scheduled route-coverage measure. Full-time and part-time status is derived from baseline days; trainees remain outside independent route capacity.</span>
                     </div>
                     <div className={styles.currentCapacity}>
                       <span>{routeReadyNoticeDepartures ? "Current → projected" : "Current route-ready"}</span>
-                      <strong>{formatNumber(summary?.active ?? 0)} active drivers</strong>
+                      <strong>{formatNumber(activeHeadcount)} full-time drivers</strong>
                       <small>{routeReadyNoticeDepartures ? `${formatNumber(projectedActiveDrivers)} after active notice` : `${formatNumber(summary?.trainees ?? 0)} trainee${summary?.trainees === 1 ? "" : "s"} developing`}</small>
                     </div>
                   </header>

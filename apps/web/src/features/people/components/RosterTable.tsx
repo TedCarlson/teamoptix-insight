@@ -2,6 +2,7 @@
 
 import RosterComplianceIndicators from "@/features/compliance/components/RosterComplianceIndicators";
 import type { RosterRow } from "@/features/people/types/roster.types";
+import { driverUtilizationLabel } from "@/features/people/lib/driverWorkforceType";
 
 type Props = {
   rows: RosterRow[];
@@ -73,7 +74,7 @@ export default function RosterTable(props: Props) {
       >
         <thead>
           <tr>
-            {["Name", "FX ID", "Phone", "Role", "Status", "Invite", "Compliance"].map(
+            {["Name", "FX ID", "Phone", "Role", "Utilization", "Status", "Invite", "Compliance"].map(
               (label) => (
                 <th
                   key={label}
@@ -117,6 +118,16 @@ export default function RosterTable(props: Props) {
               <td style={cellStyle}>{row.fx_id ?? "—"}</td>
               <td style={cellStyle}>{row.phone ?? "—"}</td>
               <td style={cellStyle}>{row.worker_type ?? "—"}</td>
+              <td style={cellStyle}>
+                {row.driver_program ? (
+                  <span style={{ display: "grid", gap: 2 }}>
+                    <strong>{driverUtilizationLabel(row.driver_utilization_category)}</strong>
+                    <small style={{ color: "#64748b" }}>
+                      {row.scheduled_days_per_week ?? 0}/{row.driver_full_time_day_threshold ?? 5} baseline days · {Math.round(Number(row.route_utilization_ratio ?? 0) * 100)}%
+                    </small>
+                  </span>
+                ) : "—"}
+              </td>
               <td style={cellStyle}>
                 <Pill value={row.roster_record_kind === "WALK_ON" ? "Walk-on" : row.employment_status} />
               </td>

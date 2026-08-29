@@ -25,6 +25,11 @@ type ScheduleGridRow = {
   role_label: string | null;
   role_bucket: "DRIVER_HELPER" | "OTHER";
   employment_status: string | null;
+  driver_program: "STANDARD" | "AVP" | null;
+  driver_utilization_category: "FULL_TIME" | "PART_TIME" | "UNSCHEDULED" | null;
+  scheduled_days_per_week: number | null;
+  driver_full_time_day_threshold: number | null;
+  route_utilization_ratio: number | string | null;
 
   preset_id: string | null;
   preset_code: string | null;

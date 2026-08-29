@@ -9,6 +9,7 @@ import {
   nextWeekendDates,
   scheduleCellLabel,
 } from "@/features/schedule/lib/scheduleWorkbench";
+import { driverUtilizationLabel } from "@/features/people/lib/driverWorkforceType";
 
 type ScheduleGridRowModel = {
   roster_member_id: string;
@@ -18,6 +19,11 @@ type ScheduleGridRowModel = {
   role_label: string | null;
   role_bucket: "DRIVER_HELPER" | "OTHER";
   employment_status: string | null;
+  driver_program: "STANDARD" | "AVP" | null;
+  driver_utilization_category: "FULL_TIME" | "PART_TIME" | "UNSCHEDULED" | null;
+  scheduled_days_per_week: number | null;
+  driver_full_time_day_threshold: number | null;
+  route_utilization_ratio: number | string | null;
 
   preset_id: string | null;
   preset_code: string | null;
@@ -300,6 +306,25 @@ export default function ScheduleGridRow(props: Props) {
               <span>{row.full_name}</span>
               {roleChip(row.role_label)}
               {traineeChip(row.employment_status)}
+              {row.driver_program ? (
+                <span
+                  title={`${row.scheduled_days_per_week ?? 0} baseline days against a ${row.driver_full_time_day_threshold ?? 5}-day threshold`}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    height: 20,
+                    padding: "0 8px",
+                    borderRadius: 999,
+                    background: row.driver_utilization_category === "FULL_TIME" ? "#ecfdf3" : "#fff7ed",
+                    border: `1px solid ${row.driver_utilization_category === "FULL_TIME" ? "#bbf7d0" : "#fed7aa"}`,
+                    color: row.driver_utilization_category === "FULL_TIME" ? "#166534" : "#b54708",
+                    fontSize: 11,
+                    fontWeight: 800,
+                  }}
+                >
+                  {driverUtilizationLabel(row.driver_utilization_category)} · {Math.round(Number(row.route_utilization_ratio ?? 0) * 100)}%
+                </span>
+              ) : null}
             </div>
 
             <span

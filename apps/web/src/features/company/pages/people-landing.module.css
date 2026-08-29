@@ -63,7 +63,7 @@
 
 .dailyGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   background:
     linear-gradient(110deg, rgba(35, 84, 148, 0.22), transparent 38%),
     repeating-linear-gradient(90deg, transparent 0, transparent 79px, rgba(148, 178, 219, 0.035) 80px),
@@ -477,12 +477,16 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .dailyMetric:nth-child(2) {
+  .dailyMetric:nth-child(2n) {
     border-right: 0;
   }
 
-  .dailyMetric:nth-child(-n + 2) {
+  .dailyMetric:nth-child(-n + 4) {
     border-bottom: 1px solid rgba(175, 205, 242, 0.18);
+  }
+
+  .dailyMetric:last-child {
+    grid-column: 1 / -1;
   }
 
   .intelligenceGrid {

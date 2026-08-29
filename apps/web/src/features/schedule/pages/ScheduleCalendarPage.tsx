@@ -510,7 +510,9 @@ export default function ScheduleCalendarPage() {
                     <div style={{ marginTop: 20 }}>
                       <div>Routes running: {capacity.routeDemand}</div>
                       <div>Drivers scheduled: {capacity.scheduledDrivers}</div>
-                      <div>Routes assigned: {capacity.assignedRoutes}</div>
+                      <div>Routes covered: {capacity.assignedRoutes} of {capacity.routeDemand}</div>
+                      <div>Coverage: {Math.round(capacity.routeCoveragePercent)}%</div>
+                      <div>Standard / AVP cover: {capacity.coveredRoutesByProgram.STANDARD} / {capacity.coveredRoutesByProgram.AVP}</div>
                       <div>Routes open: {capacity.openRoutes.length}</div>
                       <div>
                         Delta: {capacity.capacityDelta >= 0 ? "+" : ""}
@@ -579,6 +581,34 @@ export default function ScheduleCalendarPage() {
                             <span style={{ color: "#64748b" }}>
                               {row.route_name ?? ""}
                             </span>
+                          </div>
+                        ))}
+                      </section>
+
+                      <section
+                        className="schedule-day-drawer-section"
+                        style={{
+                          border: `1px solid ${capacity.seams.length ? "#f5d38d" : "#e2e8f0"}`,
+                          borderRadius: 10,
+                          padding: 12,
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                          <strong style={{ color: capacity.seams.length ? "#92400e" : "#475569" }}>
+                            Coverage Seams
+                          </strong>
+                          <span style={{ color: "#64748b" }}>{capacity.seams.length}</span>
+                        </div>
+                        {capacity.seams.length === 0 ? (
+                          <div style={{ color: "#64748b" }}>None</div>
+                        ) : capacity.seams.map((seam, index) => (
+                          <div
+                            key={`${seam.type}:${seam.routeLabel}:${index}`}
+                            style={{ padding: "7px 0", borderBottom: "1px solid #fef3c7", display: "grid", gap: 2 }}
+                          >
+                            <strong style={{ fontSize: 13 }}>{seam.routeLabel}</strong>
+                            <span style={{ color: "#92400e", fontSize: 12 }}>{seam.type.replaceAll("_", " ")}</span>
+                            <small style={{ color: "#64748b" }}>{seam.detail}</small>
                           </div>
                         ))}
                       </section>

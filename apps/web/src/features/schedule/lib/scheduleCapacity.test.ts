@@ -102,6 +102,65 @@ describe("driver readiness classification", () => {
     expect(capacity.standbyDrivers).toEqual([]);
     expect(capacity.openRoutes.map((route) => route.id)).toEqual(["route-2"]);
     expect(capacity.capacityDelta).toBe(-1);
+    expect(capacity.routeCoveragePercent).toBe(50);
+    expect(capacity.coveredRoutesByProgram).toEqual({ STANDARD: 1, AVP: 0 });
+    expect(capacity.seams.map((seam) => seam.type)).toEqual([
+      "UNCOVERED_ROUTE",
+    ]);
+  });
+
+  it("lets standard and AVP assignments cover routes without treating other roles as drivers", () => {
+    const capacity = resolveDailyScheduleCapacity({
+      serviceDate: "2026-08-22",
+      routes: [
+        {
+          id: "route-1", route_name: "Route 1", current_wa_num: "WA-1",
+          runs_s: true, runs_u: false, runs_m: false, runs_t: false,
+          runs_w: false, runs_h: false, runs_f: false,
+        },
+        {
+          id: "route-2", route_name: "Route 2", current_wa_num: "WA-2",
+          runs_s: true, runs_u: false, runs_m: false, runs_t: false,
+          runs_w: false, runs_h: false, runs_f: false,
+        },
+      ],
+      scheduleRows: [
+        person({ roster_member_id: "standard", worker_type: "Driver", planned_on: true, route_name: "WA-1" }),
+        person({ roster_member_id: "avp", worker_type: "AVP Driver", planned_on: true, route_name: "Route 2" }),
+        person({ roster_member_id: "mechanic", worker_type: "Mechanic", planned_on: true, route_name: "WA-1" }),
+      ],
+    });
+
+    expect(capacity.scheduledDrivers).toBe(2);
+    expect(capacity.assignedRoutes).toBe(2);
+    expect(capacity.routeCoveragePercent).toBe(100);
+    expect(capacity.coveredRoutesByProgram).toEqual({ STANDARD: 1, AVP: 1 });
+    expect(capacity.seams).toEqual([
+      expect.objectContaining({ type: "NON_DRIVER_ROUTE_ASSIGNMENT", rosterMemberIds: ["mechanic"] }),
+    ]);
+  });
+
+  it("surfaces duplicate and out-of-baseline assignments as reporting seams", () => {
+    const capacity = resolveDailyScheduleCapacity({
+      serviceDate: "2026-08-22",
+      routes: [{
+        id: "route-1", route_name: "Route 1", current_wa_num: "WA-1",
+        runs_s: true, runs_u: false, runs_m: false, runs_t: false,
+        runs_w: false, runs_h: false, runs_f: false,
+      }],
+      scheduleRows: [
+        person({ roster_member_id: "driver-1", planned_on: true, route_name: "WA-1" }),
+        person({ roster_member_id: "driver-2", planned_on: true, route_name: "Route 1" }),
+        person({ roster_member_id: "driver-3", planned_on: true, route_name: "Ad hoc 99" }),
+      ],
+    });
+
+    expect(capacity.assignedRoutes).toBe(1);
+    expect(capacity.coveredRoutesByProgram.STANDARD).toBe(1);
+    expect(capacity.seams.map((seam) => seam.type)).toEqual([
+      "DUPLICATE_ROUTE_ASSIGNMENT",
+      "UNMATCHED_ROUTE_ASSIGNMENT",
+    ]);
   });
 
   it("does not report a trainee add-in as a driver-readiness change", () => {

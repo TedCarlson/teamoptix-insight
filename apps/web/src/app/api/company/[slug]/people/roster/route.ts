@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { loadRosterAssetValues } from "@/features/people/server/assetAssignments";
 import { deriveRosterComplianceSignals } from "@/features/compliance/lib/rosterCompliance";
+import { loadRosterUtilizationRows } from "@/features/people/server/loadRosterUtilizationRows";
 
 export const runtime = "nodejs";
 
@@ -26,11 +27,12 @@ export async function GET(
       );
     }
 
-    const { data: roster, error: rosterError } = await supabase
-      .from("company_roster_view")
-      .select("*")
-      .eq("company_id", company.id)
-      .order("full_name");
+    const { data: roster, error: rosterError } =
+      await loadRosterUtilizationRows({
+        supabase,
+        companyId: company.id,
+        companySlug: slug,
+      });
 
     if (rosterError) {
       return NextResponse.json(

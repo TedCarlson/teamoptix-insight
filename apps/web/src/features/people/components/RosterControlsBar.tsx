@@ -1,15 +1,28 @@
 "use client";
 
 export type RosterTab = "active" | "trainee" | "candidates" | "walk_ons" | "former" | "all";
+export type DriverRosterSlice =
+  | "all_roles"
+  | "drivers"
+  | "full_time"
+  | "part_time"
+  | "avp"
+  | "unscheduled";
 
 type Props = {
   tab: RosterTab;
   setTab: (tab: RosterTab) => void;
   search: string;
   setSearch: (value: string) => void;
-  driversOnly: boolean;
-  setDriversOnly: (value: boolean) => void;
-  driverCount: number;
+  driverSlice: DriverRosterSlice;
+  setDriverSlice: (value: DriverRosterSlice) => void;
+  driverCounts: {
+    drivers: number;
+    full_time: number;
+    part_time: number;
+    avp: number;
+    unscheduled: number;
+  };
   counts?: {
     active: number;
     trainee: number;
@@ -32,8 +45,8 @@ const inputStyle: React.CSSProperties = {
 };
 
 export default function RosterControlsBar(props: Props) {
-  const { tab, setTab, search, setSearch, driversOnly, setDriversOnly, driverCount, counts } = props;
-  const dirty = search.trim().length > 0 || driversOnly;
+  const { tab, setTab, search, setSearch, driverSlice, setDriverSlice, driverCounts, counts } = props;
+  const dirty = search.trim().length > 0 || driverSlice !== "all_roles";
   const tabLabel = {
     active: "Active",
     trainee: "Trainee",
@@ -122,7 +135,7 @@ export default function RosterControlsBar(props: Props) {
           onClick={() => {
             if (dirty) {
               setSearch("");
-              setDriversOnly(false);
+              setDriverSlice("all_roles");
             }
           }}
         >
@@ -145,8 +158,8 @@ export default function RosterControlsBar(props: Props) {
         <button
           type="button"
           className="button"
-          aria-pressed={!driversOnly}
-          onClick={() => setDriversOnly(false)}
+          aria-pressed={driverSlice === "all_roles"}
+          onClick={() => setDriverSlice("all_roles")}
           style={{ minHeight: 32, padding: "0 12px", borderRadius: 10, fontSize: 12 }}
         >
           All roles
@@ -154,11 +167,47 @@ export default function RosterControlsBar(props: Props) {
         <button
           type="button"
           className="button"
-          aria-pressed={driversOnly}
-          onClick={() => setDriversOnly(true)}
+          aria-pressed={driverSlice === "drivers"}
+          onClick={() => setDriverSlice("drivers")}
           style={{ minHeight: 32, padding: "0 12px", borderRadius: 10, fontSize: 12 }}
         >
-          Drivers only ({driverCount})
+          All drivers ({driverCounts.drivers})
+        </button>
+        <button
+          type="button"
+          className="button"
+          aria-pressed={driverSlice === "full_time"}
+          onClick={() => setDriverSlice("full_time")}
+          style={{ minHeight: 32, padding: "0 12px", borderRadius: 10, fontSize: 12 }}
+        >
+          Full-time ({driverCounts.full_time})
+        </button>
+        <button
+          type="button"
+          className="button"
+          aria-pressed={driverSlice === "part_time"}
+          onClick={() => setDriverSlice("part_time")}
+          style={{ minHeight: 32, padding: "0 12px", borderRadius: 10, fontSize: 12 }}
+        >
+          Part-time ({driverCounts.part_time})
+        </button>
+        <button
+          type="button"
+          className="button"
+          aria-pressed={driverSlice === "avp"}
+          onClick={() => setDriverSlice("avp")}
+          style={{ minHeight: 32, padding: "0 12px", borderRadius: 10, fontSize: 12 }}
+        >
+          AVP drivers ({driverCounts.avp})
+        </button>
+        <button
+          type="button"
+          className="button"
+          aria-pressed={driverSlice === "unscheduled"}
+          onClick={() => setDriverSlice("unscheduled")}
+          style={{ minHeight: 32, padding: "0 12px", borderRadius: 10, fontSize: 12 }}
+        >
+          Schedule needed ({driverCounts.unscheduled})
         </button>
       </div>
     </>

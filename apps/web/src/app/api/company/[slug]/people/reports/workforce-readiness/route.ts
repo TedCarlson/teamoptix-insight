@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { buildWorkforceTenureProfile } from "@/features/company/analytics/workforce/workforceTenure";
 import { buildResignationNoticeCountdowns } from "@/features/company/analytics/workforce/resignationNotice";
+import { summarizeScheduleCoverage } from "@/features/schedule/lib/scheduleCoverageSummary";
+import { loadRosterUtilizationRows } from "@/features/people/server/loadRosterUtilizationRows";
+import { loadScheduleCoverageRows } from "@/features/schedule/server/loadScheduleCoverageRows";
 
 export const runtime = "nodejs";
 
@@ -18,6 +21,12 @@ function classifyChecklist(itemKey: string, label: string): MilestoneKey | null 
   return null;
 }
 
+function addDays(value: string, days: number) {
+  const date = new Date(`${value}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 export async function GET(request: NextRequest, context: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await context.params;
@@ -25,25 +34,38 @@ export async function GET(request: NextRequest, context: { params: Promise<{ slu
     const { data: company, error: companyError } = await supabase.from("companies").select("id").eq("company_slug", slug).single();
     if (companyError || !company) return NextResponse.json({ error: "Company not found." }, { status: 404 });
 
-    const [rosterResult, configResult, factsResult, stagesResult, eventsResult, noticeResult] = await Promise.all([
-      supabase.from("company_roster_view").select("roster_member_id, full_name, worker_type, employment_status, hire_date").eq("company_id", company.id),
+    const requestedAsOf = request.nextUrl.searchParams.get("as_of");
+    const asOfDate = requestedAsOf && /^\d{4}-\d{2}-\d{2}$/.test(requestedAsOf)
+      ? requestedAsOf
+      : new Date().toISOString().slice(0, 10);
+    const coverageEndDate = addDays(asOfDate, 13);
+
+    const [rosterResult, configResult, factsResult, stagesResult, eventsResult, noticeResult, routesResult, scheduleResult] = await Promise.all([
+      loadRosterUtilizationRows({
+        supabase,
+        companyId: company.id,
+        companySlug: slug,
+      }),
       supabase.from("company_candidate_checklist_config_v").select("item_type_id, item_key, display_label, default_label").eq("company_id", company.id),
       supabase.from("roster_candidate_checklist_fact_v").select("roster_id, item_type_id, is_complete").eq("company_id", company.id),
       supabase.from("roster_candidate_stage_v").select("roster_id, stage_key, default_label, is_terminal").eq("company_id", company.id),
       supabase.from("company_roster_event_view").select("roster_id, event_type, event_metadata").eq("company_id", company.id).in("event_type", ["candidate_created", "candidate_checklist_item_completed", "marked_trainee", "marked_active"]),
       supabase.from("schedule_override").select("id, roster_member_id, override_type, start_date, end_date, separation_effective_date, workflow_status, is_active").eq("company_id", company.id).eq("override_type", "RESIGNATION_NOTICE").eq("is_active", true),
+      supabase.from("route_baseline").select("id, route_name, current_wa_num, runs_s, runs_u, runs_m, runs_t, runs_w, runs_h, runs_f").eq("company_id", company.id).eq("is_active", true).is("effective_end", null),
+      loadScheduleCoverageRows({
+        supabase,
+        companyId: company.id,
+        startDate: asOfDate,
+        endDate: coverageEndDate,
+      }),
     ]);
-    const readError = rosterResult.error || configResult.error || factsResult.error || stagesResult.error || eventsResult.error || noticeResult.error;
+    const readError = rosterResult.error || configResult.error || factsResult.error || stagesResult.error || eventsResult.error || noticeResult.error || routesResult.error || scheduleResult.error;
     if (readError) return NextResponse.json({ error: readError.message }, { status: 500 });
 
     const roster = rosterResult.data ?? [];
     const stages = stagesResult.data ?? [];
     const facts = factsResult.data ?? [];
     const events = eventsResult.data ?? [];
-    const requestedAsOf = request.nextUrl.searchParams.get("as_of");
-    const asOfDate = requestedAsOf && /^\d{4}-\d{2}-\d{2}$/.test(requestedAsOf)
-      ? requestedAsOf
-      : new Date().toISOString().slice(0, 10);
     const tenure = buildWorkforceTenureProfile(roster, asOfDate);
     const noticeAsOf = new Date().toISOString().slice(0, 10);
     const noticeResignations = buildResignationNoticeCountdowns(
@@ -108,6 +130,27 @@ export async function GET(request: NextRequest, context: { params: Promise<{ slu
       return { key, label: milestoneLabels[key], reached, observed, inferred: Math.max(0, reached - observed), lifecycle_conversion: introducedIds.size ? Math.round((reached / introducedIds.size) * 100) : 0, step_conversion: priorReached ? Math.round((reached / priorReached) * 100) : 0 };
     });
 
+    const activeDrivers = roster.filter(
+      (row) => row.employment_status === "Active" && row.driver_program
+    );
+    const driverUtilization = {
+      full_time: activeDrivers.filter((row) => row.driver_utilization_category === "FULL_TIME").length,
+      part_time: activeDrivers.filter((row) => row.driver_utilization_category === "PART_TIME").length,
+      unscheduled: activeDrivers.filter((row) => row.driver_utilization_category === "UNSCHEDULED").length,
+      avp: activeDrivers.filter((row) => row.driver_program === "AVP").length,
+      route_day_equivalents: activeDrivers.reduce(
+        (sum, row) => sum + Number(row.route_utilization_ratio ?? 0),
+        0
+      ),
+      full_time_day_threshold: Number(activeDrivers[0]?.driver_full_time_day_threshold ?? 5),
+    };
+    const scheduleCoverage = summarizeScheduleCoverage({
+      startDate: asOfDate,
+      endDate: coverageEndDate,
+      routes: routesResult.data ?? [],
+      scheduleRows: scheduleResult.data ?? [],
+    });
+
     const failures = new Map<string, { label: string; count: number; reasons: Record<string, number> }>();
     for (const stage of stages.filter((item) => item.is_terminal)) {
       const reached = reachedByRoster.get(stage.roster_id) ?? new Set<MilestoneKey>(["introduced"]);
@@ -127,6 +170,8 @@ export async function GET(request: NextRequest, context: { params: Promise<{ slu
       tenure,
       notice_as_of: noticeAsOf,
       notice_resignations: noticeResignations,
+      driver_utilization: driverUtilization,
+      schedule_coverage: scheduleCoverage,
       checkpoints,
       failures: Array.from(failures.values()),
     });

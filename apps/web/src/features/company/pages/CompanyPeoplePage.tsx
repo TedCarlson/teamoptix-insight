@@ -4,12 +4,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   Clock3,
+  Gauge,
   Umbrella,
   UserRoundCheck,
   UserRoundX,
   Users,
 } from "lucide-react";
 import type { WorkforceResignationNotice } from "@/features/company/analytics/workforce/resignationNotice";
+import { measureDriverUtilization } from "@/features/company/analytics/workforce/driverUtilization";
+import { isDriverRole } from "@/features/people/lib/driverWorkforceType";
 import styles from "./people-landing.module.css";
 
 type RosterMetricRow = {
@@ -19,6 +22,11 @@ type RosterMetricRow = {
   employment_status?: "Active" | "Trainee" | "Candidate" | "Former" | null;
   hire_date?: string | null;
   separation_date?: string | null;
+  driver_program?: "STANDARD" | "AVP" | null;
+  driver_utilization_category?: "FULL_TIME" | "PART_TIME" | "UNSCHEDULED" | null;
+  scheduled_days_per_week?: number | null;
+  driver_full_time_day_threshold?: number | null;
+  route_utilization_ratio?: number | string | null;
 };
 
 type ScheduleDayRow = {
@@ -52,7 +60,7 @@ type TimeOffRequestRow = {
 type DailyMetricProps = {
   icon: React.ReactNode;
   label: string;
-  value: number;
+  value: React.ReactNode;
   detail: string;
   tone?: "default" | "warning" | "positive";
 };
@@ -127,11 +135,6 @@ function uniqueScheduleRows(rows: ScheduleDayRow[]) {
   return Array.from(
     new Map(rows.map((row) => [row.roster_member_id, row])).values()
   );
-}
-
-function isDriverRole(value?: string | null) {
-  const role = value?.trim().toLowerCase();
-  return role === "driver" || role === "lead driver";
 }
 
 function isLeadershipRole(value?: string | null) {
@@ -307,6 +310,10 @@ export default function CompanyPeoplePage() {
       ).length,
     };
   }, [roster]);
+  const driverUtilization = useMemo(
+    () => measureDriverUtilization(roster),
+    [roster],
+  );
 
   const todaySchedule = useMemo(
     () => uniqueScheduleRows(scheduleRows.filter((row) => row.service_date === today)),
@@ -386,6 +393,13 @@ export default function CompanyPeoplePage() {
 
         <section className={styles.commandSurface} aria-label="Today's workforce briefing">
           <div className={styles.dailyGrid}>
+            <DailyMetric
+              icon={<Gauge size={20} />}
+              label="Scheduled utilization"
+              value={`${driverUtilization.utilizationPercent}%`}
+              detail={`${driverUtilization.routeDayEquivalents.toFixed(1)} of ${driverUtilization.driverPositions} driver equivalents · ${driverUtilization.fullTime} FT / ${driverUtilization.partTime} PT${driverUtilization.avp ? ` · ${driverUtilization.avp} AVP` : ""}${driverUtilization.unscheduled ? ` · ${driverUtilization.unscheduled} need a baseline` : ""}`}
+              tone={driverUtilization.unscheduled ? "warning" : "positive"}
+            />
             <DailyMetric
               icon={<UserRoundCheck size={20} />}
               label="Scheduled today"

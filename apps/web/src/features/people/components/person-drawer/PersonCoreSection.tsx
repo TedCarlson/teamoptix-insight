@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { RosterRow } from "@/features/people/types/roster.types";
 import { DrawerSection, FactRow, compactInput } from "./PersonDrawerRows";
+import { driverUtilizationLabel } from "@/features/people/lib/driverWorkforceType";
 
 export type CoreDraft = {
   full_name: string;
@@ -127,6 +128,18 @@ export default function PersonCoreSection({ person, saving, onSave }: Props) {
             <FactRow label="Email" value={person.email} />
             <FactRow label="Phone" value={person.phone} />
             <FactRow label="Role" value={person.worker_type} />
+            {person.driver_program ? (
+              <>
+                <FactRow
+                  label="Schedule utilization"
+                  value={driverUtilizationLabel(person.driver_utilization_category)}
+                />
+                <FactRow
+                  label="Baseline contribution"
+                  value={`${person.scheduled_days_per_week ?? 0} of ${person.driver_full_time_day_threshold ?? 5} days · ${Math.round(Number(person.route_utilization_ratio ?? 0) * 100)}%`}
+                />
+              </>
+            ) : null}
             <FactRow label="Market" value={person.market_code} />
             <FactRow label="Reports to" value={person.reports_to_name} />
             <FactRow label="Notes" value={person.notes} />

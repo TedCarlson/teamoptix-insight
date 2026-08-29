@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { loadRosterUtilizationRows } from "@/features/people/server/loadRosterUtilizationRows";
 
 export const runtime = "nodejs";
 
@@ -98,12 +99,12 @@ export async function GET(
       );
     }
 
-    const { data: rosterData, error: rosterErr } = await sb
-      .from("company_roster_view")
-      .select("*")
-      .eq("company_id", company.id)
-      .in("employment_status", ["Active", "Trainee"])
-      .order("full_name");
+    const { data: allRosterData, error: rosterErr } =
+      await loadRosterUtilizationRows({
+        supabase: sb,
+        companyId: company.id,
+        companySlug: slug,
+      });
 
     if (rosterErr) {
       return NextResponse.json(
@@ -112,7 +113,9 @@ export async function GET(
       );
     }
 
-    const rosterRows = (rosterData ?? []) as RosterRecord[];
+    const rosterRows = (allRosterData ?? []).filter((row) =>
+      ["Active", "Trainee"].includes(String(row.employment_status ?? "")),
+    ) as RosterRecord[];
     const rosterIds = rosterRows
       .map((row) => row.roster_member_id)
       .filter((value): value is string => Boolean(value));
@@ -248,6 +251,24 @@ export async function GET(
             typeof roster.employment_status === "string"
               ? roster.employment_status
               : null,
+          driver_program:
+            typeof roster.driver_program === "string"
+              ? roster.driver_program
+              : null,
+          driver_utilization_category:
+            typeof roster.driver_utilization_category === "string"
+              ? roster.driver_utilization_category
+              : null,
+          scheduled_days_per_week:
+            typeof roster.scheduled_days_per_week === "number"
+              ? roster.scheduled_days_per_week
+              : null,
+          driver_full_time_day_threshold:
+            typeof roster.driver_full_time_day_threshold === "number"
+              ? roster.driver_full_time_day_threshold
+              : null,
+          route_utilization_ratio:
+            roster.route_utilization_ratio ?? null,
 
           preset_id: baseline?.preset_id ?? null,
           preset_code: preset?.preset_code ?? null,

@@ -1397,13 +1397,13 @@
 .people-reports-toolbar label { display: grid; gap: 5px; min-width: 170px; color: #64748b; font-size: 10px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
 .people-reports-toolbar label:first-child { min-width: 230px; }
 .people-reports-toolbar .people-workspace-search { margin-left: auto; }
-.people-reports-stats { grid-template-columns: repeat(3,minmax(160px,1fr)); }
+.people-reports-stats { grid-template-columns: repeat(5,minmax(130px,1fr)); }
 @media (max-width: 900px) {
   .people-workspace-toolbar { flex-wrap: wrap; }
   .people-workspace-stats { order: 2; flex-basis: 100%; grid-template-columns: repeat(2,minmax(0,1fr)); }
   .people-workspace-stats > span:nth-child(2n) { border-right: 0; }
   .people-workspace-stats > span:nth-child(-n+2) { border-bottom: 1px solid #e5eaf0; }
-  .people-reports-stats { grid-template-columns: repeat(3,minmax(160px,1fr)); overflow-x: auto; }
+  .people-reports-stats { grid-template-columns: repeat(5,minmax(150px,1fr)); overflow-x: auto; }
   .people-reports-stats > span { border-right: 1px solid #e5eaf0; border-bottom: 0; }
 }
 @media (max-width: 620px) {
