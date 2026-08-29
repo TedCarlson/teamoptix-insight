@@ -87,12 +87,16 @@ export default function PersonRoleAccessSection({ companySlug, person, onSaved }
       : [...current, grantKey]);
   }
 
-  async function save() {
+  async function persistRoleChange(options?: { promoteToDriver?: boolean }) {
     if (!context) return;
     setSaving(true);
     setError(null);
     setMessage(null);
     try {
+      const promoteToDriver = options?.promoteToDriver === true;
+      const nextRoleLabel = promoteToDriver ? "Driver" : roleLabel;
+      const nextLeadershipRoleKey = promoteToDriver ? null : leadershipRoleKey;
+      const nextGrants = promoteToDriver ? [] : grants;
       const response = await fetch(
         `/api/company/${companySlug}/people/roster/${person.roster_member_id}/role-access`,
         {
@@ -100,9 +104,10 @@ export default function PersonRoleAccessSection({ companySlug, person, onSaved }
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            role_label: roleLabel,
-            leadership_role_key: leadershipRoleKey,
-            grants,
+            role_label: nextRoleLabel,
+            leadership_role_key: nextLeadershipRoleKey,
+            grants: nextGrants,
+            promote_to_driver: promoteToDriver,
           }),
         },
       );
@@ -110,8 +115,12 @@ export default function PersonRoleAccessSection({ companySlug, person, onSaved }
       if (!response.ok) throw new Error(payload?.error ?? "Failed to update role and access.");
       applyContext(payload.context as RoleContext);
       setEditing(false);
-      setMessage("Role, leadership, and workspace access updated together.");
       await onSaved();
+      setMessage(
+        promoteToDriver
+          ? "Promoted to Driver. Standard daily pay starts today; trainee pay ended yesterday."
+          : "Role, leadership, and workspace access updated together.",
+      );
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Failed to update role and access.");
     } finally {
@@ -145,6 +154,25 @@ export default function PersonRoleAccessSection({ companySlug, person, onSaved }
           </div>
           {!context?.is_linked ? (
             <p style={{ margin: 0, color: "#92400e" }}>Invite this person to the app before assigning workspace tools. Their roster role and leadership responsibility can still be maintained.</p>
+          ) : null}
+          {person.employment_status === "Trainee" ? (
+            <div style={{ border: "1px solid #bfdbfe", borderRadius: 12, background: "#eff6ff", padding: 12, display: "grid", gap: 8 }}>
+              <div>
+                <strong style={{ color: "#1e3a8a" }}>Ready to drive?</strong>
+                <p style={{ margin: "3px 0 0", color: "#475569", fontSize: 12 }}>
+                  One click activates Driver status and switches payroll from trainee pay to the standard daily rate.
+                </p>
+              </div>
+              <button
+                className="button button-primary"
+                type="button"
+                disabled={saving}
+                onClick={() => void persistRoleChange({ promoteToDriver: true })}
+                style={{ justifySelf: "start" }}
+              >
+                {saving ? "Promoting…" : "Promote to Driver"}
+              </button>
+            </div>
           ) : null}
         </div>
       ) : (
@@ -199,7 +227,15 @@ export default function PersonRoleAccessSection({ companySlug, person, onSaved }
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <button className="button button-primary" type="button" disabled={saving || !roleLabel} onClick={() => void save()}>
+            <button
+              className="button button-primary"
+              type="button"
+              disabled={saving || !roleLabel}
+              onClick={() => void persistRoleChange({
+                promoteToDriver:
+                  person.employment_status === "Trainee" && roleLabel === "Driver",
+              })}
+            >
               {saving ? "Saving…" : "Save role & access"}
             </button>
           </div>

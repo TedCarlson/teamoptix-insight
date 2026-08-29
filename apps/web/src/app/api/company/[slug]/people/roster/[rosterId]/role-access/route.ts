@@ -73,22 +73,57 @@ export async function PATCH(
 
     const supabase = await getSupabaseServerClient();
     const wantsAssets = grants.includes("assets");
-    const { data, error } = await supabase.rpc("apply_company_person_role_change", {
-      p_company_slug: slug,
-      p_roster_member_id: rosterId,
-      p_role_label: roleLabel,
-      p_leadership_role_key: leadershipRoleKey,
-      p_grant_keys: grants.filter((grant: string) => grant !== "assets"),
-    });
+    const promoteToDriver = body.promote_to_driver === true && roleLabel === "Driver";
+    const { data, error } = promoteToDriver
+      ? await supabase.rpc("promote_company_trainee_to_driver", {
+          p_company_slug: slug,
+          p_roster_id: rosterId,
+          p_effective_date:
+            typeof body.effective_date === "string" && body.effective_date.trim()
+              ? body.effective_date.trim()
+              : null,
+        })
+      : await supabase.rpc("apply_company_person_role_change", {
+          p_company_slug: slug,
+          p_roster_member_id: rosterId,
+          p_role_label: roleLabel,
+          p_leadership_role_key: leadershipRoleKey,
+          p_grant_keys: grants.filter((grant: string) => grant !== "assets"),
+        });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (data?.error) return NextResponse.json({ error: data.error }, { status: errorStatus(data.error) });
+    const roleContext = promoteToDriver ? data?.role_context : data;
+
+    if (!roleContext) {
+      return NextResponse.json({ error: "Role update did not return a roster context." }, { status: 500 });
+    }
+
+    if (!promoteToDriver && !roleContext.profile_id && wantsAssets) {
+      return NextResponse.json(
+        { error: "This roster member must accept an app invitation before Assets access can be assigned." },
+        { status: 400 },
+      );
+    }
+
+    if (promoteToDriver || !roleContext.profile_id) {
+      return NextResponse.json(
+        {
+          ok: true,
+          promoted: promoteToDriver,
+          context: roleContext,
+          promotion: promoteToDriver ? data : null,
+        },
+        { status: 200 },
+      );
+    }
+
     const { data: assetData, error: assetError } = await supabase.rpc(
       "update_company_profile_asset_grant",
-      { p_company_slug: slug, p_profile_id: data.profile_id, p_is_active: wantsAssets },
+      { p_company_slug: slug, p_profile_id: roleContext.profile_id, p_is_active: wantsAssets },
     );
     if (assetError || assetData?.error) return NextResponse.json({ error: assetError?.message ?? assetData?.error }, { status: 500 });
-    return NextResponse.json({ ok: true, context: withAssetGrant(data, assetData) }, { status: 200 });
+    return NextResponse.json({ ok: true, context: withAssetGrant(roleContext, assetData) }, { status: 200 });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to update role and access." },

@@ -21,6 +21,48 @@ export async function PATCH(
       cleanText(body.effective_date) ?? new Date().toISOString().slice(0, 10);
     const note = cleanText(body.note);
 
+    const { data: currentRoster, error: currentRosterError } = await supabase
+      .from("company_roster_view")
+      .select("employment_status")
+      .eq("roster_member_id", rosterId)
+      .maybeSingle();
+
+    if (currentRosterError || !currentRoster) {
+      return NextResponse.json(
+        { error: currentRosterError?.message ?? "Roster member not found." },
+        { status: currentRosterError ? 400 : 404 },
+      );
+    }
+
+    if (currentRoster.employment_status === "Trainee" && status === "Active") {
+      const { data: promotion, error: promotionError } = await supabase.rpc(
+        "promote_company_trainee_to_driver",
+        {
+          p_company_slug: slug,
+          p_roster_id: rosterId,
+          p_effective_date: effectiveDate,
+        },
+      );
+
+      if (promotionError || promotion?.error) {
+        return NextResponse.json(
+          { error: promotionError?.message ?? promotion.error },
+          { status: 400 },
+        );
+      }
+
+      return NextResponse.json({
+        ok: true,
+        promoted: true,
+        promotion,
+        roster: {
+          roster_member_id: rosterId,
+          employment_status: "Active",
+          separation_date: null,
+        },
+      });
+    }
+
     const { error } = await supabase.rpc("roster_set_employment_status", {
       p_company_slug: slug,
       p_roster_id: rosterId,
