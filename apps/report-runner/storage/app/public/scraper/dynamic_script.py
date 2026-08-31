@@ -842,7 +842,8 @@ def should_collect_route_gpx():
     return (
         os.environ.get("FCMS_ROUTE_GPX_ONLY", "0").strip().lower()
         in {"1", "true", "yes", "on"}
-        or bool(REQUESTED_MANIFEST_TYPES)
+        or os.environ.get("FCMS_COLLECT_ROUTE_GPX", "0").strip().lower()
+        in {"1", "true", "yes", "on"}
     )
 
 def should_download_manifest(manifest_type):

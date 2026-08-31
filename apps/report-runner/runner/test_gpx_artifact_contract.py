@@ -52,6 +52,7 @@ class GpxArtifactContractTests(unittest.TestCase):
             source = (SCRAPER_HOME / script_name).read_text(encoding="utf-8")
             self.assertIn("def should_collect_route_gpx", source)
             self.assertIn('os.environ.get("FCMS_ROUTE_GPX_ONLY"', source)
+            self.assertIn('os.environ.get("FCMS_COLLECT_ROUTE_GPX"', source)
             self.assertIn("if should_collect_route_gpx():", source)
 
     def test_targeted_gpx_only_pass_uses_an_isolated_browser(self):
@@ -106,6 +107,7 @@ class GpxArtifactContractTests(unittest.TestCase):
         self.assertIn('"report_shape_key": "FCC_ROUTE_GPX"', source)
         self.assertIn('"route_gpx_only": reports == ["ROUTE_GPX"]', source)
         self.assertIn('environment["FCMS_ROUTE_GPX_ONLY"]', source)
+        self.assertIn('environment["FCMS_COLLECT_ROUTE_GPX"]', source)
 
     def test_gpx_only_closeout_uses_exact_date_historical_collector(self):
         source = DONOR_RUNNER.read_text(encoding="utf-8")
