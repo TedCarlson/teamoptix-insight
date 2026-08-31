@@ -38,6 +38,13 @@ from dsw_package_status import (
 
 from connections import getConnection, closeConnection, getScrapingConfig, getMainFolder, writeError, isPlatformLinux, getDailyServiceOptions
 
+FEDEX_USERNAME_XPATH = (
+    '//input[@name="identifier"] | '
+    '//input[@name="credentials.username"] | '
+    '//input[@name="username"] | '
+    '//input[@id="username"]'
+)
+
 #
 import logging
 log_folder = os.path.join(getMainFolder(), 'Logs')
@@ -523,8 +530,7 @@ def authenticateDriver(driver):
                 "//input[@class='credentials_input_submit']",
             )
             or current_driver.find_elements(
-                By.XPATH,
-                '//input[@name="identifier"]',
+                By.XPATH, FEDEX_USERNAME_XPATH,
             )
         )
 
@@ -542,7 +548,7 @@ def authenticateDriver(driver):
         )
         return
 
-    if not driver.find_elements(By.XPATH, '//input[@name="identifier"]'):
+    if not driver.find_elements(By.XPATH, FEDEX_USERNAME_XPATH):
         btn = WebDriverWait(driver, 20).until(
             EC.presence_of_element_located(
                 (By.XPATH, "//input[@class='credentials_input_submit']")
@@ -550,9 +556,9 @@ def authenticateDriver(driver):
         )
         btn.click()
 
-    username = WebDriverWait(driver, 20).until(
+    username = WebDriverWait(driver, 40).until(
         EC.presence_of_element_located(
-            (By.XPATH, '//input[@name="identifier"]')
+            (By.XPATH, FEDEX_USERNAME_XPATH)
         )
     )
     logging.info("On login page....")
