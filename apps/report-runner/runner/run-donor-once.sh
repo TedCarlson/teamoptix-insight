@@ -91,9 +91,23 @@ if [ -z "$runner_goal" ]; then
   esac
 fi
 
+governed_historical_lane=0
 if [ "$runner_goal" = "collect_historical_dsw_range" ] \
   || [ "$runner_goal" = "collect_previous_day_dsw" ] \
   || [ "$runner_goal" = "collect_targeted_artifacts" ]; then
+  governed_historical_lane=1
+fi
+
+# GPX recovery belongs to the exact-date historical collector even when the
+# governing schedule request remains ROUTE_CLOSEOUT. The continuous scraper
+# is a live-page collector and can exit cleanly without visiting the requested
+# prior service date; the historical collector explicitly applies both the
+# service date and the targeted work-area list.
+case "${FCMS_ROUTE_GPX_ONLY:-0}" in
+  1|true|TRUE|yes|YES|on|ON) governed_historical_lane=1 ;;
+esac
+
+if [ "$governed_historical_lane" = "1" ]; then
 
   HISTORICAL_DATES=()
 
