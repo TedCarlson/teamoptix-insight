@@ -60,6 +60,7 @@ class ContinuousControllerTests(unittest.TestCase):
                     "FCC",
                     "DELIVERY_MANIFEST",
                     "PICKUP_MANIFEST",
+                    "ROUTE_GPX",
                 ],
             },
         }
@@ -91,6 +92,29 @@ class ContinuousControllerTests(unittest.TestCase):
         self.assertFalse(controller.within_route_closeout_window(cutoff))
         self.assertTrue(controller.route_closeout_cutoff_due(cutoff))
 
+    def test_fixed_daily_jobs_remain_due_after_their_exact_minute(self):
+        controller = self.controller()
+        controller.schedule["previous_day_close"] = {
+            "enabled": True,
+            "start_time": "03:00",
+        }
+        controller.schedule["dro_am"] = {
+            "enabled": True,
+            "start_time": "04:00",
+        }
+        zone = ZoneInfo("America/New_York")
+
+        self.assertTrue(
+            controller.previous_day_close_due(
+                datetime(2026, 8, 31, 3, 47, tzinfo=zone)
+            )
+        )
+        self.assertTrue(
+            controller.dro_am_due(
+                datetime(2026, 8, 31, 4, 22, tzinfo=zone)
+            )
+        )
+
     def test_route_closeout_uses_reduced_source_cadence(self):
         controller = self.controller()
         zone = ZoneInfo("America/New_York")
@@ -105,6 +129,7 @@ class ContinuousControllerTests(unittest.TestCase):
                 "FCC",
                 "DELIVERY_MANIFEST",
                 "PICKUP_MANIFEST",
+                "ROUTE_GPX",
             ],
         )
 
@@ -113,6 +138,33 @@ class ContinuousControllerTests(unittest.TestCase):
             "route_closeout_last_dsw_at": "2026-08-26T00:00:00Z",
         }
         self.assertFalse(controller.route_closeout_source_due(now))
+
+    def test_retained_gpx_recovery_uses_terminal_day_and_bounded_window(self):
+        controller = self.controller()
+        zone = ZoneInfo("America/New_York")
+        before = datetime(2026, 8, 31, 3, 9, tzinfo=zone)
+        due = datetime(2026, 8, 31, 3, 10, tzinfo=zone)
+        pulse = datetime(2026, 8, 31, 7, 30, tzinfo=zone)
+
+        self.assertFalse(controller.retained_gpx_recovery_due(before))
+        self.assertTrue(controller.retained_gpx_recovery_due(due))
+        self.assertFalse(controller.retained_gpx_recovery_due(pulse))
+
+        controller.journal["retained_gpx_recovery_date"] = "2026-08-31"
+        self.assertFalse(controller.retained_gpx_recovery_due(due))
+
+    def test_route_closeout_never_drops_required_gpx_target(self):
+        controller = self.controller()
+        controller.schedule["route_closeout"]["reports"] = ["FCC"]
+        zone = ZoneInfo("America/New_York")
+        reports = controller.route_closeout_reports(
+            datetime(2026, 8, 31, 20, 0, tzinfo=zone),
+            ["447"],
+        )
+
+        self.assertIn("ROUTE_GPX", reports)
+        self.assertIn("DELIVERY_MANIFEST", reports)
+        self.assertIn("PICKUP_MANIFEST", reports)
 
 
 if __name__ == "__main__":

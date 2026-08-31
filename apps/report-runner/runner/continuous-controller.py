@@ -433,8 +433,7 @@ class ContinuousController:
         )
         completed_date = str(self.journal.get("previous_day_close_date") or "")
         return (
-            now.hour == hour
-            and now.minute == minute
+            now.hour * 60 + now.minute >= hour * 60 + minute
             and completed_date != now.date().isoformat()
         )
 
@@ -447,8 +446,7 @@ class ContinuousController:
         )
         completed_date = str(self.journal.get("dro_am_date") or "")
         return (
-            now.hour == hour
-            and now.minute == minute
+            now.hour * 60 + now.minute >= hour * 60 + minute
             and completed_date != now.date().isoformat()
         )
 
@@ -544,17 +542,24 @@ class ContinuousController:
             "FCC",
             "DELIVERY_MANIFEST",
             "PICKUP_MANIFEST",
+            "ROUTE_GPX",
         ]
         if manifest_routes:
             for required in (
                 "FCC",
                 "DELIVERY_MANIFEST",
                 "PICKUP_MANIFEST",
+                "ROUTE_GPX",
             ):
                 if required not in reports:
                     reports.append(required)
         else:
-            reports = [report for report in reports if "MANIFEST" not in report]
+            reports = [
+                report
+                for report in reports
+                if report
+                not in ("DELIVERY_MANIFEST", "PICKUP_MANIFEST", "ROUTE_GPX")
+            ]
             if "FCC" not in reports:
                 reports.append("FCC")
 
@@ -684,6 +689,106 @@ class ContinuousController:
             if status != 0:
                 return status
         return 0
+
+    def retained_gpx_recovery_due(self, now: datetime) -> bool:
+        closeout = self.route_closeout_config()
+        if closeout.get("retained_gpx_recovery_enabled") is False:
+            return False
+        completed_date = str(
+            self.journal.get("retained_gpx_recovery_date") or ""
+        )
+        if completed_date == now.date().isoformat():
+            return False
+        start_hour, start_minute = self.parse_clock(
+            str(closeout.get("retained_gpx_recovery_start_time") or "03:10")
+        )
+        pulse_hour, pulse_minute = self.parse_clock(
+            str(
+                (self.schedule.get("operations_pulse") or {}).get(
+                    "start_time"
+                )
+                or "07:30"
+            )
+        )
+        current = now.hour * 60 + now.minute
+        if not (
+            current >= start_hour * 60 + start_minute
+            and current < pulse_hour * 60 + pulse_minute
+        ):
+            return False
+        return self.journal_interval_due(
+            "retained_gpx_recovery_last_attempt_at",
+            now,
+            int(
+                closeout.get("retained_gpx_recovery_interval_minutes") or 30
+            ),
+        )
+
+    def retained_gpx_recovery_targets(self, service_date: str) -> list[str]:
+        closeout = self.route_closeout_config()
+        value = rpc(
+            "get_operations_route_gpx_recovery_targets",
+            {
+                "p_company_id": self.schedule["company_id"],
+                "p_service_date": service_date,
+                "p_limit": int(closeout.get("route_batch_size") or 6),
+            },
+        )
+        rows = value if isinstance(value, list) else []
+        return [
+            str(row.get("route_key") or "").strip()
+            for row in rows
+            if isinstance(row, dict) and str(row.get("route_key") or "").strip()
+        ]
+
+    def retained_gpx_missing_count(self, service_date: str) -> int:
+        value = rpc(
+            "count_operations_route_gpx_missing",
+            {
+                "p_company_id": self.schedule["company_id"],
+                "p_service_date": service_date,
+            },
+        )
+        return max(0, int(value or 0))
+
+    def run_retained_gpx_recovery(self, now: datetime) -> tuple[int, bool]:
+        closeout = self.route_closeout_config()
+        maximum = max(
+            1,
+            min(
+                int(closeout.get("retained_gpx_recovery_max_batches") or 12),
+                25,
+            ),
+        )
+        batch_count = 0
+        for age_days in range(1, 8):
+            service_date = (now.date() - timedelta(days=age_days)).isoformat()
+            while batch_count < maximum:
+                routes = self.retained_gpx_recovery_targets(service_date)
+                if not routes:
+                    break
+                status = self.run_cycle(
+                    "ROUTE_CLOSEOUT",
+                    service_date,
+                    ["ROUTE_GPX"],
+                    manifest_route_keys=routes,
+                )
+                batch_count += 1
+                if status != 0:
+                    return status, False
+
+        missing_count = sum(
+            self.retained_gpx_missing_count(
+                (now.date() - timedelta(days=age_days)).isoformat()
+            )
+            for age_days in range(1, 8)
+        )
+        print(
+            "[controller] retained GPX recovery "
+            f"batches={batch_count} remaining_routes={missing_count}",
+            flush=True,
+        )
+        return 0, missing_count == 0
 
     def mark_auth_failure(self) -> None:
         version = int((self.credential or {}).get("version") or 0)
@@ -840,6 +945,39 @@ class ContinuousController:
                         self.stop_event.wait(1)
                         continue
 
+                    if (
+                        self.retained_gpx_recovery_due(now)
+                        and self.credential_attempt_allowed()
+                        and time.monotonic() >= self.next_retry_at
+                    ):
+                        if SHADOW_MODE:
+                            self.shadow_observation(
+                                "ROUTE_GPX_RECOVERY",
+                                now.date().isoformat(),
+                                ["ROUTE_GPX"],
+                            )
+                        else:
+                            status, complete = self.run_retained_gpx_recovery(now)
+                            self.journal[
+                                "retained_gpx_recovery_last_attempt_at"
+                            ] = utc_iso()
+                            if status == 0:
+                                self.failure_count = 0
+                                self.next_retry_at = 0
+                                if complete:
+                                    self.journal[
+                                        "retained_gpx_recovery_date"
+                                    ] = now.date().isoformat()
+                                self.save_journal()
+                            elif status == 40:
+                                self.save_journal()
+                                self.mark_auth_failure()
+                            else:
+                                self.save_journal()
+                                self.mark_transient_failure()
+                        self.stop_event.wait(1)
+                        continue
+
                     closeout = self.route_closeout_config()
                     if (
                         closeout.get("enabled")
@@ -894,6 +1032,7 @@ class ContinuousController:
                                     "FCC",
                                     "DELIVERY_MANIFEST",
                                     "PICKUP_MANIFEST",
+                                    "ROUTE_GPX",
                                 ],
                             )
                             self.stop_event.wait(5)

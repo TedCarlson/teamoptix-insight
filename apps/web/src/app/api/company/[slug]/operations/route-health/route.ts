@@ -628,6 +628,14 @@ export async function GET(
           error: durableManifestDayResult.error.message,
         });
       }
+      if (routeGpxResult.error) {
+        console.error("Route GPX geometry unavailable.", {
+          companyId: company.id,
+          serviceDate,
+          routeKey,
+          error: routeGpxResult.error.message,
+        });
+      }
 
       if (detailError) {
         return NextResponse.json({ error: detailError.message }, { status: 500 });
@@ -717,6 +725,11 @@ export async function GET(
         ),
         stop_clusters: clustersResult.data ?? [],
         route_gpx: routeGpx,
+        route_gpx_status: routeGpxResult.error
+          ? "ERROR"
+          : routeGpx
+            ? "AVAILABLE"
+            : "MISSING",
         collection_pace:
           liveCollectionPace.capture_count > 0
             ? liveCollectionPace

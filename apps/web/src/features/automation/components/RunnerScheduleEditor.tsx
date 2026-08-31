@@ -68,10 +68,15 @@ export function defaultRunnerSchedule(params: {
         route_batch_size: 6,
         previous_day_recovery_enabled: true,
         previous_day_recovery_max_batches: 4,
+        retained_gpx_recovery_enabled: true,
+        retained_gpx_recovery_start_time: "03:10",
+        retained_gpx_recovery_max_batches: 12,
+        retained_gpx_recovery_interval_minutes: 30,
         reports: [
           "FCC",
           "DELIVERY_MANIFEST",
           "PICKUP_MANIFEST",
+          "ROUTE_GPX",
         ],
       },
       operating_weekdays: [1, 2, 3, 4, 5, 6],
@@ -122,7 +127,16 @@ export default function RunnerScheduleEditor(props: {
     route_batch_size: 6,
     previous_day_recovery_enabled: true,
     previous_day_recovery_max_batches: 4,
-    reports: ["FCC", "DELIVERY_MANIFEST", "PICKUP_MANIFEST"],
+    retained_gpx_recovery_enabled: true,
+    retained_gpx_recovery_start_time: "03:10",
+    retained_gpx_recovery_max_batches: 12,
+    retained_gpx_recovery_interval_minutes: 30,
+    reports: [
+      "FCC",
+      "DELIVERY_MANIFEST",
+      "PICKUP_MANIFEST",
+      "ROUTE_GPX",
+    ],
   };
 
   function setDroAm(

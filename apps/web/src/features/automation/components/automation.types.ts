@@ -107,6 +107,10 @@ export type RunnerSchedule = {
       route_batch_size?: number;
       previous_day_recovery_enabled?: boolean;
       previous_day_recovery_max_batches?: number;
+      retained_gpx_recovery_enabled?: boolean;
+      retained_gpx_recovery_start_time?: string;
+      retained_gpx_recovery_max_batches?: number;
+      retained_gpx_recovery_interval_minutes?: number;
       reports?: string[];
     };
     operating_weekdays?: number[];

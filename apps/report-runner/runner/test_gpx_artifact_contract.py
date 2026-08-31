@@ -99,6 +99,13 @@ class GpxArtifactContractTests(unittest.TestCase):
         )
         self.assertGreater(preserve_call_index, terminal_receipt_index)
 
+    def test_continuous_runner_declares_gpx_as_a_first_class_target(self):
+        source = CONTINUOUS_RUNNER.read_text(encoding="utf-8")
+        self.assertIn('"ROUTE_GPX": {', source)
+        self.assertIn('"report_shape_key": "FCC_ROUTE_GPX"', source)
+        self.assertIn('"route_gpx_only": reports == ["ROUTE_GPX"]', source)
+        self.assertIn('environment["FCMS_ROUTE_GPX_ONLY"]', source)
+
     def test_queued_backfill_marks_gpx_only_after_registration(self):
         self.assertIn("preserve_acknowledged_route_gpx_state", self.source)
         registration_index = self.source.index(

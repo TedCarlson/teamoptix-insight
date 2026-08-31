@@ -170,6 +170,22 @@ export async function PATCH(
       typeof incomingReportConfig.route_closeout === "object"
         ? incomingReportConfig.route_closeout
         : {};
+    const requiredRouteCloseoutReports = [
+      "FCC",
+      "DELIVERY_MANIFEST",
+      "PICKUP_MANIFEST",
+      "ROUTE_GPX",
+    ];
+    const routeCloseoutReports = Array.from(
+      new Set([
+        ...(Array.isArray(incomingRouteCloseout.reports)
+          ? incomingRouteCloseout.reports.map((value: unknown) =>
+              String(value).toUpperCase()
+            )
+          : []),
+        ...requiredRouteCloseoutReports,
+      ])
+    );
     const gateAuthority = String(
       incomingRunGate.authority ?? "MANUAL"
     ).toUpperCase();
@@ -215,12 +231,12 @@ export async function PATCH(
         route_batch_size: 6,
         previous_day_recovery_enabled: true,
         previous_day_recovery_max_batches: 4,
-        reports: [
-          "FCC",
-          "DELIVERY_MANIFEST",
-          "PICKUP_MANIFEST",
-        ],
+        retained_gpx_recovery_enabled: true,
+        retained_gpx_recovery_start_time: "03:10",
+        retained_gpx_recovery_max_batches: 12,
+        retained_gpx_recovery_interval_minutes: 30,
         ...incomingRouteCloseout,
+        reports: routeCloseoutReports,
       },
       run_gate: {
         authority: "MANUAL",
