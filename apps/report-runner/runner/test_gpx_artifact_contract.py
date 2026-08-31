@@ -5,6 +5,7 @@ from pathlib import Path
 
 RUNNER = Path(__file__).with_name("run-insight-request.py")
 CONTINUOUS_RUNNER = Path(__file__).with_name("run-continuous-cycle.py")
+DONOR_RUNNER = Path(__file__).with_name("run-donor-once.sh")
 SCRAPER_HOME = RUNNER.parent.parent / "storage" / "app" / "public" / "scraper"
 
 
@@ -105,6 +106,16 @@ class GpxArtifactContractTests(unittest.TestCase):
         self.assertIn('"report_shape_key": "FCC_ROUTE_GPX"', source)
         self.assertIn('"route_gpx_only": reports == ["ROUTE_GPX"]', source)
         self.assertIn('environment["FCMS_ROUTE_GPX_ONLY"]', source)
+
+    def test_gpx_only_closeout_uses_exact_date_historical_collector(self):
+        source = DONOR_RUNNER.read_text(encoding="utf-8")
+        self.assertIn('case "${FCMS_ROUTE_GPX_ONLY:-0}" in', source)
+        self.assertIn("governed_historical_lane=1", source)
+        self.assertIn(
+            'FCMS_SERVICE_DATE="$service_date" "$PY" '
+            '"$SCRAPER_DIR/scrape_particular_date.py"',
+            source,
+        )
 
     def test_queued_backfill_marks_gpx_only_after_registration(self):
         self.assertIn("preserve_acknowledged_route_gpx_state", self.source)
