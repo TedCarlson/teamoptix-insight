@@ -49,6 +49,26 @@ class BrowserLifecycleContractTests(unittest.TestCase):
         )
         self.assertLess(combined_position, delivery_position)
 
+    def test_manifest_sweep_survives_fedex_selector_reordering(self):
+        scraper_source = (
+            Path(__file__).parents[1]
+            / "storage/app/public/scraper/dynamic_script.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("stable_manifest_work_areas", scraper_source)
+        self.assertIn(
+            "clickManifestSearch(driver, selected_work_area)",
+            scraper_source,
+        )
+        self.assertIn(
+            '"reason": "MANIFEST_ROUTE_NAVIGATION_FAILED"',
+            scraper_source,
+        )
+        self.assertIn(
+            "failed without stopping the sweep",
+            scraper_source,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
