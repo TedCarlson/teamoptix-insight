@@ -115,6 +115,15 @@ REPORT_TARGETS: dict[str, dict[str, Any]] = {
         "runner_section": "P_AND_D",
         "expected_filename_match": ["PickupManifest", "PM"],
     },
+    "ROUTE_GPX": {
+        "key": "P_AND_D_ROUTE_GPX",
+        "label": "P&D · Route GPX",
+        "artifact_key": "ROUTE_GPX",
+        "report_family_key": "FCC",
+        "report_shape_key": "FCC_ROUTE_GPX",
+        "runner_section": "P_AND_D",
+        "expected_filename_match": ["RouteGPX_", ".gpx"],
+    },
 }
 
 DSW_ALL_CODES_TARGET: dict[str, Any] = {
@@ -227,6 +236,7 @@ def request_payload(args: argparse.Namespace, reports: list[str]) -> dict[str, A
         "manifest_route_keys": manifest_routes,
         "manifest_types": ["delivery", "pickup"],
         "skip_combined": True,
+        "route_gpx_only": reports == ["ROUTE_GPX"],
     }
 
 
@@ -276,6 +286,9 @@ def child_environment(
     )
     environment["FCMS_SKIP_COMBINED"] = (
         "1" if manifest_options["skip_combined"] else "0"
+    )
+    environment["FCMS_ROUTE_GPX_ONLY"] = (
+        "1" if RUNNER.route_gpx_only(request) else "0"
     )
     continuous_runtime_dir = APP_DIR / "runtime" / "continuous-runner"
     continuous_runtime_dir.mkdir(parents=True, exist_ok=True)

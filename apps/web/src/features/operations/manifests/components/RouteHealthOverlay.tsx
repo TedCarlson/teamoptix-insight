@@ -111,6 +111,7 @@ type RouteDetailPayload = {
   pickups: Array<Record<string, unknown>>;
   stop_clusters: RouteStopCluster[];
   route_gpx: RouteGpxPresentation | null;
+  route_gpx_status?: "AVAILABLE" | "MISSING" | "ERROR";
   identity_access: ManifestIdentityAccess;
   collection_pace: ManifestCollectionPace;
   retention_mode?: "IDENTIFIABLE" | "DEIDENTIFIED";
@@ -140,7 +141,7 @@ type RouteStopCluster = {
 const routeDetailCache = new Map<string, RouteDetailPayload>();
 const routeDetailRequests = new Map<string, Promise<RouteDetailPayload>>();
 const ROUTE_DETAIL_CACHE_LIMIT = 32;
-const ROUTE_DETAIL_CACHE_VERSION = "v2";
+const ROUTE_DETAIL_CACHE_VERSION = "v3";
 
 function cacheRouteDetail(key: string, payload: RouteDetailPayload) {
   routeDetailCache.delete(key);
@@ -160,6 +161,7 @@ async function fetchRouteDetail(params: {
   slug: string;
   serviceDate: string;
   routeKey: string;
+  forceRefresh?: boolean;
 }) {
   const cacheKey = routeDetailCacheKey(
     params.slug,
@@ -167,7 +169,7 @@ async function fetchRouteDetail(params: {
     params.routeKey
   );
   const cached = routeDetailCache.get(cacheKey);
-  if (cached) return cached;
+  if (cached && !params.forceRefresh) return cached;
   const pending = routeDetailRequests.get(cacheKey);
   if (pending) return pending;
 
@@ -269,12 +271,13 @@ export default function RouteHealthOverlay({
           slug,
           serviceDate,
           routeKey: selectedRouteKey,
+          forceRefresh: true,
         });
         if (!active) return;
         setDetail(payload);
       } catch (error) {
         if (active) {
-          setDetail(null);
+          if (!cached) setDetail(null);
           setDetailError(error instanceof Error ? error.message : "Unable to load route detail.");
         }
       } finally {
@@ -398,6 +401,10 @@ export default function RouteHealthOverlay({
                 compact={activeView === "detail"}
                 stopDetailsByRef={mapStopDetailsByRef}
               />
+            ) : detail?.route_gpx_status === "ERROR" ? (
+              <div role="alert" style={{ border: "1px solid #fecaca", background: "#fff7f7", borderRadius: 16, padding: 24, color: "#b91c1c", fontWeight: 850, textAlign: "center" }}>
+                Route geometry could not be loaded. Close and reopen this route to retry.
+              </div>
             ) : detail?.stop_clusters.length ? (
               <RouteClusterEvidence
                 clusters={detail.stop_clusters}
