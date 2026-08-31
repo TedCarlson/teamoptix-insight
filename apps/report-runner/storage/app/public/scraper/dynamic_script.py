@@ -30,6 +30,11 @@ from manifest_identity import (
     quarantineRejectedManifest,
     renameDownloadedManifest,
 )
+from manifest_work_area import (
+    manifest_work_area_index,
+    normalize_manifest_work_area,
+    stable_manifest_work_areas,
+)
 from gpx_collection import (
     click_best_gpx_control,
     finalize_route_gpx,
@@ -849,13 +854,6 @@ def should_collect_route_gpx():
 def should_download_manifest(manifest_type):
     return manifest_type in REQUESTED_MANIFEST_TYPES
 
-def normalize_manifest_work_area(value):
-    text = str(value or "").strip().upper()
-    match = re.search(r"(?<!\d)(\d{1,4})(?!\d)", text)
-    if match:
-        return str(int(match.group(1)))
-    return re.sub(r"[^A-Z0-9]+", "", text)
-
 def requested_manifest_work_areas():
     return {
         normalize_manifest_work_area(value)
@@ -1140,8 +1138,25 @@ def findReusableFccWindow(driver):
     return home_page_handle, customer_connection_page_handle
 
 
-def selectWorkArea(driver, option_index, max_attempts=3):
+def manifestWorkAreaLabels(driver):
+    select_element = WebDriverWait(driver, 30).until(
+        EC.presence_of_element_located(
+            (By.XPATH, "//select[@id='manifestForm:workAreas']")
+        )
+    )
+    return [
+        (
+            option.text
+            or option.get_attribute("value")
+            or f"option-{index}"
+        ).strip()
+        for index, option in enumerate(Select(select_element).options)
+    ]
+
+
+def selectWorkArea(driver, route_identity, max_attempts=3):
     last_error = None
+    target_route = normalize_manifest_work_area(route_identity)
 
     for attempt in range(1, max_attempts + 1):
         try:
@@ -1151,6 +1166,23 @@ def selectWorkArea(driver, option_index, max_attempts=3):
                 )
             )
             select = Select(select_element)
+            option_labels = [
+                (
+                    option.text
+                    or option.get_attribute("value")
+                    or f"option-{index}"
+                ).strip()
+                for index, option in enumerate(select.options)
+            ]
+            option_index = manifest_work_area_index(
+                option_labels,
+                target_route,
+            )
+            if option_index is None:
+                raise RuntimeError(
+                    "Manifest route is no longer available in the selector: "
+                    f"{target_route}"
+                )
             option = select.options[option_index]
             selected_work_area = (
                 option.text
@@ -1173,8 +1205,9 @@ def selectWorkArea(driver, option_index, max_attempts=3):
     raise last_error
 
 
-def clickManifestSearch(driver, option_index, max_attempts=3):
+def clickManifestSearch(driver, route_identity, max_attempts=3):
     last_error = None
+    target_route = normalize_manifest_work_area(route_identity)
 
     for attempt in range(1, max_attempts + 1):
         try:
@@ -1194,9 +1227,9 @@ def clickManifestSearch(driver, option_index, max_attempts=3):
                 )
             except TimeoutException:
                 logging.info(
-                    "Manifest refresh overlay was not observed for option %s; "
+                    "Manifest refresh overlay was not observed for route %s; "
                     "waiting for the application request queue instead",
-                    option_index,
+                    target_route,
                 )
 
             WebDriverWait(driver, 45, poll_frequency=0.1).until(
@@ -1226,27 +1259,43 @@ def clickManifestSearch(driver, option_index, max_attempts=3):
                     )
                 )
             )
-            if refreshed_select.options[option_index].get_attribute(
-                "selected"
-            ) is None:
+            selected_routes = {
+                normalize_manifest_work_area(
+                    option.text or option.get_attribute("value")
+                )
+                for option in refreshed_select.options
+                if option.is_selected()
+            }
+            if target_route not in selected_routes:
                 raise RuntimeError(
-                    f"Manifest route selection changed during refresh for option {option_index}"
+                    "Manifest route selection changed during refresh for route "
+                    f"{target_route}"
                 )
             return
         except (
             ElementClickInterceptedException,
             StaleElementReferenceException,
+            TimeoutException,
+            RuntimeError,
         ) as error:
             last_error = error
-            if isinstance(error, ElementClickInterceptedException):
+            if isinstance(
+                error,
+                (ElementClickInterceptedException, TimeoutException),
+            ):
                 dismissStuckManifestOverlay(driver)
             logging.info(
-                "Manifest search refreshed during option %s; "
+                "Manifest search refreshed during route %s; "
                 "reacquiring attempt %s/%s",
-                option_index,
+                target_route,
                 attempt,
                 max_attempts,
             )
+            if attempt < max_attempts:
+                try:
+                    selectWorkArea(driver, target_route)
+                except Exception as selection_error:
+                    last_error = selection_error
             time.sleep(0.5)
 
     raise last_error
@@ -1332,6 +1381,97 @@ def clickManifestTab(driver, tab_label, option_index, max_attempts=3):
             time.sleep(0.5)
 
     raise last_error
+
+
+def collectManifestWorkArea(driver, route_identity):
+    selected_work_area = selectWorkArea(driver, route_identity)
+    time.sleep(1)
+
+    logging.info(
+        "Waiting for the manifest search button for route %s...",
+        route_identity,
+    )
+    clickManifestSearch(driver, selected_work_area)
+    time.sleep(1)
+
+    logging.info("Waiting for the manifest load screen...")
+    WebDriverWait(driver, 30).until(
+        EC.presence_of_element_located(
+            (By.XPATH, "//div[@class='mobi-submitnotific-container-hide']")
+        )
+    )
+    WebDriverWait(driver, 30).until(
+        EC.invisibility_of_element_located(
+            (
+                By.XPATH,
+                "//div[@id='manifestForm:submitTransferNotification_bg']",
+            )
+        )
+    )
+    time.sleep(1)
+
+    # Combined initializes all route-scoped panels even when its workbook is
+    # not retained. Every subsequent navigation is keyed by route identity,
+    # never by the selector position that FedEx may reorder after refresh.
+    clickManifestTab(driver, "Combined Manifest", route_identity)
+    logging.info("Initialized the Combined Manifest tab...")
+    time.sleep(1)
+
+    if should_download_manifest("combined"):
+        logging.info("Waiting for Combined Manifest loading...")
+        collectOptionalManifest(
+            driver,
+            button_xpath=(
+                "//input[@id='manifestForm:buttonCombinedGenerateExcel']"
+            ),
+            expected_type="combined",
+            route_identity=selected_work_area,
+        )
+    else:
+        logging.info(
+            "Skipping Combined Manifest download after initialization"
+        )
+
+    if should_collect_route_gpx():
+        collectOptionalRouteGpx(
+            driver,
+            selected_work_area,
+            "//input[@id='manifestForm:buttonCombinedGenerateExcel']",
+        )
+
+    # Delivery Manifest
+    delivery_path = True
+    if should_download_manifest("delivery"):
+        time.sleep(1)
+        clickManifestTab(driver, "Delivery Manifest", route_identity)
+        logging.info("Clicked the tab Delivery Manifest...")
+        time.sleep(1)
+        delivery_path = collectOptionalManifest(
+            driver,
+            button_xpath=(
+                "//input[@id='manifestForm:buttonDeliveryGenerateExcel']"
+            ),
+            expected_type="delivery",
+            route_identity=selected_work_area,
+        )
+    else:
+        logging.info("Skipping Delivery Manifest")
+
+    if should_download_manifest("pickup"):
+        time.sleep(1)
+        clickManifestTab(driver, "Pickup Manifest", route_identity)
+        logging.info("Clicked the tab Pickup manifest...")
+        time.sleep(1)
+        collectOptionalManifest(
+            driver,
+            button_xpath="//input[@id='manifestForm:buttonGenerateExcel']",
+            expected_type="pickup",
+            route_identity=selected_work_area,
+        )
+    else:
+        logging.info("Skipping Pickup Manifest")
+
+    return selected_work_area, bool(delivery_path)
 
 
 def main(section_='', option_=0, retry=1):
@@ -1473,133 +1613,61 @@ def main(section_='', option_=0, retry=1):
             if "activeTab" not in str(p_d.get_attribute("class") or ""):
                 p_d.click()
 
-            select_element = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//select[@id='manifestForm:workAreas']")))
-
-            total_select_options = len(select_element.find_elements(By.XPATH, 'option'))
+            work_area_targets = stable_manifest_work_areas(
+                manifestWorkAreaLabels(driver)
+            )
+            work_area_targets = [
+                route_identity
+                for route_identity in work_area_targets
+                if should_collect_manifest_work_area(route_identity)
+            ]
             collected_work_areas = set()
             manifest_failures = []
-            for i in range(option_, total_select_options):
-                if i == 0: continue
-                select_element = WebDriverWait(driver, 30).until(
-                    EC.presence_of_element_located(
-                        (By.XPATH, "//select[@id='manifestForm:workAreas']")
-                    )
+            for position, route_identity in enumerate(
+                work_area_targets[option_:],
+                start=option_,
+            ):
+                logging.info(
+                    "Collecting manifest route %s at sweep position %s",
+                    route_identity,
+                    position,
                 )
-                option = Select(select_element).options[i]
-                work_area_hint = (
-                    option.text
-                    or option.get_attribute("value")
-                    or f"option-{i}"
-                ).strip()
-                if not should_collect_manifest_work_area(work_area_hint):
-                    continue
-                logging.info(f'Selecting option {i}')
-                ACTIVE_SECTION_OPTION = i
-                time.sleep(1)
-                selected_work_area = selectWorkArea(driver, i)
-                collected_work_areas.add(
-                    normalize_manifest_work_area(selected_work_area)
-                )
-                time.sleep(1)
-
-                logging.info("Waiting for the search button to be visible...")
-                clickManifestSearch(driver, i)
-                time.sleep(1)
-
-                logging.info("Waiting for the load screen...")
-                WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//div[@class='mobi-submitnotific-container-hide']")))
-                WebDriverWait(driver, 30).until(
-                    EC.invisibility_of_element_located(
-                        (
-                            By.XPATH,
-                            "//div[@id='manifestForm:submitTransferNotification_bg']",
-                        )
+                ACTIVE_SECTION_OPTION = position
+                try:
+                    selected_work_area, delivery_collected = (
+                        collectManifestWorkArea(driver, route_identity)
                     )
-                )
-                time.sleep(1)
-
-                # The original FCC runner always activated Combined Manifest
-                # first. That request initializes the route's manifest panels
-                # before Delivery and Pickup are opened. Keep that navigation
-                # contract even when the Combined file itself is not requested.
-                time.sleep(1)
-                clickManifestTab(
-                    driver,
-                    "Combined Manifest",
-                    i,
-                )
-                logging.info("Initialized the Combined Manifest tab...")
-                time.sleep(1)
-
-                # Combined Manifest download remains optional.
-                if (
-                    should_download_manifest("combined")
-                ):
-                    logging.info("Waiting for loading...")
-                    combined_path = collectOptionalManifest(
-                        driver,
-                        button_xpath="//input[@id='manifestForm:buttonCombinedGenerateExcel']",
-                        expected_type="combined",
-                        route_identity=selected_work_area,
+                    collected_work_areas.add(
+                        normalize_manifest_work_area(selected_work_area)
                     )
-                else:
-                    logging.info(
-                        "Skipping Combined Manifest download after initialization"
-                    )
-                if should_collect_route_gpx():
-                    collectOptionalRouteGpx(
-                        driver,
-                        selected_work_area,
-                        "//input[@id='manifestForm:buttonCombinedGenerateExcel']",
-                    )
-
-                # Delivery Manifest
-                if (
-                    should_download_manifest("delivery")
-                ):
-                    time.sleep(1)
-                    clickManifestTab(
-                        driver,
-                        "Delivery Manifest",
-                        i,
-                    )
-                    logging.info("Clicked the tab Delivery Manifest...")
-                    time.sleep(1)
-                    logging.info("Waiting for loading...")
-
-                    delivery_path = collectOptionalManifest(
-                        driver,
-                        button_xpath="//input[@id='manifestForm:buttonDeliveryGenerateExcel']",
-                        expected_type="delivery",
-                        route_identity=selected_work_area,
-                    )
-                    if not delivery_path:
+                    if not delivery_collected:
                         manifest_failures.append(selected_work_area)
-                else:
-                    logging.info("Skipping Delivery Manifest")
-
-                # Pickup manifest
-                if (
-                    should_download_manifest("pickup")
-                ):
-                    time.sleep(1)
-                    clickManifestTab(
-                        driver,
-                        "Pickup Manifest",
-                        i,
+                except (
+                    ElementClickInterceptedException,
+                    RuntimeError,
+                    StaleElementReferenceException,
+                    TimeoutException,
+                ) as route_error:
+                    manifest_failures.append(route_identity)
+                    logging.exception(
+                        "Manifest route %s failed without stopping the sweep: %s",
+                        route_identity,
+                        route_error,
                     )
-                    logging.info("Clicked the tab Pickup manifest...")
-                    time.sleep(1)
-                    logging.info("Waiting for loading...")
-
-                    pickup_path = collectOptionalManifest(
-                        driver,
-                        button_xpath="//input[@id='manifestForm:buttonGenerateExcel']",
-                        expected_type="pickup",
-                        route_identity=selected_work_area,
+                    emit_runtime_event(
+                        "NEEDS_ATTENTION",
+                        "SOURCE",
+                        lane_key="P&D",
+                        route_identity=route_identity,
+                        metadata={
+                            "reason": "MANIFEST_ROUTE_NAVIGATION_FAILED",
+                            "exception_type": type(route_error).__name__,
+                            "message": str(route_error)[:500],
+                            "sweep_position": position,
+                        },
                     )
-                else:
-                    logging.info("Skipping Pickup Manifest")
+                    dismissStuckManifestOverlay(driver)
+                    continue
             if (
                 REQUESTED_MANIFEST_WORK_AREAS
                 and not REQUESTED_MANIFEST_WORK_AREAS.issubset(
