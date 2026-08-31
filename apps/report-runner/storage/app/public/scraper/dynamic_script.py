@@ -963,6 +963,12 @@ def persistSessionCookies(driver):
 
 def authenticateDriver(driver):
     init_url = "https://mybizaccount.fedex.com/my.policy"
+    username_xpath = (
+        '//input[@name="identifier"] | '
+        '//input[@name="credentials.username"] | '
+        '//input[@name="username"] | '
+        '//input[@id="username"]'
+    )
     restored_cookie_count = restoreSessionCookies(driver)
     driver.get(init_url)
     logging.info("Visiting https://mybizaccount.fedex.com/my.policy")
@@ -974,7 +980,7 @@ def authenticateDriver(driver):
                 By.XPATH, "//input[@class='credentials_input_submit']"
             )
             or current_driver.find_elements(
-                By.XPATH, '//input[@name="identifier"]'
+                By.XPATH, username_xpath
             )
         )
 
@@ -1010,7 +1016,7 @@ def authenticateDriver(driver):
         )
         return
 
-    if not driver.find_elements(By.XPATH, '//input[@name="identifier"]'):
+    if not driver.find_elements(By.XPATH, username_xpath):
         btn = WebDriverWait(driver, 20).until(
             EC.presence_of_element_located(
                 (By.XPATH, "//input[@class='credentials_input_submit']")
@@ -1018,9 +1024,9 @@ def authenticateDriver(driver):
         )
         btn.click()
 
-    username = WebDriverWait(driver, 20).until(
+    username = WebDriverWait(driver, 40).until(
         EC.presence_of_element_located(
-            (By.XPATH, '//input[@name="identifier"]')
+            (By.XPATH, username_xpath)
         )
     )
 

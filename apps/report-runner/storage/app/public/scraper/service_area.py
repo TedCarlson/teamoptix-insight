@@ -100,6 +100,14 @@ def getDriver():
     # driver = webdriver.Chrome(options=options)
     return driver
 
+
+FEDEX_USERNAME_XPATH = (
+    '//input[@name="identifier"] | '
+    '//input[@name="credentials.username"] | '
+    '//input[@name="username"] | '
+    '//input[@id="username"]'
+)
+
 def element_opacity_exists(el_ID):
     def _predicate(driver):
         try:
@@ -132,7 +140,11 @@ def main(retry=0):
         btn = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.XPATH, "//input[@class='credentials_input_submit']")))
         btn.click()
 
-        username = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.XPATH, '//input[@name="identifier"]')))
+        username = WebDriverWait(driver, 40).until(
+            EC.presence_of_element_located(
+                (By.XPATH, FEDEX_USERNAME_XPATH)
+            )
+        )
 
         logging.info("On login page....")
         
