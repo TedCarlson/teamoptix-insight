@@ -358,15 +358,16 @@ export async function POST(req: NextRequest) {
         });
         return NextResponse.json(
           {
-            ok: false,
-            durable: false,
-            fallback_required: true,
+            ok: true,
+            durable: true,
+            deferred: true,
+            fallback_required: false,
             artifact_id: artifact.id,
             artifact_status: "READY_FOR_INGEST",
             reason: "WAITING_FOR_MANIFEST",
             elapsed_ms: Date.now() - startedAt,
           },
-          { status: 409 }
+          { status: 202 }
         );
       }
       if (readiness.status === "INVALID") {

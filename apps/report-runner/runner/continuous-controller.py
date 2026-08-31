@@ -488,6 +488,19 @@ class ContinuousController:
             else []
         )
 
+    def operations_pulse_reports(self, now: datetime) -> list[str]:
+        reports = [
+            report
+            for report in self.reports_for("operations_pulse")
+            if report != "ROUTE_GPX"
+        ]
+        if (
+            str(self.journal.get("operations_pulse_manifest_baseline_date") or "")
+            == now.date().isoformat()
+        ):
+            reports.append("ROUTE_GPX")
+        return reports
+
     def journal_interval_due(
         self,
         key: str,
@@ -1089,7 +1102,7 @@ class ContinuousController:
                         and self.credential_attempt_allowed()
                         and time.monotonic() >= self.next_retry_at
                     ):
-                        reports = self.reports_for("operations_pulse")
+                        reports = self.operations_pulse_reports(now)
                         if SHADOW_MODE:
                             self.shadow_observation(
                                 "OPERATIONS_PULSE",
@@ -1104,6 +1117,11 @@ class ContinuousController:
                             now.date().isoformat(),
                             reports,
                         )
+                        if cycle_exit_has_terminal_handoff(status):
+                            self.journal[
+                                "operations_pulse_manifest_baseline_date"
+                            ] = now.date().isoformat()
+                            self.save_journal()
                         if status == 0:
                             self.failure_count = 0
                             self.next_retry_at = 0

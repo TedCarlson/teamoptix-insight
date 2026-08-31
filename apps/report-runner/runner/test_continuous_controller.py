@@ -166,6 +166,53 @@ class ContinuousControllerTests(unittest.TestCase):
         self.assertIn("DELIVERY_MANIFEST", reports)
         self.assertIn("PICKUP_MANIFEST", reports)
 
+    def test_first_pulse_establishes_manifest_baseline_before_gpx(self):
+        controller = self.controller()
+        controller.schedule["operations_pulse"]["reports"] = [
+            "DSW",
+            "FCC",
+            "DELIVERY_MANIFEST",
+            "PICKUP_MANIFEST",
+            "ROUTE_GPX",
+        ]
+        now = datetime(
+            2026,
+            8,
+            31,
+            7,
+            30,
+            tzinfo=ZoneInfo("America/New_York"),
+        )
+
+        self.assertNotIn("ROUTE_GPX", controller.operations_pulse_reports(now))
+        controller.journal["operations_pulse_manifest_baseline_date"] = (
+            "2026-08-31"
+        )
+        self.assertIn("ROUTE_GPX", controller.operations_pulse_reports(now))
+
+    def test_manifest_baseline_resets_by_terminal_service_date(self):
+        controller = self.controller()
+        controller.schedule["operations_pulse"]["reports"] = [
+            "DELIVERY_MANIFEST",
+            "ROUTE_GPX",
+        ]
+        controller.journal["operations_pulse_manifest_baseline_date"] = (
+            "2026-08-30"
+        )
+        now = datetime(
+            2026,
+            8,
+            31,
+            7,
+            30,
+            tzinfo=ZoneInfo("America/New_York"),
+        )
+
+        self.assertEqual(
+            controller.operations_pulse_reports(now),
+            ["DELIVERY_MANIFEST"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

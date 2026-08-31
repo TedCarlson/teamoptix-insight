@@ -290,6 +290,9 @@ def child_environment(
     environment["FCMS_ROUTE_GPX_ONLY"] = (
         "1" if RUNNER.route_gpx_only(request) else "0"
     )
+    environment["FCMS_COLLECT_ROUTE_GPX"] = (
+        "1" if "ROUTE_GPX" in RUNNER.target_artifact_keys(request) else "0"
+    )
     continuous_runtime_dir = APP_DIR / "runtime" / "continuous-runner"
     continuous_runtime_dir.mkdir(parents=True, exist_ok=True)
     continuous_runtime_dir.chmod(0o700)

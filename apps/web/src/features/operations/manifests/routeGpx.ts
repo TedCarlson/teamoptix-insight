@@ -334,11 +334,16 @@ export function routeKeyFromGpxText(value: unknown) {
   return match?.[1] ?? null;
 }
 
-function selectedRouteKey(artifact: any) {
+function artifactRouteKey(artifact: any) {
   return routeKeyFromGpxText(
-    artifact.runner_artifact_json?.collection_context?.selected_work_area ??
+    artifact.runner_artifact_json?.route_key ??
+      artifact.runner_artifact_json?.collection_context?.selected_work_area ??
       artifact.runner_artifact_json?.route_identity
   );
+}
+
+function selectedRouteKey(artifact: any) {
+  return artifactRouteKey(artifact);
 }
 
 export function isRouteGpxCollectionArtifact(artifact: any) {
@@ -370,20 +375,38 @@ export function routeGpxManifestReadiness(
     return (
       ["READY_FOR_INGEST", "INGESTING", "INGESTED", "IGNORED"].includes(status) &&
       sibling.runner_artifact_json?.identity_authority === "INGESTION_PIPELINE" &&
-      String(sibling.runner_artifact_json?.route_key ?? "") === routeKey
+      artifactRouteKey(sibling) === routeKey
     );
   });
   if (verifiedManifest) {
     return { status: "READY", manifest: verifiedManifest };
   }
-  const manifestStillProcessing = manifests.some((sibling: any) =>
+
+  const routeManifests = manifests.filter(
+    (sibling: any) => artifactRouteKey(sibling) === routeKey
+  );
+  const routeManifestStillProcessing = routeManifests.some((sibling: any) =>
     ["ARTIFACTS_READY", "READY_FOR_INGEST", "INGESTING"].includes(
       String(sibling.artifact_status ?? "").toUpperCase()
     )
   );
-  return manifestStillProcessing
-    ? { status: "PENDING", manifest: null }
-    : { status: "INVALID", manifest: null };
+  if (routeManifestStillProcessing) {
+    return { status: "PENDING", manifest: null };
+  }
+  const routeManifestTerminalWithoutAuthority =
+    routeManifests.length > 0 &&
+    routeManifests.every((sibling: any) =>
+      ["FAILED", "INGESTED", "IGNORED"].includes(
+        String(sibling.artifact_status ?? "").toUpperCase()
+      )
+    );
+  if (routeManifestTerminalWithoutAuthority) {
+    return { status: "INVALID", manifest: null };
+  }
+
+  // A route can be added after the operating-day baseline has been established.
+  // Retain its GPX until that route's own workbook arrives and establishes identity.
+  return { status: "PENDING", manifest: null };
 }
 
 export async function resolveRouteGpxManifestReadiness(params: {

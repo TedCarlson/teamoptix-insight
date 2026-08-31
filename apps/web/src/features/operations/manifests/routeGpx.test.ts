@@ -157,6 +157,36 @@ describe("route GPX ingestion", () => {
     expect(ready.status).toBe("READY");
   });
 
+  it("keeps an ad-hoc route queued until its own workbook arrives", () => {
+    const pending = routeGpxManifestReadiness(
+      [{
+        artifact_status: "INGESTED",
+        runner_artifact_json: {
+          artifact_key: "DELIVERY_MANIFEST",
+          identity_authority: "INGESTION_PIPELINE",
+          route_key: "430",
+        },
+      }],
+      "499"
+    );
+    expect(pending.status).toBe("PENDING");
+  });
+
+  it("recognizes a newly added route from its selected work-area context", () => {
+    const ready = routeGpxManifestReadiness(
+      [{
+        artifact_status: "INGESTED",
+        runner_artifact_json: {
+          artifact_key: "DELIVERY_MANIFEST",
+          identity_authority: "INGESTION_PIPELINE",
+          collection_context: { selected_work_area: "499 NEW ROUTE" },
+        },
+      }],
+      "499"
+    );
+    expect(ready.status).toBe("READY");
+  });
+
   it("does not accept failed workbook artifacts as GPX identity authority", () => {
     const invalid = routeGpxManifestReadiness(
       [{
@@ -170,5 +200,28 @@ describe("route GPX ingestion", () => {
       "481"
     );
     expect(invalid.status).toBe("INVALID");
+  });
+
+  it("keeps waiting when one route workbook fails but another is processing", () => {
+    const pending = routeGpxManifestReadiness(
+      [
+        {
+          artifact_status: "FAILED",
+          runner_artifact_json: {
+            artifact_key: "DELIVERY_MANIFEST",
+            route_key: "481",
+          },
+        },
+        {
+          artifact_status: "READY_FOR_INGEST",
+          runner_artifact_json: {
+            artifact_key: "PICKUP_MANIFEST",
+            route_key: "481",
+          },
+        },
+      ],
+      "481"
+    );
+    expect(pending.status).toBe("PENDING");
   });
 });
