@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   analyzeRouteGpxDeliveryClusters,
   clusterRouteGpxStops,
+  isRouteGpxCollectionArtifact,
   parseRouteGpx,
   routeGpxDistanceMeters,
   routeKeyFromGpxText,
@@ -9,6 +10,20 @@ import {
 } from "./routeGpx";
 
 describe("route GPX ingestion", () => {
+  it("keeps direct-ingestion GPX receipts out of the workbook parser", () => {
+    expect(
+      isRouteGpxCollectionArtifact({
+        report_shape_key: "FCC_ROUTE_GPX",
+        normalized_filename:
+          "beacon-point-ventures__2026-09-01__fcc-route-gpx__route-gpx.gpx",
+        runner_artifact_json: {
+          artifact_key: "ROUTE_GPX",
+          source_manifest_type: "COMBINED_MANIFEST",
+        },
+      })
+    ).toBe(true);
+  });
+
   it("parses route stops and track breadcrumbs", () => {
     const parsed = parseRouteGpx(Buffer.from(`<?xml version="1.0"?>
       <gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">
