@@ -1,6 +1,8 @@
 import TeamOptixDomainOverview from "@/features/teamoptix/shared/TeamOptixDomainOverview";
 import { getAutomationOverview } from "@/features/teamoptix/shared/teamOptixOverview.server";
 import LocalDateTime from "@/features/automation/components/LocalDateTime";
+import type { RunnerFleetControlRow } from "@/features/automation/runnerFleetControl";
+import RunnerFleetControls from "@/features/teamoptix/automation/components/RunnerFleetControls";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +26,13 @@ export default async function Page() {
   const db = createSupabaseServiceRoleClient();
   const nowMs = currentEpochMs();
   const since = new Date(nowMs - RECENT_WINDOW_MS).toISOString();
-  const [scheduleResult, logResult] = await Promise.all([
+  const [fleetResult, scheduleResult, logResult] = await Promise.all([
+    db
+      .from("operations_runner_fleet_v")
+      .select(
+        "runner_id,runner_key,display_name,runner_role,environment,lifecycle_state,software_version,last_heartbeat_at,assignment_id,assignment_kind,assignment_status,assignment_version,assignment_expires_at,company_slug,company_name,terminal_code,terminal_name,collection_enabled,config_version,applied_version,runner_state,runner_last_seen_at,runner_last_error,latest_command_id,latest_command_type,latest_command_state,latest_command_requested_at,latest_command_acknowledged_at,latest_command_completed_at"
+      )
+      .order("display_name", { ascending: true }),
     db
       .from("operations_runner_schedule_v")
       .select("runner_key, company_slug, collection_enabled, runner_state, runner_last_seen_at, runner_last_error")
@@ -39,11 +47,47 @@ export default async function Page() {
 
   const schedules = scheduleResult.data ?? [];
   const logs = logResult.data ?? [];
+  const canonicalFleet = (fleetResult.data ?? []) as RunnerFleetControlRow[];
+  const fleet: RunnerFleetControlRow[] = canonicalFleet.length
+    ? canonicalFleet
+    : schedules.map((runner: any) => ({
+        runner_id: null,
+        runner_key: String(runner.runner_key),
+        display_name: "Team Optix · Legacy support runner",
+        runner_role: "SUPPORT",
+        environment: "prod",
+        lifecycle_state: "DISABLED",
+        software_version: null,
+        last_heartbeat_at: runner.runner_last_seen_at,
+        assignment_id: null,
+        assignment_kind: null,
+        assignment_status: null,
+        assignment_version: null,
+        assignment_expires_at: null,
+        company_slug: runner.company_slug,
+        company_name: null,
+        terminal_code: null,
+        terminal_name: null,
+        collection_enabled: runner.collection_enabled,
+        config_version: null,
+        applied_version: null,
+        runner_state: runner.runner_state,
+        runner_last_seen_at: runner.runner_last_seen_at,
+        runner_last_error: runner.runner_last_error,
+        latest_command_id: null,
+        latest_command_type: null,
+        latest_command_state: null,
+        latest_command_requested_at: null,
+        latest_command_acknowledged_at: null,
+        latest_command_completed_at: null,
+      }));
   const active = data.requests.filter((row: any) =>
     ["CLAIMED", "RUNNING", "ARTIFACTS_READY", "INGESTING"].includes(row.request_status)
   );
-  const online = schedules.filter((row: any) => {
-    const lastSeen = new Date(String(row.runner_last_seen_at ?? "")).getTime();
+  const online = fleet.filter((row) => {
+    const lastSeen = new Date(
+      String(row.last_heartbeat_at ?? row.runner_last_seen_at ?? "")
+    ).getTime();
     return Number.isFinite(lastSeen) && nowMs - lastSeen <= ONLINE_WINDOW_MS;
   });
 
@@ -72,7 +116,7 @@ export default async function Page() {
       title="Runner fleet"
       description="See runner presence and failure audit trails here—without opening a remote terminal."
       metrics={[
-        { label: "Configured runners", value: schedules.length, detail: "Governed runner identities" },
+        { label: "Configured runners", value: fleet.length, detail: "Governed runner identities" },
         { label: "Seen in 10 minutes", value: online.length, detail: "Runner control-plane presence" },
         { label: "24-hour failures", value: recentCycles.length, detail: `${logs.length} bounded audit events` },
         { label: "Active collections", value: active.length, detail: "Queued through ingestion" },
@@ -81,15 +125,15 @@ export default async function Page() {
         {
           eyebrow: "Runner presence",
           title: "Configured fleet",
-          rows: schedules.length
-            ? schedules.map((runner: any) => {
-                const lastSeen = new Date(String(runner.runner_last_seen_at ?? "")).getTime();
+          rows: fleet.length
+            ? fleet.map((runner) => {
+                const lastSeen = new Date(String(runner.last_heartbeat_at ?? runner.runner_last_seen_at ?? "")).getTime();
                 const isOnline = Number.isFinite(lastSeen) && nowMs - lastSeen <= ONLINE_WINDOW_MS;
                 return {
                   id: runner.runner_key,
-                  title: `${runner.company_slug} · ${runner.runner_key}`,
-                  detail: runner.runner_last_seen_at ? (
-                    <>Last evidence <LocalDateTime value={String(runner.runner_last_seen_at)} /></>
+                  title: runner.display_name,
+                  detail: runner.last_heartbeat_at || runner.runner_last_seen_at ? (
+                    <>Last evidence <LocalDateTime value={String(runner.last_heartbeat_at ?? runner.runner_last_seen_at)} /></>
                   ) : "No runner evidence received yet",
                   status: runner.runner_last_error ? "Degraded" : isOnline ? "Healthy" : "Unknown",
                   href: "/teamoptix/automation/runners",
@@ -133,6 +177,8 @@ export default async function Page() {
               }],
         },
       ]}
-    />
+    >
+      {fleet.length ? <RunnerFleetControls runners={fleet} /> : null}
+    </TeamOptixDomainOverview>
   );
 }

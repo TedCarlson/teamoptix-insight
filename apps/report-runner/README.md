@@ -80,6 +80,10 @@ continue receiving production changes after cutover.
 The governed systemd definitions live in `runner/`:
 
 - `teamoptix-continuous-controller.service`
+- `insight-collector@.service` is the identity-free template for cloned
+  company and support runners. Each instance reads its governed runner and
+  assignment identity from `/etc/teamoptix/runners/<instance>.env`; that file
+  is provisioned after cloning and must be root-only.
 - `teamoptix-continuous-controller-production.conf`
 - `teamoptix-continuous-controller-dro.conf`
 

@@ -148,6 +148,20 @@ export async function POST(req: NextRequest) {
     }
 
     supabase = createSupabaseServiceRoleClient();
+    const artifactKey = String(metadata.artifact_key).toUpperCase();
+    const { data: duplicateRows, error: duplicateLookupError } = await supabase
+      .from("operations_collection_artifact_v")
+      .select("id,artifact_status")
+      .eq("company_id", metadata.company_id)
+      .eq("service_date", metadata.requested_service_date)
+      .eq("source_hash", metadata.source_hash)
+      .contains("runner_artifact_json", { artifact_key: artifactKey })
+      .in("artifact_status", ["INGESTED", "IGNORED"])
+      .neq("id", metadata.artifact_id)
+      .limit(1);
+    if (duplicateLookupError) throw new Error(duplicateLookupError.message);
+    const sourceDuplicate = duplicateRows?.[0] ?? null;
+
     const { data: registeredData, error: registerError } = await supabase.rpc(
       "begin_operations_runner_direct_artifact_ingest",
       {
@@ -177,26 +191,6 @@ export async function POST(req: NextRequest) {
       : registeredData;
     if (!artifact) throw new Error("Direct-ingestion receipt was not created.");
 
-    const { error: sourceStorageError } = await supabase.storage
-      .from(artifact.storage_bucket)
-      .upload(artifact.storage_path, buffer, {
-        contentType: metadata.content_type,
-        upsert: true,
-      });
-    if (sourceStorageError) {
-      throw new Error(
-        `Direct-ingestion source retention failed: ${sourceStorageError.message}`
-      );
-    }
-    sourceRetention = {
-      status: "STORED",
-      stored_at: new Date().toISOString(),
-      storage_bucket: artifact.storage_bucket,
-      storage_path: artifact.storage_path,
-      source_hash: metadata.source_hash,
-      size_bytes: metadata.size_bytes,
-    };
-
     if (["INGESTED", "IGNORED"].includes(artifact.artifact_status)) {
       logReceipt({
         artifactId: artifact.id,
@@ -218,7 +212,60 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const artifactKey = String(metadata.artifact_key).toUpperCase();
+    if (sourceDuplicate) {
+      await markArtifact({
+        supabase,
+        artifactId: artifact.id,
+        status: "IGNORED",
+        metadata: {
+          source: "runner_v2_direct_ingestion",
+          phase: "DUPLICATE_SOURCE_IGNORED",
+          completed_at: new Date().toISOString(),
+          duplicate_of_artifact_id: sourceDuplicate.id,
+          source_hash: metadata.source_hash,
+        },
+      });
+      logReceipt({
+        artifactId: artifact.id,
+        companySlug: artifact.company_slug,
+        fileType: metadata.artifact_key,
+        outcome: "IGNORED",
+        sizeBytes: metadata.size_bytes,
+        elapsedMs: Date.now() - startedAt,
+        duplicate: true,
+      });
+      return NextResponse.json({
+        ok: true,
+        durable: true,
+        duplicate: true,
+        duplicate_of_artifact_id: sourceDuplicate.id,
+        artifact_id: artifact.id,
+        company_slug: artifact.company_slug,
+        artifact_status: "IGNORED",
+        elapsed_ms: Date.now() - startedAt,
+      });
+    }
+
+    const { error: sourceStorageError } = await supabase.storage
+      .from(artifact.storage_bucket)
+      .upload(artifact.storage_path, buffer, {
+        contentType: metadata.content_type,
+        upsert: true,
+      });
+    if (sourceStorageError) {
+      throw new Error(
+        `Direct-ingestion source retention failed: ${sourceStorageError.message}`
+      );
+    }
+    sourceRetention = {
+      status: "STORED",
+      stored_at: new Date().toISOString(),
+      storage_bucket: artifact.storage_bucket,
+      storage_path: artifact.storage_path,
+      source_hash: metadata.source_hash,
+      size_bytes: metadata.size_bytes,
+    };
+
     if (DECOMMISSIONED_FCC_ARTIFACT_KEYS.has(artifactKey)) {
       await markArtifact({
         supabase,

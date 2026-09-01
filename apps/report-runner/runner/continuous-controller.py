@@ -30,7 +30,23 @@ INSIGHT_ENV_FILE = Path(
         "/root/teamoptix-insight/apps/automation-worker/.env.production",
     )
 )
-RUNNER_KEY = os.environ.get("RUNNER_KEY", "vps-laravel-runner-001")
+RUNNER_KEY = os.environ.get("RUNNER_KEY", "").strip()
+if not RUNNER_KEY:
+    raise RuntimeError("RUNNER_KEY is required.")
+RUNNER_ID = os.environ.get("RUNNER_ID", "").strip()
+RUNNER_ASSIGNMENT_ID = os.environ.get("RUNNER_ASSIGNMENT_ID", "").strip()
+RUNNER_COMMAND_POLL_SECONDS = max(
+    2,
+    min(int(os.environ.get("RUNNER_COMMAND_POLL_SECONDS", "5")), 60),
+)
+RUNNER_SCHEDULE_POLL_SECONDS = max(
+    15,
+    min(int(os.environ.get("RUNNER_SCHEDULE_POLL_SECONDS", "60")), 300),
+)
+RUNNER_SUCCESS_YIELD_SECONDS = max(
+    30,
+    min(int(os.environ.get("RUNNER_SUCCESS_YIELD_SECONDS", "60")), 300),
+)
 STATE_DIR = Path(
     os.environ.get(
         "CONTINUOUS_RUNNER_STATE_DIR",
@@ -43,6 +59,7 @@ CYCLE_RUNNER = APP_DIR / "runner" / "run-continuous-cycle.py"
 DONOR_LOCK_FILE = APP_DIR / "runtime" / "locks" / "report-runner.lock"
 SHADOW_MODE = os.environ.get("CONTINUOUS_RUNNER_SHADOW", "1") != "0"
 CONTROL_PORT = int(os.environ.get("RUNNER_CONTROL_PORT", "8790"))
+CONTROL_BIND = os.environ.get("RUNNER_CONTROL_BIND", "127.0.0.1").strip()
 CONTROL_SECRET = os.environ.get("RUNNER_CONTROL_SECRET", "")
 
 
@@ -165,6 +182,181 @@ class ContinuousController:
         self.next_retry_at = 0.0
         self.failure_count = 0
         self.last_shadow_log_at = 0.0
+        self.process_lock = threading.RLock()
+        self.active_process: subprocess.Popen[Any] | None = None
+
+    @staticmethod
+    def governed_command_identity() -> tuple[str, str] | None:
+        if not RUNNER_ID and not RUNNER_ASSIGNMENT_ID:
+            return None
+        if not RUNNER_ID or not RUNNER_ASSIGNMENT_ID:
+            raise RuntimeError(
+                "RUNNER_ID and RUNNER_ASSIGNMENT_ID must be configured together."
+            )
+        try:
+            return str(uuid.UUID(RUNNER_ID)), str(uuid.UUID(RUNNER_ASSIGNMENT_ID))
+        except ValueError as exc:
+            raise RuntimeError(
+                "RUNNER_ID and RUNNER_ASSIGNMENT_ID must be UUIDs."
+            ) from exc
+
+    def control_mode(self) -> str:
+        value = str(self.journal.get("control_mode") or "ACTIVE").upper()
+        return value if value in {"ACTIVE", "PAUSED", "DRAINING"} else "PAUSED"
+
+    def set_control_mode(self, value: str) -> None:
+        normalized = value.upper()
+        if normalized not in {"ACTIVE", "PAUSED", "DRAINING"}:
+            raise RuntimeError(f"Unsupported runner control mode: {value}")
+        self.journal["control_mode"] = normalized
+        self.journal["control_mode_changed_at"] = utc_iso()
+        self.save_journal()
+
+    def active_process_running(self) -> bool:
+        with self.process_lock:
+            return (
+                self.active_process is not None
+                and self.active_process.poll() is None
+            )
+
+    def terminate_active_process(self) -> bool:
+        with self.process_lock:
+            process = self.active_process
+            if process is None or process.poll() is not None:
+                return False
+            os.killpg(process.pid, signal.SIGTERM)
+            return True
+
+    def acknowledge_runner_command(
+        self,
+        command: dict[str, Any],
+        state: str,
+        result: dict[str, Any],
+    ) -> None:
+        identity = self.governed_command_identity()
+        if identity is None:
+            raise RuntimeError("Runner command identity is not configured.")
+        runner_id, assignment_id = identity
+        accepted = rpc(
+            "ack_operations_runner_command",
+            {
+                "p_runner_key": RUNNER_KEY,
+                "p_runner_id": runner_id,
+                "p_assignment_id": assignment_id,
+                "p_command_id": str(command["id"]),
+                "p_command_state": state,
+                "p_result_json": result,
+                "p_supervisor_version": RUNNER_VERSION,
+            },
+            timeout_seconds=15,
+        )
+        if accepted is not True:
+            raise RuntimeError(
+                f"Runner command {command['id']} acknowledgement was rejected."
+            )
+
+    def complete_pending_runner_command_if_safe(self) -> None:
+        pending = self.journal.get("pending_runner_command")
+        if not isinstance(pending, dict) or self.active_process_running():
+            return
+        command_type = str(pending.get("command_type") or "").upper()
+        if command_type == "DRAIN_STOP":
+            self.set_control_mode("PAUSED")
+        self.acknowledge_runner_command(
+            pending,
+            "SUCCEEDED",
+            {
+                "control_mode": self.control_mode(),
+                "active_cycle": self.journal.get("active_cycle"),
+                "completed_at": utc_iso(),
+            },
+        )
+        self.journal["pending_runner_command"] = None
+        self.save_journal()
+
+    def apply_runner_command(self, command: dict[str, Any]) -> None:
+        command_id = str(command.get("id") or "")
+        command_type = str(command.get("command_type") or "").upper()
+        if not command_id or command_type not in {
+            "PAUSE",
+            "DRAIN_STOP",
+            "EMERGENCY_STOP",
+            "RESUME",
+        }:
+            raise RuntimeError("Runner command payload is invalid.")
+
+        pending = self.journal.get("pending_runner_command")
+        if isinstance(pending, dict) and str(pending.get("id")) == command_id:
+            self.complete_pending_runner_command_if_safe()
+            return
+
+        if command_type == "RESUME":
+            self.acknowledge_runner_command(
+                command,
+                "ACKNOWLEDGED",
+                {"control_mode": self.control_mode()},
+            )
+            self.acknowledge_runner_command(
+                command,
+                "SUCCEEDED",
+                {"control_mode": "ACTIVE", "completed_at": utc_iso()},
+            )
+            with self.lock:
+                self.schedule["collection_enabled"] = True
+                atomic_json_write(SCHEDULE_FILE, self.schedule)
+            self.set_control_mode("ACTIVE")
+            return
+
+        requested_mode = (
+            "DRAINING" if command_type == "DRAIN_STOP" else "PAUSED"
+        )
+        self.set_control_mode(requested_mode)
+        self.journal["pending_runner_command"] = command
+        self.save_journal()
+        self.acknowledge_runner_command(
+            command,
+            "ACKNOWLEDGED",
+            {
+                "control_mode": requested_mode,
+                "active_cycle": self.journal.get("active_cycle"),
+            },
+        )
+        if command_type == "EMERGENCY_STOP":
+            terminated = self.terminate_active_process()
+            print(
+                "[controller] emergency stop "
+                f"command={command_id} process_signalled={terminated}",
+                flush=True,
+            )
+        self.complete_pending_runner_command_if_safe()
+
+    def poll_runner_commands(self) -> None:
+        identity = self.governed_command_identity()
+        if identity is None:
+            print(
+                "[controller] governed command polling disabled for legacy identity",
+                flush=True,
+            )
+            return
+        runner_id, assignment_id = identity
+        while not self.stop_event.is_set():
+            try:
+                self.complete_pending_runner_command_if_safe()
+                command = rpc(
+                    "claim_operations_runner_command",
+                    {
+                        "p_runner_key": RUNNER_KEY,
+                        "p_runner_id": runner_id,
+                        "p_assignment_id": assignment_id,
+                        "p_supervisor_version": RUNNER_VERSION,
+                    },
+                    timeout_seconds=15,
+                )
+                if isinstance(command, dict):
+                    self.apply_runner_command(command)
+            except Exception as exc:
+                print(f"[controller] command poll error: {exc}", flush=True)
+            self.stop_event.wait(RUNNER_COMMAND_POLL_SECONDS)
 
     def apply_schedule(
         self,
@@ -177,6 +369,13 @@ class ContinuousController:
             )
         if value.get("runner_key") != RUNNER_KEY:
             raise RuntimeError("Schedule targets a different runner.")
+        identity = self.governed_command_identity()
+        if identity is not None:
+            runner_id, assignment_id = identity
+            if str(value.get("runner_id") or "") != runner_id:
+                raise RuntimeError("Schedule runner identity does not match this service.")
+            if str(value.get("assignment_id") or "") != assignment_id:
+                raise RuntimeError("Schedule assignment does not match this service.")
 
         with self.lock:
             previous_version = int(
@@ -232,6 +431,13 @@ class ContinuousController:
             {"p_runner_key": RUNNER_KEY},
         )
         self.apply_schedule(value, acknowledge)
+
+    def poll_schedule(self) -> None:
+        while not self.stop_event.wait(RUNNER_SCHEDULE_POLL_SECONDS):
+            try:
+                self.bootstrap_schedule(acknowledge=True)
+            except Exception as exc:
+                print(f"[controller] schedule poll error: {exc}", flush=True)
 
     def apply_pushed_schedule(
         self, value: dict[str, Any]
@@ -451,7 +657,10 @@ class ContinuousController:
         )
 
     def start_allowed(self) -> bool:
-        return bool(self.schedule.get("collection_enabled"))
+        return (
+            bool(self.schedule.get("collection_enabled"))
+            and self.control_mode() == "ACTIVE"
+        )
 
     @staticmethod
     def donor_run_active() -> bool:
@@ -500,6 +709,28 @@ class ContinuousController:
         ):
             reports.append("ROUTE_GPX")
         return reports
+
+    def operations_pulse_due(self, now: datetime) -> bool:
+        """Run continuously after completion with a short safety yield.
+
+        Route count and source response time determine the actual cadence. The
+        yield is only backpressure against an empty or unexpectedly fast cycle;
+        it is not a customer collection interval.
+        """
+
+        value = str(
+            self.journal.get("operations_pulse_last_completed_at") or ""
+        )
+        if not value:
+            return True
+        try:
+            completed_at = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return True
+        elapsed = now.astimezone(timezone.utc) - completed_at.astimezone(
+            timezone.utc
+        )
+        return elapsed.total_seconds() >= RUNNER_SUCCESS_YIELD_SECONDS
 
     def journal_interval_due(
         self,
@@ -597,6 +828,20 @@ class ContinuousController:
             int(closeout.get("dsw_interval_minutes") or 30),
         )
 
+    def route_closeout_poll_due(self, now: datetime) -> bool:
+        """Bound the database-heavy target refresh independently of failures."""
+
+        closeout = self.route_closeout_config()
+        interval_minutes = max(
+            5,
+            min(int(closeout.get("target_poll_interval_minutes") or 15), 120),
+        )
+        return self.journal_interval_due(
+            "route_closeout_last_target_poll_at",
+            now,
+            interval_minutes,
+        )
+
     def run_cycle(
         self,
         request_type: str,
@@ -656,12 +901,20 @@ class ContinuousController:
             f"id={cycle_id} type={request_type} service_date={service_date}",
             flush=True,
         )
-        status = subprocess.run(
+        process = subprocess.Popen(
             command,
             cwd=str(APP_DIR),
             env=environment,
-            check=False,
-        ).returncode
+            start_new_session=True,
+        )
+        with self.process_lock:
+            self.active_process = process
+        try:
+            status = process.wait()
+        finally:
+            with self.process_lock:
+                if self.active_process is process:
+                    self.active_process = None
         print(
             f"[controller] cycle finished id={cycle_id} status={status}",
             flush=True,
@@ -669,6 +922,7 @@ class ContinuousController:
         if cycle_exit_has_terminal_handoff(status):
             self.journal["active_cycle"] = None
             self.save_journal()
+        self.complete_pending_runner_command_if_safe()
         return status
 
     def run_previous_day_manifest_recovery(
@@ -676,7 +930,7 @@ class ContinuousController:
         service_date: str,
     ) -> int:
         closeout = self.route_closeout_config()
-        if closeout.get("previous_day_recovery_enabled") is False:
+        if closeout.get("previous_day_recovery_enabled") is not True:
             return 0
         maximum = max(
             1,
@@ -705,7 +959,7 @@ class ContinuousController:
 
     def retained_gpx_recovery_due(self, now: datetime) -> bool:
         closeout = self.route_closeout_config()
-        if closeout.get("retained_gpx_recovery_enabled") is False:
+        if closeout.get("retained_gpx_recovery_enabled") is not True:
             return False
         completed_date = str(
             self.journal.get("retained_gpx_recovery_date") or ""
@@ -856,7 +1110,7 @@ class ContinuousController:
         if not CONTROL_SECRET:
             raise RuntimeError("RUNNER_CONTROL_SECRET is not configured.")
         control_server = RunnerControlServer(
-            ("0.0.0.0", CONTROL_PORT),
+            (CONTROL_BIND, CONTROL_PORT),
             RunnerControlHandler,
             self,
         )
@@ -866,8 +1120,21 @@ class ContinuousController:
             daemon=True,
         )
         control_thread.start()
+        command_thread = threading.Thread(
+            target=self.poll_runner_commands,
+            name="runner-command-poll",
+            daemon=True,
+        )
+        command_thread.start()
+        schedule_thread = threading.Thread(
+            target=self.poll_schedule,
+            name="runner-schedule-poll",
+            daemon=True,
+        )
+        schedule_thread.start()
         print(
-            f"[controller] signed control listening port={CONTROL_PORT}",
+            "[controller] signed control listening "
+            f"bind={CONTROL_BIND} port={CONTROL_PORT}",
             flush=True,
         )
 
@@ -1033,6 +1300,7 @@ class ContinuousController:
                         closeout.get("enabled")
                         and self.pulse_operates_today(now)
                         and self.within_route_closeout_window(now)
+                        and self.route_closeout_poll_due(now)
                         and self.credential_attempt_allowed()
                         and time.monotonic() >= self.next_retry_at
                     ):
@@ -1051,6 +1319,13 @@ class ContinuousController:
                             self.stop_event.wait(5)
                             continue
 
+                        # Persist the poll before the RPC. A failed or empty
+                        # target refresh must not fall back into a five-second
+                        # database retry loop.
+                        self.journal[
+                            "route_closeout_last_target_poll_at"
+                        ] = utc_iso()
+                        self.save_journal()
                         manifest_routes = self.route_closeout_targets(
                             service_date,
                             final_sweep=(
@@ -1099,6 +1374,7 @@ class ContinuousController:
                         pulse.get("enabled")
                         and self.pulse_operates_today(now)
                         and self.within_pulse_window(now)
+                        and self.operations_pulse_due(now)
                         and self.credential_attempt_allowed()
                         and time.monotonic() >= self.next_retry_at
                     ):
@@ -1123,14 +1399,16 @@ class ContinuousController:
                             ] = now.date().isoformat()
                             self.save_journal()
                         if status == 0:
+                            self.journal[
+                                "operations_pulse_last_completed_at"
+                            ] = utc_iso()
                             self.failure_count = 0
                             self.next_retry_at = 0
+                            self.save_journal()
                         elif status == 40:
                             self.mark_auth_failure()
                         else:
                             self.mark_transient_failure()
-                        # Success chains immediately into the next cycle. This
-                        # small yield only allows signals and control events.
                         self.stop_event.wait(1)
                         continue
 
@@ -1147,6 +1425,8 @@ class ContinuousController:
             control_server.shutdown()
             control_server.server_close()
             control_thread.join(timeout=10)
+            command_thread.join(timeout=10)
+            schedule_thread.join(timeout=10)
 
         return 0
 

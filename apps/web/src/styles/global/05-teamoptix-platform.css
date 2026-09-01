@@ -142,6 +142,28 @@ html[data-theme="dark"] .teamoptix-shell {
 .domain-panel-grid { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .domain-panel { align-self: start; }
 .domain-row-list { border-top: 1px solid #e2e8f0; }
+.runner-fleet-control { background: var(--command-panel); border: 1px solid var(--command-divider); border-radius: 18px; box-shadow: var(--command-shadow); display: grid; gap: 16px; padding: 18px; }
+.runner-fleet-control__heading { align-items: end; display: flex; gap: 18px; justify-content: space-between; }
+.runner-fleet-control__heading h2 { color: var(--command-strong); font-size: 22px; margin: 3px 0 5px; }
+.runner-fleet-control__heading p:last-child { color: var(--command-subtle); font-size: 12px; margin: 0; max-width: 720px; }
+.runner-fleet-control__heading > button, .runner-control-card__actions button { background: var(--command-panel); border: 1px solid var(--command-inset-border); border-radius: 10px; color: var(--command-copy); cursor: pointer; font: inherit; font-size: 12px; font-weight: 900; min-height: 38px; padding: 8px 12px; }
+.runner-fleet-control__heading > button:hover, .runner-control-card__actions button:hover:not(:disabled) { border-color: var(--command-link); color: var(--command-link); }
+.runner-fleet-control__grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.runner-control-card { background: var(--command-inset); border: 1px solid var(--command-inset-border); border-radius: 16px; display: grid; gap: 14px; padding: 15px; }
+.runner-control-card__identity { display: grid; gap: 3px; }
+.runner-control-card__identity > span { color: var(--command-link); font-size: 10px; font-weight: 950; letter-spacing: .1em; text-transform: uppercase; }
+.runner-control-card__identity strong { color: var(--command-strong); font-size: 16px; }
+.runner-control-card__identity small { color: var(--command-subtle); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
+.runner-control-card__facts { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; }
+.runner-control-card__facts div { border-top: 1px solid var(--command-divider-soft); display: grid; gap: 2px; padding-top: 8px; }
+.runner-control-card__facts dt { color: var(--command-subtle); font-size: 10px; font-weight: 900; text-transform: uppercase; }
+.runner-control-card__facts dd { color: var(--command-copy); font-size: 11px; font-weight: 800; margin: 0; }
+.runner-control-card__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.runner-control-card__actions button:disabled { cursor: not-allowed; opacity: .48; }
+.runner-control-card__actions .runner-control-card__emergency { border-color: color-mix(in srgb, var(--command-danger) 45%, var(--command-inset-border)); color: var(--command-danger); margin-left: auto; }
+.runner-control-card__notice { background: color-mix(in srgb, var(--command-link) 8%, var(--command-panel)); border: 1px solid color-mix(in srgb, var(--command-link) 20%, var(--command-divider)); border-radius: 10px; color: var(--command-copy); font-size: 11px; line-height: 1.45; margin: 0; padding: 9px 10px; }
+.runner-control-card__notice--error { background: color-mix(in srgb, var(--command-danger) 8%, var(--command-panel)); border-color: color-mix(in srgb, var(--command-danger) 26%, var(--command-divider)); color: var(--command-danger); }
+@media (max-width: 720px) { .runner-fleet-control__heading { align-items: stretch; flex-direction: column; } .runner-control-card__facts { grid-template-columns: 1fr; } .runner-control-card__actions .runner-control-card__emergency { margin-left: 0; } }
 .customer-legal-heading { align-items: end; display: flex; gap: 20px; justify-content: space-between; padding: 8px 2px 2px; }
 .customer-legal-heading > div { display: grid; gap: 6px; }
 .customer-legal-heading h1 { color: #0f1c38; font-size: clamp(32px, 4vw, 50px); letter-spacing: -.055em; line-height: 1; margin: 0; }

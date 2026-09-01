@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import {
-  OPERATIONS_RUNNER_KEY,
-  pushOperationsRunnerSchedule,
+  loadAssignedOperationsRunnerSchedule,
+  resolveAssignedOperationsRunnerKey,
 } from "@/features/automation/server/runner-control";
 
 export const runtime = "nodejs";
@@ -98,24 +98,14 @@ export async function GET(
       );
     }
 
-    const { data, error } = await createSupabaseServiceRoleClient().rpc(
-      "get_operations_runner_schedule",
-      { p_company_slug: slug }
-    );
-
-    if (error) {
-      return NextResponse.json(
-        { error: error.message, row: null },
-        { status: 500 }
-      );
-    }
-
-    const rows = Array.isArray(data) ? data : data ? [data] : [];
+    const service = createSupabaseServiceRoleClient();
+    const { runnerKey, schedule } =
+      await loadAssignedOperationsRunnerSchedule(service, slug);
 
     return NextResponse.json({
-      row: rows[0] ?? null,
+      row: schedule,
       can_manage: true,
-      runner_key: OPERATIONS_RUNNER_KEY,
+      runner_key: runnerKey,
     });
   } catch (error) {
     return NextResponse.json(
@@ -170,6 +160,11 @@ export async function PATCH(
       typeof incomingReportConfig.route_closeout === "object"
         ? incomingReportConfig.route_closeout
         : {};
+    const incomingDroAm =
+      incomingReportConfig.dro_am &&
+      typeof incomingReportConfig.dro_am === "object"
+        ? incomingReportConfig.dro_am
+        : {};
     const requiredRouteCloseoutReports = [
       "FCC",
       "DELIVERY_MANIFEST",
@@ -205,12 +200,24 @@ export async function PATCH(
       (incomingRunGate.manual_state == null && Boolean(body.collection_enabled))
         ? "ACTIVE"
         : "INACTIVE";
+    const boundedInteger = (
+      value: unknown,
+      fallback: number,
+      minimum: number,
+      maximum: number
+    ) => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed)
+        ? Math.max(minimum, Math.min(Math.trunc(parsed), maximum))
+        : fallback;
+    };
     const reportConfig = {
       previous_day_close: ["DSW"],
       dro_am: {
-        enabled: true,
         start_time: "04:00",
         reports: ["DRO"],
+        ...incomingDroAm,
+        enabled: incomingDroAm.enabled === true,
       },
       operations_pulse: [
         "DSW",
@@ -221,21 +228,65 @@ export async function PATCH(
       operating_weekdays: [1, 2, 3, 4, 5, 6],
       operating_date_overrides: {},
       ...incomingReportConfig,
+      operations_pulse_interval_minutes: boundedInteger(
+        incomingReportConfig.operations_pulse_interval_minutes,
+        60,
+        15,
+        1440
+      ),
       route_closeout: {
-        enabled: true,
         start_time: "19:30",
         end_time: "23:50",
         final_sweep_start_time: "23:30",
-        fcc_interval_minutes: 10,
-        dsw_interval_minutes: 30,
-        route_batch_size: 6,
-        previous_day_recovery_enabled: true,
-        previous_day_recovery_max_batches: 4,
-        retained_gpx_recovery_enabled: true,
         retained_gpx_recovery_start_time: "03:10",
-        retained_gpx_recovery_max_batches: 12,
-        retained_gpx_recovery_interval_minutes: 30,
         ...incomingRouteCloseout,
+        enabled: incomingRouteCloseout.enabled === true,
+        target_poll_interval_minutes: boundedInteger(
+          incomingRouteCloseout.target_poll_interval_minutes,
+          15,
+          5,
+          120
+        ),
+        fcc_interval_minutes: boundedInteger(
+          incomingRouteCloseout.fcc_interval_minutes,
+          15,
+          15,
+          120
+        ),
+        dsw_interval_minutes: boundedInteger(
+          incomingRouteCloseout.dsw_interval_minutes,
+          30,
+          30,
+          240
+        ),
+        route_batch_size: boundedInteger(
+          incomingRouteCloseout.route_batch_size,
+          3,
+          1,
+          6
+        ),
+        previous_day_recovery_enabled:
+          incomingRouteCloseout.previous_day_recovery_enabled === true,
+        previous_day_recovery_max_batches: boundedInteger(
+          incomingRouteCloseout.previous_day_recovery_max_batches,
+          2,
+          1,
+          4
+        ),
+        retained_gpx_recovery_enabled:
+          incomingRouteCloseout.retained_gpx_recovery_enabled === true,
+        retained_gpx_recovery_max_batches: boundedInteger(
+          incomingRouteCloseout.retained_gpx_recovery_max_batches,
+          2,
+          1,
+          4
+        ),
+        retained_gpx_recovery_interval_minutes: boundedInteger(
+          incomingRouteCloseout.retained_gpx_recovery_interval_minutes,
+          120,
+          60,
+          1440
+        ),
         reports: routeCloseoutReports,
       },
       run_gate: {
@@ -245,11 +296,12 @@ export async function PATCH(
     };
 
     const service = createSupabaseServiceRoleClient();
+    const runnerKey = await resolveAssignedOperationsRunnerKey(service, slug);
     const { data, error } = await service.rpc(
       "save_operations_runner_schedule",
       {
         p_company_slug: slug,
-        p_runner_key: OPERATIONS_RUNNER_KEY,
+        p_runner_key: runnerKey,
         p_timezone: body.timezone ?? "America/New_York",
         p_collection_enabled: manualState === "ACTIVE",
         p_previous_day_close_enabled: Boolean(
@@ -279,39 +331,12 @@ export async function PATCH(
       );
     }
 
-    let runnerSync: {
-      status: "APPLIED" | "PENDING";
-      error?: string;
-    } = { status: "PENDING" };
-    let row = data;
-
-    try {
-      await pushOperationsRunnerSchedule(service);
-
-      const { data: refreshed } = await service.rpc(
-        "get_operations_runner_schedule",
-        { p_company_slug: slug }
-      );
-      const refreshedRows = Array.isArray(refreshed)
-        ? refreshed
-        : refreshed
-          ? [refreshed]
-          : [];
-      row = refreshedRows[0] ?? data;
-      runnerSync = { status: "APPLIED" };
-    } catch (runnerError) {
-      runnerSync = {
-        status: "PENDING",
-        error:
-          runnerError instanceof Error
-            ? runnerError.message
-            : "Runner did not acknowledge the schedule.",
-      };
-    }
-
     return NextResponse.json({
-      row,
-      runner_sync: runnerSync,
+      row: data,
+      runner_sync: {
+        status: "PENDING",
+        message: "The assigned runner will apply this schedule on its next private poll.",
+      },
     });
   } catch (error) {
     return NextResponse.json(
