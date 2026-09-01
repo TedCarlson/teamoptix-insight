@@ -5,6 +5,7 @@ import { backfillManifestCollectionPaceMetadata } from "@/features/operations/ma
 import { manifestIdentityFromBuffer } from "@/features/operations/manifests/manifest.identity";
 import {
   isManifestCollectionArtifact,
+  MANIFEST_COLLECTION_ARTIFACT_KEYS,
   manifestPreparationPayload,
 } from "@/features/operations/reports/automation/collectionArtifactAuthority";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
@@ -57,6 +58,12 @@ async function prepareManifestCollectionArtifacts(
     .select("*")
     .eq("artifact_kind", "REPORT_FILE")
     .in("artifact_status", ["READY_FOR_INGEST", "FAILED"])
+    // Filter before limiting. A global backlog of unrelated artifacts must
+    // not starve current manifest work out of the processor's first page.
+    .in(
+      "runner_artifact_json->>artifact_key",
+      Array.from(MANIFEST_COLLECTION_ARTIFACT_KEYS)
+    )
     .order("created_at", { ascending: true })
     .limit(250);
 
@@ -251,6 +258,10 @@ async function processRouteGpxCollectionArtifacts(
     .select("*")
     .eq("artifact_kind", "REPORT_FILE")
     .in("artifact_status", ["READY_FOR_INGEST", "FAILED"])
+    // GPX has its own manifest-readiness gate. Select that lane in PostgREST
+    // before applying the bounded page so old unrelated failures cannot block
+    // today's route files indefinitely.
+    .contains("runner_artifact_json", { artifact_key: "ROUTE_GPX" })
     .order("created_at", { ascending: true })
     .limit(250);
   if (collectionRequestId) {
