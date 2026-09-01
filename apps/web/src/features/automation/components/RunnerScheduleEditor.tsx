@@ -4,23 +4,8 @@ import { formatDateTime } from "./automationFormatters";
 import { MiniStat, SectionCard } from "./automationShared";
 import type { RunnerSchedule } from "./automation.types";
 
-const REPORT_OPTIONS = [
-  ["DSW", "Daily Service Worksheet"],
-  ["FCC", "Work Area Summary"],
-  ["DELIVERY_MANIFEST", "Delivery manifests"],
-  ["PICKUP_MANIFEST", "Pickup manifests"],
-] as const;
-
 function timeValue(value: string | null | undefined, fallback: string) {
   return (value || fallback).slice(0, 5);
-}
-
-function reportList(
-  schedule: RunnerSchedule,
-  key: "previous_day_close" | "operations_pulse"
-) {
-  const value = schedule.report_config_json?.[key];
-  return Array.isArray(value) ? value : [];
 }
 
 export function defaultRunnerSchedule(params: {
@@ -36,15 +21,15 @@ export function defaultRunnerSchedule(params: {
     runner_key: params.runnerKey ?? "vps-laravel-runner-001",
     timezone: "America/New_York",
     collection_enabled: false,
-    previous_day_close_enabled: true,
+    previous_day_close_enabled: false,
     previous_day_close_time: "03:00:00",
-    operations_pulse_enabled: true,
+    operations_pulse_enabled: false,
     operations_pulse_start_time: "07:30:00",
     operations_pulse_end_time: "19:30:00",
     report_config_json: {
       previous_day_close: ["DSW"],
       dro_am: {
-        enabled: true,
+        enabled: false,
         start_time: "04:00",
         reports: ["DRO"],
       },
@@ -58,20 +43,22 @@ export function defaultRunnerSchedule(params: {
         "DELIVERY_MANIFEST",
         "PICKUP_MANIFEST",
       ],
+      operations_pulse_interval_minutes: 60,
       route_closeout: {
-        enabled: true,
+        enabled: false,
         start_time: "19:30",
         end_time: "23:50",
         final_sweep_start_time: "23:30",
-        fcc_interval_minutes: 10,
+        target_poll_interval_minutes: 15,
+        fcc_interval_minutes: 15,
         dsw_interval_minutes: 30,
-        route_batch_size: 6,
-        previous_day_recovery_enabled: true,
-        previous_day_recovery_max_batches: 4,
-        retained_gpx_recovery_enabled: true,
+        route_batch_size: 3,
+        previous_day_recovery_enabled: false,
+        previous_day_recovery_max_batches: 2,
+        retained_gpx_recovery_enabled: false,
         retained_gpx_recovery_start_time: "03:10",
-        retained_gpx_recovery_max_batches: 12,
-        retained_gpx_recovery_interval_minutes: 30,
+        retained_gpx_recovery_max_batches: 2,
+        retained_gpx_recovery_interval_minutes: 120,
         reports: [
           "FCC",
           "DELIVERY_MANIFEST",
@@ -107,7 +94,7 @@ export default function RunnerScheduleEditor(props: {
     props.row.applied_version >= props.row.config_version &&
     props.row.runner_state !== "ERROR";
   const droAm = props.row.report_config_json.dro_am ?? {
-    enabled: true,
+    enabled: false,
     start_time: "04:00",
     reports: ["DRO"],
   };
@@ -118,19 +105,20 @@ export default function RunnerScheduleEditor(props: {
       : ("INACTIVE" as const),
   };
   const routeCloseout = props.row.report_config_json.route_closeout ?? {
-    enabled: true,
+    enabled: false,
     start_time: "19:30",
     end_time: "23:50",
     final_sweep_start_time: "23:30",
-    fcc_interval_minutes: 10,
+    target_poll_interval_minutes: 15,
+    fcc_interval_minutes: 15,
     dsw_interval_minutes: 30,
-    route_batch_size: 6,
-    previous_day_recovery_enabled: true,
-    previous_day_recovery_max_batches: 4,
-    retained_gpx_recovery_enabled: true,
+    route_batch_size: 3,
+    previous_day_recovery_enabled: false,
+    previous_day_recovery_max_batches: 2,
+    retained_gpx_recovery_enabled: false,
     retained_gpx_recovery_start_time: "03:10",
-    retained_gpx_recovery_max_batches: 12,
-    retained_gpx_recovery_interval_minutes: 30,
+    retained_gpx_recovery_max_batches: 2,
+    retained_gpx_recovery_interval_minutes: 120,
     reports: [
       "FCC",
       "DELIVERY_MANIFEST",
@@ -167,33 +155,14 @@ export default function RunnerScheduleEditor(props: {
     });
   }
 
-  function setReports(
-    key: "previous_day_close" | "operations_pulse",
-    report: string,
-    enabled: boolean
-  ) {
-    const current = reportList(props.row, key);
-    const next = enabled
-      ? Array.from(new Set([...current, report]))
-      : current.filter((value) => value !== report);
-
-    props.onChange({
-      ...props.row,
-      report_config_json: {
-        ...props.row.report_config_json,
-        [key]: next,
-      },
-    });
-  }
-
   return (
     <SectionCard
       eyebrow="Runner control"
       title="Collection master switch"
     >
       <p style={{ color: "#526681", marginTop: 0, lineHeight: 1.6 }}>
-        Team Optix owns this signed master gate for the four daily runner
-        jobs. Historical sweeps and targeted recovery remain ticket-queue work.
+        Collection is opt-in. When active, the assigned company runner stays
+        available and starts the next cycle only after the current one finishes.
       </p>
 
       <div
@@ -239,23 +208,6 @@ export default function RunnerScheduleEditor(props: {
         </button>
       </div>
 
-      <div style={{ border: "1px solid #dbe7f3", borderRadius: 14, padding: 12, marginTop: 12 }}>
-        <strong style={{ display: "block" }}>Control authority</strong>
-        <p style={{ color: "#64748b", fontSize: 12, lineHeight: 1.5 }}>
-          Manual authority is active now. Billing authority is the next control
-          depth and will resolve this same signed run/rest gate from verified
-          payment and subscription state.
-        </p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          <button type="button" className="button button-primary" disabled>
-            Manual · authoritative
-          </button>
-          <button type="button" className="button" disabled title="Billing gate wiring is not active yet.">
-            Billing &amp; payment · prepared
-          </button>
-        </div>
-      </div>
-
       <div
         style={{
           display: "grid",
@@ -295,21 +247,9 @@ export default function RunnerScheduleEditor(props: {
               }
             />
           </label>
-          <div style={{ display: "grid", gap: 6, marginTop: 12 }}>
-            {REPORT_OPTIONS.map(([key, label]) => (
-              <label key={key} style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 12 }}>
-                <input
-                  type="checkbox"
-                  checked={reportList(props.row, "previous_day_close").includes(key)}
-                  disabled={props.disabled}
-                  onChange={(event) =>
-                    setReports("previous_day_close", key, event.target.checked)
-                  }
-                />
-                {label}
-              </label>
-            ))}
-          </div>
+          <p style={{ color: "#64748b", fontSize: 12, lineHeight: 1.5, marginBottom: 0 }}>
+            One final DSW snapshot for the prior operating date.
+          </p>
         </div>
 
         <div style={{ border: "1px solid #dbe7f3", borderRadius: 14, padding: 12 }}>
@@ -342,7 +282,7 @@ export default function RunnerScheduleEditor(props: {
 
         <div style={{ border: "1px solid #dbe7f3", borderRadius: 14, padding: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-            <strong>Continuous Collection</strong>
+            <strong>Always-on collection</strong>
             <button
               type="button"
               className={props.row.operations_pulse_enabled ? "button button-primary" : "button"}
@@ -397,24 +337,9 @@ export default function RunnerScheduleEditor(props: {
             </label>
           </div>
           <p style={{ color: "#166534", fontSize: 12, fontWeight: 850, lineHeight: 1.5 }}>
-            Collects and hands off each file independently. The next collection
-            starts after the current collection cycle finishes.
+            Route count and source response time determine cadence. A short
+            internal safety yield prevents empty cycles from becoming a tight loop.
           </p>
-          <div style={{ display: "grid", gap: 6, marginTop: 12 }}>
-            {REPORT_OPTIONS.map(([key, label]) => (
-              <label key={key} style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 12 }}>
-                <input
-                  type="checkbox"
-                  checked={reportList(props.row, "operations_pulse").includes(key)}
-                  disabled={props.disabled}
-                  onChange={(event) =>
-                    setReports("operations_pulse", key, event.target.checked)
-                  }
-                />
-                {label}
-              </label>
-            ))}
-          </div>
         </div>
 
         <div style={{ border: "1px solid #dbe7f3", borderRadius: 14, padding: 12 }}>
@@ -471,40 +396,7 @@ export default function RunnerScheduleEditor(props: {
               />
             </label>
           </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-              gap: 8,
-              marginTop: 10,
-            }}
-          >
-            <label style={{ display: "grid", gap: 5 }}>
-              <span style={{ color: "#64748b", fontSize: 11, fontWeight: 900 }}>
-                FCC minutes
-              </span>
-              <input
-                type="number"
-                min={5}
-                max={60}
-                value={routeCloseout.fcc_interval_minutes ?? 10}
-                disabled={props.disabled}
-                onChange={(event) => setRouteCloseout({ fcc_interval_minutes: Number(event.target.value) })}
-              />
-            </label>
-            <label style={{ display: "grid", gap: 5 }}>
-              <span style={{ color: "#64748b", fontSize: 11, fontWeight: 900 }}>
-                DSW minutes
-              </span>
-              <input
-                type="number"
-                min={10}
-                max={120}
-                value={routeCloseout.dsw_interval_minutes ?? 30}
-                disabled={props.disabled}
-                onChange={(event) => setRouteCloseout({ dsw_interval_minutes: Number(event.target.value) })}
-              />
-            </label>
+          <div style={{ marginTop: 10, maxWidth: 220 }}>
             <label style={{ display: "grid", gap: 5 }}>
               <span style={{ color: "#64748b", fontSize: 11, fontWeight: 900 }}>
                 Routes / pass
@@ -513,7 +405,7 @@ export default function RunnerScheduleEditor(props: {
                 type="number"
                 min={1}
                 max={25}
-                value={routeCloseout.route_batch_size ?? 6}
+                value={routeCloseout.route_batch_size ?? 3}
                 disabled={props.disabled}
                 onChange={(event) => setRouteCloseout({ route_batch_size: Number(event.target.value) })}
               />

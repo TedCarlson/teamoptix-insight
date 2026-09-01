@@ -6,6 +6,7 @@ import {
   resolveCompanyBySlug,
 } from "@/features/automation/server/automation.repository";
 import { easternOperationalDayBounds } from "@/lib/operationalDay";
+import { loadAssignedOperationsRunnerSchedule } from "@/features/automation/server/runner-control";
 
 export const runtime = "nodejs";
 
@@ -174,7 +175,7 @@ export async function GET(
       const access = await resolveAutomationAccess(supabase, slug);
       const [
         { data, error },
-        { data: runnerSchedule, error: scheduleError },
+        assignedSchedule,
         { data: inDayAssignment, error: assignmentError },
         healthTimes,
       ] = await Promise.all([
@@ -188,13 +189,7 @@ export async function GET(
           .lt("created_at", end.toISOString())
           .order("created_at", { ascending: false })
           .limit(Math.min(limit, 10)),
-        service
-          .from("operations_runner_schedule_v")
-          .select(
-            "runner_key,collection_enabled,operations_pulse_enabled,operations_pulse_start_time,operations_pulse_end_time,timezone,runner_state,runner_last_seen_at,runner_last_error,runner_metadata_json,report_config_json"
-          )
-          .eq("company_id", resolved.company.id)
-          .maybeSingle(),
+        loadAssignedOperationsRunnerSchedule(service, slug),
         service
           .from("company_operations_ticket_assignment_v")
           .select(
@@ -219,12 +214,6 @@ export async function GET(
           { status: 500 }
         );
       }
-      if (scheduleError) {
-        return NextResponse.json(
-          { error: scheduleError.message, rows: [] },
-          { status: 500 }
-        );
-      }
       if (assignmentError) {
         return NextResponse.json(
           { error: assignmentError.message, rows: [] },
@@ -243,7 +232,7 @@ export async function GET(
           company_id: resolved.company.id,
           rows: data ?? [],
           ...healthTimes,
-          runner_schedule: runnerSchedule ?? null,
+          runner_schedule: assignedSchedule.schedule ?? null,
           operating_calendar: inDayAssignment
             ? {
                 assignment_id: inDayAssignment.id,

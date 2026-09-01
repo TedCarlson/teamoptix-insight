@@ -97,11 +97,13 @@ export type RunnerSchedule = {
       manual_state?: "ACTIVE" | "INACTIVE";
     };
     operations_pulse?: string[];
+    operations_pulse_interval_minutes?: number;
     route_closeout?: {
       enabled?: boolean;
       start_time?: string;
       end_time?: string;
       final_sweep_start_time?: string;
+      target_poll_interval_minutes?: number;
       fcc_interval_minutes?: number;
       dsw_interval_minutes?: number;
       route_batch_size?: number;

@@ -29,12 +29,19 @@ class DailyPackageControlContractTests(unittest.TestCase):
         self.assertNotIn("DRO_AM_ENABLED", self.service_override)
         self.assertNotIn("DRO_AM_TIME", self.service_override)
 
-    def test_operations_pulse_is_success_chained(self):
+    def test_operations_pulse_is_bounded_by_signed_interval(self):
         self.assertIn(
+            'and self.operations_pulse_due(now)',
+            self.source,
+        )
+        self.assertIn(
+            '"operations_pulse_last_completed_at"',
+            self.source,
+        )
+        self.assertNotIn(
             "Success chains immediately into the next cycle.",
             self.source,
         )
-        self.assertIn('self.stop_event.wait(1)', self.source)
 
     def test_route_closeout_is_a_targeted_self_draining_lane(self):
         cycle_source = Path(__file__).with_name(

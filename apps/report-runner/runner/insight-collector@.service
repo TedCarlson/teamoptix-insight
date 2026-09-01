@@ -1,0 +1,32 @@
+[Unit]
+Description=Insight Company Collector (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/teamoptix-insight/apps/report-runner
+Environment=CONTINUOUS_RUNNER_SHADOW=1
+Environment=RUNNER_CONTROL_PORT=8790
+Environment=RUNNER_CONTROL_BIND=127.0.0.1
+Environment=RUNNER_SCHEDULE_POLL_SECONDS=60
+Environment=RUNNER_SUCCESS_YIELD_SECONDS=60
+Environment=CONTINUOUS_RUNNER_STATE_DIR=/var/lib/teamoptix-runners/%i
+Environment=INSIGHT_ENV_FILE=/root/teamoptix-insight/apps/automation-worker/.env.production
+EnvironmentFile=/etc/teamoptix/runners/%i.env
+EnvironmentFile=-/root/teamoptix-insight/apps/report-runner/runtime/continuous-runner/control.env
+ExecStart=/root/teamoptix-insight/apps/report-runner/storage/app/public/scraper/.venv/bin/python /root/teamoptix-insight/apps/report-runner/runner/continuous-controller.py
+Restart=always
+RestartSec=10
+KillMode=control-group
+TimeoutStopSec=45
+MemoryHigh=1200M
+MemoryMax=1500M
+CPUQuota=90%
+TasksMax=256
+StateDirectory=teamoptix-runners/%i
+User=root
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

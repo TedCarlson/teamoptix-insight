@@ -5,6 +5,7 @@ import {
   getOrCreateFedExAutomationProfile,
   resolveCompanyBySlug,
 } from "@/features/automation/server/automation.repository";
+import { loadAssignedOperationsRunnerSchedule } from "@/features/automation/server/runner-control";
 
 export const runtime = "nodejs";
 
@@ -37,17 +38,10 @@ export async function GET(
       );
     }
 
-    const { data: scheduleData, error: scheduleError } =
-      await createSupabaseServiceRoleClient().rpc(
-        "get_operations_runner_schedule",
-        { p_company_slug: slug }
-      );
-    const schedules = Array.isArray(scheduleData)
-      ? scheduleData
-      : scheduleData
-        ? [scheduleData]
-        : [];
-    const schedule = scheduleError ? null : schedules[0] ?? null;
+    const { schedule } = await loadAssignedOperationsRunnerSchedule(
+      createSupabaseServiceRoleClient(),
+      slug
+    );
     const runnerState = String(schedule?.runner_state ?? "").toUpperCase();
     const collectionHealth =
       runnerState === "ERROR"

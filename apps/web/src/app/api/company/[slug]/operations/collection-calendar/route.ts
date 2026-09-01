@@ -3,7 +3,6 @@ import {
   resolveAutomationAccess,
   resolveCompanyBySlug,
 } from "@/features/automation/server/automation.repository";
-import { pushOperationsRunnerSchedule } from "@/features/automation/server/runner-control";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 
@@ -150,25 +149,10 @@ export async function PATCH(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    try {
-      await pushOperationsRunnerSchedule(service);
-    } catch (schedulerError) {
-      return NextResponse.json(
-        {
-          error:
-            schedulerError instanceof Error
-              ? `The calendar override was saved, but the scheduler did not accept it: ${schedulerError.message}`
-              : "The calendar override was saved, but the scheduler did not accept it.",
-          override: data,
-          scheduler_sync: "PENDING",
-        },
-        { status: 502 }
-      );
-    }
-
     return NextResponse.json({
       override: data,
-      scheduler_sync: "APPLIED",
+      scheduler_sync: "PENDING",
+      message: "The assigned runner will refresh this calendar on its next private poll.",
     });
   } catch (error) {
     return NextResponse.json(

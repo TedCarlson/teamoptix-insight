@@ -17,6 +17,7 @@ export default function TeamOptixDomainOverview(props: {
   description: string;
   metrics: DomainMetric[];
   panels: DomainPanel[];
+  children?: ReactNode;
 }) {
   return (
     <TeamOptixShell>
@@ -53,6 +54,7 @@ export default function TeamOptixDomainOverview(props: {
               </article>
             ))}
           </section>
+          {props.children}
         </section>
       </main>
     </TeamOptixShell>
