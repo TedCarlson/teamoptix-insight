@@ -351,7 +351,55 @@ class ContinuousControllerTests(unittest.TestCase):
         controller.journal["operations_pulse_manifest_baseline_date"] = (
             "2026-08-31"
         )
-        self.assertIn("ROUTE_GPX", controller.operations_pulse_reports(now))
+        reports = controller.operations_pulse_reports(now)
+        self.assertIn("ROUTE_GPX", reports)
+        self.assertIn("DELIVERY_MANIFEST", reports)
+        self.assertIn("PICKUP_MANIFEST", reports)
+
+    def test_gpx_schedule_repairs_missing_manifest_dependencies(self):
+        controller = self.controller()
+        controller.schedule["operations_pulse"]["reports"] = [
+            "DSW",
+            "ROUTE_GPX",
+        ]
+        controller.journal["operations_pulse_manifest_baseline_date"] = (
+            "2026-08-31"
+        )
+        now = datetime(
+            2026,
+            8,
+            31,
+            9,
+            0,
+            tzinfo=ZoneInfo("America/New_York"),
+        )
+
+        self.assertEqual(
+            controller.operations_pulse_reports(now),
+            [
+                "DSW",
+                "DELIVERY_MANIFEST",
+                "PICKUP_MANIFEST",
+                "ROUTE_GPX",
+            ],
+        )
+
+    def test_gpx_is_not_implicitly_enabled_by_a_dsw_only_schedule(self):
+        controller = self.controller()
+        controller.schedule["operations_pulse"]["reports"] = ["DSW"]
+        controller.journal["operations_pulse_manifest_baseline_date"] = (
+            "2026-08-31"
+        )
+        now = datetime(
+            2026,
+            8,
+            31,
+            9,
+            0,
+            tzinfo=ZoneInfo("America/New_York"),
+        )
+
+        self.assertEqual(controller.operations_pulse_reports(now), ["DSW"])
 
     def test_manifest_baseline_resets_by_terminal_service_date(self):
         controller = self.controller()

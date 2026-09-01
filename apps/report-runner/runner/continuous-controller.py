@@ -698,15 +698,22 @@ class ContinuousController:
         )
 
     def operations_pulse_reports(self, now: datetime) -> list[str]:
+        configured_reports = self.reports_for("operations_pulse")
+        route_gpx_enabled = "ROUTE_GPX" in configured_reports
         reports = [
-            report
-            for report in self.reports_for("operations_pulse")
-            if report != "ROUTE_GPX"
+            report for report in configured_reports if report != "ROUTE_GPX"
         ]
-        if (
+        baseline_established = (
             str(self.journal.get("operations_pulse_manifest_baseline_date") or "")
             == now.date().isoformat()
-        ):
+        )
+        if route_gpx_enabled and baseline_established:
+            # GPX is only meaningful when the same service day has an
+            # authoritative manifest sibling. Keep that dependency inside the
+            # controller so a partial schedule cannot create orphan GPX work.
+            for required in ("DELIVERY_MANIFEST", "PICKUP_MANIFEST"):
+                if required not in reports:
+                    reports.append(required)
             reports.append("ROUTE_GPX")
         return reports
 
