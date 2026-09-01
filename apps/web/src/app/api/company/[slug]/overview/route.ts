@@ -172,6 +172,20 @@ export async function GET(
         );
       }) ?? null;
 
+    const latestLoadedServiceDate = (calendarResult.data ?? [])
+      .filter(
+        (day: {
+          has_final?: boolean | null;
+          has_in_day?: boolean | null;
+        }) => Boolean(day.has_final || day.has_in_day)
+      )
+      .map((day: { service_date?: string | null }) =>
+        String(day.service_date ?? "").slice(0, 10)
+      )
+      .filter(Boolean)
+      .sort()
+      .at(-1) ?? null;
+
     const finalDates = (calendarResult.data ?? [])
       .filter(
         (day: {
@@ -272,10 +286,10 @@ export async function GET(
           active_contract_number:
             activeContract?.contract_number ?? null,
           service_area: activeContract?.service_area ?? null,
-          last_report: latest
+          last_report: latestLoadedServiceDate
             ? {
                 family: "DSW",
-                service_date: latest.service_date,
+                service_date: latestLoadedServiceDate,
               }
             : null,
         },
