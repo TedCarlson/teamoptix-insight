@@ -1,11 +1,11 @@
 # Mobile Companion 1.0 — App Store Privacy Matrix
 
-**Technical audit date:** August 24, 2026
+**Technical audit date:** September 3, 2026
 
-**Status:** Proposed App Store answers based on the shipping code. Public
-Privacy Policy and Support routes are implemented locally as of August 27,
-2026. They must be deployed and verified, and the final App Store Connect
-answers must be reviewed before public App Review submission.
+**Status:** The audited answers below were published in App Store Connect on
+September 3, 2026. The public Privacy Policy and Support routes are reachable;
+the corrected Backblaze B2 inspection-evidence disclosure must be deployed and
+verified before public App Review submission.
 
 ## Product boundary
 
@@ -31,6 +31,7 @@ Location authorization and location collection are separate:
 | Email Address | Yes | Yes | No | App Functionality | Account authentication and identity display |
 | User ID | Yes | Yes | No | App Functionality | Authenticated profile, company access, and operational record ownership |
 | Photos or Videos | Yes | Yes | No | App Functionality | User-selected or captured vehicle-inspection evidence |
+| Emails or Text Messages | Yes | Yes | No | App Functionality | Company messages drafted, published, targeted, received, and acknowledged in the app |
 | Other User Content | Yes | Yes | No | App Functionality | Inspection responses/notes and time-off request content |
 | Product Interaction | Yes | Yes | No | App Functionality | Duty start/stop, message acknowledgements, inspection submissions, and time-off actions retained as operational records |
 
@@ -47,7 +48,6 @@ data: Face ID/Touch ID processing remains inside the operating system.
 - Purchases, payment, credit, or financial information
 - Health or medical data
 - Audio recordings
-- Emails or text-message contents created by the user
 - Crash, performance, or analytics telemetry sent to Team Optix
 - Biometric templates or Face ID images
 
@@ -59,7 +59,8 @@ before the next App Store privacy update.
 
 - Supabase Auth authenticates the user account.
 - Supabase Database receives company-scoped operational records.
-- Supabase Storage receives vehicle-inspection evidence.
+- Backblaze B2 receives sanitized, resized WebP vehicle-inspection evidence.
+- Supabase Database retains the company-scoped authorization and evidence record for each inspection photograph.
 - A per-user SQLCipher database stores pending operational records encrypted on
   the device until synchronization succeeds.
 

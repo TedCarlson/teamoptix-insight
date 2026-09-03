@@ -1,12 +1,12 @@
 # Insight Mobile Companion 1.0 — App Store submission package
 
-**Prepared:** August 27, 2026  
+**Prepared:** September 3, 2026
 **App Store Connect app:** Insight Mobile Companion  
 **Apple ID:** 6804785270  
 **Bundle ID:** `com.teamoptix.insight.companion`  
 **Release territory:** United States only  
 **Price:** Free; no in-app purchases  
-**Build:** Select build 6 after Apple finishes processing it
+**Build:** Build 8 is selected and marked Ready to Submit
 
 ## Listing metadata
 
@@ -99,6 +99,7 @@ For every collected type below, answer **Linked to the user: Yes**, **Used for t
 - Email Address
 - User ID
 - Photos or Videos
+- Emails or Text Messages
 - Other User Content
 - Product Interaction
 
@@ -112,13 +113,14 @@ Do not declare biometric information: Face ID and Touch ID remain inside iOS. Do
 - [x] Dedicated synthetic Insight Demo tenant and review account prepared
 - [x] App Review contact prepared
 - [x] Public Privacy Policy and Support pages implemented locally
-- [ ] Deploy and verify `https://teamoptix.io/privacy` and `https://teamoptix.io/support`
+- [x] Verify `https://teamoptix.io/privacy` and `https://teamoptix.io/support` are publicly reachable
+- [ ] Deploy and verify the corrected Backblaze B2 inspection-evidence disclosure on `https://teamoptix.io/privacy`
 - [ ] Capture, review, and upload the ten screenshots (five iPhone, five iPad)
-- [ ] Complete App Privacy answers from the audited matrix
-- [ ] Complete age-rating questionnaire
-- [ ] Select the replacement build after processing. Its Info.plist declares that the app uses only encryption exempt from App Store Connect documentation requirements and includes the required motion purpose string for the Core Motion APIs linked by `expo-location`; no separate export-compliance attachment or code is expected for the current United States-only distribution.
-- [ ] Select the replacement build after Apple finishes processing it
-- [ ] Save all fields and address any App Store Connect validation messages
+- [x] Complete and publish App Privacy answers from the audited matrix
+- [x] Complete age-rating questionnaire
+- [x] Confirm Build 8 declares that the app uses only encryption exempt from App Store Connect documentation requirements and includes the required motion purpose string for the Core Motion APIs linked by `expo-location`; no separate export-compliance attachment or code is expected for the current United States-only distribution.
+- [x] Select Build 8 after Apple finishes processing it and verify it is Ready to Submit
+- [x] Save listing metadata, pricing, availability, and privacy fields and clear their App Store Connect validation messages
 - [ ] Add for Review, verify the submission summary, and submit
 
 Do not submit until the public URLs are live, the review credential has been re-tested on a clean install, and the screenshot gallery contains only synthetic data.

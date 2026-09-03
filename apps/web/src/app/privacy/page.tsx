@@ -67,10 +67,11 @@ export default function PrivacyPage() {
       <section>
         <h2>Service providers and storage</h2>
         <p>
-          Team Optix uses service providers when necessary to host, secure, and operate Insight. Supabase provides authentication,
-          database, and storage services for the current production service, including storage of optional inspection evidence.
-          Service providers may process information only to provide their contracted services and are not permitted to use customer
-          data for their own advertising or independent purposes.
+          Team Optix uses service providers when necessary to host, secure, and operate Insight. Supabase provides authentication and
+          database services for the current production service. Optional inspection photographs are validated, resized, converted to
+          a web-ready format, and stored in Backblaze B2; the related authorization and evidence record remain company-scoped in
+          Insight. Service providers may process information only to provide their contracted services and are not permitted to use
+          customer data for their own advertising or independent purposes.
         </p>
       </section>
 
