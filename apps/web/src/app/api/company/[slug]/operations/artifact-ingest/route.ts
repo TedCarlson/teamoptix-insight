@@ -11,6 +11,7 @@ import {
   isManifestCollectionArtifact,
   isRetryableIngestionTimeout,
 } from "@/features/operations/reports/automation/collectionArtifactAuthority";
+import { isRouteGpxCollectionArtifact } from "@/features/operations/manifests/routeGpx";
 
 export const runtime = "nodejs";
 
@@ -171,7 +172,9 @@ async function handleArtifactIngest(req: NextRequest, context: RouteContext) {
     const processed = [];
 
     for (const artifact of (artifacts ?? []).filter(
-      (row: any) => !isManifestCollectionArtifact(row)
+      (row: any) =>
+        !isManifestCollectionArtifact(row) &&
+        !isRouteGpxCollectionArtifact(row)
     )) {
       const artifactKey = String(artifact.runner_artifact_json?.artifact_key ?? "").toUpperCase();
       if (DECOMMISSIONED_FCC_ARTIFACT_KEYS.has(artifactKey)) {
