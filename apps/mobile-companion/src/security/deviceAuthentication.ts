@@ -1,3 +1,4 @@
+import * as Device from "expo-device";
 import * as LocalAuthentication from "expo-local-authentication";
 
 export type DeviceAuthenticationResult =
@@ -5,6 +6,14 @@ export type DeviceAuthenticationResult =
   | { authenticated: false; message: string };
 
 export async function authenticateDeviceAccess(): Promise<DeviceAuthenticationResult> {
+  // iOS Simulator can advertise Face ID in its menu while Expo reports that no
+  // authentication method is enrolled. Bypass the gate only for local simulator
+  // builds so App Store screenshot/testing workflows are not blocked. Physical
+  // development devices and every production build still require authentication.
+  if (__DEV__ && Device.isDevice === false) {
+    return { authenticated: true };
+  }
+
   const hasHardware = await LocalAuthentication.hasHardwareAsync();
   const enrolled = await LocalAuthentication.isEnrolledAsync();
   if (!hasHardware || !enrolled) {

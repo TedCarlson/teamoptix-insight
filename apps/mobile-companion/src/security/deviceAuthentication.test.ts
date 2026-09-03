@@ -2,6 +2,14 @@ import * as LocalAuthentication from "expo-local-authentication";
 
 import { authenticateDeviceAccess } from "./deviceAuthentication";
 
+let mockIsDevice = true;
+
+jest.mock("expo-device", () => ({
+  get isDevice() {
+    return mockIsDevice;
+  },
+}));
+
 jest.mock("expo-local-authentication", () => ({
   authenticateAsync: jest.fn(),
   hasHardwareAsync: jest.fn(),
@@ -11,8 +19,17 @@ jest.mock("expo-local-authentication", () => ({
 describe("device authentication gate", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockIsDevice = true;
     jest.mocked(LocalAuthentication.hasHardwareAsync).mockResolvedValue(true);
     jest.mocked(LocalAuthentication.isEnrolledAsync).mockResolvedValue(true);
+  });
+
+  it("bypasses the gate only for a local simulator build", async () => {
+    mockIsDevice = false;
+
+    await expect(authenticateDeviceAccess()).resolves.toEqual({ authenticated: true });
+    expect(LocalAuthentication.hasHardwareAsync).not.toHaveBeenCalled();
+    expect(LocalAuthentication.authenticateAsync).not.toHaveBeenCalled();
   });
 
   it("unlocks only after successful strong device authentication", async () => {
