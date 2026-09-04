@@ -3,6 +3,7 @@
 import unittest
 
 from manifest_work_area import (
+    delivery_manifest_is_required,
     manifest_work_area_index,
     normalize_manifest_work_area,
     stable_manifest_work_areas,
@@ -32,6 +33,25 @@ class ManifestWorkAreaTests(unittest.TestCase):
 
         self.assertEqual(route_key, "426")
         self.assertEqual(manifest_work_area_index(after, route_key), 3)
+
+    def test_unassigned_selector_placeholder_does_not_fail_broad_pulse(self):
+        self.assertFalse(
+            delivery_manifest_is_required("428 PEAK BPV 27")
+        )
+
+    def test_driver_or_operational_state_requires_delivery_manifest(self):
+        self.assertTrue(
+            delivery_manifest_is_required("447 COOPER, HEATHER - Available")
+        )
+        self.assertTrue(delivery_manifest_is_required("440 PEAK BPV 29 - EOD"))
+
+    def test_explicit_recovery_target_remains_authoritative(self):
+        self.assertTrue(
+            delivery_manifest_is_required(
+                "428 PEAK BPV 27",
+                explicitly_requested=True,
+            )
+        )
 
 
 if __name__ == "__main__":
