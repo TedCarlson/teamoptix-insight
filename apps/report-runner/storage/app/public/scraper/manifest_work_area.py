@@ -4,6 +4,12 @@ import re
 from collections.abc import Iterable
 
 
+_OPERATIONAL_ROUTE_STATE = re.compile(
+    r"\s-\s(?:AVAILABLE|EOD|ON\s+ROAD|IN\s+PROGRESS|LOGGED\s+IN)(?:\s-\sHELPER)?(?:\s|$)",
+    re.IGNORECASE,
+)
+
+
 def normalize_manifest_work_area(value: object) -> str:
     text = str(value or "").strip().upper()
     match = re.search(r"(?<!\d)(\d{1,4})(?!\d)", text)
@@ -24,6 +30,25 @@ def stable_manifest_work_areas(option_labels: Iterable[object]) -> list[str]:
         seen.add(route_key)
         result.append(route_key)
     return result
+
+
+def delivery_manifest_is_required(
+    work_area_label: object,
+    *,
+    explicitly_requested: bool = False,
+) -> bool:
+    """Distinguish an assigned route from a selector placeholder.
+
+    FedEx keeps planned, unassigned work areas in the selector even when no
+    manifest export exists. An explicit closeout/recovery target remains
+    authoritative, while a broad pulse only fails for a route that carries a
+    driver identity or an operational state.
+    """
+
+    if explicitly_requested:
+        return True
+    label = str(work_area_label or "").strip()
+    return "," in label or bool(_OPERATIONAL_ROUTE_STATE.search(label))
 
 
 def manifest_work_area_index(

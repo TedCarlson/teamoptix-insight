@@ -31,6 +31,7 @@ from manifest_identity import (
     renameDownloadedManifest,
 )
 from manifest_work_area import (
+    delivery_manifest_is_required,
     manifest_work_area_index,
     normalize_manifest_work_area,
     stable_manifest_work_areas,
@@ -1640,8 +1641,19 @@ def main(section_='', option_=0, retry=1):
                     collected_work_areas.add(
                         normalize_manifest_work_area(selected_work_area)
                     )
-                    if not delivery_collected:
+                    if not delivery_collected and delivery_manifest_is_required(
+                        selected_work_area,
+                        explicitly_requested=bool(
+                            REQUESTED_MANIFEST_WORK_AREAS
+                        ),
+                    ):
                         manifest_failures.append(selected_work_area)
+                    elif not delivery_collected:
+                        logging.info(
+                            "Manifest export unavailable for inactive work-area "
+                            "placeholder %s; leaving it eligible for a later pulse",
+                            selected_work_area,
+                        )
                 except (
                     ElementClickInterceptedException,
                     RuntimeError,
