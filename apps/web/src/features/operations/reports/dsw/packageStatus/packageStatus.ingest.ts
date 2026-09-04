@@ -111,6 +111,9 @@ export async function ingestDswPackageStatusWorkbook(params: {
         detected_sheet_name: parsed.sheet_name,
         detected_header_row: parsed.header_row_number,
         expected_count_source: "INGESTION_PARSED_ROWS",
+        source_row_count: parsed.source_row_count,
+        duplicate_tracking_count: parsed.duplicate_tracking_count,
+        duplicate_resolution: "LATEST_STATUS_THEN_RICHEST_ROW",
         ...(artifactLineage ? { artifact_lineage: artifactLineage } : {}),
       },
       p_rows: rows,
@@ -176,5 +179,6 @@ export async function ingestDswPackageStatusWorkbook(params: {
     updated_row_count: data?.updated_row_count ?? 0,
     deleted_row_count: data?.deleted_row_count ?? 0,
     expected_package_count: expectedCount,
+    duplicate_tracking_count: parsed.duplicate_tracking_count,
   };
 }

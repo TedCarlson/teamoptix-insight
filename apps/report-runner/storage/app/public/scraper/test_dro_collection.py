@@ -94,6 +94,40 @@ class DroCollectionTests(unittest.TestCase):
         ):
             dro_collection._select_entity(object())
 
+    @patch.object(dro_collection, "DRO_SERVICE_AREA", "309747")
+    @patch.object(dro_collection, "DRO_BUSINESS_NAME", "")
+    @patch.object(dro_collection, "WebDriverWait")
+    @patch.object(dro_collection.EC, "presence_of_all_elements_located")
+    @patch.object(dro_collection.EC, "element_to_be_clickable")
+    def test_service_area_alone_can_select_the_company_entity(
+        self,
+        element_to_be_clickable,
+        presence_of_all_elements_located,
+        webdriver_wait,
+    ):
+        driver = Mock()
+        row = Mock()
+        presence_condition = object()
+        clickable_condition = object()
+        presence_of_all_elements_located.return_value = presence_condition
+        element_to_be_clickable.return_value = clickable_condition
+        webdriver_wait.return_value.until.side_effect = [[row], row]
+
+        dro_collection._select_entity(driver)
+
+        presence_of_all_elements_located.assert_called_once_with(
+            (
+                dro_collection.By.XPATH,
+                "//tr[.//*[normalize-space()='309747']]",
+            )
+        )
+        element_to_be_clickable.assert_called_once_with(row)
+        self.assertEqual(
+            webdriver_wait.return_value.until.call_args_list,
+            [call(presence_condition), call(clickable_condition)],
+        )
+        row.click.assert_called_once_with()
+
 
 if __name__ == "__main__":
     unittest.main()

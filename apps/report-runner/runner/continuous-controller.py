@@ -390,9 +390,14 @@ class ContinuousController:
             )
             self.schedule = value
             atomic_json_write(SCHEDULE_FILE, value)
-            if next_credential_version != previous_credential_version:
+            if (
+                next_credential_version != previous_credential_version
+                or next_version != previous_version
+            ):
                 self.failure_count = 0
                 self.next_retry_at = 0
+                self.journal["lane_failures"] = {}
+                self.save_journal()
 
         print(
             "[controller] schedule applied "
@@ -697,6 +702,71 @@ class ContinuousController:
             else []
         )
 
+    def dro_target(self, service_date: str) -> dict[str, str]:
+        """Resolve the company-specific DRO entity without server-local config."""
+
+        dro_am = self.schedule.get("dro_am") or {}
+        service_area = str(
+            dro_am.get("service_area")
+            or os.environ.get("FCMS_DRO_SERVICE_AREA")
+            or ""
+        ).strip()
+        business_name = str(
+            dro_am.get("business_name")
+            or os.environ.get("FCMS_DRO_BUSINESS_NAME")
+            or ""
+        ).strip()
+        if not service_area:
+            value = rpc(
+                "get_active_company_contract_config",
+                {
+                    "p_company_slug": self.schedule["company_slug"],
+                    "p_service_date": service_date,
+                },
+            )
+            row = value[0] if isinstance(value, list) and value else value
+            if isinstance(row, dict):
+                service_area = str(row.get("service_area") or "").strip()
+        if not service_area:
+            raise RuntimeError(
+                "DRO collection requires an active company contract service area."
+            )
+        return {
+            "service_area": service_area,
+            "business_name": business_name,
+        }
+
+    def lane_retry_allowed(
+        self,
+        request_type: str,
+        service_date: str,
+        now: datetime,
+    ) -> bool:
+        failures = self.journal.get("lane_failures")
+        if not isinstance(failures, dict):
+            return True
+        state = failures.get(request_type)
+        if not isinstance(state, dict) or state.get("service_date") != service_date:
+            return True
+        retry_after = str(state.get("retry_after") or "")
+        if not retry_after:
+            return True
+        try:
+            retry_at = datetime.fromisoformat(retry_after.replace("Z", "+00:00"))
+        except ValueError:
+            return True
+        return now.astimezone(timezone.utc) >= retry_at.astimezone(timezone.utc)
+
+    def clear_lane_failure(self, request_type: str, service_date: str) -> None:
+        failures = self.journal.get("lane_failures")
+        if not isinstance(failures, dict):
+            return
+        state = failures.get(request_type)
+        if isinstance(state, dict) and state.get("service_date") == service_date:
+            failures.pop(request_type, None)
+            self.journal["lane_failures"] = failures
+            self.save_journal()
+
     def operations_pulse_reports(self, now: datetime) -> list[str]:
         configured_reports = self.reports_for("operations_pulse")
         route_gpx_enabled = "ROUTE_GPX" in configured_reports
@@ -874,6 +944,10 @@ class ContinuousController:
         environment["FCMS_FEDEX_PASSWORD"] = str(credential["password"])
         environment["RUNNER_KEY"] = RUNNER_KEY
         environment["TEAMOPTIX_RUNNER_VERSION"] = RUNNER_VERSION
+        if "DRO" in reports:
+            target = self.dro_target(service_date)
+            environment["FCMS_DRO_SERVICE_AREA"] = target["service_area"]
+            environment["FCMS_DRO_BUSINESS_NAME"] = target["business_name"]
         if interrupted:
             environment["CONTINUOUS_INTERRUPTED_CYCLE_JSON"] = json.dumps(
                 interrupted, separators=(",", ":")
@@ -1093,10 +1167,39 @@ class ContinuousController:
         except Exception as exc:
             print(f"[controller] failed to report auth error: {exc}")
 
-    def mark_transient_failure(self) -> None:
-        self.failure_count += 1
-        self.next_retry_at = time.monotonic() + min(
-            60 * (2 ** (self.failure_count - 1)), 900
+    def mark_transient_failure(
+        self,
+        request_type: str,
+        service_date: str,
+    ) -> None:
+        failures = self.journal.get("lane_failures")
+        if not isinstance(failures, dict):
+            failures = {}
+        previous = failures.get(request_type)
+        previous_count = (
+            int(previous.get("failure_count") or 0)
+            if isinstance(previous, dict)
+            and previous.get("service_date") == service_date
+            else 0
+        )
+        failure_count = previous_count + 1
+        delay_seconds = min(60 * (2 ** (failure_count - 1)), 3600)
+        retry_after = datetime.now(timezone.utc) + timedelta(
+            seconds=delay_seconds
+        )
+        failures[request_type] = {
+            "service_date": service_date,
+            "failure_count": failure_count,
+            "failed_at": utc_iso(),
+            "retry_after": retry_after.isoformat().replace("+00:00", "Z"),
+        }
+        self.journal["lane_failures"] = failures
+        self.save_journal()
+        print(
+            "[controller] lane backoff "
+            f"type={request_type} service_date={service_date} "
+            f"failures={failure_count} retry_seconds={delay_seconds}",
+            flush=True,
         )
 
     def shadow_observation(
@@ -1164,6 +1267,9 @@ class ContinuousController:
                     if (
                         self.dro_am_due(now)
                         and self.credential_attempt_allowed()
+                        and self.lane_retry_allowed(
+                            "DRO_AM", now.date().isoformat(), now
+                        )
                     ):
                         if SHADOW_MODE:
                             self.shadow_observation(
@@ -1181,19 +1287,27 @@ class ContinuousController:
                                 self.journal["dro_am_date"] = (
                                     now.date().isoformat()
                                 )
-                                self.failure_count = 0
-                                self.next_retry_at = 0
+                                self.clear_lane_failure(
+                                    "DRO_AM", now.date().isoformat()
+                                )
                                 self.save_journal()
                             elif status == 40:
                                 self.mark_auth_failure()
                             else:
-                                self.mark_transient_failure()
+                                self.mark_transient_failure(
+                                    "DRO_AM", now.date().isoformat()
+                                )
                         self.stop_event.wait(1)
                         continue
 
                     if (
                         self.previous_day_close_due(now)
                         and self.credential_attempt_allowed()
+                        and self.lane_retry_allowed(
+                            "PREVIOUS_DAY_CLOSE",
+                            (now.date() - timedelta(days=1)).isoformat(),
+                            now,
+                        )
                     ):
                         service_date = (
                             now.date() - timedelta(days=1)
@@ -1213,8 +1327,9 @@ class ContinuousController:
                                 self.journal[
                                     "previous_day_close_date"
                                 ] = now.date().isoformat()
-                                self.failure_count = 0
-                                self.next_retry_at = 0
+                                self.clear_lane_failure(
+                                    "PREVIOUS_DAY_CLOSE", service_date
+                                )
                                 self.save_journal()
                                 recovery_status = (
                                     self.run_previous_day_manifest_recovery(
@@ -1224,18 +1339,26 @@ class ContinuousController:
                                 if recovery_status == 40:
                                     self.mark_auth_failure()
                                 elif recovery_status != 0:
-                                    self.mark_transient_failure()
+                                    self.mark_transient_failure(
+                                        "PREVIOUS_DAY_CLOSE", service_date
+                                    )
                             elif status == 40:
                                 self.mark_auth_failure()
                             else:
-                                self.mark_transient_failure()
+                                self.mark_transient_failure(
+                                    "PREVIOUS_DAY_CLOSE", service_date
+                                )
                         self.stop_event.wait(1)
                         continue
 
                     if (
                         self.retained_gpx_recovery_due(now)
                         and self.credential_attempt_allowed()
-                        and time.monotonic() >= self.next_retry_at
+                        and self.lane_retry_allowed(
+                            "ROUTE_GPX_RECOVERY",
+                            now.date().isoformat(),
+                            now,
+                        )
                     ):
                         if SHADOW_MODE:
                             self.shadow_observation(
@@ -1249,8 +1372,10 @@ class ContinuousController:
                                 "retained_gpx_recovery_last_attempt_at"
                             ] = utc_iso()
                             if status == 0:
-                                self.failure_count = 0
-                                self.next_retry_at = 0
+                                self.clear_lane_failure(
+                                    "ROUTE_GPX_RECOVERY",
+                                    now.date().isoformat(),
+                                )
                                 if complete:
                                     self.journal[
                                         "retained_gpx_recovery_date"
@@ -1261,7 +1386,10 @@ class ContinuousController:
                                 self.mark_auth_failure()
                             else:
                                 self.save_journal()
-                                self.mark_transient_failure()
+                                self.mark_transient_failure(
+                                    "ROUTE_GPX_RECOVERY",
+                                    now.date().isoformat(),
+                                )
                         self.stop_event.wait(1)
                         continue
 
@@ -1309,7 +1437,9 @@ class ContinuousController:
                         and self.within_route_closeout_window(now)
                         and self.route_closeout_poll_due(now)
                         and self.credential_attempt_allowed()
-                        and time.monotonic() >= self.next_retry_at
+                        and self.lane_retry_allowed(
+                            "ROUTE_CLOSEOUT", now.date().isoformat(), now
+                        )
                     ):
                         service_date = now.date().isoformat()
                         if SHADOW_MODE:
@@ -1366,13 +1496,16 @@ class ContinuousController:
                                 self.journal[
                                     "route_closeout_last_dsw_at"
                                 ] = captured_at
-                            self.failure_count = 0
-                            self.next_retry_at = 0
+                            self.clear_lane_failure(
+                                "ROUTE_CLOSEOUT", service_date
+                            )
                             self.save_journal()
                         elif status == 40:
                             self.mark_auth_failure()
                         else:
-                            self.mark_transient_failure()
+                            self.mark_transient_failure(
+                                "ROUTE_CLOSEOUT", service_date
+                            )
                         self.stop_event.wait(1)
                         continue
 
@@ -1383,7 +1516,9 @@ class ContinuousController:
                         and self.within_pulse_window(now)
                         and self.operations_pulse_due(now)
                         and self.credential_attempt_allowed()
-                        and time.monotonic() >= self.next_retry_at
+                        and self.lane_retry_allowed(
+                            "OPERATIONS_PULSE", now.date().isoformat(), now
+                        )
                     ):
                         reports = self.operations_pulse_reports(now)
                         if SHADOW_MODE:
@@ -1409,13 +1544,16 @@ class ContinuousController:
                             self.journal[
                                 "operations_pulse_last_completed_at"
                             ] = utc_iso()
-                            self.failure_count = 0
-                            self.next_retry_at = 0
+                            self.clear_lane_failure(
+                                "OPERATIONS_PULSE", now.date().isoformat()
+                            )
                             self.save_journal()
                         elif status == 40:
                             self.mark_auth_failure()
                         else:
-                            self.mark_transient_failure()
+                            self.mark_transient_failure(
+                                "OPERATIONS_PULSE", now.date().isoformat()
+                            )
                         self.stop_event.wait(1)
                         continue
 
@@ -1426,8 +1564,7 @@ class ContinuousController:
                     self.stop_event.wait(5)
                 except Exception as exc:
                     print(f"[controller] loop error: {exc}", flush=True)
-                    self.mark_transient_failure()
-                    self.stop_event.wait(5)
+                    self.stop_event.wait(60)
         finally:
             control_server.shutdown()
             control_server.server_close()

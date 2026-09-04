@@ -38,6 +38,8 @@ describe("parseDswPackageStatusWorkbook", () => {
     expect(parsed.service_date).toBe("2026-07-27");
     expect(parsed.terminal_identity).toBe("ZSAS: 249/3249");
     expect(parsed.generated_at).toBe("2026-07-27T20:28:23Z");
+    expect(parsed.source_row_count).toBe(1);
+    expect(parsed.duplicate_tracking_count).toBe(0);
     expect(parsed.rows).toHaveLength(1);
     expect(parsed.rows[0]).toMatchObject({
       work_area_number: "0426",
@@ -47,6 +49,44 @@ describe("parseDswPackageStatusWorkbook", () => {
       vsa_status_code: "27",
       star_status_code: "7",
       star_scan_at_local: "2026-07-27T09:03:00",
+    });
+  });
+
+  it("keeps the latest status when a package appears more than once", () => {
+    const sheet = XLSX.utils.aoa_to_sheet([
+      [
+        "FedEx - ZSAS: 249/3249 - 20260727",
+        "Package Level Detail Table",
+        "Generated - 2026-07-27 20:28:23 UTC",
+      ],
+      [],
+      [...DSW_PACKAGE_STATUS_HEADERS],
+      [
+        "1", "BPV 03", "0426", "309747", "BEACON POINT VENTURES INC",
+        "426-7512 2026-07-27 01:59:38.0", "0874740659370",
+        "REDACTED DESTINATION", "247092", "", "", "07/27/2026 09:03",
+      ],
+      [
+        "2", "BPV 03", "0426", "309747", "BEACON POINT VENTURES INC",
+        "426-7512 2026-07-27 01:59:38.0", "0874740659370",
+        "REDACTED DESTINATION", "247092", "27", "7", "07/27/2026 12:15",
+      ],
+    ]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, "Package Detail");
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xls" });
+
+    const parsed = parseDswPackageStatusWorkbook(buffer);
+
+    expect(parsed.source_row_count).toBe(2);
+    expect(parsed.duplicate_tracking_count).toBe(1);
+    expect(parsed.rows).toHaveLength(1);
+    expect(parsed.rows[0]).toMatchObject({
+      package_ordinal: 2,
+      tracking_id: "0874740659370",
+      vsa_status_code: "27",
+      star_status_code: "7",
+      star_scan_at_local: "2026-07-27T12:15:00",
     });
   });
 });

@@ -88,23 +88,33 @@ def _select_service_provider(driver) -> None:
 
 
 def _select_entity(driver) -> None:
-    if not DRO_SERVICE_AREA or not DRO_BUSINESS_NAME:
+    if not DRO_SERVICE_AREA:
         raise RuntimeError(
-            "DRO entity navigation requires FCMS_DRO_SERVICE_AREA and "
-            "FCMS_DRO_BUSINESS_NAME."
+            "DRO entity navigation requires FCMS_DRO_SERVICE_AREA."
         )
 
     service_area = _normalized_xpath_literal(DRO_SERVICE_AREA)
-    business_name = _normalized_xpath_literal(DRO_BUSINESS_NAME)
-    row_xpath = (
-        "//tr["
-        f".//*[normalize-space()={service_area}]"
-        " and "
-        f".//*[normalize-space()={business_name}]"
-        "]"
+    if DRO_BUSINESS_NAME:
+        business_name = _normalized_xpath_literal(DRO_BUSINESS_NAME)
+        row_xpath = (
+            "//tr["
+            f".//*[normalize-space()={service_area}]"
+            " and "
+            f".//*[normalize-space()={business_name}]"
+            "]"
+        )
+    else:
+        row_xpath = f"//tr[.//*[normalize-space()={service_area}]]"
+    rows = WebDriverWait(driver, 30).until(
+        EC.presence_of_all_elements_located((By.XPATH, row_xpath))
     )
+    if len(rows) != 1:
+        raise RuntimeError(
+            "DRO service-area selection is ambiguous; configure the exact "
+            "business name for this company."
+        )
     row = WebDriverWait(driver, 30).until(
-        EC.element_to_be_clickable((By.XPATH, row_xpath))
+        EC.element_to_be_clickable(rows[0])
     )
     row.click()
 
