@@ -38,6 +38,8 @@ export type DswPackageStatusWorkbook = {
   generated_at: string | null;
   sheet_name: string;
   header_row_number: number;
+  source_row_count: number;
+  duplicate_tracking_count: number;
   rows: DswPackageStatusRow[];
 };
 
@@ -93,6 +95,30 @@ function parseGeneratedAt(value: string) {
     /Generated\s*-\s*(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})\s+UTC/i
   );
   return match ? `${match[1]}T${match[2]}Z` : null;
+}
+
+function preferredDuplicate(
+  current: DswPackageStatusRow,
+  candidate: DswPackageStatusRow
+) {
+  const currentTimestamp =
+    current.star_scan_at_local ?? current.vision_label_at_local ?? "";
+  const candidateTimestamp =
+    candidate.star_scan_at_local ?? candidate.vision_label_at_local ?? "";
+  if (candidateTimestamp !== currentTimestamp) {
+    return candidateTimestamp > currentTimestamp ? candidate : current;
+  }
+
+  const populatedFields = (row: DswPackageStatusRow) =>
+    Object.values(row).filter((value) => value !== null && value !== "").length;
+  const currentFields = populatedFields(current);
+  const candidateFields = populatedFields(candidate);
+  if (candidateFields !== currentFields) {
+    return candidateFields > currentFields ? candidate : current;
+  }
+  return candidate.package_ordinal >= current.package_ordinal
+    ? candidate
+    : current;
 }
 
 export function parseDswPackageStatusWorkbook(
@@ -160,10 +186,17 @@ export function parseDswPackageStatusWorkbook(
     });
   }
 
-  const uniqueTrackingIds = new Set(parsedRows.map((row) => row.tracking_id));
-  if (uniqueTrackingIds.size !== parsedRows.length) {
-    throw new Error("Package detail workbook contains duplicate tracking IDs.");
+  const rowsByTrackingId = new Map<string, DswPackageStatusRow>();
+  for (const row of parsedRows) {
+    const current = rowsByTrackingId.get(row.tracking_id);
+    rowsByTrackingId.set(
+      row.tracking_id,
+      current ? preferredDuplicate(current, row) : row
+    );
   }
+  const deduplicatedRows = [...rowsByTrackingId.values()].sort(
+    (left, right) => left.package_ordinal - right.package_ordinal
+  );
 
   return {
     service_date: serviceDate,
@@ -171,6 +204,8 @@ export function parseDswPackageStatusWorkbook(
     generated_at: parseGeneratedAt(metadataText),
     sheet_name: sheetName,
     header_row_number: headerIndex + 1,
-    rows: parsedRows,
+    source_row_count: parsedRows.length,
+    duplicate_tracking_count: parsedRows.length - deduplicatedRows.length,
+    rows: deduplicatedRows,
   };
 }

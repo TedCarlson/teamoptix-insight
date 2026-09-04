@@ -239,6 +239,56 @@ class ContinuousControllerTests(unittest.TestCase):
             )
         )
 
+    def test_dro_target_comes_from_active_company_contract(self):
+        controller = self.controller()
+        controller.schedule["company_slug"] = "beacon-point-ventures"
+        controller.schedule["dro_am"] = {
+            "enabled": True,
+            "start_time": "04:00",
+            "reports": ["DRO"],
+        }
+
+        with mock.patch.object(
+            MODULE,
+            "rpc",
+            return_value=[{"service_area": "309747"}],
+        ) as rpc_call:
+            target = controller.dro_target("2026-09-04")
+
+        self.assertEqual(
+            target,
+            {"service_area": "309747", "business_name": ""},
+        )
+        rpc_call.assert_called_once_with(
+            "get_active_company_contract_config",
+            {
+                "p_company_slug": "beacon-point-ventures",
+                "p_service_date": "2026-09-04",
+            },
+        )
+
+    def test_transient_backoff_is_persisted_and_isolated_by_lane(self):
+        controller = self.controller()
+        controller.save_journal = mock.Mock()
+        service_date = "2026-09-04"
+        now = datetime.now(ZoneInfo("America/New_York"))
+
+        controller.mark_transient_failure("DRO_AM", service_date)
+
+        self.assertFalse(
+            controller.lane_retry_allowed("DRO_AM", service_date, now)
+        )
+        self.assertTrue(
+            controller.lane_retry_allowed(
+                "OPERATIONS_PULSE", service_date, now
+            )
+        )
+        self.assertEqual(
+            controller.journal["lane_failures"]["DRO_AM"]["failure_count"],
+            1,
+        )
+        controller.save_journal.assert_called_once()
+
     def test_route_closeout_uses_reduced_source_cadence(self):
         controller = self.controller()
         zone = ZoneInfo("America/New_York")
