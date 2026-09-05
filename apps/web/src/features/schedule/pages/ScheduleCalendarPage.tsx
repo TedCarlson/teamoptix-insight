@@ -588,34 +588,6 @@ export default function ScheduleCalendarPage() {
                       <section
                         className="schedule-day-drawer-section"
                         style={{
-                          border: `1px solid ${capacity.seams.length ? "#f5d38d" : "#e2e8f0"}`,
-                          borderRadius: 10,
-                          padding: 12,
-                        }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                          <strong style={{ color: capacity.seams.length ? "#92400e" : "#475569" }}>
-                            Coverage Seams
-                          </strong>
-                          <span style={{ color: "#64748b" }}>{capacity.seams.length}</span>
-                        </div>
-                        {capacity.seams.length === 0 ? (
-                          <div style={{ color: "#64748b" }}>None</div>
-                        ) : capacity.seams.map((seam, index) => (
-                          <div
-                            key={`${seam.type}:${seam.routeLabel}:${index}`}
-                            style={{ padding: "7px 0", borderBottom: "1px solid #fef3c7", display: "grid", gap: 2 }}
-                          >
-                            <strong style={{ fontSize: 13 }}>{seam.routeLabel}</strong>
-                            <span style={{ color: "#92400e", fontSize: 12 }}>{seam.type.replaceAll("_", " ")}</span>
-                            <small style={{ color: "#64748b" }}>{seam.detail}</small>
-                          </div>
-                        ))}
-                      </section>
-
-                      <section
-                        className="schedule-day-drawer-section"
-                        style={{
                           border: "1px solid #fed7aa",
                           borderRadius: 10,
                           padding: 12,
@@ -717,6 +689,34 @@ export default function ScheduleCalendarPage() {
                       <section
                         className="schedule-day-drawer-section"
                         style={{
+                          border: `1px solid ${capacity.seams.length ? "#f5d38d" : "#e2e8f0"}`,
+                          borderRadius: 10,
+                          padding: 12,
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                          <strong style={{ color: capacity.seams.length ? "#92400e" : "#475569" }}>
+                            Coverage Seams
+                          </strong>
+                          <span style={{ color: "#64748b" }}>{capacity.seams.length}</span>
+                        </div>
+                        {capacity.seams.length === 0 ? (
+                          <div style={{ color: "#64748b" }}>None</div>
+                        ) : capacity.seams.map((seam, index) => (
+                          <div
+                            key={`${seam.type}:${seam.routeLabel}:${index}`}
+                            style={{ padding: "7px 0", borderBottom: "1px solid #fef3c7", display: "grid", gap: 2 }}
+                          >
+                            <strong style={{ fontSize: 13 }}>{seam.routeLabel}</strong>
+                            <span style={{ color: "#92400e", fontSize: 12 }}>{seam.type.replaceAll("_", " ")}</span>
+                            <small style={{ color: "#64748b" }}>{seam.detail}</small>
+                          </div>
+                        ))}
+                      </section>
+
+                      <section
+                        className="schedule-day-drawer-section"
+                        style={{
                           border: "1px solid #e2e8f0",
                           borderRadius: 10,
                           padding: 12,
@@ -811,49 +811,6 @@ export default function ScheduleCalendarPage() {
                         )}
                       </section>
 
-                      <section
-                        className="schedule-day-drawer-section"
-                        style={{
-                          border: "1px solid #e2e8f0",
-                          borderRadius: 10,
-                          padding: 12,
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            marginBottom: 8,
-                          }}
-                        >
-                          <strong style={{ color: "#b91c1c" }}>
-                            Routes Without Drivers
-                          </strong>
-                          <span style={{ color: "#64748b" }}>
-                            {capacity.openRoutes.length}
-                          </span>
-                        </div>
-
-                        {capacity.openRoutes.length === 0 ? (
-                          <div style={{ color: "#64748b" }}>
-                            None
-                          </div>
-                        ) : (
-                          capacity.openRoutes.map((route) => (
-                            <div
-                              key={route.id}
-                              style={{
-                                padding: "6px 0",
-                                borderBottom: "1px solid #e2e8f0",
-                                fontSize: 14,
-                                fontWeight: 600,
-                              }}
-                            >
-                              {scheduleRouteLabel(route)}
-                            </div>
-                          ))
-                        )}
-                      </section>
                     </div>
                   </div>
                 </div>
