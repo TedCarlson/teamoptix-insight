@@ -290,6 +290,71 @@ export function scheduleCapacitySignalLabel(delta: number) {
   return "Profitability risk";
 }
 
+export type ScheduleCapacitySignal = {
+  label: string;
+  background: string;
+  border: string;
+  color: string;
+};
+
+export function scheduleCapacitySignal(
+  delta: number,
+  workforce: number,
+  routeDemand: number
+): ScheduleCapacitySignal {
+  if (workforce === 0 && routeDemand === 0) {
+    return {
+      label: "No operation",
+      background: "#f1f5f9",
+      border: "#cbd5e1",
+      color: "#64748b",
+    };
+  }
+
+  if (delta < 0) {
+    return {
+      label: "Service risk",
+      background: "#fee2e2",
+      border: "#fca5a5",
+      color: "#b91c1c",
+    };
+  }
+
+  if (delta === 0) {
+    return {
+      label: "No contingency",
+      background: "#fef3c7",
+      border: "#fcd34d",
+      color: "#92400e",
+    };
+  }
+
+  if (delta <= 2) {
+    return {
+      label: "Target range",
+      background: "#dcfce7",
+      border: "#86efac",
+      color: "#166534",
+    };
+  }
+
+  if (delta <= 5) {
+    return {
+      label: "Labor high",
+      background: "#fef3c7",
+      border: "#fcd34d",
+      color: "#92400e",
+    };
+  }
+
+  return {
+    label: "Profitability risk",
+    background: "#fee2e2",
+    border: "#fca5a5",
+    color: "#b91c1c",
+  };
+}
+
 export function resolveTimeOffRequestImpact(params: {
   requestedDates: string[];
   rosterMemberId: string;
@@ -354,6 +419,7 @@ export type ScheduleOverrideImpactType =
   | "TIME_OFF"
   | "CALL_OUT"
   | "ADMIN_OFF"
+  | "HOLIDAY"
   | "ADD_IN"
   | "RESIGNATION_NOTICE";
 

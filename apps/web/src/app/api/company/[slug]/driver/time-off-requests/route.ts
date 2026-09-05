@@ -19,7 +19,22 @@ type RequestPayload = {
   intent_confirmation?: unknown;
 };
 
-export async function GET(_req: NextRequest, context: RouteContext) {
+function isIsoDate(value: unknown): value is string {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function blackoutErrorMessage(message: string) {
+  const marker = "TIME_OFF_BLACKOUT_DATE|";
+  const markerIndex = message.indexOf(marker);
+  if (markerIndex < 0) return message;
+
+  const [date, guidance] = message.slice(markerIndex + marker.length).split("|");
+  return guidance
+    ? `${date} is a blackout date. ${guidance}`
+    : `${date} is a blackout date. Please contact your leadership team directly if you have a persistent need for time off.`;
+}
+
+export async function GET(req: NextRequest, context: RouteContext) {
   try {
     const { slug } = await context.params;
     const sb = await getSupabaseServerClient();
@@ -68,7 +83,31 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       );
     }
 
-    return NextResponse.json({ rows: rows ?? [] });
+    const startDate = req.nextUrl.searchParams.get("start_date");
+    const endDate = req.nextUrl.searchParams.get("end_date");
+    let blackoutDates: unknown[] = [];
+
+    if (isIsoDate(startDate) && isIsoDate(endDate) && startDate <= endDate) {
+      const { data: blackoutRows, error: blackoutError } = await sb.rpc(
+        "operations_blackout_dates",
+        {
+          p_company_slug: slug,
+          p_start_date: startDate,
+          p_end_date: endDate,
+        }
+      );
+
+      if (blackoutError) {
+        return NextResponse.json(
+          { error: blackoutError.message, rows: rows ?? [], blackout_dates: [] },
+          { status: 500 }
+        );
+      }
+
+      blackoutDates = Array.isArray(blackoutRows) ? blackoutRows : [];
+    }
+
+    return NextResponse.json({ rows: rows ?? [], blackout_dates: blackoutDates });
   } catch (error) {
     return NextResponse.json(
       {
@@ -114,7 +153,10 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     if (error) {
       return NextResponse.json(
-        { error: error.message, step: "submit_driver_time_off_request" },
+        {
+          error: blackoutErrorMessage(error.message),
+          step: "submit_driver_time_off_request",
+        },
         { status: 400 }
       );
     }

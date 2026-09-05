@@ -303,6 +303,7 @@ export default function CompanyBranchNav(props: CompanyBranchNavProps) {
     { label: "Planning", href: `${operationsBase}/planning`, match: (path) => path.startsWith(`${operationsBase}/planning`) || path.startsWith(`${operationsBase}/intelligence`) },
     { label: "Ops Reports", href: `${base}/prior-day`, match: (path) => path === `${base}/prior-day` },
     { label: "Walk Ons", href: `${operationsBase}/walk-ons`, match: (path) => path.startsWith(`${operationsBase}/walk-ons`) },
+    { label: "Operations Calendar", href: `${operationsBase}/calendar`, match: (path) => path.startsWith(`${operationsBase}/calendar`) },
   ];
 
   const fleetSubItems: NavItem[] = [

@@ -41,6 +41,10 @@ export function applyDispatchEvent(
   const seat = event.seat as Seat | null;
   const person = dispatchPersonFromEvent(event);
 
+  if (code === "OPERATIONS_CLOSED") {
+    return {};
+  }
+
   if (code === "ADD_ROUTE") {
     if (!routeKey) return current;
     if (current[routeKey]) return current;

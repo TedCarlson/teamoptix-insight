@@ -27,6 +27,11 @@ export type DriverCalendarRequestRow = {
   status: DriverCalendarRequestStatus;
 };
 
+export type DriverCalendarBlackoutRow = {
+  blackout_date: string;
+  message: string;
+};
+
 export function addCalendarDays(date: Date, days: number) {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
@@ -69,7 +74,10 @@ export function startOfFedExCalendarGrid(monthDate: Date) {
   return addCalendarDays(firstOfMonth, -offsetFromSaturday);
 }
 
-export function buildRequestEyebrowMap(requests: DriverCalendarRequestRow[]) {
+export function buildRequestEyebrowMap(
+  requests: DriverCalendarRequestRow[],
+  blackouts: DriverCalendarBlackoutRow[] = []
+) {
   const map = new Map<string, DriverCalendarEyebrow>();
 
   for (const request of requests) {
@@ -83,6 +91,10 @@ export function buildRequestEyebrowMap(requests: DriverCalendarRequestRow[]) {
     for (const isoDate of request.requested_dates ?? []) {
       map.set(isoDate, eyebrow);
     }
+  }
+
+  for (const blackout of blackouts) {
+    map.set(blackout.blackout_date, { token: "BLK", tone: "blackout" });
   }
 
   return map;

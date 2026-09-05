@@ -7,6 +7,7 @@ import {
   selectedDatesLabel,
   selectionHasRangeGap,
   type DriverTimeOffSelectionMode,
+  type DriverTimeOffBlackout,
 } from "@/features/company-user/lib/driverTimeOffRequests";
 
 type DriverTimeOffRequestDrawerProps = {
@@ -14,6 +15,7 @@ type DriverTimeOffRequestDrawerProps = {
   note: string;
   busy?: boolean;
   error?: string | null;
+  blackouts?: DriverTimeOffBlackout[];
   selectionMode: DriverTimeOffSelectionMode;
   onSelectionModeChange: (value: DriverTimeOffSelectionMode) => void;
   onNoteChange: (value: string) => void;
@@ -26,6 +28,7 @@ export function DriverTimeOffRequestDrawer({
   note,
   busy = false,
   error = null,
+  blackouts = [],
   selectionMode,
   onSelectionModeChange,
   onNoteChange,
@@ -35,7 +38,10 @@ export function DriverTimeOffRequestDrawer({
   const resolvedDates = resolveTimeOffRequestedDates(selectedDates, selectionMode);
   const rangeDates = rangeDatesForSelection(selectedDates);
   const hasRangeGap = selectionHasRangeGap(selectedDates);
-  const eligibility = evaluateDriverTimeOffRequestEligibility(resolvedDates);
+  const eligibility = evaluateDriverTimeOffRequestEligibility(
+    resolvedDates,
+    blackouts
+  );
 
   return (
     <div className="driver-timeoff-drawer" role="region" aria-label="Time off request">

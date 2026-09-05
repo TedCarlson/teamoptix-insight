@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DriverTimeOffRequestDrawer } from "@/features/company-user/components/DriverTimeOffRequestDrawer";
 import {
   resolveTimeOffRequestedDates,
+  type DriverTimeOffBlackout,
   type DriverTimeOffSelectionMode,
 } from "@/features/company-user/lib/driverTimeOffRequests";
 import { IntentVerificationDrawer } from "@/features/security/components/IntentVerificationDrawer";
@@ -191,6 +192,7 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
   const [monthDate, setMonthDate] = useState(() => new Date());
   const [rows, setRows] = useState<ScheduleRow[]>([]);
   const [requests, setRequests] = useState<DriverRequestRow[]>([]);
+  const [blackouts, setBlackouts] = useState<DriverTimeOffBlackout[]>([]);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
 
@@ -204,14 +206,17 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
   const [requestNote, setRequestNote] = useState("");
   const [requestError, setRequestError] = useState<string | null>(null);
   const [requestMessage, setRequestMessage] = useState<string | null>(null);
+  const [blackoutNotice, setBlackoutNotice] = useState<string | null>(null);
   const [requestDrawerOpen, setRequestDrawerOpen] = useState(false);
   const [requestSaving, setRequestSaving] = useState(false);
   const [intentOpen, setIntentOpen] = useState(false);
   const requestSubmissionId = useRef<string | null>(null);
 
-  async function loadDriverRequests() {
+  const loadDriverRequests = useCallback(async () => {
+    const gridStart = startOfFedExCalendarGrid(monthDate);
+    const gridEnd = addDays(gridStart, 41);
     const requestRes = await fetch(
-      `/api/company/${slug}/driver/time-off-requests`,
+      `/api/company/${slug}/driver/time-off-requests?start_date=${isoForCalendarDate(gridStart)}&end_date=${isoForCalendarDate(gridEnd)}`,
       {
         credentials: "include",
         cache: "no-store",
@@ -222,8 +227,13 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
 
     if (requestRes.ok) {
       setRequests(Array.isArray(requestData.rows) ? requestData.rows : []);
+      setBlackouts(
+        Array.isArray(requestData.blackout_dates)
+          ? requestData.blackout_dates
+          : []
+      );
     }
-  }
+  }, [monthDate, slug]);
 
   useEffect(() => {
     let active = true;
@@ -250,8 +260,6 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
 
         setRows(Array.isArray(data?.rows) ? data.rows : []);
 
-        await loadDriverRequests();
-
       } catch {
         if (!active) return;
         setRows([]);
@@ -266,9 +274,11 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
     return () => {
       active = false;
     };
-    // loadDriverRequests is intentionally called inside loadSchedule and after submit.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
+
+  useEffect(() => {
+    if (slug) void loadDriverRequests();
+  }, [loadDriverRequests, slug]);
 
   const myScheduleRow = useMemo(() => {
     if (!access.profile_id) return null;
@@ -276,13 +286,18 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
   }, [access.profile_id, rows]);
 
   const calendarCells = useMemo(() => {
-    const eyebrowMap = buildRequestEyebrowMap(requests);
+    const eyebrowMap = buildRequestEyebrowMap(requests, blackouts);
 
     return buildCalendarCells(monthDate, myScheduleRow).map((cell)=>({
       ...cell,
       eyebrow: eyebrowMap.get(isoForCalendarDate(cell.date)),
     }));
-  },[monthDate, myScheduleRow,requests]);
+  }, [blackouts, monthDate, myScheduleRow, requests]);
+
+  const blackoutByDate = useMemo(
+    () => new Map(blackouts.map((blackout) => [blackout.blackout_date, blackout])),
+    [blackouts]
+  );
 
   function moveMonth(direction: -1 | 1) {
     setMonthDate((current) => new Date(current.getFullYear(), current.getMonth() + direction, 1));
@@ -294,9 +309,16 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
 
   function toggleRequestDate(date: Date) {
     const iso = isoForCalendarDate(date);
+    const blackout = blackoutByDate.get(iso);
+
+    if (blackout) {
+      setBlackoutNotice(`${iso} is a blackout date. ${blackout.message}`);
+      return;
+    }
 
     setRequestDrawerOpen(true);
     setRequestError(null);
+    setBlackoutNotice(null);
 
     setSelectedDates((current) => {
       if (current.includes(iso)) {
@@ -382,6 +404,10 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
         <p className="driver-calendar-message">{requestMessage}</p>
       ) : null}
 
+      {blackoutNotice ? (
+        <p className="driver-timeoff-error" role="status">{blackoutNotice}</p>
+      ) : null}
+
       {pageError ? (
         <p className="company-user-muted">{pageError}</p>
       ) : (
@@ -419,6 +445,11 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
                     .filter(Boolean)
                     .join(" ")}
                   onClick={() => toggleRequestDate(day.date)}
+                  aria-label={
+                    blackoutByDate.has(dayIso)
+                      ? `${dayIso}. Blackout date. ${blackoutByDate.get(dayIso)?.message}`
+                      : undefined
+                  }
                 >
                   {day.eyebrow ? (
                     <span
@@ -450,6 +481,7 @@ export function DriverScheduleCalendar({ slug }: DriverScheduleCalendarProps) {
           note={requestNote}
           busy={requestSaving}
           error={requestError}
+          blackouts={blackouts}
           selectionMode={timeOffSelectionMode}
           onSelectionModeChange={setTimeOffSelectionMode}
           onNoteChange={setRequestNote}

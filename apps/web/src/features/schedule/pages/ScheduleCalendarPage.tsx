@@ -8,6 +8,7 @@ import {
   resolveBaselineScheduledOffDrivers,
   resolveDailyScheduleCapacity,
   resolveOverrideOffRows,
+  scheduleCapacitySignal,
   scheduleRouteLabel,
   type ScheduleCapacityRoute,
 } from "@/features/schedule/lib/scheduleCapacity";
@@ -46,66 +47,6 @@ function addDays(date: Date, days: number) {
   copy.setDate(copy.getDate() + days);
   return copy;
 }
-
-
-function getDeltaSignal(
-  delta: number,
-  workforce: number,
-  routeDemand: number
-) {
-  if (workforce === 0 && routeDemand === 0) {
-    return {
-      label: "No operation",
-      background: "#f1f5f9",
-      border: "#cbd5e1",
-      color: "#64748b",
-    };
-  }
-
-  if (delta < 0) {
-    return {
-      label: "Service risk",
-      background: "#fee2e2",
-      border: "#fca5a5",
-      color: "#b91c1c",
-    };
-  }
-
-  if (delta === 0) {
-    return {
-      label: "No contingency",
-      background: "#fef3c7",
-      border: "#fcd34d",
-      color: "#92400e",
-    };
-  }
-
-  if (delta <= 2) {
-    return {
-      label: "Target range",
-      background: "#dcfce7",
-      border: "#86efac",
-      color: "#166534",
-    };
-  }
-
-  if (delta <= 5) {
-    return {
-      label: "Labor high",
-      background: "#fef3c7",
-      border: "#fcd34d",
-      color: "#92400e",
-    };
-  }
-
-  return {
-    label: "Profitability risk",
-    background: "#fee2e2",
-    border: "#fca5a5",
-    color: "#b91c1c",
-  };
-}
-
 
 
 export default function ScheduleCalendarPage() {
@@ -278,7 +219,7 @@ export default function ScheduleCalendarPage() {
             ).length;
 
             const delta = capacity.capacityDelta;
-            const deltaSignal = getDeltaSignal(
+            const deltaSignal = scheduleCapacitySignal(
               delta,
               capacity.scheduledDrivers,
               capacity.routeDemand
@@ -444,7 +385,7 @@ export default function ScheduleCalendarPage() {
             const traineeRows = selectedRows.filter((row) =>
               isTraineeWorker(row.worker_type, row.employment_status)
             );
-            const drawerSignal = getDeltaSignal(
+            const drawerSignal = scheduleCapacitySignal(
               capacity.capacityDelta,
               capacity.scheduledDrivers,
               capacity.routeDemand

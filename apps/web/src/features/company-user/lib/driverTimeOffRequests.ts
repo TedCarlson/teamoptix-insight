@@ -58,6 +58,11 @@ export type DriverTimeOffRequestEligibility = {
   reason: string | null;
 };
 
+export type DriverTimeOffBlackout = {
+  blackout_date: string;
+  message: string;
+};
+
 export const DRIVER_TIME_OFF_MIN_NOTICE_DAYS = 10;
 export const DRIVER_TIME_OFF_MAX_SELECTED_DAYS = 15;
 
@@ -77,7 +82,8 @@ export function selectedDatesLabel(selectedDates: string[]) {
 }
 
 export function evaluateDriverTimeOffRequestEligibility(
-  selectedDates: string[]
+  selectedDates: string[],
+  blackouts: DriverTimeOffBlackout[] = []
 ): DriverTimeOffRequestEligibility {
   if (selectedDates.length === 0) {
     return {
@@ -91,6 +97,22 @@ export function evaluateDriverTimeOffRequestEligibility(
       canSubmit: false,
       reason:
         "Requests longer than 15 days should be discussed directly with leadership.",
+    };
+  }
+
+  const blackoutByDate = new Map(
+    blackouts.map((blackout) => [blackout.blackout_date, blackout])
+  );
+  const blockedDate = selectedDates.find((isoDate) => blackoutByDate.has(isoDate));
+
+  if (blockedDate) {
+    const guidance = blackoutByDate.get(blockedDate)?.message;
+    return {
+      canSubmit: false,
+      reason: `${blockedDate} is a blackout date. ${
+        guidance ||
+        "If you have a persistent need for time off, please contact your leadership team directly."
+      }`,
     };
   }
 

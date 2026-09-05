@@ -5,6 +5,7 @@ import {
   resolveBaselineScheduledOffDrivers,
   resolveOverrideOffRows,
   resolveScheduleOverrideImpact,
+  scheduleCapacitySignal,
   type ScheduleCapacityPerson,
 } from "./scheduleCapacity";
 
@@ -218,5 +219,11 @@ describe("resolveOverrideOffRows", () => {
       "admin-off",
       "resignation",
     ]);
+  });
+});
+
+describe("scheduleCapacitySignal", () => {
+  it("uses the established no-operation state when workforce and routes are zero", () => {
+    expect(scheduleCapacitySignal(0, 0, 0).label).toBe("No operation");
   });
 });

@@ -11,6 +11,7 @@ export function buildOperationsMenu(base: string): AppMenuSection {
       { key: "planning", label: "Planning", href: `${base}/operations/planning` },
       { key: "ops-reports", label: "Ops Reports", href: `${base}/prior-day` },
       { key: "walk-ons", label: "Walk Ons", href: `${base}/operations/walk-ons` },
+      { key: "operations-calendar", label: "Operations Calendar", href: `${base}/operations/calendar` },
       { key: "pickup-reconciliation", label: "PU Reconciliation", href: `${base}/operations/pickup-reconciliation` },
     ],
   };

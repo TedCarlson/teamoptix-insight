@@ -71,6 +71,51 @@ describe("route-to-CSA dispatch handoff", () => {
   });
 });
 
+describe("operations calendar handoff", () => {
+  it("closes the dated route lineup without changing the route baseline", () => {
+    const baseline = route;
+
+    expect(
+      buildAssignmentMapFromRoutesAndEvents(
+        [baseline],
+        [
+          event({
+            id: "holiday",
+            event_code: "OPERATIONS_CLOSED",
+            event_label: "Holiday",
+            event_category: "OPERATIONS",
+          }),
+        ]
+      )
+    ).toEqual({});
+  });
+
+  it("returns to the baseline when the dated closure is reversed", () => {
+    const baseline = route;
+
+    expect(
+      buildAssignmentMapFromRoutesAndEvents(
+        [baseline],
+        [
+          event({
+            id: "holiday",
+            event_code: "OPERATIONS_CLOSED",
+            event_label: "Holiday",
+            event_category: "OPERATIONS",
+          }),
+          event({
+            id: "undo-holiday",
+            event_code: "UNDO_OPERATIONS_CLOSED",
+            event_label: "Return to baseline",
+            event_category: "OPERATIONS",
+            event_payload: { reverses_event_id: "holiday" },
+          }),
+        ]
+      )
+    ).toEqual({ "430": baseline });
+  });
+});
+
 describe("driver assignment displacement", () => {
   it("returns the prior scheduled driver to the workforce instead of hiding them as an extra", () => {
     const assignments = buildAssignmentMapFromRoutesAndEvents(

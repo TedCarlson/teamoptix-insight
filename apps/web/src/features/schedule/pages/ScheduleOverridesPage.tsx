@@ -11,7 +11,7 @@ import {
 } from "@/features/schedule/lib/scheduleCapacity";
 import { resignationImpactWindow } from "@/features/schedule/lib/resignationWorkflow";
 
-type OverrideType = "CALL_OUT" | "TIME_OFF" | "ADD_IN" | "ADMIN_OFF" | "RESIGNATION_NOTICE";
+type OverrideType = "CALL_OUT" | "TIME_OFF" | "ADD_IN" | "ADMIN_OFF" | "HOLIDAY" | "RESIGNATION_NOTICE";
 
 type WorkerRow = {
   roster_member_id: string;
